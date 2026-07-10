@@ -122,10 +122,19 @@ simple non-web surfaces. Close-probe artifacts include
 foreground-window snapshots, process snapshots, and full-desktop screenshots
 around detection and input send time; use those to distinguish a Steam overlay
 close problem from input being delivered to the Electron game window or from a
-callback firing without visible overlay UI. Before any close input, the probe
-validates and focuses the exact lifecycle native-presenter window, rechecks the
-same window immediately before dispatch, records only sanitized focus evidence,
-and sends no input if either focus check fails.
+callback firing without visible overlay UI. Schema-2 close evidence resolves the
+close target first, binds the exact lifecycle native-host window to the Smoke
+process and interactive session, then makes one authenticated loopback request
+for that owning process to run its existing native-host activation path. The
+probe independently verifies the exact window after the response and rechecks
+the same stored window immediately before dispatch. The handoff payload records
+only sanitized relationship booleans and counts—never handles,
+process/session IDs, ports, or tokens—while the broader diagnostic artifact
+still retains its established process and foreground snapshots. The probe sends
+no close input after a missing, ambiguous, or failed handoff.
+There is no external focus retry, synthetic activation input, or input-queue
+attachment. Web close uses one three-event `SendInput` call; a partial result
+fails evidence instead of falling back to a second pointer mechanism.
 The Windows matrix also has explicit managed profile, players, community,
 stats, achievements, and user cases. Current D3D11 managed-route artifacts prove
 those Steam Community-style routes with close/back-to-app behavior and clean

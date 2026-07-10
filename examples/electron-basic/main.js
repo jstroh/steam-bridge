@@ -125,6 +125,10 @@ const CONTROL_SERVER_ENABLED = readBoolean(
   CLI_OPTIONS.controlServer || process.env.STEAM_BRIDGE_SMOKE_CONTROL_SERVER,
   false
 );
+const CONTROL_HANDOFF_ONLY = readBoolean(
+  CLI_OPTIONS.controlHandoffOnly || process.env.STEAM_BRIDGE_SMOKE_CONTROL_HANDOFF_ONLY,
+  false
+);
 const CONTROL_FILE = CLI_OPTIONS.controlFile || process.env.STEAM_BRIDGE_SMOKE_CONTROL_FILE || "";
 const CONTROL_TOKEN =
   CLI_OPTIONS.controlToken || process.env.STEAM_BRIDGE_SMOKE_CONTROL_TOKEN || crypto.randomBytes(24).toString("hex");
@@ -208,6 +212,7 @@ let nativeOverlaySession;
 let electronSteamOverlay;
 let smokeControlServer;
 let smokeControlActionInFlight = false;
+let nativePresenterForegroundHandoffConsumed = false;
 let postClosePresenterSnapshotHandle;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
@@ -563,8 +568,10 @@ function startSmokeControlServer() {
       port,
       token: CONTROL_TOKEN,
       pid: process.pid,
-      diagnosticDir: DIAGNOSTIC_DIR,
-      lifecycleLogFile: LIFECYCLE_LOG_FILE
+      handoffOnly: CONTROL_HANDOFF_ONLY,
+      ...(!CONTROL_HANDOFF_ONLY
+        ? { diagnosticDir: DIAGNOSTIC_DIR, lifecycleLogFile: LIFECYCLE_LOG_FILE }
+        : {})
     };
     writeSmokeControlFile(ready);
     recordEvent("control:ready", {
@@ -572,7 +579,8 @@ function startSmokeControlServer() {
       port: ready.port,
       pid: ready.pid,
       controlFile: CONTROL_FILE || null,
-      tokenPresent: Boolean(CONTROL_TOKEN)
+      tokenPresent: Boolean(CONTROL_TOKEN),
+      handoffOnly: ready.handoffOnly
     });
   });
 }
@@ -612,8 +620,37 @@ async function handleSmokeControlRequest(request, response) {
     return;
   }
 
+  if (
+    CONTROL_HANDOFF_ONLY &&
+    !(request.method === "POST" && requestUrl.pathname === "/foreground-handoff")
+  ) {
+    sendJsonResponse(response, 404, { ok: false, error: { code: "HANDOFF_ONLY_CONTROL_SERVER" } });
+    return;
+  }
+
   if (request.method === "GET" && requestUrl.pathname === "/snapshot") {
     sendJsonResponse(response, 200, { ok: true, snapshot: snapshot() });
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/foreground-handoff") {
+    if (nativePresenterForegroundHandoffConsumed) {
+      sendJsonResponse(response, 409, {
+        ok: false,
+        error: { code: "FOREGROUND_HANDOFF_ALREADY_CONSUMED" }
+      });
+      return;
+    }
+
+    nativePresenterForegroundHandoffConsumed = true;
+    const body = await readSmokeControlJson(request);
+    removeSmokeControlFile();
+    const handoff = requestWindowsNativePresenterForegroundHandoff(body.targetWindow);
+    recordEvent("overlay:presenter-foreground-handoff", handoff);
+    sendJsonResponse(response, 200, {
+      ok: handoff.reason === "already-foreground" || handoff.reason === "foreground-confirmed",
+      handoff
+    });
     return;
   }
 
@@ -662,6 +699,136 @@ async function handleSmokeControlRequest(request, response) {
   }
 
   sendJsonResponse(response, 404, { ok: false, error: { message: `Unknown smoke control route: ${requestUrl.pathname}` } });
+}
+
+function requestWindowsNativePresenterForegroundHandoff(requestedWindow) {
+  const before = readWindowsNativePresenterForegroundHandoffState();
+  const requestedWindowPresent =
+    typeof requestedWindow === "string" && /^0x[0-9a-f]+$/i.test(requestedWindow);
+  const requestedWindowMatches = Boolean(
+    requestedWindowPresent && before.hostIdentity && requestedWindow === before.hostIdentity
+  );
+  const handoff = {
+    schema: 1,
+    target: "lifecycle-native-host",
+    mechanism: "owner-process-native-show",
+    requestOrdinal: 1,
+    precondition: {
+      windows: process.platform === "win32",
+      presenterActive: before.presenterActive,
+      hostOpen: before.hostOpen,
+      hostVisible: before.hostVisible,
+      hostOpaque: before.hostOpaque,
+      inputPassthrough: before.inputPassthrough,
+      requestedWindowPresent,
+      requestedWindowMatches,
+      alreadyForeground: before.hostForeground
+    },
+    requestedWindowMatches,
+    nativeShowCallCount: 0,
+    nativeShowCompleted: false,
+    sameWindowBeforeAfter: false,
+    ownerReportsForeground: before.hostForeground,
+    messageDelta: {
+      setFocus: 0,
+      activate: 0,
+      activateApp: 0
+    },
+    reason: "precondition-failed"
+  };
+
+  if (process.platform !== "win32") {
+    handoff.reason = "unsupported-platform";
+    return handoff;
+  }
+  if (!before.presenterActive) {
+    handoff.reason = "presenter-not-active";
+    return handoff;
+  }
+  if (!before.hostOpen) {
+    handoff.reason = "native-host-unavailable";
+    return handoff;
+  }
+  if (!requestedWindowPresent || !requestedWindowMatches) {
+    handoff.reason = "requested-native-host-mismatch";
+    return handoff;
+  }
+  if (!before.hostVisible || !before.hostOpaque || before.inputPassthrough !== false) {
+    handoff.reason = "native-host-not-input-ready";
+    return handoff;
+  }
+  if (before.hostForeground) {
+    handoff.sameWindowBeforeAfter = true;
+    handoff.reason = "already-foreground";
+    return handoff;
+  }
+
+  handoff.nativeShowCallCount = 1;
+  try {
+    steamworks.overlay.showNativeOverlayHostView();
+    handoff.nativeShowCompleted = true;
+  } catch {
+    handoff.reason = "native-call-failed";
+    return handoff;
+  }
+
+  const after = readWindowsNativePresenterForegroundHandoffState();
+  handoff.sameWindowBeforeAfter = Boolean(before.hostIdentity && before.hostIdentity === after.hostIdentity);
+  handoff.ownerReportsForeground = after.hostForeground;
+  handoff.messageDelta = nativePresenterMessageDelta(before.messageCounters, after.messageCounters);
+  if (!handoff.sameWindowBeforeAfter) {
+    handoff.reason = "native-host-changed";
+  } else if (after.hostForeground) {
+    handoff.reason = "foreground-confirmed";
+  } else {
+    handoff.reason = "foreground-not-confirmed";
+  }
+  return handoff;
+}
+
+function removeSmokeControlFile() {
+  if (!CONTROL_FILE) {
+    return;
+  }
+  try {
+    fs.unlinkSync(CONTROL_FILE);
+  } catch {
+    // The matrix also removes this ephemeral capability file in its case cleanup.
+  }
+}
+
+function readWindowsNativePresenterForegroundHandoffState() {
+  const presenter = safeOverlaySnapshot(electronSteamOverlay);
+  const diagnostics = presenter && presenter.nativeHostDiagnostics;
+  const counters = diagnostics && diagnostics.messages && diagnostics.messages.counters;
+  return {
+    presenterActive: Boolean(
+      electronSteamOverlay &&
+        electronSteamOverlay.isOpen() &&
+        presenter &&
+        presenter.mode === "active" &&
+        presenter.overlayActive === true
+    ),
+    hostOpen: Boolean(presenter && presenter.nativeHostOpen === true && diagnostics),
+    hostVisible: Boolean(diagnostics && diagnostics.visible === true),
+    hostOpaque: Boolean(diagnostics && diagnostics.opaque === true),
+    inputPassthrough: diagnostics ? diagnostics.inputPassthrough === true : undefined,
+    hostForeground: Boolean(diagnostics && diagnostics.isForeground === true),
+    hostIdentity: diagnostics && typeof diagnostics.hwnd === "string" ? diagnostics.hwnd : "",
+    messageCounters: {
+      setFocus: Number(counters && (counters.setFocus ?? counters.set_focus)) || 0,
+      activate: Number(counters && counters.activate) || 0,
+      activateApp: Number(counters && (counters.activateApp ?? counters.activate_app)) || 0
+    }
+  };
+}
+
+function nativePresenterMessageDelta(before, after) {
+  return {
+    setFocus: Math.max(0, after.setFocus - before.setFocus),
+    activate: Math.max(0, after.activate - before.activate),
+    activateApp: Math.max(0, after.activateApp - before.activateApp)
+  };
 }
 
 function isSmokeControlAuthorized(request) {
@@ -3079,6 +3246,12 @@ function snapshot() {
     launch: STARTUP_LAUNCH_CONTEXT,
     crashDiagnostics: collectCrashDiagnostics(),
     overlayProcesses: collectOverlayProcessSnapshot(),
+    window: {
+      present: Boolean(mainWindow && !mainWindow.isDestroyed()),
+      visible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+      focused: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
+      minimized: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized())
+    },
     steam: {
       initialized: Boolean(client),
       initError
@@ -4126,6 +4299,7 @@ function parseSmokeArgs(args) {
     smokeEnvFile: undefined,
     keepOpenAfterResult: undefined,
     controlServer: undefined,
+    controlHandoffOnly: undefined,
     controlFile: undefined,
     controlToken: undefined
   };
@@ -4261,6 +4435,9 @@ function parseSmokeArgs(args) {
         break;
       case "--steam-bridge-smoke-control-server":
         options.controlServer = value == null || value === "" ? "1" : value;
+        break;
+      case "--steam-bridge-smoke-control-handoff-only":
+        options.controlHandoffOnly = value == null || value === "" ? "1" : value;
         break;
       case "--steam-bridge-smoke-control-file":
         options.controlFile = value;

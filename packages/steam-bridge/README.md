@@ -222,7 +222,13 @@ product-facing managed route set without real transaction checkout or the raw
 native diagnostic observe cases. For automated Windows managed-route proof,
 `-CloseProbeInput auto` is the default: it opens shortcut cases with the
 Steam overlay chord and closes Steam web-backed surfaces only after screenshot
-evidence shows the panel has painted. Use `-Suite shortcut-routes` for focused
+evidence shows the panel has painted. The schema-2 close probe then binds the
+exact lifecycle native-host window to the Smoke process/session and makes one
+authenticated loopback request for the owning process to run the existing
+native activation path. It requires exact post-response and pre-dispatch window
+verification, omits raw handles/IDs/tokens from the handoff payload, and fails closed
+without an external focus retry or a second pointer mechanism. Use
+`-Suite shortcut-routes` for focused
 Windows shortcut `openShortcutTargetAndWait(...)` coverage across the public
 non-checkout targets, with the requested target recorded in smoke diagnostics.
 Check the per-case artifact before treating a route as product-proof. Keep public

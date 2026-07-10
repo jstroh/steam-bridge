@@ -949,9 +949,14 @@ the private `--checkout-json-file` checkout suite.
   focused shortcut `openShortcutTargetAndWait(...)` coverage for the public
   non-checkout targets with the requested target recorded in smoke diagnostics;
   check the per-case artifact before treating a route as product-proof. The
-  close probe validates and focuses the exact lifecycle native-presenter window,
-  rechecks the same window immediately before dispatch, and skips the input if
-  either focus check fails.
+  schema-2 close probe resolves its target first, binds the exact lifecycle
+  native-host window to the Smoke process/session, and makes one authenticated
+  loopback request for the owning process to run the existing native activation
+  path. It independently verifies that same window after the response and again
+  immediately before dispatch. Missing, ambiguous, or failed handoff evidence
+  skips input; the probe does not retry focus externally, inject activation
+  keys, attach input queues, or fall back from a partial `SendInput` click to a
+  second pointer mechanism.
   Keep real checkout proof focused on
   `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
   with your own configured app and product when a purchase authorization

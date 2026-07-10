@@ -63,6 +63,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$CloseProbeEvidenceSchema = 2
+$CloseProbeForegroundHandoff = "owner-process-native-show-v1"
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -2562,7 +2564,8 @@ function Write-MatrixManifest {
     windowMode = $WindowMode
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
-    closeProbeEvidenceSchema = 1
+    closeProbeEvidenceSchema = $CloseProbeEvidenceSchema
+    closeProbeForegroundHandoff = $CloseProbeForegroundHandoff
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
@@ -2681,11 +2684,20 @@ function Resolve-CloseProbeInputForCase {
   return "escape-sendinput"
 }
 
+function Test-CaseUsesCloseProbe {
+  param($Case)
+
+  return [bool](
+    $CloseProbe -and
+    ($Case.requireManagedOverlayComplete -or $Case.closeProbeOnActivation -or $Case.shortcutToggleProbe)
+  )
+}
+
 function Start-WindowsOverlayCloseProbe {
-  param($Case, [string]$CaseDir, [string]$DiagnosticDir)
+  param($Case, [string]$CaseDir, [string]$DiagnosticDir, [string]$ControlFile)
 
   $shortcutToggleProbe = [bool]$Case.shortcutToggleProbe
-  if (-not $CloseProbe -or (-not $Case.requireManagedOverlayComplete -and -not $Case.closeProbeOnActivation -and -not $shortcutToggleProbe)) {
+  if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null
   }
 
@@ -2694,6 +2706,7 @@ function Start-WindowsOverlayCloseProbe {
   $input = Resolve-CloseProbeInputForCase -Case $Case
   $settleMs = [Math]::Max(0, $CloseProbeSettleMs)
   $timeoutSeconds = [Math]::Max(1, $CloseProbeTimeoutSeconds)
+  $controlFileBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ControlFile))
   New-Item -ItemType Directory -Force -Path $CaseDir | Out-Null
 
   $probeScript = @"
@@ -2775,6 +2788,9 @@ public static class SteamBridgeWindowsProbe {
   public static extern bool IsIconic(IntPtr hWnd);
 
   [DllImport("user32.dll")]
+  public static extern bool IsWindowEnabled(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
   public static extern bool SetForegroundWindow(IntPtr hWnd);
 
   [DllImport("user32.dll")]
@@ -2809,12 +2825,6 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll", SetLastError = true)]
   public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern bool SetCursorPos(int X, int Y);
-
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
 
   public static string ConfigureDpiAwareness() {
     int contextError = 0;
@@ -2892,18 +2902,6 @@ public static class SteamBridgeWindowsProbe {
     return sent;
   }
 
-  public static uint SendMouseClick(int x, int y, out int lastError) {
-    if (!SetCursorPos(x, y)) {
-      lastError = Marshal.GetLastWin32Error();
-      return 0;
-    }
-
-    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, IntPtr.Zero);
-    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero);
-    lastError = 0;
-    return 3;
-  }
-
   public static uint SendMouseClickInput(int x, int y, out int lastError) {
     INPUT[] inputs = new INPUT[3];
     inputs[0] = MouseInput(x, y, MOUSEEVENTF_MOVE);
@@ -2918,6 +2916,7 @@ public static class SteamBridgeWindowsProbe {
 '@
 
 `$script:ProbeDpiAwareness = [SteamBridgeWindowsProbe]::ConfigureDpiAwareness()
+`$script:SmokeControlFile = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$controlFileBase64'))
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -2945,20 +2944,12 @@ function Send-NativeMouseClick {
 
   `$lastError = 0
   `$sent = [SteamBridgeWindowsProbe]::SendMouseClickInput(`$X, `$Y, [ref]`$lastError)
-  `$method = "sendinput"
-  if (`$sent -ne 3) {
-    `$fallbackLastError = 0
-    `$fallbackSent = [SteamBridgeWindowsProbe]::SendMouseClick(`$X, `$Y, [ref]`$fallbackLastError)
-    `$sent = `$fallbackSent
-    `$lastError = `$fallbackLastError
-    `$method = "cursor-mouse-event-fallback"
-  }
 
   return [PSCustomObject]@{
     sent = `$sent
     expected = 3
     lastError = `$lastError
-    method = `$method
+    method = "sendinput"
     x = `$X
     y = `$Y
   }
@@ -3685,6 +3676,7 @@ function Get-LifecyclePresenterGeometry {
         nativeRect = if (`$hasNativeRect) { `$nativeRect } else { `$null }
         logicalBounds = if (`$hasLogicalBounds) { `$logicalBounds } else { `$null }
         hwnd = if (`$nativeHostDiagnostics) { `$nativeHostDiagnostics.hwnd } else { `$null }
+        lifecyclePid = `$event.pid
       }
       if (`$hasNativeRect -and `$hasLogicalBounds) {
         return `$candidate
@@ -3698,19 +3690,94 @@ function Get-LifecyclePresenterGeometry {
   return `$fallback
 }
 
+function Read-SmokeControlDescriptor {
+  `$descriptor = [ordered]@{
+    valid = `$false
+    present = `$false
+    hostValid = `$false
+    portValid = `$false
+    tokenPresent = `$false
+    processPresent = `$false
+    handoffOnly = `$false
+    host = ""
+    port = 0
+    token = ""
+    pid = 0
+    reason = "control-file-missing"
+  }
+
+  if (-not `$script:SmokeControlFile -or -not (Test-Path -LiteralPath `$script:SmokeControlFile)) {
+    return [PSCustomObject]`$descriptor
+  }
+  `$descriptor.present = `$true
+  try {
+    `$control = Get-Content -Raw -LiteralPath `$script:SmokeControlFile -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    `$descriptor.host = [string]`$control.host
+    `$descriptor.port = [int]`$control.port
+    `$descriptor.token = [string]`$control.token
+    `$descriptor.pid = [int]`$control.pid
+    `$descriptor.handoffOnly = (`$control.handoffOnly -eq `$true)
+    `$descriptor.hostValid = (`$descriptor.host -eq "127.0.0.1")
+    `$descriptor.portValid = (`$descriptor.port -ge 1 -and `$descriptor.port -le 65535)
+    `$descriptor.tokenPresent = -not [string]::IsNullOrWhiteSpace(`$descriptor.token)
+    `$descriptor.processPresent = (`$descriptor.pid -gt 0)
+    `$descriptor.valid = (
+      `$descriptor.hostValid -and
+      `$descriptor.portValid -and
+      `$descriptor.tokenPresent -and
+      `$descriptor.processPresent -and
+      `$descriptor.handoffOnly
+    )
+    `$descriptor.reason = if (`$descriptor.valid) { "control-ready" } else { "control-file-invalid" }
+  } catch {
+    `$descriptor.reason = "control-file-invalid"
+  }
+  return [PSCustomObject]`$descriptor
+}
+
 function Focus-LifecycleNativePresenterForCloseInput {
   `$script:LifecycleNativePresenterCloseHandle = [IntPtr]::Zero
+  `$script:LifecycleNativePresenterCloseOwnerPid = [uint32]0
   `$geometry = Get-LifecyclePresenterGeometry
   `$handleText = if (`$geometry) { [string]`$geometry.hwnd } else { "" }
   `$evidence = [ordered]@{
+    schema = 2
     source = "lifecycle-native-host"
+    mechanism = "owner-process-native-show"
     attempted = `$false
     handlePresent = -not [string]::IsNullOrWhiteSpace(`$handleText)
     handleFormatValid = `$false
     windowValid = `$false
     wasForeground = `$false
     setForegroundResult = `$false
+    binding = [ordered]@{
+      ownerThreadPresent = `$false
+      lifecycleProcessPresent = `$false
+      ownerMatchesLifecycleProcess = `$false
+      ownerMatchesControlProcess = `$false
+      sameInteractiveSession = `$false
+    }
+    transport = [ordered]@{
+      ready = `$false
+      handoffOnly = `$false
+      authenticated = `$false
+      responseReceived = `$false
+      responseSchemaValid = `$false
+    }
+    requestCount = 0
+    requestOrdinal = 0
+    nativeShowCallCount = 0
+    nativeShowCompleted = `$false
+    requestedWindowMatches = `$false
+    sameWindowBeforeAfter = `$false
+    ownerReportsForeground = `$false
+    messageDelta = [ordered]@{
+      setFocus = 0
+      activate = 0
+      activateApp = 0
+    }
     focused = `$false
+    appReason = "not-requested"
     reason = "missing-lifecycle-native-host"
   }
 
@@ -3738,25 +3805,123 @@ function Focus-LifecycleNativePresenterForCloseInput {
   }
   `$script:LifecycleNativePresenterCloseHandle = `$handle
 
-  `$evidence.wasForeground = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
+  `$ownerPid = [uint32]0
+  `$ownerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$handle, [ref]`$ownerPid)
+  `$lifecyclePid = if (`$geometry -and `$geometry.lifecyclePid) { [int]`$geometry.lifecyclePid } else { 0 }
+  `$evidence.binding.ownerThreadPresent = (`$ownerThread -gt 0 -and `$ownerPid -gt 0)
+  `$evidence.binding.lifecycleProcessPresent = (`$lifecyclePid -gt 0)
+  `$evidence.binding.ownerMatchesLifecycleProcess = (
+    `$evidence.binding.ownerThreadPresent -and
+    `$evidence.binding.lifecycleProcessPresent -and
+    `$ownerPid -eq `$lifecyclePid
+  )
+  try {
+    `$ownerProcess = Get-Process -Id ([int]`$ownerPid) -ErrorAction Stop
+    `$currentProcess = [System.Diagnostics.Process]::GetCurrentProcess()
+    `$evidence.binding.sameInteractiveSession = (`$ownerProcess.SessionId -eq `$currentProcess.SessionId)
+  } catch {
+    `$evidence.binding.sameInteractiveSession = `$false
+  }
+  if (
+    -not `$evidence.binding.ownerThreadPresent -or
+    -not `$evidence.binding.ownerMatchesLifecycleProcess -or
+    -not `$evidence.binding.sameInteractiveSession
+  ) {
+    `$evidence.reason = "lifecycle-native-host-owner-mismatch"
+    return [PSCustomObject]`$evidence
+  }
+  `$script:LifecycleNativePresenterCloseOwnerPid = `$ownerPid
+
   `$evidence.attempted = `$true
-  `$evidence.setForegroundResult = [SteamBridgeWindowsProbe]::SetForegroundWindow(`$handle)
-  `$evidence.focused = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
-  if (`$evidence.focused) {
-    `$evidence.reason = if (`$evidence.wasForeground) { "already-foreground" } else { "focused" }
-  } else {
-    `$evidence.reason = "set-foreground-not-observed"
+  `$evidence.wasForeground = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
+  `$control = Read-SmokeControlDescriptor
+  `$evidence.transport.ready = `$control.valid
+  `$evidence.transport.handoffOnly = `$control.handoffOnly
+  if (-not `$control.valid) {
+    `$evidence.reason = `$control.reason
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.binding.ownerMatchesControlProcess = (`$ownerPid -eq `$control.pid)
+  if (-not `$evidence.binding.ownerMatchesControlProcess) {
+    `$evidence.reason = "control-process-owner-mismatch"
+    return [PSCustomObject]`$evidence
   }
 
+  `$evidence.requestCount = 1
+  try {
+    `$uri = "http://127.0.0.1:{0}/foreground-handoff" -f `$control.port
+    `$headers = @{ "X-Steam-Bridge-Smoke-Token" = `$control.token }
+    `$requestBody = @{ targetWindow = `$handleText } | ConvertTo-Json -Compress
+    `$requestParameters = @{
+      Method = "Post"
+      Uri = `$uri
+      Headers = `$headers
+      ContentType = "application/json"
+      Body = `$requestBody
+      TimeoutSec = 5
+      ErrorAction = "Stop"
+    }
+    `$response = Invoke-RestMethod @requestParameters
+    `$evidence.transport.responseReceived = `$true
+    `$handoff = `$response.handoff
+    `$evidence.transport.authenticated = (`$null -ne `$handoff)
+    `$evidence.transport.responseSchemaValid = (
+      `$handoff -and
+      `$handoff.schema -eq 1 -and
+      `$handoff.target -eq "lifecycle-native-host" -and
+      `$handoff.mechanism -eq "owner-process-native-show" -and
+      `$handoff.requestOrdinal -eq 1 -and
+      `$handoff.requestedWindowMatches -eq `$true -and
+      `$handoff.nativeShowCallCount -in @(0, 1)
+    )
+    if (`$handoff) {
+      `$evidence.requestOrdinal = [int]`$handoff.requestOrdinal
+      `$evidence.nativeShowCallCount = [int]`$handoff.nativeShowCallCount
+      `$evidence.nativeShowCompleted = (`$handoff.nativeShowCompleted -eq `$true)
+      `$evidence.requestedWindowMatches = (`$handoff.requestedWindowMatches -eq `$true)
+      `$evidence.sameWindowBeforeAfter = (`$handoff.sameWindowBeforeAfter -eq `$true)
+      `$evidence.ownerReportsForeground = (`$handoff.ownerReportsForeground -eq `$true)
+      `$evidence.appReason = [string]`$handoff.reason
+      if (`$handoff.messageDelta) {
+        `$evidence.messageDelta.setFocus = [int]`$handoff.messageDelta.setFocus
+        `$evidence.messageDelta.activate = [int]`$handoff.messageDelta.activate
+        `$evidence.messageDelta.activateApp = [int]`$handoff.messageDelta.activateApp
+      }
+    }
+  } catch {
+    `$evidence.reason = "owner-handoff-request-failed"
+    return [PSCustomObject]`$evidence
+  } finally {
+    if (`$script:SmokeControlFile) {
+      Remove-Item -LiteralPath `$script:SmokeControlFile -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if (-not `$evidence.transport.responseSchemaValid) {
+    `$evidence.reason = "owner-handoff-response-invalid"
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.focused = (
+    `$evidence.requestedWindowMatches -and
+    `$evidence.ownerReportsForeground -and
+    `$evidence.sameWindowBeforeAfter -and
+    [SteamBridgeWindowsProbe]::IsWindow(`$handle) -and
+    [SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle
+  )
+  `$evidence.reason = if (`$evidence.focused) { "foreground-confirmed" } else { "owner-handoff-not-observed" }
   return [PSCustomObject]`$evidence
 }
 
 function Confirm-LifecycleNativePresenterForegroundForCloseInput {
   `$handle = `$script:LifecycleNativePresenterCloseHandle
+  `$expectedOwnerPid = `$script:LifecycleNativePresenterCloseOwnerPid
   `$evidence = [ordered]@{
     source = "lifecycle-native-host"
     handlePresent = (`$handle -and `$handle -ne [IntPtr]::Zero)
     windowValid = `$false
+    ownerMatches = `$false
+    enabled = `$false
+    notIconic = `$false
     focused = `$false
     reason = "missing-lifecycle-native-host"
   }
@@ -3767,6 +3932,23 @@ function Confirm-LifecycleNativePresenterForegroundForCloseInput {
   `$evidence.windowValid = [SteamBridgeWindowsProbe]::IsWindow(`$handle)
   if (-not `$evidence.windowValid) {
     `$evidence.reason = "lifecycle-native-host-not-a-window"
+    return [PSCustomObject]`$evidence
+  }
+  `$ownerPid = [uint32]0
+  `$ownerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$handle, [ref]`$ownerPid)
+  `$evidence.ownerMatches = (
+    `$ownerThread -gt 0 -and
+    `$expectedOwnerPid -gt 0 -and
+    `$ownerPid -eq `$expectedOwnerPid
+  )
+  if (-not `$evidence.ownerMatches) {
+    `$evidence.reason = "lifecycle-native-host-owner-changed"
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.enabled = [SteamBridgeWindowsProbe]::IsWindowEnabled(`$handle)
+  `$evidence.notIconic = -not [SteamBridgeWindowsProbe]::IsIconic(`$handle)
+  if (-not `$evidence.enabled -or -not `$evidence.notIconic) {
+    `$evidence.reason = "lifecycle-native-host-not-input-ready"
     return [PSCustomObject]`$evidence
   }
   `$evidence.focused = ([SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle)
@@ -3863,6 +4045,9 @@ function Get-WebCloseDpiScale {
 Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   lifecycleLog = '$lifecycleLog'
   input = '$input'
+  evidenceSchema = $CloseProbeEvidenceSchema
+  foregroundHandoff = '$CloseProbeForegroundHandoff'
+  controlExpected = `$true
   dpiAwareness = `$script:ProbeDpiAwareness
   shortcutToggleProbe = [bool]::Parse('$shortcutToggleProbe')
   settleMs = $settleMs
@@ -3925,6 +4110,27 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
         webCloseReadiness = `$webCloseReadiness
         processes = Get-ProbeProcessSnapshot
       })
+      `$target = `$null
+      if ('$input' -eq 'web-close-click-sendinput') {
+        `$foreground = Get-ForegroundProbeSnapshot
+        if (`$webCloseReadiness -and `$webCloseReadiness.target) {
+          `$target = `$webCloseReadiness.target
+        }
+        if (-not `$target) {
+          `$target = Get-WebCloseClickTarget `$foreground
+        }
+        Write-ProbeEvent "probe:web-close-click-target" ([PSCustomObject]@{
+          target = `$target
+          foreground = `$foreground
+        })
+        if (-not `$target) {
+          Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+            reason = "close-click-coordinate-source-unavailable"
+          })
+          `$sent = `$true
+          continue
+        }
+      }
       `$nativePresenterFocus = Focus-LifecycleNativePresenterForCloseInput
       Write-ProbeEvent "probe:native-presenter-focus" `$nativePresenterFocus
       if (-not `$nativePresenterFocus.focused) {
@@ -3938,21 +4144,8 @@ while ((Get-Date) -lt `$deadline -and -not `$sent) {
       `$nativeInputSent = `$null
       `$nativePointerSent = `$null
       `$shell = `$null
-      `$target = `$null
       if ('$input' -eq 'escape' -or '$input' -eq 'close-tab' -or '$input' -eq 'toggle') {
         `$shell = New-Object -ComObject WScript.Shell
-      } elseif ('$input' -eq 'web-close-click-sendinput') {
-        `$foreground = Get-ForegroundProbeSnapshot
-        if (`$webCloseReadiness -and `$webCloseReadiness.target) {
-          `$target = `$webCloseReadiness.target
-        }
-        if (-not `$target) {
-          `$target = Get-WebCloseClickTarget `$foreground
-        }
-        Write-ProbeEvent "probe:web-close-click-target" ([PSCustomObject]@{
-          target = `$target
-          foreground = `$foreground
-        })
       }
       `$nativePresenterPreDispatch = Confirm-LifecycleNativePresenterForegroundForCloseInput
       if (-not `$nativePresenterPreDispatch.focused) {
@@ -4101,7 +4294,7 @@ function Invoke-Preflight {
 }
 
 function Write-CaseLaunchEnv {
-  param($Case, [string]$ResultFile, [string]$DiagnosticDir)
+  param($Case, [string]$ResultFile, [string]$DiagnosticDir, [string]$ControlFile)
 
   $args = @(
     "-Mode", "write-launch-env",
@@ -4140,6 +4333,9 @@ function Write-CaseLaunchEnv {
   }
   if ($NativePath) {
     $args += @("-NativePath", $NativePath)
+  }
+  if ($ControlFile) {
+    $args += @("-ControlServer", "-ControlHandoffOnly", "-ControlFile", $ControlFile)
   }
   if ($Case.webModal) {
     $args += @("-WebModal", $Case.webModal)
@@ -4213,7 +4409,12 @@ function Invoke-MatrixCase {
   $resultFile = Join-Path $caseDir "result.log"
   $diagnosticDir = Join-Path $caseDir "diagnostics"
   $helperLog = Join-Path $caseDir "helper.log"
+  $useCloseProbe = Test-CaseUsesCloseProbe -Case $Case
+  $controlFile = if ($useCloseProbe) { Join-Path $caseDir "smoke-control.json" } else { "" }
   New-Item -ItemType Directory -Force -Path $caseDir | Out-Null
+  if ($controlFile) {
+    Remove-Item -LiteralPath $controlFile -Force -ErrorAction SilentlyContinue
+  }
 
   $mode = if ($LaunchMode -eq "steam-launch") {
     "steam-launch"
@@ -4257,12 +4458,15 @@ function Invoke-MatrixCase {
   if ($NativePath) {
     $args += @("-NativePath", $NativePath)
   }
+  if ($controlFile) {
+    $args += @("-ControlServer", "-ControlHandoffOnly", "-ControlFile", $controlFile)
+  }
   if ($Case.allowOverlayNotReady) {
     $args += "-AllowOverlayNotReady"
   }
 
   if ($LaunchMode -in @("steam-launch", "steam-app")) {
-    Write-CaseLaunchEnv -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir
+    Write-CaseLaunchEnv -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir -ControlFile $controlFile
     Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
     if ($LaunchMode -eq "steam-launch") {
       if (-not $ShortcutGameId) {
@@ -4341,7 +4545,11 @@ function Invoke-MatrixCase {
   }
 
   Write-Host ("Running Windows overlay case {0}: {1}" -f $Case.id, $Case.action)
-  $closeProbeProcess = Start-WindowsOverlayCloseProbe -Case $Case -CaseDir $caseDir -DiagnosticDir $diagnosticDir
+  $closeProbeProcess = Start-WindowsOverlayCloseProbe `
+    -Case $Case `
+    -CaseDir $caseDir `
+    -DiagnosticDir $diagnosticDir `
+    -ControlFile $controlFile
   $caseStartedAt = Get-Date
   try {
     Invoke-Helper -Arguments $args -LogFile $helperLog
@@ -4394,6 +4602,9 @@ function Invoke-MatrixCase {
     throw
   } finally {
     Stop-WindowsOverlayCloseProbe -Process $closeProbeProcess
+    if ($controlFile) {
+      Remove-Item -LiteralPath $controlFile -Force -ErrorAction SilentlyContinue
+    }
     Collect-SteamClientDiagnostics -DestinationDir (Join-Path $caseDir "steam-client") -Phase ("case-{0}" -f $Case.id)
   }
 }

@@ -468,24 +468,128 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     presenterFocusBlock.includes("`$geometry = Get-LifecyclePresenterGeometry") &&
       presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::IsWindow(`$handle)") &&
-      presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::SetForegroundWindow(`$handle)") &&
+      presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$handle") &&
+      presenterFocusBlock.includes("ownerMatchesLifecycleProcess") &&
+      presenterFocusBlock.includes("ownerMatchesControlProcess") &&
+      presenterFocusBlock.includes("sameInteractiveSession") &&
+      presenterFocusBlock.includes("Read-SmokeControlDescriptor") &&
+      presenterFocusBlock.includes("Invoke-RestMethod") &&
+      presenterFocusBlock.includes('"X-Steam-Bridge-Smoke-Token"') &&
+      presenterFocusBlock.includes('"http://127.0.0.1:{0}/foreground-handoff"') &&
+      presenterFocusBlock.includes("targetWindow = `$handleText") &&
+      presenterFocusBlock.includes("requestCount = 1") &&
+      presenterFocusBlock.includes("nativeShowCallCount") &&
+      presenterFocusBlock.includes("requestedWindowMatches") &&
+      presenterFocusBlock.includes("sameWindowBeforeAfter") &&
+      presenterFocusBlock.includes("ownerReportsForeground") &&
       presenterFocusBlock.includes("[SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle") &&
       presenterFocusBlock.includes('source = "lifecycle-native-host"') &&
+      presenterFocusBlock.includes('mechanism = "owner-process-native-show"') &&
       presenterFocusBlock.includes("handlePresent =") &&
       presenterFocusBlock.includes("handleFormatValid =") &&
       presenterFocusBlock.includes("windowValid =") &&
       presenterFocusBlock.includes("focused ="),
-    "Windows close probe must focus and verify the valid lifecycle native-host window"
+    "Windows close probe must request and verify one owner-process lifecycle native-host handoff"
   );
   assert.doesNotMatch(
     presenterFocusBlock,
-    /Start-Sleep|Send-NativeMouseClick|Send-NativeKeyChord/,
-    "Windows native-presenter focus step must not add a timer or second input"
+    /Start-Sleep|SetForegroundWindow|AttachThreadInput|Send-NativeMouseClick|Send-NativeKeyChord|SendKeys/,
+    "Windows native-presenter handoff must not wait, retry externally, join queues, or send activation input"
+  );
+  assert.equal(
+    (presenterFocusBlock.match(/Invoke-RestMethod/g) || []).length,
+    1,
+    "Windows native-presenter handoff must make exactly one authenticated loopback request"
   );
   assert.doesNotMatch(
     presenterFocusBlock,
     /^\s*(?:hwnd|handle|windowHandle|nativeHandle)\s*=/im,
     "Windows native-presenter focus evidence must not log a raw HWND"
+  );
+  assert.ok(
+    matrixHelper.includes("`$target = Get-WebCloseClickTarget `$foreground") &&
+      matrixHelper.indexOf("`$target = Get-WebCloseClickTarget `$foreground") <
+        matrixHelper.indexOf('Write-ProbeEvent "probe:native-presenter-focus"'),
+    "Windows close probe must resolve the web close target before consuming the one-shot foreground handoff"
+  );
+  assert.doesNotMatch(
+    matrixHelper,
+    /mouse_event|cursor-mouse-event-fallback|SetCursorPos/,
+    "Windows close probe must not retry a partial SendInput click through a second pointer mechanism"
+  );
+  const ownerHandoffFunctionStart = electronSmokeMain.indexOf(
+    "function requestWindowsNativePresenterForegroundHandoff"
+  );
+  const ownerHandoffFunctionEnd = electronSmokeMain.indexOf(
+    "\nfunction readWindowsNativePresenterForegroundHandoffState",
+    ownerHandoffFunctionStart
+  );
+  assert.ok(
+    ownerHandoffFunctionStart >= 0 && ownerHandoffFunctionEnd > ownerHandoffFunctionStart,
+    "Electron smoke app must define the bounded owner-process native-host handoff"
+  );
+  const ownerHandoffFunction = electronSmokeMain.slice(ownerHandoffFunctionStart, ownerHandoffFunctionEnd);
+  assert.ok(
+    electronSmokeMain.includes('requestUrl.pathname === "/foreground-handoff"') &&
+      electronSmokeMain.includes("nativePresenterForegroundHandoffConsumed") &&
+      electronSmokeMain.includes("FOREGROUND_HANDOFF_ALREADY_CONSUMED") &&
+      electronSmokeMain.includes("CONTROL_HANDOFF_ONLY") &&
+      electronSmokeMain.includes("HANDOFF_ONLY_CONTROL_SERVER") &&
+      electronSmokeMain.includes("removeSmokeControlFile()") &&
+      ownerHandoffFunction.includes("requestedWindow === before.hostIdentity") &&
+      ownerHandoffFunction.includes('reason = "requested-native-host-mismatch"') &&
+      ownerHandoffFunction.includes("steamworks.overlay.showNativeOverlayHostView()") &&
+      ownerHandoffFunction.includes("nativeShowCallCount = 1") &&
+      ownerHandoffFunction.includes('reason = "foreground-confirmed"') &&
+      ownerHandoffFunction.includes('reason = "foreground-not-confirmed"'),
+    "Electron smoke app must expose one authenticated, one-shot owner-process activation request"
+  );
+  assert.equal(
+    (ownerHandoffFunction.match(/showNativeOverlayHostView\(\)/g) || []).length,
+    1,
+    "Electron owner-process handoff must make at most one native show call"
+  );
+  const ownerHandoffRouteStart = electronSmokeMain.indexOf(
+    'if (request.method === "POST" && requestUrl.pathname === "/foreground-handoff")'
+  );
+  const ownerHandoffRouteEnd = electronSmokeMain.indexOf(
+    'if (request.method === "POST" && requestUrl.pathname === "/action")',
+    ownerHandoffRouteStart
+  );
+  const ownerHandoffRoute = electronSmokeMain.slice(ownerHandoffRouteStart, ownerHandoffRouteEnd);
+  assert.ok(
+    ownerHandoffRouteStart >= 0 &&
+      ownerHandoffRouteEnd > ownerHandoffRouteStart &&
+      ownerHandoffRoute.indexOf("nativePresenterForegroundHandoffConsumed = true") <
+        ownerHandoffRoute.indexOf("requestWindowsNativePresenterForegroundHandoff(body.targetWindow)"),
+    "Electron handoff route must consume its one-shot latch before invoking native focus"
+  );
+  assert.equal(
+    (ownerHandoffRoute.match(/requestWindowsNativePresenterForegroundHandoff\(/g) || []).length,
+    1,
+    "Electron handoff route must invoke the owner-process operation exactly once"
+  );
+  for (const expected of [
+    "[switch]$ControlServer",
+    "[switch]$ControlHandoffOnly",
+    "[string]$ControlFile",
+    "STEAM_BRIDGE_SMOKE_CONTROL_SERVER",
+    "STEAM_BRIDGE_SMOKE_CONTROL_HANDOFF_ONLY",
+    "STEAM_BRIDGE_SMOKE_CONTROL_FILE",
+    'closeProbeEvidenceSchema = $CloseProbeEvidenceSchema',
+    '$CloseProbeEvidenceSchema = 2',
+    '$CloseProbeForegroundHandoff = "owner-process-native-show-v1"'
+  ]) {
+    assert.ok(
+      helper.includes(expected) || matrixHelper.includes(expected),
+      `Windows owner-process handoff packaging missing ${expected}`
+    );
+  }
+  assert.ok(
+    matrixHelper.includes("$controlFileBase64 = [Convert]::ToBase64String") &&
+      matrixHelper.includes("[Convert]::FromBase64String('$controlFileBase64')") &&
+      !matrixHelper.includes("`$script:SmokeControlFile = '$ControlFile'"),
+    "Windows close probe must encode the token-file path before embedding it in generated PowerShell"
   );
   const presenterPreDispatchStart = matrixHelper.indexOf(
     "function Confirm-LifecycleNativePresenterForegroundForCloseInput"
@@ -504,8 +608,14 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   assert.ok(
     presenterPreDispatchBlock.includes("`$script:LifecycleNativePresenterCloseHandle") &&
+      presenterPreDispatchBlock.includes("`$script:LifecycleNativePresenterCloseOwnerPid") &&
       presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::IsWindow(`$handle)") &&
+      presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$handle") &&
+      presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::IsWindowEnabled(`$handle)") &&
+      presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::IsIconic(`$handle)") &&
       presenterPreDispatchBlock.includes("[SteamBridgeWindowsProbe]::GetForegroundWindow() -eq `$handle") &&
+      presenterPreDispatchBlock.includes('"lifecycle-native-host-owner-changed"') &&
+      presenterPreDispatchBlock.includes('"lifecycle-native-host-not-input-ready"') &&
       presenterPreDispatchBlock.includes('reason = "missing-lifecycle-native-host"') &&
       presenterPreDispatchBlock.includes('"foreground-confirmed"') &&
       presenterPreDispatchBlock.includes('"foreground-lost-before-dispatch"'),

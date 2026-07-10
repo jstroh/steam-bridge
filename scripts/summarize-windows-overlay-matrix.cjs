@@ -49,6 +49,8 @@ const SUPPORTED_CLOSE_PROBE_INPUTS = new Set([
   "close-tab-sendinput",
   "web-close-click-sendinput"
 ]);
+const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2]);
+const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
 
 main();
@@ -353,10 +355,17 @@ function validateManifest(manifest, failures) {
   }
   if (manifest.closeProbeEvidenceSchema !== undefined) {
     expect(
-      manifest.closeProbeEvidenceSchema === 1,
-      "matrix manifest closeProbeEvidenceSchema uses supported version 1",
+      SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS.has(manifest.closeProbeEvidenceSchema),
+      "matrix manifest closeProbeEvidenceSchema uses supported version 1 or 2",
       failures
     );
+    if (manifest.closeProbeEvidenceSchema === 2) {
+      expect(
+        manifest.closeProbeForegroundHandoff === OWNER_PROCESS_FOREGROUND_HANDOFF,
+        `matrix manifest closeProbeForegroundHandoff is ${OWNER_PROCESS_FOREGROUND_HANDOFF}`,
+        failures
+      );
+    }
   }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
@@ -374,7 +383,7 @@ function validateManifest(manifest, failures) {
         seen.add(entry.id);
       }
       if (entry && entry.action) {
-        if (manifest.closeProbeEvidenceSchema === 1) {
+        if (SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS.has(manifest.closeProbeEvidenceSchema)) {
           expect(
             SUPPORTED_CLOSE_PROBE_INPUTS.has(entry.expectedCloseProbeInput),
             `matrix manifest case ${entry.id} records a supported resolved close input`,
@@ -516,14 +525,14 @@ function validateManifestCoverage(
     if (expected.requirePassiveNotification === true) {
       expect(row.passiveNotificationProof === true, `matrix manifest case ${expected.id} proved passive notification presenter state`, failures);
     }
-    const schemaOneCloseProbeExpected =
-      manifest.closeProbeEvidenceSchema === 1 &&
+    const auditedCloseProbeExpected =
+      SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS.has(manifest.closeProbeEvidenceSchema) &&
       manifest.closeProbe === true &&
       (expected.requireManagedOverlayComplete === true ||
         expected.closeProbeOnActivation === true ||
         expected.shortcutToggleProbe === true);
     const expectedCloseProbeInput = String(expected.expectedCloseProbeInput || "");
-    if (schemaOneCloseProbeExpected) {
+    if (auditedCloseProbeExpected) {
       expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
       expect(
         row.closeProbe && row.closeProbe.input === expectedCloseProbeInput,
@@ -562,6 +571,10 @@ function validateManifestCoverage(
         row.closeProbe.nativePresenterPreDispatchSource === "lifecycle-native-host" &&
           row.closeProbe.nativePresenterPreDispatchHandlePresent === true &&
           row.closeProbe.nativePresenterPreDispatchWindowValid === true &&
+          (manifest.closeProbeEvidenceSchema === 1 ||
+            (row.closeProbe.nativePresenterPreDispatchOwnerMatches === true &&
+              row.closeProbe.nativePresenterPreDispatchEnabled === true &&
+              row.closeProbe.nativePresenterPreDispatchNotIconic === true)) &&
           row.closeProbe.nativePresenterPreDispatchFocused === true,
         `matrix manifest case ${expected.id} reconfirmed native presenter focus immediately before input`,
         failures
@@ -571,6 +584,40 @@ function validateManifestCoverage(
         `matrix manifest case ${expected.id} pre-dispatch focus evidence omits raw native HWND`,
         failures
       );
+      if (manifest.closeProbeEvidenceSchema === 2) {
+        expect(
+          row.closeProbe.evidenceSchema === 2 &&
+            row.closeProbe.foregroundHandoff === OWNER_PROCESS_FOREGROUND_HANDOFF,
+          `matrix manifest case ${expected.id} close probe uses schema-2 owner-process handoff`,
+          failures
+        );
+        expect(
+          row.closeProbe.nativePresenterFocusSchema === 2 &&
+            row.closeProbe.nativePresenterFocusMechanism === "owner-process-native-show",
+          `matrix manifest case ${expected.id} focus evidence identifies the owner-process native-show mechanism`,
+          failures
+        );
+        expect(
+          row.closeProbe.nativePresenterHandoffEvidenceValid === true,
+          `matrix manifest case ${expected.id} recorded one coherent owner-process foreground handoff`,
+          failures
+        );
+        expect(
+          row.closeProbe.closeProbeSentEventCount === 1 &&
+            row.closeProbe.closeProbeSkippedEventCount === 0 &&
+            row.closeProbe.closeProbeTerminalExclusive === true,
+          `matrix manifest case ${expected.id} recorded exactly one successful close-probe terminal branch`,
+          failures
+        );
+        expect(
+          row.windowPresent === true &&
+            row.windowVisible === true &&
+            row.windowFocused === true &&
+            row.windowMinimized === false,
+          `matrix manifest case ${expected.id} returned focus to the visible Electron window`,
+          failures
+        );
+      }
     }
     if (expected.requireManagedOverlayComplete === true) {
       expect(
@@ -586,7 +633,7 @@ function validateManifestCoverage(
         expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
       }
     }
-    if (schemaOneCloseProbeExpected && expectedCloseProbeInput === "web-close-click-sendinput") {
+    if (auditedCloseProbeExpected && expectedCloseProbeInput === "web-close-click-sendinput") {
       expect(
         row.closeProbe.processPerMonitorV2 === true,
         `matrix manifest case ${expected.id} close probe used process per-monitor-v2 DPI awareness`,
@@ -602,6 +649,18 @@ function validateManifestCoverage(
         `matrix manifest case ${expected.id} close probe sent all three pointer inputs without error`,
         failures
       );
+      if (manifest.closeProbeEvidenceSchema === 2) {
+        expect(
+          row.closeProbe.nativePointerMethod === "sendinput",
+          `matrix manifest case ${expected.id} close probe used only SendInput for the pointer dispatch`,
+          failures
+        );
+        expect(
+          row.closeProbe.webCloseTargetBeforeHandoff === true,
+          `matrix manifest case ${expected.id} resolved the web close target before foreground handoff`,
+          failures
+        );
+      }
       expect(
         row.closeProbe.nativePointerMatchesTarget === true,
         `matrix manifest case ${expected.id} close probe pointer coordinates match the audited target`,
@@ -2001,6 +2060,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
   const app = objectOrEmpty(snapshot.app);
+  const windowState = objectOrEmpty(snapshot.window);
   const processInfo = objectOrEmpty(snapshot.process);
   const launch = objectOrEmpty(snapshot.launch);
   const steam = objectOrEmpty(snapshot.steam);
@@ -2062,6 +2122,10 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     resultLog,
     appId: app.appId,
     managedOverlayResultMode: app.managedOverlayResultMode || "",
+    windowPresent: windowState.present === true,
+    windowVisible: windowState.visible === true,
+    windowFocused: windowState.focused === true,
+    windowMinimized: windowState.minimized === true,
     processId: processInfo.pid || null,
     steamLaunch: launch.steamLaunch === true,
     overlayInjection: launch.overlayInjection === true,
@@ -2175,6 +2239,7 @@ function printSummary(summary) {
         `expectedNativeHostBackend=${formatValue(summary.manifest.expectedNativeHostBackend)} ` +
         `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)} ` +
         `closeProbeEvidenceSchema=${formatValue(summary.manifest.closeProbeEvidenceSchema)} ` +
+        `closeProbeForegroundHandoff=${formatValue(summary.manifest.closeProbeForegroundHandoff)} ` +
         `requireMicroTxnCallback=${formatValue(summary.manifest.requireMicroTxnCallback)}`
     );
   }
@@ -2399,6 +2464,7 @@ function summarizeManifest(manifest) {
     expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
     closeProbeEvidenceSchema: Number(manifest.closeProbeEvidenceSchema || 0),
+    closeProbeForegroundHandoff: String(manifest.closeProbeForegroundHandoff || ""),
     requireMicroTxnCallback: manifest.requireMicroTxnCallback === true,
     expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };
@@ -2522,19 +2588,35 @@ function summarizeCaseRenderingHealth(renderingHealth) {
 function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifecycleEvents = []) {
   const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
   const startEvent = normalizedEvents.find((event) => event.type === "probe:start");
-  const sentEvent = normalizedEvents.find((event) => event.type === "probe:sent");
+  const sentEvents = normalizedEvents.filter((event) => event.type === "probe:sent");
+  const skippedEvents = normalizedEvents.filter((event) => event.type === "probe:close-input-skipped");
+  const sentEvent = sentEvents[0];
+  const skippedEvent = skippedEvents[0];
   const targetEvent = normalizedEvents.find((event) => event.type === "probe:web-close-click-target");
   const nativePresenterFocusEvents = normalizedEvents.filter(
     (event) => event.type === "probe:native-presenter-focus"
   );
   const nativePresenterFocusEvent = nativePresenterFocusEvents[0];
+  const ownerHandoffEvents = (Array.isArray(lifecycleEvents) ? lifecycleEvents : []).filter((event) =>
+    ["overlay:presenter-foreground-handoff", "event:overlay:presenter-foreground-handoff"].includes(
+      String((event && event.type) || "")
+    )
+  );
+  const ownerHandoffEvent = ownerHandoffEvents[0];
   const nativePresenterFocusIndex = normalizedEvents.indexOf(nativePresenterFocusEvent);
+  const targetEventIndex = normalizedEvents.indexOf(targetEvent);
   const sentEventIndex = normalizedEvents.indexOf(sentEvent);
   const startPayload = objectOrEmpty(startEvent && startEvent.payload);
   const sentPayload = objectOrEmpty(sentEvent && sentEvent.payload);
+  const skippedPayload = objectOrEmpty(skippedEvent && skippedEvent.payload);
   const targetPayload = objectOrEmpty(targetEvent && targetEvent.payload);
   const nativePresenterFocusPayload = objectOrEmpty(
     nativePresenterFocusEvent && nativePresenterFocusEvent.payload
+  );
+  const ownerHandoff = summarizeOwnerProcessForegroundHandoff(
+    nativePresenterFocusPayload,
+    ownerHandoffEvents,
+    nativePresenterFocusEvent
   );
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
@@ -2612,6 +2694,10 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
 
   return {
     sent: Boolean(sentEvent),
+    closeProbeSentEventCount: sentEvents.length,
+    closeProbeSkippedEventCount: skippedEvents.length,
+    closeProbeSkippedReason: String(skippedPayload.reason || ""),
+    closeProbeTerminalExclusive: sentEvents.length + skippedEvents.length === 1,
     input: sentEvent ? String(sentPayload.input || "") : "",
     eventCount: normalizedEvents.length,
     screenshotCount,
@@ -2620,7 +2706,11 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     foregroundProcessNames,
     foregroundStayedOnSmoke,
     nativePresenterFocusEventCount: nativePresenterFocusEvents.length,
+    evidenceSchema: Number(startPayload.evidenceSchema || 0),
+    foregroundHandoff: String(startPayload.foregroundHandoff || ""),
     nativePresenterFocusSource: String(nativePresenterFocusPayload.source || ""),
+    nativePresenterFocusSchema: Number(nativePresenterFocusPayload.schema || 0),
+    nativePresenterFocusMechanism: String(nativePresenterFocusPayload.mechanism || ""),
     nativePresenterFocusAttempted: nativePresenterFocusPayload.attempted === true,
     nativePresenterFocusHandlePresent: nativePresenterFocusPayload.handlePresent === true,
     nativePresenterFocusHandleFormatValid: nativePresenterFocusPayload.handleFormatValid === true,
@@ -2629,6 +2719,18 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePresenterFocusSetForegroundResult: nativePresenterFocusPayload.setForegroundResult === true,
     nativePresenterFocused: nativePresenterFocusPayload.focused === true,
     nativePresenterFocusReason: String(nativePresenterFocusPayload.reason || ""),
+    nativePresenterHandoffBranch: ownerHandoff.branch,
+    nativePresenterHandoffAppEventCount: ownerHandoffEvents.length,
+    nativePresenterHandoffAppEventSanitized: ownerHandoff.appEventSanitized,
+    nativePresenterHandoffFocusPayloadSanitized: ownerHandoff.focusPayloadSanitized,
+    nativePresenterHandoffAppEventBeforeProbeFocus: ownerHandoff.appEventBeforeProbeFocus,
+    nativePresenterHandoffEvidenceValid: ownerHandoff.valid,
+    nativePresenterHandoffRequestCount: ownerHandoff.requestCount,
+    nativePresenterHandoffNativeShowCallCount: ownerHandoff.nativeShowCallCount,
+    nativePresenterHandoffOwnerReportedForeground: ownerHandoff.ownerReportsForeground,
+    nativePresenterHandoffSameWindow: ownerHandoff.sameWindowBeforeAfter,
+    nativePresenterHandoffAppReason: ownerHandoff.appReason,
+    nativePresenterHandoffChecks: ownerHandoff.checks,
     nativePresenterFocusBeforeInput:
       nativePresenterFocusIndex >= 0 && sentEventIndex > nativePresenterFocusIndex,
     nativePresenterFocusSanitized:
@@ -2636,6 +2738,9 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePresenterPreDispatchSource: String(nativePresenterPreDispatchPayload.source || ""),
     nativePresenterPreDispatchHandlePresent: nativePresenterPreDispatchPayload.handlePresent === true,
     nativePresenterPreDispatchWindowValid: nativePresenterPreDispatchPayload.windowValid === true,
+    nativePresenterPreDispatchOwnerMatches: nativePresenterPreDispatchPayload.ownerMatches === true,
+    nativePresenterPreDispatchEnabled: nativePresenterPreDispatchPayload.enabled === true,
+    nativePresenterPreDispatchNotIconic: nativePresenterPreDispatchPayload.notIconic === true,
     nativePresenterPreDispatchFocused: nativePresenterPreDispatchPayload.focused === true,
     nativePresenterPreDispatchReason: String(nativePresenterPreDispatchPayload.reason || ""),
     nativePresenterPreDispatchSanitized:
@@ -2646,6 +2751,7 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePointerSent: Number(nativePointerSent.sent),
     nativePointerExpected: Number(nativePointerSent.expected),
     nativePointerLastError: Number(nativePointerSent.lastError),
+    nativePointerMethod: String(nativePointerSent.method || ""),
     nativePointerSucceeded:
       Number(nativePointerSent.sent) === 3 &&
       Number(nativePointerSent.expected) === 3 &&
@@ -2653,6 +2759,8 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePointerMatchesTarget:
       Number(nativePointerSent.x) === targetX && Number(nativePointerSent.y) === targetY,
     webCloseTargetPresent: Number.isFinite(targetX) && Number.isFinite(targetY),
+    webCloseTargetBeforeHandoff:
+      targetEventIndex >= 0 && nativePresenterFocusIndex > targetEventIndex,
     webCloseTargetInsidePanel: targetInsidePanel,
     webCloseTargetUsesScaleAwareInsets: targetUsesScaleAwareInsets,
     webCloseScaleSource: String(loggedScale.source || ""),
@@ -2667,6 +2775,131 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     physicalScreenshotDimensionsMatchCount: physicalScreenshots.dimensionsMatchCount,
     physicalScreenshotProofCount: physicalScreenshots.proofCount,
     screenshotContainsNativeHostRect: physicalScreenshots.containsNativeHostRect
+  };
+}
+
+function summarizeOwnerProcessForegroundHandoff(focusPayload, appEvents, focusEvent) {
+  const focus = objectOrEmpty(focusPayload);
+  const binding = objectOrEmpty(focus.binding);
+  const transport = objectOrEmpty(focus.transport);
+  const messageDelta = objectOrEmpty(focus.messageDelta);
+  const normalizedAppEvents = Array.isArray(appEvents) ? appEvents.filter(Boolean) : [];
+  const appEvent = normalizedAppEvents[0];
+  const app = objectOrEmpty(appEvent && appEvent.payload);
+  const appPrecondition = objectOrEmpty(app.precondition);
+  const requestCount = Number(focus.requestCount);
+  const nativeShowCallCount = Number(focus.nativeShowCallCount);
+  const appEventSanitized = Boolean(appEvent) && !containsRawForegroundHandoffIdentifier(app);
+  const focusPayloadSanitized = !containsRawForegroundHandoffIdentifier(focus);
+  const appEventBeforeProbeFocus = Boolean(
+    appEvent &&
+      focusEvent &&
+      Number.isFinite(Date.parse(appEvent.at)) &&
+      Number.isFinite(Date.parse(focusEvent.at)) &&
+      Date.parse(appEvent.at) <= Date.parse(focusEvent.at)
+  );
+  const commonBindingValid = Boolean(
+    binding.ownerThreadPresent === true &&
+      binding.lifecycleProcessPresent === true &&
+      binding.ownerMatchesLifecycleProcess === true &&
+      binding.sameInteractiveSession === true
+  );
+  const finiteMessageDelta = [messageDelta.setFocus, messageDelta.activate, messageDelta.activateApp].every(
+    (value) => Number.isInteger(Number(value)) && Number(value) >= 0
+  );
+  const appShapeValid = Boolean(
+    app.schema === 1 &&
+      app.target === "lifecycle-native-host" &&
+      app.mechanism === "owner-process-native-show" &&
+      app.requestOrdinal === 1 &&
+      app.requestedWindowMatches === true &&
+      [0, 1].includes(Number(app.nativeShowCallCount)) &&
+      app.sameWindowBeforeAfter === true &&
+      app.ownerReportsForeground === true &&
+      appPrecondition.windows === true &&
+      appPrecondition.presenterActive === true &&
+      appPrecondition.hostOpen === true &&
+      appPrecondition.hostVisible === true &&
+      appPrecondition.hostOpaque === true &&
+      appPrecondition.inputPassthrough === false &&
+      appPrecondition.requestedWindowPresent === true &&
+      appPrecondition.requestedWindowMatches === true
+  );
+  const responseMatchesApp = Boolean(
+    focus.requestOrdinal === app.requestOrdinal &&
+      focus.requestedWindowMatches === app.requestedWindowMatches &&
+      nativeShowCallCount === Number(app.nativeShowCallCount) &&
+      focus.nativeShowCompleted === app.nativeShowCompleted &&
+      focus.sameWindowBeforeAfter === app.sameWindowBeforeAfter &&
+      focus.ownerReportsForeground === app.ownerReportsForeground &&
+      focus.appReason === app.reason &&
+      Number(messageDelta.setFocus) === Number(objectOrEmpty(app.messageDelta).setFocus) &&
+      Number(messageDelta.activate) === Number(objectOrEmpty(app.messageDelta).activate) &&
+      Number(messageDelta.activateApp) === Number(objectOrEmpty(app.messageDelta).activateApp)
+  );
+  const appNativeShowBranchValid = Boolean(
+    (nativeShowCallCount === 0 &&
+      appPrecondition.alreadyForeground === true &&
+      app.nativeShowCompleted === false &&
+      app.reason === "already-foreground") ||
+      (nativeShowCallCount === 1 &&
+        appPrecondition.alreadyForeground === false &&
+        app.nativeShowCompleted === true &&
+        app.reason === "foreground-confirmed")
+  );
+  const requestedValid = Boolean(
+    requestCount === 1 &&
+      normalizedAppEvents.length === 1 &&
+      appEventSanitized &&
+      focusPayloadSanitized &&
+      appEventBeforeProbeFocus &&
+      commonBindingValid &&
+      binding.ownerMatchesControlProcess === true &&
+      transport.ready === true &&
+      transport.handoffOnly === true &&
+      transport.authenticated === true &&
+      transport.responseReceived === true &&
+      transport.responseSchemaValid === true &&
+      focus.requestOrdinal === 1 &&
+      focus.requestedWindowMatches === true &&
+      focus.sameWindowBeforeAfter === true &&
+      focus.ownerReportsForeground === true &&
+      focus.focused === true &&
+      focus.reason === "foreground-confirmed" &&
+      finiteMessageDelta &&
+      appShapeValid &&
+      responseMatchesApp &&
+      appNativeShowBranchValid
+  );
+
+  return {
+    branch: requestCount === 1 ? "owner-process-request" : "invalid",
+    valid: requestedValid,
+    appEventSanitized,
+    focusPayloadSanitized,
+    appEventBeforeProbeFocus,
+    requestCount,
+    nativeShowCallCount,
+    ownerReportsForeground: focus.ownerReportsForeground === true,
+    sameWindowBeforeAfter: focus.sameWindowBeforeAfter === true,
+    appReason: String(focus.appReason || ""),
+    checks: {
+      appEventCount: normalizedAppEvents.length === 1,
+      appEventSanitized,
+      focusPayloadSanitized,
+      appEventBeforeProbeFocus,
+      commonBindingValid,
+      controlOwnerMatches: binding.ownerMatchesControlProcess === true,
+      transportValid:
+        transport.ready === true &&
+        transport.handoffOnly === true &&
+        transport.authenticated === true &&
+        transport.responseReceived === true &&
+        transport.responseSchemaValid === true,
+      appShapeValid,
+      responseMatchesApp,
+      appNativeShowBranchValid
+    }
   };
 }
 
@@ -2688,6 +2921,28 @@ function containsRawNativeWindowHandle(value) {
       return true;
     }
     return containsRawNativeWindowHandle(entry);
+  });
+}
+
+function containsRawForegroundHandoffIdentifier(value) {
+  if (typeof value === "string") {
+    return /^0x[0-9a-f]+$/i.test(value);
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsRawForegroundHandoffIdentifier(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  return Object.entries(value).some(([key, entry]) => {
+    const normalizedKey = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const identifierKey =
+      /(?:hwnd|handle|windowid|processid|threadid|sessionid|controlfile|filepath)$/.test(normalizedKey) ||
+      ["pid", "port", "token", "targetwindow", "requestedwindow", "path"].includes(normalizedKey);
+    if (identifierKey && entry !== null && typeof entry !== "boolean") {
+      return true;
+    }
+    return containsRawForegroundHandoffIdentifier(entry);
   });
 }
 
@@ -3268,6 +3523,7 @@ function formatCloseProbeSummary(closeProbe) {
       `focusWindow=${closeProbe.nativePresenterFocusWindowValid} ` +
       `focusSet=${closeProbe.nativePresenterFocusSetForegroundResult} ` +
       `focusReason=${formatValue(closeProbe.nativePresenterFocusReason)} ` +
+      `focusHandoff=${formatValue(closeProbe.nativePresenterHandoffBranch)}/${closeProbe.nativePresenterHandoffEvidenceValid} ` +
       `pointer=${closeProbe.nativePointerSent}/${closeProbe.nativePointerExpected}/${closeProbe.nativePointerLastError} ` +
       `targetInsidePanel=${closeProbe.webCloseTargetInsidePanel} ` +
       `targetScaleAware=${closeProbe.webCloseTargetUsesScaleAwareInsets} ` +
@@ -3402,6 +3658,40 @@ function runSelfTest() {
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotProofCount, 1);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.screenshotContainsNativeHostRect, true);
 
+    const ownerHandoffRoot = path.join(tempRoot, "managed-web-owner-handoff");
+    writeManagedWebCloseEvidenceFixture(ownerHandoffRoot, { closeProbeEvidenceSchema: 2 });
+    const ownerHandoffSummary = summarizeWindowsOverlayMatrixArtifacts(ownerHandoffRoot);
+    assert.deepEqual(
+      ownerHandoffSummary.failures,
+      [],
+      JSON.stringify(ownerHandoffSummary.caseSummaries[0].closeProbe, null, 2)
+    );
+    assert.equal(ownerHandoffSummary.caseSummaries[0].closeProbe.evidenceSchema, 2);
+    assert.equal(
+      ownerHandoffSummary.caseSummaries[0].closeProbe.nativePresenterHandoffBranch,
+      "owner-process-request"
+    );
+    assert.equal(ownerHandoffSummary.caseSummaries[0].closeProbe.nativePresenterHandoffAppEventCount, 1);
+    assert.equal(ownerHandoffSummary.caseSummaries[0].closeProbe.nativePresenterHandoffEvidenceValid, true);
+    assert.equal(ownerHandoffSummary.caseSummaries[0].closeProbe.nativePointerMethod, "sendinput");
+
+    const alreadyForegroundRoot = path.join(tempRoot, "managed-web-already-foreground");
+    writeManagedWebCloseEvidenceFixture(alreadyForegroundRoot, {
+      closeProbeEvidenceSchema: 2,
+      alreadyForeground: true
+    });
+    const alreadyForegroundSummary = summarizeWindowsOverlayMatrixArtifacts(alreadyForegroundRoot);
+    assert.deepEqual(alreadyForegroundSummary.failures, []);
+    assert.equal(
+      alreadyForegroundSummary.caseSummaries[0].closeProbe.nativePresenterHandoffBranch,
+      "owner-process-request"
+    );
+    assert.equal(alreadyForegroundSummary.caseSummaries[0].closeProbe.nativePresenterHandoffAppEventCount, 1);
+    assert.equal(
+      alreadyForegroundSummary.caseSummaries[0].closeProbe.nativePresenterHandoffNativeShowCallCount,
+      0
+    );
+
     const webCloseRoundingRoot = path.join(tempRoot, "managed-web-close-rounding-boundary");
     writeManagedWebCloseEvidenceFixture(webCloseRoundingRoot, { roundingBoundaryScale: true });
     const webCloseRoundingSummary = summarizeWindowsOverlayMatrixArtifacts(webCloseRoundingRoot);
@@ -3532,9 +3822,45 @@ function runSelfTest() {
       tempRoot,
       "managed-web-close-unknown-schema",
       writeManagedWebCloseEvidenceFixture,
-      { closeProbeEvidenceSchema: 2 },
-      "closeProbeEvidenceSchema uses supported version 1"
+      { closeProbeEvidenceSchema: 3 },
+      "closeProbeEvidenceSchema uses supported version 1 or 2"
     );
+
+    for (const [name, options, failure] of [
+      ["missing-app-event", { missingAppHandoff: true }, "recorded one coherent owner-process foreground handoff"],
+      ["duplicate-app-event", { duplicateAppHandoff: true }, "recorded one coherent owner-process foreground handoff"],
+      ["app-event-after-focus", { appHandoffAfterFocus: true }, "recorded one coherent owner-process foreground handoff"],
+      ["app-event-leaks-hwnd", { appHandoffLeaksRawHwnd: true }, "recorded one coherent owner-process foreground handoff"],
+      ["lifecycle-owner-mismatch", { lifecycleOwnerMismatch: true }, "recorded one coherent owner-process foreground handoff"],
+      ["control-owner-mismatch", { controlOwnerMismatch: true }, "recorded one coherent owner-process foreground handoff"],
+      ["session-mismatch", { sessionMismatch: true }, "recorded one coherent owner-process foreground handoff"],
+      ["same-window-mismatch", { sameWindowMismatch: true }, "recorded one coherent owner-process foreground handoff"],
+      ["second-native-show", { secondNativeShowCall: true }, "recorded one coherent owner-process foreground handoff"],
+      ["transport-failed", { transportFailed: true }, "recorded one coherent owner-process foreground handoff"],
+      ["wide-control-server", { wideControlServer: true }, "recorded one coherent owner-process foreground handoff"],
+      ["requested-window-mismatch", { requestedWindowMismatch: true }, "recorded one coherent owner-process foreground handoff"],
+      ["response-mismatch", { appReasonMismatch: true }, "recorded one coherent owner-process foreground handoff"],
+      ["wrong-start-schema", { wrongStartSchema: true }, "close probe uses schema-2 owner-process handoff"],
+      ["wrong-start-handoff", { wrongStartHandoff: true }, "close probe uses schema-2 owner-process handoff"],
+      ["pointer-fallback", { pointerFallback: true }, "used only SendInput for the pointer dispatch"],
+      ["target-after-handoff", { targetAfterHandoff: true }, "resolved the web close target before foreground handoff"],
+      ["app-event-leaks-pid", { appHandoffLeaksRawPid: true }, "recorded one coherent owner-process foreground handoff"],
+      ["focus-event-leaks-port", { focusHandoffLeaksRawPort: true }, "recorded one coherent owner-process foreground handoff"],
+      ["pre-dispatch-owner-mismatch", { presenterPreDispatchOwnerMismatch: true }, "reconfirmed native presenter focus immediately before input"],
+      ["pre-dispatch-disabled", { presenterPreDispatchDisabled: true }, "reconfirmed native presenter focus immediately before input"],
+      ["pre-dispatch-iconic", { presenterPreDispatchIconic: true }, "reconfirmed native presenter focus immediately before input"],
+      ["both-terminal-branches", { bothTerminalBranches: true }, "recorded exactly one successful close-probe terminal branch"],
+      ["missing-window-focus", { missingWindowFocus: true }, "returned focus to the visible Electron window"],
+      ["skip-instead-of-send", { skipInsteadOfSend: true }, "sent Windows close probe input"]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `managed-web-owner-handoff-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        { closeProbeEvidenceSchema: 2, ...options },
+        failure
+      );
+    }
 
     const duplicateOpenGuardRoot = path.join(tempRoot, "duplicate-open-guard");
     writeDuplicateOpenGuardCaseFixture(duplicateOpenGuardRoot);
@@ -4856,11 +5182,17 @@ function writeManagedBackendFixture(root, options = {}) {
 function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   writeManagedBackendFixture(root, options);
   const expectedCloseProbeInput = options.expectedCloseProbeInput || "web-close-click-sendinput";
+  const closeProbeEvidenceSchema = options.closeProbeEvidenceSchema || 1;
   const manifestPath = path.join(root, "matrix-manifest.json");
   const manifest = JSON.parse(readText(manifestPath));
   manifest.closeProbe = true;
   manifest.closeProbeInput = "auto";
-  manifest.closeProbeEvidenceSchema = options.closeProbeEvidenceSchema || 1;
+  manifest.closeProbeEvidenceSchema = closeProbeEvidenceSchema;
+  if (closeProbeEvidenceSchema === 2) {
+    manifest.closeProbeForegroundHandoff = options.wrongManifestHandoff
+      ? "wrong-owner-handoff"
+      : OWNER_PROCESS_FOREGROUND_HANDOFF;
+  }
   manifest.cases[0].expectedCloseProbeInput = expectedCloseProbeInput;
   writeJson(manifestPath, manifest);
 
@@ -4920,7 +5252,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     lastError: options.pointerFailed ? 5 : 0,
     x: options.pointerMissesTarget ? target.x - 1 : target.x,
     y: target.y,
-    method: "sendinput",
+    method: options.pointerFallback ? "cursor-mouse-event-fallback" : "sendinput",
     coordinateSource: target.source
   };
   const foreground = {
@@ -4933,24 +5265,132 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     : options.missingThreadPerMonitorV2
       ? "process-per-monitor-v2;thread-unchanged:5"
       : "process-per-monitor-v2;thread-per-monitor-v2";
-  const nativePresenterFocus = {
-    source: "lifecycle-native-host",
-    attempted: true,
-    handlePresent: true,
-    handleFormatValid: true,
-    windowValid: true,
-    wasForeground: false,
-    setForegroundResult: !options.presenterFocusFailed,
-    focused: !options.presenterFocusFailed,
-    reason: options.presenterFocusFailed ? "set-foreground-not-observed" : "focused"
+  const alreadyForeground = Boolean(closeProbeEvidenceSchema === 2 && options.alreadyForeground);
+  const focusSucceeded = !options.presenterFocusFailed;
+  const nativeShowCallCount = alreadyForeground ? 0 : options.secondNativeShowCall ? 2 : 1;
+  const appReason = alreadyForeground
+    ? "already-foreground"
+    : focusSucceeded
+      ? "foreground-confirmed"
+      : "foreground-not-confirmed";
+  const messageDelta = {
+    setFocus: focusSucceeded && !alreadyForeground ? 1 : 0,
+    activate: focusSucceeded && !alreadyForeground ? 1 : 0,
+    activateApp: 0
   };
+  const nativePresenterFocus = closeProbeEvidenceSchema === 2
+    ? {
+        schema: 2,
+        source: "lifecycle-native-host",
+        mechanism: "owner-process-native-show",
+        attempted: true,
+        handlePresent: true,
+        handleFormatValid: true,
+        windowValid: true,
+        wasForeground: alreadyForeground,
+        setForegroundResult: false,
+        binding: {
+          ownerThreadPresent: true,
+          lifecycleProcessPresent: true,
+          ownerMatchesLifecycleProcess: !options.lifecycleOwnerMismatch,
+          ownerMatchesControlProcess: !options.controlOwnerMismatch,
+          sameInteractiveSession: !options.sessionMismatch
+        },
+        transport: {
+          ready: !options.transportFailed,
+          handoffOnly: !options.wideControlServer,
+          authenticated: !options.transportFailed,
+          responseReceived: !options.transportFailed,
+          responseSchemaValid: !options.transportFailed
+        },
+        requestCount: 1,
+        requestOrdinal: 1,
+        nativeShowCallCount,
+        nativeShowCompleted: alreadyForeground ? false : !options.nativeShowFailed,
+        requestedWindowMatches: !options.requestedWindowMismatch,
+        sameWindowBeforeAfter: !options.sameWindowMismatch,
+        ownerReportsForeground: focusSucceeded,
+        messageDelta,
+        focused: focusSucceeded,
+        appReason: options.appReasonMismatch ? "foreground-not-confirmed" : appReason,
+        reason: focusSucceeded ? "foreground-confirmed" : "owner-handoff-not-observed"
+      }
+    : {
+        source: "lifecycle-native-host",
+        attempted: true,
+        handlePresent: true,
+        handleFormatValid: true,
+        windowValid: true,
+        wasForeground: false,
+        setForegroundResult: !options.presenterFocusFailed,
+        focused: !options.presenterFocusFailed,
+        reason: options.presenterFocusFailed ? "set-foreground-not-observed" : "focused"
+      };
   if (options.presenterFocusLeaksRawHwnd) {
     nativePresenterFocus.hwnd = "0x1234";
+  }
+  if (closeProbeEvidenceSchema === 2) {
+    const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
+    const result = readSmokeResult(resultPath);
+    if (!options.missingAppHandoff) {
+      const appHandoff = {
+        schema: 1,
+        target: "lifecycle-native-host",
+        mechanism: "owner-process-native-show",
+        requestOrdinal: 1,
+        precondition: {
+          windows: true,
+          presenterActive: true,
+          hostOpen: true,
+          hostVisible: true,
+          hostOpaque: true,
+          inputPassthrough: false,
+          requestedWindowPresent: true,
+          requestedWindowMatches: !options.requestedWindowMismatch,
+          alreadyForeground
+        },
+        requestedWindowMatches: !options.requestedWindowMismatch,
+        nativeShowCallCount,
+        nativeShowCompleted: alreadyForeground ? false : !options.nativeShowFailed,
+        sameWindowBeforeAfter: !options.sameWindowMismatch,
+        ownerReportsForeground: focusSucceeded,
+        messageDelta,
+        reason: appReason
+      };
+      if (options.appHandoffLeaksRawHwnd) {
+        appHandoff.hwnd = "0x1234";
+      }
+      if (options.appHandoffLeaksRawPid) {
+        appHandoff.pid = 4245;
+      }
+      const appEvent = {
+        type: "overlay:presenter-foreground-handoff",
+        at: options.appHandoffAfterFocus
+          ? "2026-07-02T00:00:03.500Z"
+          : "2026-07-02T00:00:02.450Z",
+        payload: appHandoff
+      };
+      result.snapshot.events.push(appEvent);
+      if (options.duplicateAppHandoff) {
+        result.snapshot.events.push({ ...appEvent });
+      }
+    }
+    if (options.missingWindowFocus) {
+      result.snapshot.window.focused = false;
+    }
+    writeResult(resultPath, result);
   }
   const nativePresenterPreDispatch = {
     source: "lifecycle-native-host",
     handlePresent: true,
     windowValid: true,
+    ...(closeProbeEvidenceSchema === 2
+      ? {
+          ownerMatches: !options.presenterPreDispatchOwnerMismatch,
+          enabled: !options.presenterPreDispatchDisabled,
+          notIconic: !options.presenterPreDispatchIconic
+        }
+      : {}),
     focused: !options.presenterPreDispatchFailed,
     reason: options.presenterPreDispatchFailed
       ? "foreground-lost-before-dispatch"
@@ -4959,11 +5399,26 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   if (options.presenterPreDispatchLeaksRawHwnd) {
     nativePresenterPreDispatch.hwnd = "0x1234";
   }
+  if (options.focusHandoffLeaksRawPort && nativePresenterFocus.transport) {
+    nativePresenterFocus.transport.port = 43123;
+  }
   const closeProbeEvents = [
     {
       type: "probe:start",
       at: "2026-07-02T00:00:01.000Z",
-      payload: { input: expectedCloseProbeInput, dpiAwareness }
+      payload: {
+        input: expectedCloseProbeInput,
+        dpiAwareness,
+        ...(closeProbeEvidenceSchema === 2
+          ? {
+              evidenceSchema: options.wrongStartSchema ? 1 : 2,
+              foregroundHandoff: options.wrongStartHandoff
+                ? "wrong-owner-handoff"
+                : OWNER_PROCESS_FOREGROUND_HANDOFF,
+              controlExpected: true
+            }
+          : {})
+      }
     },
     {
       type: "probe:detected",
@@ -4978,6 +5433,14 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       }
     }
   ];
+  const targetProbeEvent = {
+    type: "probe:web-close-click-target",
+    at: "2026-07-02T00:00:02.400Z",
+    payload: { target, foreground }
+  };
+  if (closeProbeEvidenceSchema === 2 && !options.targetAfterHandoff) {
+    closeProbeEvents.push(targetProbeEvent);
+  }
   if (!options.missingPresenterFocus && !options.presenterFocusAfterInput) {
     closeProbeEvents.push({
       type: "probe:native-presenter-focus",
@@ -4985,12 +5448,10 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       payload: nativePresenterFocus
     });
   }
+  if (closeProbeEvidenceSchema !== 2 || options.targetAfterHandoff) {
+    closeProbeEvents.push(targetProbeEvent);
+  }
   closeProbeEvents.push(
-    {
-      type: "probe:web-close-click-target",
-      at: "2026-07-02T00:00:03.000Z",
-      payload: { target, foreground }
-    },
     {
       type: "probe:sent",
       at: "2026-07-02T00:00:04.000Z",
@@ -5009,6 +5470,23 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       type: "probe:native-presenter-focus",
       at: "2026-07-02T00:00:04.500Z",
       payload: nativePresenterFocus
+    });
+  }
+  if (options.skipInsteadOfSend) {
+    const sentIndex = closeProbeEvents.findIndex((event) => event.type === "probe:sent");
+    if (sentIndex >= 0) {
+      closeProbeEvents.splice(sentIndex, 1);
+    }
+    closeProbeEvents.push({
+      type: "probe:close-input-skipped",
+      at: "2026-07-02T00:00:04.000Z",
+      payload: { reason: "native-presenter-focus-not-confirmed", focus: nativePresenterFocus }
+    });
+  } else if (options.bothTerminalBranches) {
+    closeProbeEvents.push({
+      type: "probe:close-input-skipped",
+      at: "2026-07-02T00:00:04.100Z",
+      payload: { reason: "unexpected-second-terminal" }
     });
   }
   writeText(
@@ -5639,6 +6117,7 @@ function buildWindowsSnapshot({ pid, events, managedOverlayResultMode = "", stea
 
   return {
     app: { appId: 480, managedOverlayResultMode },
+    window: { present: true, visible: true, focused: true, minimized: false },
     process: { pid, platform: "win32", arch: "x64" },
     launch,
     steam: {

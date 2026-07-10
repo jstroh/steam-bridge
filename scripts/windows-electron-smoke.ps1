@@ -107,6 +107,9 @@ param(
   [string]$RequireActionErrorCode = "",
   [string]$RequireActionErrorReason = "",
   [string]$RequireNativeHostUnavailableReason = "",
+  [switch]$ControlServer,
+  [switch]$ControlHandoffOnly,
+  [string]$ControlFile = "",
   [switch]$KeepOpenAfterResult
 )
 
@@ -161,6 +164,15 @@ function Get-SmokeArgs {
 
   if ($KeepOpenAfterResult) {
     $args += "--steam-bridge-smoke-keep-open-after-result"
+  }
+  if ($ControlServer) {
+    $args += "--steam-bridge-smoke-control-server"
+  }
+  if ($ControlHandoffOnly) {
+    $args += "--steam-bridge-smoke-control-handoff-only"
+  }
+  if ($ControlFile) {
+    $args += "--steam-bridge-smoke-control-file=$ControlFile"
   }
   if ($OverlayDisableDirectComposition) {
     $args += "--steam-bridge-electron-overlay-disable-direct-composition=$OverlayDisableDirectComposition"
@@ -301,6 +313,15 @@ function Get-SmokeEnv {
 
   if ($KeepOpenAfterResult) {
     $envMap.STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT = "1"
+  }
+  if ($ControlServer) {
+    $envMap.STEAM_BRIDGE_SMOKE_CONTROL_SERVER = "1"
+  }
+  if ($ControlHandoffOnly) {
+    $envMap.STEAM_BRIDGE_SMOKE_CONTROL_HANDOFF_ONLY = "1"
+  }
+  if ($ControlFile) {
+    $envMap.STEAM_BRIDGE_SMOKE_CONTROL_FILE = $ControlFile
   }
   if ($NativePath) {
     $envMap.STEAM_BRIDGE_NATIVE_PATH = $NativePath
@@ -1906,6 +1927,21 @@ function Assert-SmokeResult {
     }
     if (-not $Result.wait -or $Result.wait.overlayComplete -ne $true) {
       $failures.Add("managed overlay open-and-wait completion resolved")
+    }
+    if ($ControlServer) {
+      $windowState = $snapshot.window
+      if (-not $windowState -or $windowState.present -ne $true) {
+        $failures.Add("Electron window is present after managed overlay completion")
+      }
+      if (-not $windowState -or $windowState.visible -ne $true) {
+        $failures.Add("Electron window is visible after managed overlay completion")
+      }
+      if (-not $windowState -or $windowState.focused -ne $true) {
+        $failures.Add("Electron window regained focus after managed overlay completion")
+      }
+      if (-not $windowState -or $windowState.minimized -ne $false) {
+        $failures.Add("Electron window is not minimized after managed overlay completion")
+      }
     }
   }
   Assert-ClientSessionPromptMissingQueryProof -Events $events -Failures $failures

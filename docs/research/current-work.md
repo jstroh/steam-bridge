@@ -28,9 +28,11 @@ Do not run another private `InitTxn` suite. Real purchase proof remains paused
 until its separate prerequisites exist; it is not part of the active Windows
 matrix work.
 
-The requested focus-gated managed-web slice is complete. Stop after recording
-and publishing this result; duplicate-open and broad-suite work belongs to a
-later explicitly authorized task.
+The user has now authorized the next product goal: replace the blocked
+foreground precondition with one bounded, state-driven handoff, bundle compatible
+activation diagnostics and auditor coverage into the same package, and avoid
+another build/deploy/live cycle until that package can distinguish the remaining
+focus hypotheses in one focused public run.
 
 ## Proven Baseline
 
@@ -84,6 +86,22 @@ close/back-to-app. Reconnecting the remote desktop alone is not a meaningful
 rerun condition. Do not repeat the unchanged `SetForegroundWindow` attempt, add
 a second close input, or lengthen the wait.
 
+The current product slice materially changes that precondition without changing
+the verified addon. It resolves the close target before handoff, binds the exact
+lifecycle HWND to the Smoke process/session, sends that HWND only inside one
+authenticated handoff-only loopback request, and has the owning process call its
+existing native show/activation path at most once. Both sides retain only
+sanitized match/state booleans and counts. The probe then revalidates the same
+owner, enabled/non-iconic state, and exact foreground immediately before one
+`SendInput` close call. Missing, ambiguous, mismatched, or lost focus emits one
+skip branch and no input; partial pointer dispatch has no fallback mechanism.
+Schema 2 also requires the corresponding app event, target-before-handoff
+ordering, app focus return, and a single sent-or-skipped terminal branch. Local
+fixtures cover owner/control/session mismatch, raw-ID leakage, HWND drift,
+duplicate or reordered events, transport ambiguity, multiple native show calls,
+pre-dispatch loss, pointer fallback, focus-return failure, and independently
+already-foreground success through the same exact-HWND binding.
+
 Do not use the legacy raw `full` baseline as the product gate; use `managed`,
 `shortcut-routes`, and public synthetic `checkout`.
 
@@ -108,13 +126,11 @@ required after the web close/focus gate passes. It was not run in this slice.
 
 ## Exact Next Step
 
-Stop after this result is recorded, committed, pushed, and CI is verified. In a
-future authorized slice, do not rerun the same focus attempt. First change the
-foreground-acquisition precondition: either introduce a bounded, state-driven
-host-process or user-equivalent activation mechanism whose exact HWND ownership
-can be verified immediately before input, or independently establish that the
-exact native host is already foreground. A remote-desktop reconnect by itself
-does not satisfy this condition.
+Commit and push the reviewed product slice without the unrelated continuity
+files, verify GitHub CI, then reuse the verified Windows addon while packaging,
+deploying, and signing once. Run only `11-managed-web-open-and-wait` with public
+App ID `480`. Stop and update `WIN-FOCUS-001` on the first meaningful failure;
+advance to duplicate-open only if the focused close gate passes completely.
 
 ## Subsequent Actions
 
@@ -135,6 +151,18 @@ does not satisfy this condition.
    commit, push, and verify CI.
 
 ## Last Reported Verification
+
+Against the current owner-process handoff worktree:
+
+- `npm run package:smoke` passed after both independent reviews and includes
+  schema-1 compatibility plus schema-2 positive, already-foreground, ordering,
+  binding, privacy, one-shot, terminal-branch, pointer, and focus-return fixtures.
+- `npm test` passed all 175 tests. `npm run check:platform`,
+  `npm run native:fmt`, `npm run native:check`, and `npm run api:check` passed;
+  `native:check` retained only the known transitive `block 0.1.6` warning.
+- `node --check` passed for the changed JavaScript files, the Windows summary
+  self-test passed directly, and `git diff --check` passed.
+- No live Steam case has run from this worktree yet.
 
 Against the focus-gate slice now committed as `a58280c` on 2026-07-10:
 
