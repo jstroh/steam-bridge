@@ -26,6 +26,30 @@ const KNOWN_NATIVE_LOAD_BLOCKERS = new Set([
   "windows-app-control-native-load-block",
   "windows-native-load-gate-failure"
 ]);
+const DUPLICATE_OPEN_NAMED_TARGET_NAMES = [
+  "web",
+  "store",
+  "friends",
+  "profile",
+  "players",
+  "community",
+  "stats",
+  "achievements",
+  "user",
+  "dialog",
+  "checkout"
+];
+const DUPLICATE_OPEN_NAMED_STATUS_NAMES = [...DUPLICATE_OPEN_NAMED_TARGET_NAMES, "checkoutOperation"];
+const SUPPORTED_CLOSE_PROBE_INPUTS = new Set([
+  "toggle",
+  "escape",
+  "close-tab",
+  "toggle-sendinput",
+  "escape-sendinput",
+  "close-tab-sendinput",
+  "web-close-click-sendinput"
+]);
+const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
 
 main();
 
@@ -327,6 +351,13 @@ function validateManifest(manifest, failures) {
       failures
     );
   }
+  if (manifest.closeProbeEvidenceSchema !== undefined) {
+    expect(
+      manifest.closeProbeEvidenceSchema === 1,
+      "matrix manifest closeProbeEvidenceSchema uses supported version 1",
+      failures
+    );
+  }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
     expect(
@@ -343,6 +374,13 @@ function validateManifest(manifest, failures) {
         seen.add(entry.id);
       }
       if (entry && entry.action) {
+        if (manifest.closeProbeEvidenceSchema === 1) {
+          expect(
+            SUPPORTED_CLOSE_PROBE_INPUTS.has(entry.expectedCloseProbeInput),
+            `matrix manifest case ${entry.id} records a supported resolved close input`,
+            failures
+          );
+        }
         expect(
           typeof entry.hasCheckoutTransactionId === "boolean",
           `matrix manifest case ${entry.id} records checkout transaction presence without raw value`,
@@ -417,8 +455,81 @@ function validateManifestCoverage(
     for (const eventType of Array.isArray(expected.requireEvent) ? expected.requireEvent : []) {
       expect(row.eventTypes.includes(eventType), `matrix manifest case ${expected.id} emitted required event ${eventType}`, failures);
     }
+    if (expected.action === "presenter-duplicate-open-guard") {
+      expect(
+        row.duplicateOpenGuardProof === true,
+        `matrix manifest case ${expected.id} proved duplicate-open suppression payload`,
+        failures
+      );
+    }
+    const expectedNativeHostBackend = String(manifest.expectedNativeHostBackend || "");
+    const requiresAttachedPresenterBackend =
+      Boolean(expectedNativeHostBackend) &&
+      String(expected.action || "").startsWith("presenter-") &&
+      expected.action !== "presenter-ready";
+    if (requiresAttachedPresenterBackend) {
+      const backendEvidence = objectOrEmpty(row.presenterBackendEvidence);
+      const resultBackend = objectOrEmpty(backendEvidence.result);
+      const lifecycleBackends = Array.isArray(backendEvidence.lifecycle) ? backendEvidence.lifecycle : [];
+      expect(resultBackend.attached === true, `matrix manifest case ${expected.id} result presenter is attached`, failures);
+      expect(
+        resultBackend.backend === expectedNativeHostBackend,
+        `matrix manifest case ${expected.id} result presenter backend is ${expectedNativeHostBackend}`,
+        failures
+      );
+      expect(
+        resultBackend.hostBackend === expectedNativeHostBackend,
+        `matrix manifest case ${expected.id} result native-host backend is ${expectedNativeHostBackend}`,
+        failures
+      );
+      expect(
+        resultBackend.rendererBackend === expectedNativeHostBackend,
+        `matrix manifest case ${expected.id} result renderer backend is ${expectedNativeHostBackend}`,
+        failures
+      );
+      expect(
+        lifecycleBackends.length > 0,
+        `matrix manifest case ${expected.id} lifecycle includes an attached presenter backend snapshot`,
+        failures
+      );
+      expect(
+        lifecycleBackends.some((backend) => backend.complete),
+        `matrix manifest case ${expected.id} lifecycle includes a complete attached presenter backend snapshot`,
+        failures
+      );
+      for (const lifecycleBackend of lifecycleBackends) {
+        for (const [field, label] of [
+          ["backend", "presenter"],
+          ["hostBackend", "native-host"],
+          ["rendererBackend", "renderer"]
+        ]) {
+          if (lifecycleBackend[field]) {
+            expect(
+              lifecycleBackend[field] === expectedNativeHostBackend,
+              `matrix manifest case ${expected.id} lifecycle ${lifecycleBackend.source} ${label} backend is ${expectedNativeHostBackend}`,
+              failures
+            );
+          }
+        }
+      }
+    }
     if (expected.requirePassiveNotification === true) {
       expect(row.passiveNotificationProof === true, `matrix manifest case ${expected.id} proved passive notification presenter state`, failures);
+    }
+    const schemaOneCloseProbeExpected =
+      manifest.closeProbeEvidenceSchema === 1 &&
+      manifest.closeProbe === true &&
+      (expected.requireManagedOverlayComplete === true ||
+        expected.closeProbeOnActivation === true ||
+        expected.shortcutToggleProbe === true);
+    const expectedCloseProbeInput = String(expected.expectedCloseProbeInput || "");
+    if (schemaOneCloseProbeExpected) {
+      expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
+      expect(
+        row.closeProbe && row.closeProbe.input === expectedCloseProbeInput,
+        `matrix manifest case ${expected.id} close probe input matches resolved ${expectedCloseProbeInput}`,
+        failures
+      );
     }
     if (expected.requireManagedOverlayComplete === true) {
       expect(
@@ -433,6 +544,78 @@ function validateManifestCoverage(
       if (manifest.closeProbe === true) {
         expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
       }
+    }
+    if (schemaOneCloseProbeExpected && expectedCloseProbeInput === "web-close-click-sendinput") {
+      expect(
+        row.closeProbe.processPerMonitorV2 === true,
+        `matrix manifest case ${expected.id} close probe used process per-monitor-v2 DPI awareness`,
+        failures
+      );
+      expect(
+        row.closeProbe.threadPerMonitorV2 === true,
+        `matrix manifest case ${expected.id} close probe used thread per-monitor-v2 DPI awareness`,
+        failures
+      );
+      expect(
+        row.closeProbe.nativePointerSucceeded === true,
+        `matrix manifest case ${expected.id} close probe sent all three pointer inputs without error`,
+        failures
+      );
+      expect(
+        row.closeProbe.nativePointerMatchesTarget === true,
+        `matrix manifest case ${expected.id} close probe pointer coordinates match the audited target`,
+        failures
+      );
+      expect(
+        row.closeProbe.webCloseTargetInsidePanel === true,
+        `matrix manifest case ${expected.id} close probe target lies inside the detected panel`,
+        failures
+      );
+      expect(
+        row.closeProbe.webCloseTargetUsesScaleAwareInsets === true,
+        `matrix manifest case ${expected.id} close probe target uses scale-aware panel insets`,
+        failures
+      );
+      expect(
+        row.closeProbe.webCloseScaleAxesAgree === true,
+        `matrix manifest case ${expected.id} physical/logical presenter scale axes agree`,
+        failures
+      );
+      expect(
+        row.closeProbe.webCloseScaleEvidence === true,
+        `matrix manifest case ${expected.id} close probe scale agrees with independent presenter geometry`,
+        failures
+      );
+      expect(
+        row.closeProbe.nativeHostRectPresent === true,
+        `matrix manifest case ${expected.id} close probe includes a native host rect`,
+        failures
+      );
+      expect(
+        row.closeProbe.physicalScreenshotBoundsCount > 0,
+        `matrix manifest case ${expected.id} close probe includes a successful screenshot with declared bounds`,
+        failures
+      );
+      expect(
+        row.closeProbe.physicalScreenshotReadableCount > 0,
+        `matrix manifest case ${expected.id} close probe includes a readable physical screenshot`,
+        failures
+      );
+      expect(
+        row.closeProbe.physicalScreenshotDimensionsMatchCount > 0,
+        `matrix manifest case ${expected.id} physical screenshot dimensions match declared bounds`,
+        failures
+      );
+      expect(
+        row.closeProbe.screenshotContainsNativeHostRect === true,
+        `matrix manifest case ${expected.id} physical screenshot bounds contain the native host rect`,
+        failures
+      );
+      expect(
+        row.closeProbe.physicalScreenshotProofCount > 0,
+        `matrix manifest case ${expected.id} has one coherent physical screenshot proof record`,
+        failures
+      );
     }
     if (expected.requireMicroTxnCallback === true) {
       expect(
@@ -1612,6 +1795,167 @@ function sanitizedValuePresent(value) {
   return true;
 }
 
+function verifyDuplicateOpenGuard(caseName, actionName, events, failures) {
+  if (actionName !== "presenter-duplicate-open-guard") {
+    return { required: false, ok: true };
+  }
+
+  const failuresBefore = failures.length;
+  const event = events.find(
+    (entry) => entry && entry.type === "overlay:presenter-duplicate-open-guard"
+  );
+  if (!event) {
+    failures.push(`${caseName}: missing overlay:presenter-duplicate-open-guard event`);
+    return { required: true, ok: false };
+  }
+
+  const payload = objectOrEmpty(event.payload);
+  verifyDuplicateOpenBusyStatus(caseName, "status", objectOrEmpty(payload.status), failures);
+  verifyDuplicateOpenBusyStatus(
+    caseName,
+    "shortcut status",
+    objectOrEmpty(payload.shortcutStatus),
+    failures
+  );
+
+  const namedStatuses = objectOrEmpty(payload.namedStatuses);
+  for (const name of DUPLICATE_OPEN_NAMED_STATUS_NAMES) {
+    verifyDuplicateOpenBusyStatus(
+      caseName,
+      `named ${name} status`,
+      objectOrEmpty(namedStatuses[name]),
+      failures
+    );
+  }
+  expect(
+    objectOrEmpty(namedStatuses.checkoutOperation).canStartOperation === false,
+    `${caseName}: duplicate guard named checkoutOperation status explicitly rejects operation start`,
+    failures
+  );
+
+  const namedIfAvailableNulls = objectOrEmpty(payload.namedIfAvailableNulls);
+  const namedAndWaitIfAvailableNulls = objectOrEmpty(payload.namedAndWaitIfAvailableNulls);
+  for (const name of DUPLICATE_OPEN_NAMED_TARGET_NAMES) {
+    expect(
+      namedIfAvailableNulls[name] === true,
+      `${caseName}: open${formatNamedOverlayHelperName(name)}IfAvailable returned null while busy`,
+      failures
+    );
+    expect(
+      namedAndWaitIfAvailableNulls[name] === true,
+      `${caseName}: open${formatNamedOverlayHelperName(name)}AndWaitIfAvailable returned null while busy`,
+      failures
+    );
+  }
+
+  expect(payload.openIfAvailableNull === true, `${caseName}: openIfAvailable returned null while busy`, failures);
+  expect(
+    payload.openAndWaitIfAvailableNull === true,
+    `${caseName}: openAndWaitIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.shortcutIfAvailableNull === true,
+    `${caseName}: openShortcutTargetIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.shortcutAndWaitIfAvailableNull === true,
+    `${caseName}: openShortcutTargetAndWaitIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.checkoutOpenIfAvailableNull === true,
+    `${caseName}: openCheckoutIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.checkoutIfAvailableNull === true,
+    `${caseName}: openCheckoutAndWaitIfAvailable returned null while busy`,
+    failures
+  );
+  expect(
+    payload.checkoutOperationRan === false,
+    `${caseName}: checkout IfAvailable did not run the transaction operation while busy`,
+    failures
+  );
+
+  return { required: true, ok: failures.length === failuresBefore };
+}
+
+function verifyDuplicateOpenBusyStatus(caseName, label, status, failures) {
+  expect(status.canOpen === false, `${caseName}: duplicate guard ${label} rejects open`, failures);
+  expect(status.canWait === false, `${caseName}: duplicate guard ${label} rejects wait`, failures);
+  if (Object.prototype.hasOwnProperty.call(status, "canStartOperation")) {
+    expect(
+      status.canStartOperation === false,
+      `${caseName}: duplicate guard ${label} rejects checkout operation start`,
+      failures
+    );
+  }
+  expect(
+    status.reason === "opening" || status.reason === "overlay-active",
+    `${caseName}: duplicate guard ${label} is opening or overlay-active, got ${formatValue(status.reason)}`,
+    failures
+  );
+  expect(
+    status.waitReason === "opening" || status.waitReason === "overlay-active",
+    `${caseName}: duplicate guard ${label} wait reason is opening or overlay-active, got ${formatValue(
+      status.waitReason
+    )}`,
+    failures
+  );
+}
+
+function formatNamedOverlayHelperName(name) {
+  return name
+    .split(/[-_]/)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join("");
+}
+
+function summarizePresenterBackendEvidence(nativePresenter, events) {
+  const result = summarizePresenterBackendSnapshot(nativePresenter, "result");
+  const lifecycle = [];
+  for (const event of Array.isArray(events) ? events : []) {
+    const payload = objectOrEmpty(event && event.payload);
+    const presenter = payload.presenter;
+    if (!presenter || typeof presenter !== "object" || Array.isArray(presenter)) {
+      continue;
+    }
+    const snapshot = summarizePresenterBackendSnapshot(presenter, String((event && event.type) || "lifecycle"));
+    if (snapshot.attached) {
+      lifecycle.push(snapshot);
+    }
+  }
+  return {
+    result,
+    lifecycle,
+    lifecycleAttachedCount: lifecycle.length,
+    lifecycleCompleteCount: lifecycle.filter((snapshot) => snapshot.complete).length
+  };
+}
+
+function summarizePresenterBackendSnapshot(value, source) {
+  const presenter = objectOrEmpty(value);
+  const host = objectOrEmpty(presenter.nativeHostDiagnostics);
+  const renderer = objectOrEmpty(host.renderer);
+  const backend = typeof presenter.backend === "string" ? presenter.backend : "";
+  const hostBackend = typeof host.backend === "string" ? host.backend : "";
+  const rendererBackend = typeof renderer.backend === "string" ? renderer.backend : "";
+  const complete = Boolean(backend && hostBackend && rendererBackend);
+  return {
+    source,
+    present: Object.keys(presenter).length > 0,
+    attached: presenter.nativeHostOpen === true || presenter.attached === true,
+    backend,
+    hostBackend,
+    rendererBackend,
+    complete,
+    agrees: complete && backend === hostBackend && backend === rendererBackend
+  };
+}
+
 function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = [], caseDir = "") {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
@@ -1633,7 +1977,13 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const overlayEnabled = readOkValue(steam.overlayEnabled);
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
-  const closeProbe = summarizeCloseProbe(closeProbeEvents, caseDir || path.dirname(resultLog));
+  const presenterBackendEvidence = summarizePresenterBackendEvidence(nativePresenter, events);
+  const closeProbe = summarizeCloseProbe(
+    closeProbeEvents,
+    caseDir || path.dirname(resultLog),
+    nativePresenter,
+    events
+  );
   const initTxnRequestShape = summarizeInitTxnRequestShapeEvent(events);
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
   const webSessionCheckoutCapture = summarizeWebSessionCheckoutCapture(events);
@@ -1643,6 +1993,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const clientSessionPromptMissing = summarizeClientSessionPromptMissing(events);
   const clientSessionQuery = summarizeClientSessionQuery(events, clientSessionPromptMissing);
   const microTxnCallbackProof = hasMicroTxnCallbackProof(String(action.action || ""), events, app.appId);
+  const duplicateOpenGuard = verifyDuplicateOpenGuard(String(caseName), String(action.action || ""), events, failures);
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -1678,6 +2029,8 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     overlayNeedsPresent,
     overlayActiveEvents,
     overlayInactiveEvents,
+    presenterBackendEvidence,
+    duplicateOpenGuardProof: duplicateOpenGuard.required ? duplicateOpenGuard.ok : "n/a",
     passiveNotificationProof: hasPassiveNotificationProof(String(action.action || ""), events, nativePresenter),
     microTxnCallbackListenerRegistered: hasMicroTxnCallbackListenerRegistered(events),
     legacyMicroTxnCallbackListenerRegistered: hasLegacyMicroTxnCallbackListenerRegistered(events),
@@ -1780,6 +2133,7 @@ function printSummary(summary) {
         `isolateChildProcesses=${formatValue(summary.manifest.overlayIsolateChildProcesses)} ` +
         `expectedNativeHostBackend=${formatValue(summary.manifest.expectedNativeHostBackend)} ` +
         `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)} ` +
+        `closeProbeEvidenceSchema=${formatValue(summary.manifest.closeProbeEvidenceSchema)} ` +
         `requireMicroTxnCallback=${formatValue(summary.manifest.requireMicroTxnCallback)}`
     );
   }
@@ -1873,6 +2227,12 @@ function printSummary(summary) {
           `steamLaunch=${row.steamLaunch} steamOverlayLaunchMarker=${row.steamOverlayLaunchMarker} ` +
           `overlayActiveEvents=${row.overlayActiveEvents} ` +
           `overlayEnabled=${formatValue(row.overlayEnabled)} ` +
+          `duplicateOpenGuard=${formatValue(row.duplicateOpenGuardProof)} ` +
+          `presenterBackend=${formatValue(row.presenterBackendEvidence.result.backend)} ` +
+          `hostBackend=${formatValue(row.presenterBackendEvidence.result.hostBackend)} ` +
+          `rendererBackend=${formatValue(row.presenterBackendEvidence.result.rendererBackend)} ` +
+          `lifecycleBackendSnapshots=${row.presenterBackendEvidence.lifecycleAttachedCount}/` +
+            `${row.presenterBackendEvidence.lifecycleCompleteCount} ` +
           `microTxnListener=${row.microTxnCallbackListenerRegistered} ` +
           `legacyMicroTxnListener=${row.legacyMicroTxnCallbackListenerRegistered} ` +
           `microTxnCallbacks=${row.microTxnCallbackCount} ` +
@@ -1997,6 +2357,7 @@ function summarizeManifest(manifest) {
     overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
     expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
+    closeProbeEvidenceSchema: Number(manifest.closeProbeEvidenceSchema || 0),
     requireMicroTxnCallback: manifest.requireMicroTxnCallback === true,
     expectedCaseCount: Array.isArray(manifest.cases) ? manifest.cases.length : 0
   };
@@ -2117,9 +2478,58 @@ function summarizeCaseRenderingHealth(renderingHealth) {
   };
 }
 
-function summarizeCloseProbe(events, caseDir = "") {
+function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifecycleEvents = []) {
   const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+  const startEvent = normalizedEvents.find((event) => event.type === "probe:start");
   const sentEvent = normalizedEvents.find((event) => event.type === "probe:sent");
+  const targetEvent = normalizedEvents.find((event) => event.type === "probe:web-close-click-target");
+  const startPayload = objectOrEmpty(startEvent && startEvent.payload);
+  const sentPayload = objectOrEmpty(sentEvent && sentEvent.payload);
+  const targetPayload = objectOrEmpty(targetEvent && targetEvent.payload);
+  const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
+  const webCloseTarget = objectOrEmpty(targetPayload.target);
+  const loggedPanel = objectOrEmpty(webCloseTarget.panel);
+  const loggedInsets = objectOrEmpty(webCloseTarget.insets);
+  const loggedScale = objectOrEmpty(webCloseTarget.scale);
+  const webClosePanel = normalizeRect(loggedPanel);
+  const nativeHostRect = findNativeHostRect(nativePresenter, lifecycleEvents);
+  const presenterScaleGeometry = findPresenterScaleGeometry(nativePresenter, lifecycleEvents);
+  const derivedScale = presenterScaleGeometry ? presenterScaleGeometry.scale : NaN;
+  const loggedScaleValue = Number(loggedScale.value);
+  const scaleSourceSupported = ["native-host-window-dpi", "presenter-geometry-ratio"].includes(
+    String(loggedScale.source || "")
+  );
+  const scaleAgreement = Boolean(
+    presenterScaleGeometry &&
+      presenterScaleGeometry.axesAgree &&
+      Number.isFinite(loggedScaleValue) &&
+      Math.abs(loggedScaleValue - derivedScale) <= WINDOWS_CLOSE_SCALE_TOLERANCE
+  );
+  const targetX = Number(webCloseTarget.x);
+  const targetY = Number(webCloseTarget.y);
+  const targetInsidePanel = Boolean(
+    webClosePanel &&
+      Number.isFinite(targetX) &&
+      Number.isFinite(targetY) &&
+      targetX >= webClosePanel.left &&
+      targetX <= webClosePanel.right &&
+      targetY >= webClosePanel.top &&
+      targetY <= webClosePanel.bottom
+  );
+  // The probe targets with the authoritative window-DPI scale. Geometry is an
+  // independent agreement check and can differ slightly because of rounded
+  // physical/logical window dimensions, including across a rounding boundary.
+  const expectedTarget = expectedWebCloseTarget(webClosePanel, loggedPanel, loggedScaleValue);
+  const targetUsesScaleAwareInsets = Boolean(
+    expectedTarget &&
+      Number(loggedInsets.right) === expectedTarget.rightInset &&
+      Number(loggedInsets.top) === expectedTarget.topInset &&
+      Number(loggedInsets.logicalRight) === 16 &&
+      Number(loggedInsets.logicalTop) === 18 &&
+      targetX === expectedTarget.x &&
+      targetY === expectedTarget.y
+  );
+  const dpiAwareness = String(startPayload.dpiAwareness || "");
   const foregroundSamples = normalizedEvents
     .map((event) => {
       const payload = objectOrEmpty(event.payload);
@@ -2147,17 +2557,219 @@ function summarizeCloseProbe(events, caseDir = "") {
   const foregroundStayedOnSmoke =
     foregroundSamples.length > 0 &&
     foregroundSamples.every((sample) => /SteamBridgeSmoke/i.test(sample.processName));
+  const physicalScreenshots = summarizePhysicalScreenshotEvidence(normalizedEvents, caseDir, nativeHostRect);
 
   return {
     sent: Boolean(sentEvent),
-    input: sentEvent ? String(objectOrEmpty(sentEvent.payload).input || "") : "",
+    input: sentEvent ? String(sentPayload.input || "") : "",
     eventCount: normalizedEvents.length,
     screenshotCount,
     screenshotVisuals,
     foregroundSampleCount: foregroundSamples.length,
     foregroundProcessNames,
-    foregroundStayedOnSmoke
+    foregroundStayedOnSmoke,
+    dpiAwareness,
+    processPerMonitorV2: /(?:^|;)process-per-monitor-v2(?:;|$)/.test(dpiAwareness),
+    threadPerMonitorV2: /(?:^|;)thread-per-monitor-v2(?:;|$)/.test(dpiAwareness),
+    nativePointerSent: Number(nativePointerSent.sent),
+    nativePointerExpected: Number(nativePointerSent.expected),
+    nativePointerLastError: Number(nativePointerSent.lastError),
+    nativePointerSucceeded:
+      Number(nativePointerSent.sent) === 3 &&
+      Number(nativePointerSent.expected) === 3 &&
+      Number(nativePointerSent.lastError) === 0,
+    nativePointerMatchesTarget:
+      Number(nativePointerSent.x) === targetX && Number(nativePointerSent.y) === targetY,
+    webCloseTargetPresent: Number.isFinite(targetX) && Number.isFinite(targetY),
+    webCloseTargetInsidePanel: targetInsidePanel,
+    webCloseTargetUsesScaleAwareInsets: targetUsesScaleAwareInsets,
+    webCloseScaleSource: String(loggedScale.source || ""),
+    webCloseLoggedScale: Number.isFinite(loggedScaleValue) ? loggedScaleValue : null,
+    webCloseDerivedScale: Number.isFinite(derivedScale) ? derivedScale : null,
+    webCloseScaleAxesAgree: Boolean(presenterScaleGeometry && presenterScaleGeometry.axesAgree),
+    webCloseScaleAgreement: scaleAgreement,
+    webCloseScaleEvidence: scaleSourceSupported && scaleAgreement,
+    nativeHostRectPresent: Boolean(nativeHostRect),
+    physicalScreenshotBoundsCount: physicalScreenshots.declaredBoundsCount,
+    physicalScreenshotReadableCount: physicalScreenshots.readableCount,
+    physicalScreenshotDimensionsMatchCount: physicalScreenshots.dimensionsMatchCount,
+    physicalScreenshotProofCount: physicalScreenshots.proofCount,
+    screenshotContainsNativeHostRect: physicalScreenshots.containsNativeHostRect
   };
+}
+
+function findNativeHostRect(nativePresenter, lifecycleEvents) {
+  for (const presenter of presenterSnapshots(nativePresenter, lifecycleEvents)) {
+    const rect = normalizeRect(objectOrEmpty(objectOrEmpty(presenter).nativeHostDiagnostics).rect);
+    if (rect) {
+      return rect;
+    }
+  }
+  return null;
+}
+
+function findPresenterScaleGeometry(nativePresenter, lifecycleEvents) {
+  let fallback = null;
+  for (const presenter of presenterSnapshots(nativePresenter, lifecycleEvents)) {
+    const physicalRect = normalizeRect(objectOrEmpty(objectOrEmpty(presenter).nativeHostDiagnostics).rect);
+    const logicalBounds = normalizeRect(presenter.bounds);
+    if (!physicalRect || !logicalBounds) {
+      continue;
+    }
+    const scaleX = physicalRect.width / logicalBounds.width;
+    const scaleY = physicalRect.height / logicalBounds.height;
+    if (
+      !Number.isFinite(scaleX) ||
+      !Number.isFinite(scaleY) ||
+      scaleX < 0.5 ||
+      scaleX > 8 ||
+      scaleY < 0.5 ||
+      scaleY > 8
+    ) {
+      continue;
+    }
+    const geometry = {
+      scaleX,
+      scaleY,
+      scale: (scaleX + scaleY) / 2,
+      axesAgree: Math.abs(scaleX - scaleY) <= WINDOWS_CLOSE_SCALE_TOLERANCE
+    };
+    if (geometry.axesAgree) {
+      return geometry;
+    }
+    fallback ||= geometry;
+  }
+  return fallback;
+}
+
+function presenterSnapshots(nativePresenter, lifecycleEvents) {
+  const presenters = [];
+  if (nativePresenter && typeof nativePresenter === "object" && !Array.isArray(nativePresenter)) {
+    presenters.push(nativePresenter);
+  }
+  for (const event of Array.isArray(lifecycleEvents) ? lifecycleEvents : []) {
+    const presenter = objectOrEmpty(event && event.payload).presenter;
+    if (presenter && typeof presenter === "object" && !Array.isArray(presenter)) {
+      presenters.push(presenter);
+    }
+  }
+  return presenters;
+}
+
+function expectedWebCloseTarget(panel, loggedPanel, scale) {
+  if (!panel || !Number.isFinite(scale) || scale < 0.5 || scale > 8) {
+    return null;
+  }
+  const width = Number(loggedPanel.width);
+  const height = Number(loggedPanel.height);
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width !== panel.width ||
+    height !== panel.height
+  ) {
+    return null;
+  }
+  const rightInset = Math.min(
+    Math.max(1, width - 1),
+    Math.max(1, roundMidpointToEven(16 * scale))
+  );
+  const topInset = Math.min(
+    Math.max(1, height - 1),
+    Math.max(1, roundMidpointToEven(18 * scale))
+  );
+  return {
+    x: roundMidpointToEven(panel.right - rightInset),
+    y: roundMidpointToEven(panel.top + topInset),
+    rightInset,
+    topInset
+  };
+}
+
+function summarizePhysicalScreenshotEvidence(events, caseDir, nativeHostRect) {
+  let declaredBoundsCount = 0;
+  let readableCount = 0;
+  let dimensionsMatchCount = 0;
+  let proofCount = 0;
+  let containsNativeHostRect = false;
+  for (const event of events) {
+    const screenshot = objectOrEmpty(objectOrEmpty(event && event.payload).screenshot);
+    const bounds = normalizeRect(screenshot.bounds);
+    if (screenshot.ok !== true || !bounds) {
+      continue;
+    }
+    declaredBoundsCount += 1;
+    const resolved = resolveCloseProbeScreenshotPath(String(screenshot.path || ""), caseDir);
+    if (!resolved) {
+      continue;
+    }
+    let png;
+    try {
+      png = decodePng(resolved);
+    } catch {
+      continue;
+    }
+    readableCount += 1;
+    const dimensionsMatch = png.width === bounds.width && png.height === bounds.height;
+    if (dimensionsMatch) {
+      dimensionsMatchCount += 1;
+    }
+    const contains = Boolean(nativeHostRect && rectContainsRect(bounds, nativeHostRect));
+    if (contains) {
+      containsNativeHostRect = true;
+    }
+    if (dimensionsMatch && contains) {
+      proofCount += 1;
+    }
+  }
+  return {
+    declaredBoundsCount,
+    readableCount,
+    dimensionsMatchCount,
+    proofCount,
+    containsNativeHostRect
+  };
+}
+
+function roundMidpointToEven(value) {
+  const lower = Math.floor(value);
+  const fraction = value - lower;
+  if (Math.abs(fraction - 0.5) <= Number.EPSILON * Math.max(1, Math.abs(value)) * 4) {
+    return lower % 2 === 0 ? lower : lower + 1;
+  }
+  return Math.round(value);
+}
+
+function normalizeRect(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const left = Number(value.left !== undefined ? value.left : value.x);
+  const top = Number(value.top !== undefined ? value.top : value.y);
+  const width = Number(value.width);
+  const height = Number(value.height);
+  const right = Number(value.right !== undefined ? value.right : left + width);
+  const bottom = Number(value.bottom !== undefined ? value.bottom : top + height);
+  if (
+    !Number.isFinite(left) ||
+    !Number.isFinite(top) ||
+    !Number.isFinite(right) ||
+    !Number.isFinite(bottom) ||
+    right <= left ||
+    bottom <= top
+  ) {
+    return null;
+  }
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+function rectContainsRect(outer, inner) {
+  return (
+    outer.left <= inner.left &&
+    outer.top <= inner.top &&
+    outer.right >= inner.right &&
+    outer.bottom >= inner.bottom
+  );
 }
 
 function summarizeCloseProbeScreenshotVisuals(events, caseDir) {
@@ -2556,11 +3168,22 @@ function formatCloseProbeSummary(closeProbe) {
   const foreground = closeProbe.foregroundProcessNames.length > 0
     ? closeProbe.foregroundProcessNames.join(",")
     : "unknown";
+  const webCloseEvidence = closeProbe.input === "web-close-click-sendinput"
+    ? `dpiPmV2=${closeProbe.processPerMonitorV2}/${closeProbe.threadPerMonitorV2} ` +
+      `pointer=${closeProbe.nativePointerSent}/${closeProbe.nativePointerExpected}/${closeProbe.nativePointerLastError} ` +
+      `targetInsidePanel=${closeProbe.webCloseTargetInsidePanel} ` +
+      `targetScaleAware=${closeProbe.webCloseTargetUsesScaleAwareInsets} ` +
+      `scale=${formatValue(closeProbe.webCloseLoggedScale)}/${formatValue(closeProbe.webCloseDerivedScale)} ` +
+      `scaleSource=${formatValue(closeProbe.webCloseScaleSource)} scaleProof=${closeProbe.webCloseScaleEvidence} ` +
+      `physicalScreens=${closeProbe.physicalScreenshotProofCount}/${closeProbe.physicalScreenshotBoundsCount} ` +
+      `screenshotContainsHost=${closeProbe.screenshotContainsNativeHostRect} `
+    : "";
   return (
     `closeProbe=${closeProbe.sent ? formatValue(closeProbe.input) : "not-sent"} ` +
     `closeProbeFg=${foreground} ` +
     `closeProbeScreens=${closeProbe.screenshotCount} ` +
     formatCloseProbeVisualSummary(closeProbe.screenshotVisuals) +
+    webCloseEvidence +
     `closeProbeGameFg=${closeProbe.foregroundStayedOnSmoke} `
   );
 }
@@ -2584,6 +3207,16 @@ function roundNumber(value, digits) {
 
 function uniqueStrings(values) {
   return Array.from(new Set(values.map((value) => String(value)))).sort();
+}
+
+function assertFixtureSummaryFailure(tempRoot, name, writeFixture, options, expectedFailure) {
+  const root = path.join(tempRoot, name);
+  writeFixture(root, options);
+  const summary = summarizeWindowsOverlayMatrixArtifacts(root);
+  assert(
+    summary.failures.some((failure) => failure.includes(expectedFailure)),
+    `summary self-test should reject ${name}: ${expectedFailure}`
+  );
 }
 
 function runSelfTest() {
@@ -2630,6 +3263,162 @@ function runSelfTest() {
     const managedCloseWaitSummary = summarizeWindowsOverlayMatrixArtifacts(managedCloseWaitRoot);
     assert.deepEqual(managedCloseWaitSummary.failures, []);
     assert.equal(managedCloseWaitSummary.caseSummaries[0].managedOverlayCloseProof, true);
+
+    const managedBackendRoot = path.join(tempRoot, "managed-backend");
+    writeManagedBackendFixture(managedBackendRoot);
+    const managedBackendSummary = summarizeWindowsOverlayMatrixArtifacts(managedBackendRoot);
+    assert.deepEqual(managedBackendSummary.failures, []);
+    assert.equal(managedBackendSummary.caseSummaries[0].presenterBackendEvidence.result.agrees, true);
+    assert.equal(managedBackendSummary.caseSummaries[0].presenterBackendEvidence.lifecycleCompleteCount, 1);
+
+    for (const [name, options, failure] of [
+      ["wrong-result-renderer", { wrongResultRenderer: true }, "result renderer backend is windows-d3d11"],
+      [
+        "wrong-lifecycle-renderer",
+        { wrongLifecycleRenderer: true },
+        "lifecycle overlay:presenter-open-and-wait-start renderer backend is windows-d3d11"
+      ]
+    ]) {
+      assertFixtureSummaryFailure(tempRoot, `managed-backend-${name}`, writeManagedBackendFixture, options, failure);
+    }
+
+    const webCloseEvidenceRoot = path.join(tempRoot, "managed-web-close-evidence");
+    writeManagedWebCloseEvidenceFixture(webCloseEvidenceRoot);
+    const webCloseEvidenceSummary = summarizeWindowsOverlayMatrixArtifacts(webCloseEvidenceRoot);
+    assert.deepEqual(webCloseEvidenceSummary.failures, []);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.processPerMonitorV2, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.threadPerMonitorV2, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.nativePointerSucceeded, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseTargetInsidePanel, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseTargetUsesScaleAwareInsets, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseScaleEvidence, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseDerivedScale, 2.25);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotReadableCount, 1);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotDimensionsMatchCount, 1);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotProofCount, 1);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.screenshotContainsNativeHostRect, true);
+
+    const webCloseRoundingRoot = path.join(tempRoot, "managed-web-close-rounding-boundary");
+    writeManagedWebCloseEvidenceFixture(webCloseRoundingRoot, { roundingBoundaryScale: true });
+    const webCloseRoundingSummary = summarizeWindowsOverlayMatrixArtifacts(webCloseRoundingRoot);
+    assert.deepEqual(webCloseRoundingSummary.failures, []);
+    assert.equal(webCloseRoundingSummary.caseSummaries[0].closeProbe.webCloseLoggedScale, 1.25);
+    assert.ok(
+      webCloseRoundingSummary.caseSummaries[0].closeProbe.webCloseDerivedScale > 1.25,
+      "geometry may cross an inset rounding boundary while still agreeing with window DPI"
+    );
+
+    for (const [name, options, failure] of [
+      [
+        "missing-process-dpi",
+        { missingProcessPerMonitorV2: true },
+        "close probe used process per-monitor-v2 DPI awareness"
+      ],
+      [
+        "missing-thread-dpi",
+        { missingThreadPerMonitorV2: true },
+        "close probe used thread per-monitor-v2 DPI awareness"
+      ],
+      ["pointer-failed", { pointerFailed: true }, "close probe sent all three pointer inputs without error"],
+      [
+        "pointer-mismatch",
+        { pointerMissesTarget: true },
+        "close probe pointer coordinates match the audited target"
+      ],
+      ["target-outside", { targetOutsidePanel: true }, "close probe target lies inside the detected panel"],
+      [
+        "actual-input-mismatch",
+        { actualInputMismatch: true },
+        "close probe input matches resolved web-close-click-sendinput"
+      ],
+      [
+        "unscaled-large-target",
+        { unscaledLargeTarget: true },
+        "close probe target uses scale-aware panel insets"
+      ],
+      ["missing-scale", { missingScaleEvidence: true }, "close probe scale agrees with independent presenter geometry"],
+      ["scale-mismatch", { scaleMismatch: true }, "close probe scale agrees with independent presenter geometry"],
+      [
+        "missing-logical-bounds",
+        { omitLogicalBounds: true },
+        "physical/logical presenter scale axes agree"
+      ],
+      ["missing-native-rect", { omitNativeRect: true }, "close probe includes a native host rect"],
+      [
+        "missing-screenshot-bounds",
+        { missingScreenshotBounds: true },
+        "close probe includes a successful screenshot with declared bounds"
+      ],
+      [
+        "missing-screenshot-file",
+        { missingScreenshotFile: true },
+        "close probe includes a readable physical screenshot"
+      ],
+      [
+        "screenshot-dimensions-mismatch",
+        { screenshotDimensionsMismatch: true },
+        "physical screenshot dimensions match declared bounds"
+      ],
+      [
+        "screenshot-miss",
+        { screenshotMissesNativeRect: true },
+        "physical screenshot bounds contain the native host rect"
+      ]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `managed-web-close-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        options,
+        failure
+      );
+    }
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-close-unknown-schema",
+      writeManagedWebCloseEvidenceFixture,
+      { closeProbeEvidenceSchema: 2 },
+      "closeProbeEvidenceSchema uses supported version 1"
+    );
+
+    const duplicateOpenGuardRoot = path.join(tempRoot, "duplicate-open-guard");
+    writeDuplicateOpenGuardCaseFixture(duplicateOpenGuardRoot);
+    const duplicateOpenGuardSummary = summarizeWindowsOverlayMatrixArtifacts(duplicateOpenGuardRoot);
+    assert.deepEqual(duplicateOpenGuardSummary.failures, []);
+    assert.equal(duplicateOpenGuardSummary.caseSummaries[0].duplicateOpenGuardProof, true);
+    assert.equal(duplicateOpenGuardSummary.caseSummaries[0].managedOverlayCloseProof, true);
+
+    for (const [name, options, failure] of [
+      ["missing-named-status", { omitNamedStatuses: true }, "duplicate guard named web status rejects open"],
+      [
+        "missing-named-if-available",
+        { omitNamedIfAvailableNulls: true },
+        "openWebIfAvailable returned null while busy"
+      ],
+      [
+        "missing-named-and-wait",
+        { omitNamedAndWaitIfAvailableNulls: true },
+        "openWebAndWaitIfAvailable returned null while busy"
+      ],
+      [
+        "checkout-operation-ran",
+        { checkoutOperationRan: true },
+        "checkout IfAvailable did not run the transaction operation while busy"
+      ],
+      [
+        "checkout-operation-missing-can-start",
+        { omitCheckoutOperationCanStart: true },
+        "named checkoutOperation status explicitly rejects operation start"
+      ]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `duplicate-open-guard-${name}`,
+        writeDuplicateOpenGuardCaseFixture,
+        options,
+        failure
+      );
+    }
 
     const managedCheckoutMicroTxnRoot = path.join(tempRoot, "managed-checkout-microtxn");
     writeManagedCheckoutMicroTxnFixture(managedCheckoutMicroTxnRoot);
@@ -3769,6 +4558,14 @@ function writeRenderHealthBlockedFixture(root) {
 }
 
 function writeManagedCaseFixture(root, options = {}) {
+  const caseId = options.caseId || "11-managed-web-open-and-wait";
+  const action = options.action || "presenter-web-open-and-wait";
+  const requiredEvents = options.requiredEvents || [
+    "overlay:presenter-open-and-wait-start",
+    "overlay:presenter-wait-closed",
+    "overlay:presenter-parked",
+    "overlay:presenter-open-and-wait-complete"
+  ];
   writeJson(path.join(root, "matrix-manifest.json"), {
     kind: "steam-bridge-windows-overlay-matrix-manifest",
     generatedAt: "2026-07-02T00:00:00.000Z",
@@ -3780,14 +4577,9 @@ function writeManagedCaseFixture(root, options = {}) {
     ...(options.closeProbe ? { closeProbe: true, closeProbeInput: "toggle" } : {}),
     cases: [
       {
-        id: "11-managed-web-open-and-wait",
-        action: "presenter-web-open-and-wait",
-        requireEvent: [
-          "overlay:presenter-open-and-wait-start",
-          "overlay:presenter-wait-closed",
-          "overlay:presenter-parked",
-          "overlay:presenter-open-and-wait-complete"
-        ],
+        id: caseId,
+        action,
+        requireEvent: requiredEvents,
         requireOverlayActivated: true,
         requireNoOverlayActivation: false,
         allowOverlayNotReady: false,
@@ -3814,19 +4606,19 @@ function writeManagedCaseFixture(root, options = {}) {
       currentSessionInteractive: true
     }
   });
-  const events = [
-    { type: "overlay:presenter-open-and-wait-start" },
-    { type: "callback:overlay-activated", payload: { active: true } },
-    { type: "overlay:presenter-wait-closed" },
-    { type: "overlay:presenter-parked" },
-    { type: "overlay:presenter-open-and-wait-complete" }
-  ];
-  if (!options.omitInactiveEvent) {
+  const events = options.events || [
+      { type: "overlay:presenter-open-and-wait-start" },
+      { type: "callback:overlay-activated", payload: { active: true } },
+      { type: "overlay:presenter-wait-closed" },
+      { type: "overlay:presenter-parked" },
+      { type: "overlay:presenter-open-and-wait-complete" }
+    ];
+  if (!options.events && !options.omitInactiveEvent) {
     events.splice(2, 0, { type: "callback:overlay-activated", payload: { active: false } });
   }
   const result = {
     ok: true,
-    action: { ok: true, action: "presenter-web-open-and-wait" },
+    action: { ok: true, action },
     snapshot: buildWindowsSnapshot({
       pid: 4245,
       managedOverlayResultMode: "complete",
@@ -3840,14 +4632,14 @@ function writeManagedCaseFixture(root, options = {}) {
       overlayComplete: true
     };
   }
-  writeResult(path.join(root, "11-managed-web-open-and-wait", "result.log"), result);
+  writeResult(path.join(root, caseId, "result.log"), result);
   if (options.closeProbeSent) {
     const foreground = {
       processName: "SteamBridgeSmoke",
       title: "Steam Bridge Electron Smoke",
       pid: 4245
     };
-    writeRgbPng(path.join(root, "11-managed-web-open-and-wait", "close-probe-detected.png"), 4, 2, [
+    writeRgbPng(path.join(root, caseId, "close-probe-detected.png"), 4, 2, [
       [12, 18, 24],
       [220, 225, 230],
       [48, 120, 210],
@@ -3858,7 +4650,7 @@ function writeManagedCaseFixture(root, options = {}) {
       [24, 36, 48]
     ]);
     writeText(
-      path.join(root, "11-managed-web-open-and-wait", "close-probe.log"),
+      path.join(root, caseId, "close-probe.log"),
       [
         {
           type: "probe:detected",
@@ -3876,6 +4668,254 @@ function writeManagedCaseFixture(root, options = {}) {
       ].map((entry) => JSON.stringify(entry)).join("\n") + "\n"
     );
   }
+}
+
+function writeManagedBackendFixture(root, options = {}) {
+  writeManagedCaseFixture(root);
+  const manifestPath = path.join(root, "matrix-manifest.json");
+  const manifest = JSON.parse(readText(manifestPath));
+  manifest.expectedNativeHostBackend = "windows-d3d11";
+  writeJson(manifestPath, manifest);
+
+  const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
+  const result = readSmokeResult(resultPath);
+  const resultPresenter = attachedWindowsPresenterFixture({
+    rendererBackend: options.wrongResultRenderer ? "windows-opengl" : "windows-d3d11",
+    omitNativeRect: options.omitNativeRect,
+    omitLogicalBounds: options.omitLogicalBounds,
+    roundingBoundaryScale: options.roundingBoundaryScale
+  });
+  const lifecyclePresenter = attachedWindowsPresenterFixture({
+    rendererBackend: options.wrongLifecycleRenderer ? "windows-opengl" : "windows-d3d11",
+    omitNativeRect: options.omitNativeRect,
+    omitLogicalBounds: options.omitLogicalBounds,
+    roundingBoundaryScale: options.roundingBoundaryScale
+  });
+  result.snapshot.overlay = {
+    nativePresenter: { ok: true, value: resultPresenter }
+  };
+  result.snapshot.events[0].payload = { presenter: lifecyclePresenter };
+  writeResult(resultPath, result);
+}
+
+function writeManagedWebCloseEvidenceFixture(root, options = {}) {
+  writeManagedBackendFixture(root, options);
+  const manifestPath = path.join(root, "matrix-manifest.json");
+  const manifest = JSON.parse(readText(manifestPath));
+  manifest.closeProbe = true;
+  manifest.closeProbeInput = "auto";
+  manifest.closeProbeEvidenceSchema = options.closeProbeEvidenceSchema || 1;
+  manifest.cases[0].expectedCloseProbeInput = "web-close-click-sendinput";
+  writeJson(manifestPath, manifest);
+
+  const caseDir = path.join(root, "11-managed-web-open-and-wait");
+  const screenshotName = "close-probe-detected.png";
+  const screenshotWidth = options.roundingBoundaryScale
+    ? 1200
+    : options.screenshotDimensionsMismatch
+      ? 4
+      : 300;
+  const screenshotHeight = options.roundingBoundaryScale
+    ? 900
+    : options.screenshotDimensionsMismatch
+      ? 2
+      : 200;
+  if (!options.missingScreenshotFile) {
+    writeRgbPng(path.join(caseDir, screenshotName), screenshotWidth, screenshotHeight, []);
+  }
+
+  const panel = options.unscaledLargeTarget
+    ? { left: 834, top: 390, right: 2622, bottom: 1672, width: 1788, height: 1282 }
+    : { left: 20, top: 20, right: 220, bottom: 170, width: 200, height: 150 };
+  const loggedScaleValue = options.roundingBoundaryScale ? 1.25 : 2.25;
+  const geometryScale = options.roundingBoundaryScale ? 1.2515 : 2.25;
+  const expectedTarget = expectedWebCloseTarget(normalizeRect(panel), panel, loggedScaleValue);
+  const target = {
+    x: options.unscaledLargeTarget ? panel.right - 16 : options.targetOutsidePanel ? panel.right + 5 : expectedTarget.x,
+    y: options.unscaledLargeTarget ? panel.top + 18 : expectedTarget.y,
+    source: "screenshot-steam-web-panel",
+    panel,
+    insets: options.unscaledLargeTarget
+      ? { right: 16, top: 18, logicalRight: 16, logicalTop: 18 }
+      : { right: expectedTarget.rightInset, top: expectedTarget.topInset, logicalRight: 16, logicalTop: 18 },
+    ...(!options.missingScaleEvidence
+      ? {
+          scale: {
+            source: "native-host-window-dpi",
+            value: options.scaleMismatch ? 2 : loggedScaleValue,
+            dpi: options.scaleMismatch ? 192 : Math.round(loggedScaleValue * 96),
+            ratioX: geometryScale,
+            ratioY: geometryScale
+          }
+        }
+      : {})
+  };
+  const screenshotBounds = options.screenshotMissesNativeRect
+    ? { left: 100, top: 100, width: 300, height: 200 }
+    : {
+        left: 0,
+        top: 0,
+        width: options.roundingBoundaryScale ? 1200 : 300,
+        height: options.roundingBoundaryScale ? 900 : 200
+      };
+  const pointer = {
+    sent: options.pointerFailed ? 2 : 3,
+    expected: 3,
+    lastError: options.pointerFailed ? 5 : 0,
+    x: options.pointerMissesTarget ? target.x - 1 : target.x,
+    y: target.y,
+    method: "sendinput",
+    coordinateSource: target.source
+  };
+  const foreground = {
+    processName: "SteamBridgeSmoke",
+    title: "Steam Bridge Native Overlay Host",
+    pid: 4245
+  };
+  const dpiAwareness = options.missingProcessPerMonitorV2
+    ? "process-unchanged:5;thread-per-monitor-v2"
+    : options.missingThreadPerMonitorV2
+      ? "process-per-monitor-v2;thread-unchanged:5"
+      : "process-per-monitor-v2;thread-per-monitor-v2";
+  writeText(
+    path.join(caseDir, "close-probe.log"),
+    [
+      {
+        type: "probe:start",
+        at: "2026-07-02T00:00:01.000Z",
+        payload: { input: "web-close-click-sendinput", dpiAwareness }
+      },
+      {
+        type: "probe:detected",
+        at: "2026-07-02T00:00:02.000Z",
+        payload: {
+          foreground,
+          screenshot: {
+            ok: true,
+            path: screenshotName,
+            ...(!options.missingScreenshotBounds ? { bounds: screenshotBounds } : {})
+          }
+        }
+      },
+      {
+        type: "probe:web-close-click-target",
+        at: "2026-07-02T00:00:03.000Z",
+        payload: { target, foreground }
+      },
+      {
+        type: "probe:sent",
+        at: "2026-07-02T00:00:04.000Z",
+        payload: {
+          input: options.actualInputMismatch ? "toggle-sendinput" : "web-close-click-sendinput",
+          nativePointerSent: pointer,
+          foreground
+        }
+      }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n"
+  );
+}
+
+function attachedWindowsPresenterFixture(options = {}) {
+  const backend = options.backend || "windows-d3d11";
+  const logicalBounds = options.roundingBoundaryScale
+    ? { x: 4, y: 4, width: 800, height: 600 }
+    : { x: 4, y: 4, width: 80, height: 60 };
+  const nativeRect = options.roundingBoundaryScale
+    ? { left: 10, top: 10, width: 1001, height: 751 }
+    : { left: 10, top: 10, width: 180, height: 135 };
+  return {
+    mode: "active",
+    attached: true,
+    nativeHostOpen: true,
+    backend,
+    ...(!options.omitLogicalBounds ? { bounds: logicalBounds } : {}),
+    nativeHostDiagnostics: {
+      backend: options.hostBackend || backend,
+      ...(!options.omitNativeRect ? { rect: nativeRect } : {}),
+      hwnd: "0x1234",
+      renderer: {
+        backend: options.rendererBackend || backend
+      }
+    }
+  };
+}
+
+function writeDuplicateOpenGuardCaseFixture(root, options = {}) {
+  const caseId = "11b-managed-duplicate-open-guard";
+  const action = "presenter-duplicate-open-guard";
+  const requiredEvents = [
+    "overlay:presenter-open-and-wait-start",
+    "overlay:presenter-duplicate-open-guard",
+    "overlay:presenter-wait-closed",
+    "overlay:presenter-parked",
+    "overlay:presenter-open-and-wait-complete"
+  ];
+  const guardPayload = {
+    status: duplicateOpenBusyStatusFixture(),
+    shortcutStatus: duplicateOpenBusyStatusFixture(),
+    openIfAvailableNull: true,
+    openAndWaitIfAvailableNull: true,
+    shortcutIfAvailableNull: true,
+    shortcutAndWaitIfAvailableNull: true,
+    checkoutOpenIfAvailableNull: true,
+    checkoutIfAvailableNull: true,
+    checkoutOperationRan: options.checkoutOperationRan === true
+  };
+  if (!options.omitNamedStatuses) {
+    guardPayload.namedStatuses = duplicateOpenNamedBusyStatusesFixture();
+    if (options.omitCheckoutOperationCanStart) {
+      delete guardPayload.namedStatuses.checkoutOperation.canStartOperation;
+    }
+  }
+  if (!options.omitNamedIfAvailableNulls) {
+    guardPayload.namedIfAvailableNulls = duplicateOpenNamedNullsFixture();
+  }
+  if (!options.omitNamedAndWaitIfAvailableNulls) {
+    guardPayload.namedAndWaitIfAvailableNulls = duplicateOpenNamedNullsFixture();
+  }
+
+  const events = [
+    { type: "overlay:presenter-open-and-wait-start" },
+    { type: "overlay:presenter-duplicate-open-guard", payload: guardPayload },
+    { type: "callback:overlay-activated", payload: { active: true } },
+    { type: "callback:overlay-activated", payload: { active: false } },
+    { type: "overlay:presenter-wait-closed" },
+    { type: "overlay:presenter-parked" },
+    { type: "overlay:presenter-open-and-wait-complete" }
+  ];
+  writeManagedCaseFixture(root, {
+    caseId,
+    action,
+    requiredEvents,
+    events
+  });
+}
+
+function duplicateOpenBusyStatusFixture(extra = {}) {
+  return {
+    canOpen: false,
+    canWait: false,
+    reason: "opening",
+    waitReason: "opening",
+    ...extra
+  };
+}
+
+function duplicateOpenNamedBusyStatusesFixture() {
+  const statuses = {};
+  for (const name of DUPLICATE_OPEN_NAMED_TARGET_NAMES) {
+    statuses[name] = duplicateOpenBusyStatusFixture();
+  }
+  statuses.checkoutOperation = duplicateOpenBusyStatusFixture({ canStartOperation: false });
+  return statuses;
+}
+
+function duplicateOpenNamedNullsFixture() {
+  const values = {};
+  for (const name of DUPLICATE_OPEN_NAMED_TARGET_NAMES) {
+    values[name] = true;
+  }
+  return values;
 }
 
 function initTxnRequestShapeFixture(session = "client") {

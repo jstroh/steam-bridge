@@ -450,12 +450,41 @@ environment variable was unset. At the laptop's 225% display scaling, the
 PowerShell close probe also captured DPI-virtualized screen/window bounds while
 the native host used physical pixels, so its otherwise successful `SendInput`
 click missed the visible panel and the wait timed out before close/park. Crash
-diagnostics and cleanup stayed clean. The local fix defaults the actual Rust
+diagnostics and cleanup stayed clean. Commit `da632f8` defaults the actual Rust
 renderer to D3D11, verifies top-level/host/renderer identity on attached cases,
 sets process and thread per-monitor-v2 awareness before probe screen APIs, and
-prefers the physical native-host rectangle. These changes need a freshly built
-Windows addon plus one focused 225%-DPI managed web close before the broad
-public matrices resume; the cached prebuild is not evidence for the fix.
+prefers the physical native-host rectangle.
+
+A follow-up focused public run used a fresh CI-built and signed addon from that
+commit, deployed without restarting Steam. Interactive Session 1 readiness,
+native load, default render health, and current Steam-client health passed. The
+attached managed web presenter then reported `windows-d3d11` consistently in
+the top-level presenter, native-host diagnostics, and renderer diagnostics,
+settling the actual unset/default renderer identity.
+
+That same run narrowed rather than closed the high-DPI input gap. The probe
+reported process and thread per-monitor-v2 awareness, captured the physical
+`3456x2170` desktop, used native-host bounds at `536,176` with size
+`2386x1711`, and detected the inset Steam panel at `834,390` with size
+`1788x1282`. Its legacy literal target remained `right-16`, `top+18`; those
+unscaled physical-pixel offsets missed the close control on the 225%-scaled
+panel. `SendInput` still sent the expected three events with error zero, which
+proves input delivery but not a correct target. Steam remained active until the
+managed wait timed out, so this artifact does not prove close, focus return, or
+parking. Crash dumps remained zero and cleanup left no smoke process or matrix
+task. The current local diff derives the target from native-window DPI with
+physical/logical presenter geometry as a checked fallback, and the schema-1
+auditor rejects missing, unscaled, mismatched, or nonphysical screenshot
+evidence. Repeat the focused route only after that change; do not reuse the
+literal target or compensate with a longer wait.
+
+The same coverage audit found a separate omission: Windows exposes the public
+`presenter-duplicate-open-guard` smoke action, but the managed matrix shipped in
+`da632f8` did not schedule or audit it. Existing Windows route summaries
+therefore cannot claim duplicate direct/wait, shortcut/controller, or checkout
+suppression while an overlay is opening. The current local diff adds the
+managed case and semantic summary audit; focused Windows live evidence is still
+required after it is packaged.
 
 Latest Windows D3D11 keyboard proof: the refreshed Electron `43.0.0` smoke
 bundle was rebuilt on macOS, deployed to the Windows laptop, and Authenticode

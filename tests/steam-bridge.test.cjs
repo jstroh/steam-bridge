@@ -1206,6 +1206,26 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
   );
 });
 
+test("electron smoke duplicate-open guard exercises the generic wait-if-available surface", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const actionStart = exampleMain.indexOf("async function openPresenterDuplicateOpenGuardOverlay");
+  const actionEnd = exampleMain.indexOf("function openPresenterStoreOpenAndWaitOverlay", actionStart);
+  assert.notEqual(actionStart, -1, "duplicate-open guard action should exist");
+  assert.notEqual(actionEnd, -1, "duplicate-open guard action should have a stable function boundary");
+
+  const actionSource = exampleMain.slice(actionStart, actionEnd);
+  assert.match(
+    actionSource,
+    /const openAndWaitIfAvailableResult = await overlay\.openAndWaitIfAvailable\(target,\s*\{\s*showTimeoutMs:\s*5,\s*closeTimeoutMs:\s*5\s*\}\);/,
+    "generic duplicate-open evidence should call openAndWaitIfAvailable with the resolved target"
+  );
+  assert.doesNotMatch(
+    actionSource,
+    /const openAndWaitIfAvailableResult = await overlay\.openWebAndWaitIfAvailable/,
+    "generic duplicate-open evidence must not duplicate the named web-helper proof"
+  );
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {

@@ -2367,6 +2367,14 @@ function Get-MatrixCases {
   $managed = @(
     New-Case -Id "10-presenter-ready" -Action "presenter-ready" -RequireEvent @("overlay:presenter-ready") -RequireNoOverlayActivation -AllowOverlayNotReady -ResultDelayMs 1200
     New-ManagedOpenAndWaitCase -Id "11-managed-web-open-and-wait" -Action "presenter-web-open-and-wait" -WebModal "true"
+    New-Case `
+      -Id "11b-managed-duplicate-open-guard" `
+      -Action "presenter-duplicate-open-guard" `
+      -RequireEvent @("overlay:presenter-open-and-wait-start", "overlay:presenter-duplicate-open-guard", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-open-and-wait-complete") `
+      -RequireOverlayActivated `
+      -RequireManagedOverlayComplete `
+      -ManagedOverlayResultMode "complete" `
+      -WebModal "true"
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
@@ -2512,6 +2520,7 @@ function Write-MatrixManifest {
           requireMicroTxnCallback = [bool]$_.requireMicroTxnCallback
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           shortcutToggleProbe = [bool]$_.shortcutToggleProbe
+          expectedCloseProbeInput = Resolve-CloseProbeInputForCase -Case $_
           managedOverlayResultMode = $_.managedOverlayResultMode
           webModal = $_.webModal
           storeRoute = $_.storeRoute
@@ -2553,6 +2562,7 @@ function Write-MatrixManifest {
     windowMode = $WindowMode
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
+    closeProbeEvidenceSchema = 1
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
@@ -2774,6 +2784,12 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll")]
   public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+  [DllImport("user32.dll")]
+  public static extern bool IsWindow(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  public static extern uint GetDpiForWindow(IntPtr hWnd);
 
   [DllImport("user32.dll")]
   public static extern int GetSystemMetrics(int nIndex);
@@ -3407,11 +3423,30 @@ function Get-WebCloseClickTarget {
 
   `$rect = `$panel.rect
   if (`$panel.source -eq "screenshot-steam-web-panel") {
+    # The Steam close glyph is 16x18 logical pixels from the panel corner.
+    # Resolve its physical inset from live DPI, with presenter geometry fallback.
+    `$scaleEvidence = Get-WebCloseDpiScale
+    `$scale = [double]`$scaleEvidence.value
+    `$rightInset = [int]([Math]::Min(
+      [Math]::Max(1, `$rect.width - 1),
+      [Math]::Max(1, [Math]::Round(16 * `$scale))
+    ))
+    `$topInset = [int]([Math]::Min(
+      [Math]::Max(1, `$rect.height - 1),
+      [Math]::Max(1, [Math]::Round(18 * `$scale))
+    ))
     return [PSCustomObject]@{
-      x = [int]([Math]::Round(`$rect.right - 16))
-      y = [int]([Math]::Round(`$rect.top + 18))
+      x = [int]([Math]::Round(`$rect.right - `$rightInset))
+      y = [int]([Math]::Round(`$rect.top + `$topInset))
       source = `$panel.source
       panel = `$rect
+      scale = `$scaleEvidence
+      insets = [PSCustomObject]@{
+        right = `$rightInset
+        top = `$topInset
+        logicalRight = 16
+        logicalTop = 18
+      }
     }
   }
 
@@ -3617,12 +3652,13 @@ function Write-ProbeEvent {
   } | ConvertTo-Json -Compress -Depth 6 | Add-Content -LiteralPath '$probeLog'
 }
 
-function Get-LifecyclePresenterBounds {
+function Get-LifecyclePresenterGeometry {
   if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
     return `$null
   }
 
   `$lines = @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)
+  `$fallback = `$null
   for (`$index = (`$lines.Count - 1); `$index -ge 0; `$index--) {
     try {
       `$event = `$lines[`$index] | ConvertFrom-Json -ErrorAction Stop
@@ -3635,27 +3671,113 @@ function Get-LifecyclePresenterBounds {
       continue
     }
 
-    `$nativeRect = `$presenter.nativeHostDiagnostics.rect
-    if (`$nativeRect -and `$nativeRect.width -gt 0 -and `$nativeRect.height -gt 0) {
-      return [PSCustomObject]@{
-        x = `$nativeRect.left
-        y = `$nativeRect.top
-        width = `$nativeRect.width
-        height = `$nativeRect.height
-        coordinateSpace = "physical-native-host"
+    `$nativeHostDiagnostics = `$presenter.nativeHostDiagnostics
+    `$nativeRect = `$nativeHostDiagnostics.rect
+    `$logicalBounds = `$presenter.bounds
+    `$hasNativeRect = `$nativeRect -and `$nativeRect.width -gt 0 -and `$nativeRect.height -gt 0
+    `$hasLogicalBounds = `$logicalBounds -and `$logicalBounds.width -gt 0 -and `$logicalBounds.height -gt 0
+    if (`$hasNativeRect -or `$hasLogicalBounds) {
+      `$candidate = [PSCustomObject]@{
+        nativeRect = if (`$hasNativeRect) { `$nativeRect } else { `$null }
+        logicalBounds = if (`$hasLogicalBounds) { `$logicalBounds } else { `$null }
+        hwnd = if (`$nativeHostDiagnostics) { `$nativeHostDiagnostics.hwnd } else { `$null }
       }
-    }
-
-    if (-not `$presenter.bounds) {
-      continue
-    }
-    `$bounds = `$presenter.bounds
-    if (`$bounds.width -gt 0 -and `$bounds.height -gt 0) {
-      return `$bounds
+      if (`$hasNativeRect -and `$hasLogicalBounds) {
+        return `$candidate
+      }
+      if (-not `$fallback) {
+        `$fallback = `$candidate
+      }
     }
   }
 
-  return `$null
+  return `$fallback
+}
+
+function Get-LifecyclePresenterBounds {
+  `$geometry = Get-LifecyclePresenterGeometry
+  if (-not `$geometry) {
+    return `$null
+  }
+  if (`$geometry.nativeRect) {
+    return [PSCustomObject]@{
+      x = `$geometry.nativeRect.left
+      y = `$geometry.nativeRect.top
+      width = `$geometry.nativeRect.width
+      height = `$geometry.nativeRect.height
+      coordinateSpace = "physical-native-host"
+    }
+  }
+  return `$geometry.logicalBounds
+}
+
+function Get-WebCloseDpiScale {
+  `$geometry = Get-LifecyclePresenterGeometry
+  `$nativeRect = if (`$geometry) { `$geometry.nativeRect } else { `$null }
+  `$logicalBounds = if (`$geometry) { `$geometry.logicalBounds } else { `$null }
+  `$ratioX = `$null
+  `$ratioY = `$null
+  `$ratioScale = `$null
+  if (`$nativeRect -and `$logicalBounds) {
+    `$ratioX = [double]`$nativeRect.width / [double]`$logicalBounds.width
+    `$ratioY = [double]`$nativeRect.height / [double]`$logicalBounds.height
+    if (
+      `$ratioX -ge 0.5 -and `$ratioX -le 8.0 -and
+      `$ratioY -ge 0.5 -and `$ratioY -le 8.0 -and
+      [Math]::Abs(`$ratioX - `$ratioY) -le 0.02
+    ) {
+      `$ratioScale = (`$ratioX + `$ratioY) / 2.0
+    }
+  }
+
+  `$dpi = `$null
+  `$hwndText = if (`$geometry) { [string]`$geometry.hwnd } else { "" }
+  if (`$hwndText -match '^0x[0-9A-Fa-f]+$') {
+    try {
+      `$hwndValue = [Convert]::ToInt64(`$hwndText.Substring(2), 16)
+      `$hwnd = [IntPtr]::new(`$hwndValue)
+      if ([SteamBridgeWindowsProbe]::IsWindow(`$hwnd)) {
+        `$candidateDpi = [SteamBridgeWindowsProbe]::GetDpiForWindow(`$hwnd)
+        if (`$candidateDpi -ge 48 -and `$candidateDpi -le 768) {
+          `$dpi = [int]`$candidateDpi
+        }
+      }
+    } catch {
+      `$dpi = `$null
+    }
+  }
+
+  if (`$dpi) {
+    return [PSCustomObject]@{
+      source = "native-host-window-dpi"
+      value = [double]`$dpi / 96.0
+      dpi = `$dpi
+      ratioX = `$ratioX
+      ratioY = `$ratioY
+      physicalRect = `$nativeRect
+      logicalBounds = `$logicalBounds
+    }
+  }
+  if (`$ratioScale) {
+    return [PSCustomObject]@{
+      source = "presenter-geometry-ratio"
+      value = `$ratioScale
+      dpi = `$null
+      ratioX = `$ratioX
+      ratioY = `$ratioY
+      physicalRect = `$nativeRect
+      logicalBounds = `$logicalBounds
+    }
+  }
+  return [PSCustomObject]@{
+    source = "bounded-geometry-unavailable"
+    value = 1.0
+    dpi = `$null
+    ratioX = `$ratioX
+    ratioY = `$ratioY
+    physicalRect = `$nativeRect
+    logicalBounds = `$logicalBounds
+  }
 }
 
 Write-ProbeEvent "probe:start" ([PSCustomObject]@{

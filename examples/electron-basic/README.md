@@ -174,6 +174,24 @@ against App ID `480` without explicit presenter/backend flags. Use
 `openShortcutTargetAndWait(...)` coverage and per-target diagnostics; check the
 per-case artifact before treating a route as product-proof. Real purchase
 authorization still requires a configured Steam app/product.
+
+On a scaled Windows desktop, a successful `SendInput` return is not close proof
+by itself. Require process and thread per-monitor-v2 probe state, a
+physical-resolution screenshot, physical native-host and detected-panel bounds,
+a target derived scale-aware from that panel, the inactive callback, focus
+return, and presenter parking. A 2026-07-10 UTC focused run at 225% scaling sent
+all three input events with no API error but missed the close control because
+the remaining literal panel-corner offset was not scaled; do not rerun that
+unchanged target or extend its wait.
+
+The Windows managed suite now includes
+`11b-managed-duplicate-open-guard`. Its summary audit requires the intended
+generic, named direct/wait, shortcut/controller, and checkout helpers to return
+the busy result without invoking the checkout operation. Treat the case as
+implemented but not yet live-proved on Windows until a packaged run also shows
+one overlay target, close/back-to-app, parking, D3D11 identity in all three
+diagnostic fields, and clean crash/cleanup evidence.
+
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic
 comparisons. The matrix records `nativePathOverride=true`; keep those artifacts

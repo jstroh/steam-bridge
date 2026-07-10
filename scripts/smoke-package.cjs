@@ -461,9 +461,64 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixHelper.indexOf("`$script:ProbeDpiAwareness = [SteamBridgeWindowsProbe]::ConfigureDpiAwareness()") <
         matrixHelper.indexOf("Add-Type -AssemblyName System.Drawing") &&
       matrixHelper.includes("dpiAwareness = `$script:ProbeDpiAwareness") &&
-      matrixHelper.includes("`$nativeRect = `$presenter.nativeHostDiagnostics.rect") &&
-      matrixHelper.includes('coordinateSpace = "physical-native-host"'),
+      matrixHelper.includes("`$nativeRect = `$nativeHostDiagnostics.rect") &&
+      matrixHelper.includes('coordinateSpace = "physical-native-host"') &&
+      matrixHelper.includes("GetDpiForWindow") &&
+      matrixHelper.includes("Get-WebCloseDpiScale") &&
+      matrixHelper.includes('source = "native-host-window-dpi"') &&
+      matrixHelper.includes('source = "presenter-geometry-ratio"') &&
+      matrixHelper.includes('source = "bounded-geometry-unavailable"') &&
+      matrixHelper.includes("[Math]::Max(1, [Math]::Round(16 * `$scale))") &&
+      matrixHelper.includes("[Math]::Max(1, [Math]::Round(18 * `$scale))") &&
+      matrixHelper.includes("scale = `$scaleEvidence") &&
+      matrixHelper.includes("right = `$rightInset") &&
+      matrixHelper.includes("top = `$topInset") &&
+      matrixHelper.includes("logicalRight = 16") &&
+      matrixHelper.includes("logicalTop = 18"),
     "Windows close probe must enter physical per-monitor DPI coordinates before screenshot and SendInput work"
+  );
+  const roundMidpointToEven = (value) => {
+    const lower = Math.floor(value);
+    return Math.abs(value - lower - 0.5) < 1e-10 ? (lower % 2 === 0 ? lower : lower + 1) : Math.round(value);
+  };
+  const screenshotPanelCloseTarget = ({ left, top, width, height, scale }) => {
+    const rightInset = Math.min(Math.max(1, width - 1), Math.max(1, roundMidpointToEven(16 * scale)));
+    const topInset = Math.min(Math.max(1, height - 1), Math.max(1, roundMidpointToEven(18 * scale)));
+    return {
+      x: left + width - rightInset,
+      y: top + topInset,
+      rightInset,
+      topInset
+    };
+  };
+  const scaledPanelCloseTarget = screenshotPanelCloseTarget({
+    left: 834,
+    top: 390,
+    width: 1788,
+    height: 1282,
+    scale: 2.25
+  });
+  assert.deepEqual(
+    scaledPanelCloseTarget,
+    { x: 2586, y: 430, rightInset: 36, topInset: 40 },
+    "Windows close probe must target the measured 225%-scaled Steam web close control"
+  );
+  assert.ok(
+    scaledPanelCloseTarget.x >= 2582 &&
+      scaledPanelCloseTarget.x <= 2592 &&
+      scaledPanelCloseTarget.y >= 427 &&
+      scaledPanelCloseTarget.y <= 437,
+    "Windows scaled panel close target must stay inside the observed close-control bounds"
+  );
+  assert.deepEqual(
+    screenshotPanelCloseTarget({ left: 0, top: 0, width: 640, height: 480, scale: 1 }),
+    { x: 624, y: 18, rightInset: 16, topInset: 18 },
+    "Windows close probe must preserve its legacy minimum-inset target on a small panel"
+  );
+  assert.deepEqual(
+    screenshotPanelCloseTarget({ left: 100, top: 50, width: 1280, height: 720, scale: 1 }),
+    { x: 1364, y: 68, rightInset: 16, topInset: 18 },
+    "Windows close probe must keep a conventional panel target near the upper-right close control"
   );
   assert.ok(
     /"opengl"\s*\|\s*"gl"\s*\|\s*"wgl"\s*\|\s*"windows-opengl"\s*=>\s*Self::OpenGl/.test(
@@ -675,6 +730,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "achievement-progress",
     "achievement-unlock",
     "presenter-web-open-and-wait",
+    "11b-managed-duplicate-open-guard",
+    "presenter-duplicate-open-guard",
+    "overlay:presenter-duplicate-open-guard",
     "presenter-shortcut-open-and-wait",
     "New-ShortcutOpenAndWaitCase",
     "New-PublicShortcutRouteCases",
@@ -737,6 +795,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "NativeHostBackend",
     "nativeHostBackend = $NativeHostBackend",
     "expectedNativeHostBackend",
+    "closeProbeEvidenceSchema",
+    "expectedCloseProbeInput",
     "Resolve-ExpectedWindowsNativeHostBackend",
     "-RequireNativeHostBackend",
     "NativeHostStyle",
@@ -791,6 +851,26 @@ function runWindowsSmokeHelperStaticChecks() {
     /RequireMicroTxnCallback/,
     "Windows keyboard shortcut checkout must not claim operation-scoped MicroTxn callback proof"
   );
+  const duplicateOpenGuardCase = matrixHelper.match(
+    /-Id "11b-managed-duplicate-open-guard"[\s\S]*?-WebModal "true"/
+  )?.[0];
+  assert.ok(duplicateOpenGuardCase, "Windows managed duplicate-open guard case is missing");
+  for (const expected of [
+    '-Action "presenter-duplicate-open-guard"',
+    '"overlay:presenter-open-and-wait-start"',
+    '"overlay:presenter-duplicate-open-guard"',
+    '"overlay:presenter-wait-closed"',
+    '"overlay:presenter-parked"',
+    '"overlay:presenter-open-and-wait-complete"',
+    "-RequireOverlayActivated",
+    "-RequireManagedOverlayComplete",
+    '-ManagedOverlayResultMode "complete"'
+  ]) {
+    assert.ok(
+      duplicateOpenGuardCase.includes(expected),
+      `Windows managed duplicate-open guard case missing ${expected}`
+    );
+  }
   assert.match(
     matrixHelper,
     /-Id "01-checkout-prepare"[\s\S]*?-RequireNoOverlayActivation `\r?\n\s+-AllowOverlayNotReady `\r?\n\s+-ResultDelayMs 1200/,
@@ -804,6 +884,36 @@ function runWindowsSmokeHelperStaticChecks() {
     matrixSummary.includes('"steam-app"'),
     "Windows overlay matrix summary must accept real Steam app launch mode"
   );
+  for (const expected of [
+    "verifyDuplicateOpenGuard",
+    "DUPLICATE_OPEN_NAMED_STATUS_NAMES",
+    "duplicateOpenGuardProof",
+    "proved duplicate-open suppression payload",
+    "openCheckoutAndWaitIfAvailable returned null while busy",
+    "checkout IfAvailable did not run the transaction operation while busy",
+    "presenterBackendEvidence",
+    "result renderer backend is ${expectedNativeHostBackend}",
+    "lifecycle includes an attached presenter backend snapshot",
+    "closeProbeEvidenceSchema",
+    "close probe input matches resolved ${expectedCloseProbeInput}",
+    "close probe scale agrees with independent presenter geometry",
+    "close probe includes a native host rect",
+    "close probe includes a successful screenshot with declared bounds",
+    "close probe includes a readable physical screenshot",
+    "physical screenshot dimensions match declared bounds",
+    "has one coherent physical screenshot proof record",
+    "close probe used process per-monitor-v2 DPI awareness",
+    "close probe used thread per-monitor-v2 DPI awareness",
+    "close probe sent all three pointer inputs without error",
+    "close probe pointer coordinates match the audited target",
+    "close probe target lies inside the detected panel",
+    "webCloseTargetUsesScaleAwareInsets",
+    "close probe target uses scale-aware panel insets",
+    "named checkoutOperation status explicitly rejects operation start",
+    "physical screenshot bounds contain the native host rect"
+  ]) {
+    assert.ok(matrixSummary.includes(expected), `Windows overlay matrix summary missing ${expected}`);
+  }
   for (const expected of [
     "SBOverlayMatrix",
     "PrivateEnvFile",

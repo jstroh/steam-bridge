@@ -1945,6 +1945,34 @@ later passing D3D11 matrices. Use the [current-work checkpoint](current-work.md)
 and [`WIN-D3D11-001`](test-findings-ledger.md#windows-x64) for the current
 decision.
 
+A 2026-07-10 UTC attached public managed-web run with a fresh CI-built and
+signed `da632f8` addon settles the current default-renderer decision: the
+top-level presenter, native host, and native renderer all reported
+`windows-d3d11` with no explicit backend override. The run passed interactive
+readiness, native load, default render health, and Steam-client health without a
+Steam restart. This renderer-identity milestone is independent from whether the
+test harness successfully closes the visible Steam surface.
+
+The same run established the Windows input coordinate invariant more precisely.
+Process and thread per-monitor-v2 awareness plus physical native-host/panel
+bounds produced a physical-resolution screenshot, but the remaining literal
+close-control offset was still expressed as if physical and logical pixels were
+interchangeable. A successful three-event `SendInput` call therefore missed the
+225%-scaled control and produced no inactive callback or parking. The current
+local diff derives close targets from native-window DPI with physical/logical
+presenter geometry as a checked fallback, and requires the schema-1 auditor to
+reject missing, unscaled, mismatched, or nonphysical evidence. Fixed coordinates
+or longer waits are not acceptable substitutes.
+
+The Windows product matrix also needs an explicit
+`presenter-duplicate-open-guard` case. The smoke action exists, but the Windows
+managed suite and summary auditor shipped in `da632f8` did not cover it, so
+other-platform proof cannot be projected onto Windows. The current local diff
+adds the managed case and semantic auditor; the milestone remains open until one
+public focused case proves the intended direct, wait-style,
+shortcut/controller, and checkout suppression without invoking a checkout
+operation, then closes and parks cleanly.
+
 When Windows overlay activation fails while the Steam client window is itself
 blank or white, stop live launch loops and capture Steam client health first.
 The local Windows evidence has shown Steam CEF/ANGLE GPU context loss,

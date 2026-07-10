@@ -1374,7 +1374,7 @@ async function openPresenterDuplicateOpenGuardOverlay() {
   namedStatuses.checkoutOperation = overlay.getCheckoutOperationStatus();
   const shortcutStatus = overlay.getShortcutOpenStatus();
   const openIfAvailableResult = overlay.openIfAvailable(target);
-  const openAndWaitIfAvailableResult = await overlay.openWebAndWaitIfAvailable(WEB_URL, { modal: WEB_MODAL }, {
+  const openAndWaitIfAvailableResult = await overlay.openAndWaitIfAvailable(target, {
     showTimeoutMs: 5,
     closeTimeoutMs: 5
   });
