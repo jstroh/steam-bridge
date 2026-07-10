@@ -27,6 +27,20 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 - Windows x64: `x86_64-pc-windows-msvc`
 - Linux x64: `x86_64-unknown-linux-gnu`
 
+Package metadata currently declares Node `>=18` and optional Electron `>=24`.
+Repository CI runs Node 22, while current Windows live overlay artifacts use
+Windows 11 x64 and Electron `43.0.0`. Those metadata ranges are not a live
+overlay certification matrix: other Electron versions and Windows releases
+have not all been exercised by the current Windows overlay suite.
+
+The supplied Windows smoke app uses `asar: false`, so current Windows live
+evidence covers an unpacked Electron application layout. A default
+`electron-builder` ASAR layout is not yet verified. Until a production-like
+builder fixture proves native-addon and Steam DLL discovery from the final
+signed bundle, ship the same unpacked layout or validate your own unpack
+configuration with the exact final app's native-load and `presenter-ready`
+gates. Do not infer ASAR support from the package smoke test.
+
 ### macOS Apple Silicon Only
 
 Intel macOS is intentionally not supported. CI, release prebuilds, runtime
@@ -377,25 +391,32 @@ the Steam overlay has hooked the right surface.
 `client.overlay.createElectronSteamOverlay()` applies the same child-process
 preload scrub by default for future Electron children, so the managed overlay
 path still protects apps that create the overlay manager before later windows or
-workers are spawned. Windows managed overlays now use the bridge-owned
+workers are spawned. Windows managed overlays use the bridge-owned
 D3D11/DXGI presenter by default and report `backend: "windows-d3d11"` in
 snapshots. Pass `presenterMode: "session"` or set
 `STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` only when intentionally
 comparing the direct Steam/Electron hook fallback. Set
 `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=opengl` only for the older Win32/WGL
-diagnostic host. Current Windows evidence covers managed web, store-web,
-Friends/chat, dialog-equivalent routes, checkout routing, shortcut
-open/close/back-to-app, Community/profile, stats, achievements, user routes, and
-passive achievement progress/unlock notifications with clean crash diagnostics.
-Real purchase authorization still requires a configured Steam app/product. Pass
+diagnostic host. The repeatable Windows matrix exercises managed web/store,
+Friends/chat, dialog-equivalent and Community routes, checkout routing,
+keyboard open/close/back-to-app, and passive progress/unlock notification state
+without a fixed repaint loop. Historical artifacts are package-specific: a
+release candidate is not considered proved until the exact packaged build
+records matching D3D11 presenter, native-host, and renderer identity; active
+and inactive callbacks where expected; close, park, and open-and-wait
+completion; focus return; and clean crash and cleanup evidence. Public App ID
+`480` proves generic overlay and checkout routing only; real purchase
+authorization still requires a configured Steam app and product. Pass
 `scrubSteamOverlayChildProcessEnv: false` only when collecting raw
 Electron-child overlay diagnostics.
 Raw activation helpers such as `activateToWebPage(...)` remain available for
 Node/native smoke checks and diagnostics, but Electron product overlay work
 should go through the managed `createElectronSteamOverlay(...)` path.
 
-For Electron apps, create one managed overlay for the game window and reuse it
-for overlay work:
+For Electron apps, create one managed overlay for the process's main game
+window and reuse it for all overlay work. Steam Bridge currently supports one
+native presenter per process; do not create concurrent managed presenters for
+multiple `BrowserWindow` instances:
 
 ```ts
 const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow, {
@@ -548,12 +569,21 @@ publishes the same check as `steam-bridge-verify-macos-signing`; run
 `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
 against the final signed app shape before Steam overlay testing.
 
-On Linux and macOS, the manager owns a reusable native presenter, keeps it
-passive and click-through while idle, polls Steam overlay state cheaply where
-the Steam SDK call is safe, and only pumps frames when Steam reports
-`overlayNeedsPresent` or an overlay is being opened/active. On Windows, the
-same manager uses Steam's ordinary direct overlay hook and does not create a
-bridge-owned native host. On macOS, Steam Bridge disables the
+On Linux, macOS, and Windows, the manager owns a reusable bridge presenter and
+keeps it passive and click-through while idle. Windows uses the bridge-owned
+D3D11/DXGI host by default and reports `windows-d3d11`;
+`presenterMode: "session"` is the direct Steam/Electron diagnostic fallback,
+and `STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=opengl` selects the older
+Win32/WGL diagnostic host. On Linux and Windows, safe
+`BOverlayNeedsPresent()` polling can wake passive presentation, and the manager
+otherwise pumps frames only while an overlay is opening or active, or
+presentation is requested. On Windows, the idle scheduler checks needs-present
+every 30 ms by default. Between full diagnostics refreshes it uses the
+lightweight `overlayNeedsPresent()` call; the cached full diagnostics object is
+refreshed no more often than every 250 ms. This keeps full diagnostics
+collection off the 30 ms wake-check path. Managed readiness waits likewise use
+the single `IsOverlayEnabled` signal between full snapshots. On macOS, Steam
+Bridge disables the
 `BOverlayNeedsPresent()` poll by default because Steam's injected renderer can
 crash inside that call even on the Metal presenter path; macOS presentation is
 driven by explicit overlay opens and Steam overlay activation callbacks instead.
@@ -940,8 +970,8 @@ Linux/X11, fully idle mode makes the host transparent and click-through;
 `overlayNeedsPresent` can make it visible while leaving input click-through for
 passive notifications; opening or active overlay mode restores both opacity and
 input so Steam web or checkout UI can receive clicks, then parks the host
-transparent after Steam reports the overlay inactive. On Windows D3D11 proof
-runs, the default Windows matrix now proves managed web/store, Friends/chat,
+transparent after Steam reports the overlay inactive. On Windows D3D11 matrix
+runs, the default Windows matrix exercises managed web/store, Friends/chat,
 dialog-equivalent, Community/profile, stats, achievements, user routes,
 checkout routing, keyboard open/close/back-to-app, and passive notifications
 without passing a presenter/backend override. Passive notification verification
@@ -953,10 +983,16 @@ default `idleFps` is
 `0`; opt into nonzero idle pumping only for diagnostics. The managed Electron
 helper also keeps the presenter aligned on BrowserWindow move, resize,
 fullscreen, maximize, restore, and show events with one native pump per event
-instead of a steady render loop. Use
+instead of a steady render loop. The Windows D3D11 presenter resizes its
+swap-chain render target when the attached window changes size. If `Present` or
+`ResizeBuffers` fails, Steam Bridge records the error in
+`snapshot().lastError` and closes that presenter; it does not recreate the
+D3D11 device or swap chain. Treat device removal/reset and suspend/resume
+recovery as unverified and terminal for that managed-overlay instance. Use
 `steamOverlay.snapshot()` for diagnostics; it returns the native presenter state
-including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`, or
-`none`) and, when available from the Electron window, current `bounds`. On
+including the selected `backend` (`x11-glx`, `macos-metal`, `macos-opengl`,
+`windows-d3d11`, `windows-opengl`, or `none`) and, when available from the
+Electron window, current `bounds`. On
 macOS, snapshots also report `macOverlayEnvironment` and
 `nativeHostUnavailableReason` when a locked screen or sleeping display prevents
 safe native host creation. Managed overlay open/wait and checkout helpers throw

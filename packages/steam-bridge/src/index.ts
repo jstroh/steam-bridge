@@ -1648,6 +1648,12 @@ export interface NativeOverlayPresenterOptions {
   idleFps?: number;
   needsPresentFps?: number;
   activeOverlayFps?: number;
+  /**
+   * Idle presenter polling cadence. Persistent Windows presenters use
+   * lightweight needs-present reads between full diagnostics refreshes and
+   * default to 30 ms; other platforms default to 250 ms. Active presentation
+   * follows the configured FPS instead.
+   */
   pollIntervalMs?: number;
   activationBoostMs?: number;
   activeGraceMs?: number;
@@ -8018,6 +8024,27 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 }
 
+const DEFAULT_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS = 250;
+const DEFAULT_WINDOWS_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS = 30;
+const MIN_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS = 50;
+const MIN_WINDOWS_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS = 30;
+const OVERLAY_DIAGNOSTICS_REFRESH_INTERVAL_MS = 250;
+
+function normalizeOverlayNeedsPresentPollInterval(value: number | undefined): number {
+  const windows = process.platform === "win32";
+  return Math.max(
+    windows
+      ? MIN_WINDOWS_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS
+      : MIN_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS,
+    finiteNumber(
+      value,
+      windows
+        ? DEFAULT_WINDOWS_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS
+        : DEFAULT_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS
+    )
+  );
+}
+
 export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = {}): NativeOverlayPresenter {
   assertLinuxNativeOverlayDisplayAvailable();
 
@@ -8027,7 +8054,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   const idleFps = normalizedFps(options.idleFps, 0);
   const needsPresentFps = normalizedFps(options.needsPresentFps, 30);
   const activeOverlayFps = normalizedFps(options.activeOverlayFps, 30);
-  const pollIntervalMs = Math.max(50, finiteNumber(options.pollIntervalMs, 250));
+  const pollIntervalMs = normalizeOverlayNeedsPresentPollInterval(options.pollIntervalMs);
+  const diagnosticsRefreshIntervalMs = Math.max(
+    pollIntervalMs,
+    OVERLAY_DIAGNOSTICS_REFRESH_INTERVAL_MS
+  );
   const activationBoostMs = Math.max(0, finiteNumber(options.activationBoostMs, 5000));
   const activeGraceMs = Math.max(0, finiteNumber(options.activeGraceMs, 500));
   const restoreFocusDelayMs = Math.max(0, finiteNumber(options.restoreFocusDelayMs, 250));
@@ -8039,11 +8070,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let currentFps = idleFps;
   let lastPumpAt: number | undefined;
   let lastPollAt: number | undefined;
+  let lastDiagnosticsPollAt: number | undefined;
   let lastError: unknown;
   let lastDiagnostics: OverlayDiagnostics | undefined;
   let overlayActive = false;
   let overlayWasActive = false;
-  let overlayNeedsPresent = false;
+  let needsPresent = false;
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let nativeHostUnavailableReason: NativeOverlayHostUnavailableReason | undefined;
   let macOverlayEnvironment: MacOverlayEnvironment | undefined;
@@ -8230,7 +8262,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     hostActivationMode = "passive";
     suppressNeedsPresentOpacity = false;
-    poll();
+    poll(true);
     currentFps = selectCurrentFps();
     syncHostInputMode();
     pump();
@@ -8283,9 +8315,10 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       pollCount,
       overlayActive,
       overlayWasActive,
-      overlayNeedsPresent,
+      overlayNeedsPresent: needsPresent,
       overlayNeedsPresentPollingEnabled:
-        lastDiagnostics?.overlayNeedsPresentPollingEnabled ?? safeBoolean(() => isOverlayNeedsPresentPollingEnabled()),
+        lastDiagnostics?.overlayNeedsPresentPollingEnabled !== false &&
+        isOverlayNeedsPresentPollingEnabledForProcess(),
       lastOverlayEvent,
       lastPumpAt,
       lastPollAt,
@@ -8359,7 +8392,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
   });
 
-  schedule(pollIntervalMs);
+  schedule(effectiveIdlePollIntervalMs());
 
   const presenter: NativeOverlayPresenterInternal = {
     close,
@@ -8387,15 +8420,63 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   return presenter;
 
-  function poll(): void {
+  function poll(forceNeedsPresent = false): boolean {
+    const now = Date.now();
+    if (process.platform !== "win32") {
+      return refreshFullDiagnostics(now);
+    }
+
+    const fullDiagnosticsDue =
+      lastDiagnosticsPollAt === undefined || now - lastDiagnosticsPollAt >= diagnosticsRefreshIntervalMs;
+    if (fullDiagnosticsDue) {
+      lastDiagnosticsPollAt = now;
+      return refreshFullDiagnostics(now);
+    }
+
+    const lightweightDue =
+      forceNeedsPresent || lastPollAt === undefined || now - lastPollAt >= pollIntervalMs;
+    if (
+      !lightweightDue ||
+      !isLightweightNeedsPresentPollingEnabled()
+    ) {
+      return false;
+    }
+
     try {
-      lastDiagnostics = getOverlayDiagnostics();
-      overlayNeedsPresent = lastDiagnostics.overlayNeedsPresent;
+      const changed = updateNeedsPresentState(overlayNeedsPresent());
       pollCount += 1;
-      lastPollAt = Date.now();
+      lastPollAt = now;
+      return changed;
     } catch (error) {
       lastError = error;
+      return false;
     }
+  }
+
+  function refreshFullDiagnostics(now: number): boolean {
+    lastDiagnosticsPollAt = now;
+    try {
+      lastDiagnostics = getOverlayDiagnostics();
+      needsPresent = lastDiagnostics.overlayNeedsPresent;
+      pollCount += 1;
+      lastPollAt = now;
+      return true;
+    } catch (error) {
+      lastError = error;
+      return false;
+    }
+  }
+
+  function updateNeedsPresentState(value: boolean): boolean {
+    const changed = needsPresent !== value;
+    if (lastDiagnostics && lastDiagnostics.overlayNeedsPresent !== value) {
+      lastDiagnostics = {
+        ...lastDiagnostics,
+        overlayNeedsPresent: value
+      };
+    }
+    needsPresent = value;
+    return changed;
   }
 
   function tick(): void {
@@ -8407,19 +8488,41 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (!shouldDeferWindowsNativeHostAttach()) {
       ensureNativeOverlaySurfaceReady();
     }
-    poll();
+    const pollChanged = poll();
     currentFps = selectCurrentFps();
     syncHostInputMode();
+    let pumped = false;
     if (currentFps > 0) {
       try {
         pump();
+        pumped = true;
       } catch {
         return;
       }
     }
 
-    emitStateChange();
-    schedule(currentFps > 0 ? Math.max(1, Math.round(1000 / currentFps)) : pollIntervalMs);
+    if (pollChanged && !pumped) {
+      emitStateChange();
+    }
+    schedule(
+      currentFps > 0
+        ? Math.max(1, Math.round(1000 / currentFps))
+        : effectiveIdlePollIntervalMs()
+    );
+  }
+
+  function isLightweightNeedsPresentPollingEnabled(): boolean {
+    return (
+      process.platform === "win32" &&
+      lastDiagnostics?.overlayNeedsPresentPollingEnabled !== false &&
+      isOverlayNeedsPresentPollingEnabledForProcess()
+    );
+  }
+
+  function effectiveIdlePollIntervalMs(): number {
+    return process.platform === "win32" && !isLightweightNeedsPresentPollingEnabled()
+      ? diagnosticsRefreshIntervalMs
+      : pollIntervalMs;
   }
 
   function selectCurrentFps(): number {
@@ -8430,7 +8533,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (overlayActive || activationHoldCount > 0 || now < boostUntil) {
       return activeOverlayFps;
     }
-    if (overlayNeedsPresent && !suppressNeedsPresentOpacity) {
+    if (needsPresent && !suppressNeedsPresentOpacity) {
       return needsPresentFps;
     }
     return idleFps;
@@ -8444,9 +8547,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     const shouldAcceptInput = shouldHostAcceptInput(now);
     const shouldShowHost =
       hostActivationMode === "interactive"
-        ? shouldAcceptInput || overlayNeedsPresent
+        ? shouldAcceptInput || needsPresent
         : hostActivationMode === "passive"
-          ? overlayNeedsPresent && !suppressNeedsPresentOpacity
+          ? needsPresent && !suppressNeedsPresentOpacity
           : false;
     setHostInputPassthrough(!shouldAcceptInput);
     setHostOpaque(shouldShowHost);
@@ -8576,7 +8679,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       hostActivationMode === "passive" &&
       activationHoldCount === 0 &&
       !overlayActive &&
-      !overlayNeedsPresent &&
+      !needsPresent &&
       !safeBoolean(() => native().isNativeOverlayHostViewOpen())
     );
   }
@@ -9849,7 +9952,7 @@ export function createElectronSteamOverlay(
         options,
         {
           forcePolling: true,
-          refreshDiagnostics: true,
+          refreshOverlayEnabled: true,
           failOnKnownUnavailable: true
         }
       );
@@ -11000,6 +11103,8 @@ function waitForElectronSteamOverlayState(
         snapshot = controller.snapshot();
         if (internalOptions.refreshDiagnostics) {
           snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(snapshot);
+        } else if (internalOptions.refreshOverlayEnabled) {
+          snapshot = refreshElectronSteamOverlaySnapshotOverlayEnabled(snapshot);
         }
         lastSnapshot = snapshot;
       } catch (error) {
@@ -11084,6 +11189,7 @@ const ELECTRON_STEAM_OVERLAY_OPEN_GUARD_TIMEOUT_MS = 15000;
 interface ElectronSteamOverlayStateWaitInternalOptions {
   forcePolling?: boolean;
   refreshDiagnostics?: boolean;
+  refreshOverlayEnabled?: boolean;
   failOnKnownUnavailable?: boolean;
 }
 
@@ -11092,6 +11198,30 @@ function refreshElectronSteamOverlaySnapshotDiagnostics(
 ): ElectronSteamOverlaySnapshot {
   try {
     return { ...snapshot, diagnostics: getOverlayDiagnostics() };
+  } catch {
+    return snapshot;
+  }
+}
+
+function refreshElectronSteamOverlaySnapshotOverlayEnabled(
+  snapshot: ElectronSteamOverlaySnapshot
+): ElectronSteamOverlaySnapshot {
+  if (!snapshot.diagnostics) {
+    return refreshElectronSteamOverlaySnapshotDiagnostics(snapshot);
+  }
+
+  try {
+    const overlayEnabled = isOverlayEnabled();
+    if (snapshot.diagnostics.overlayEnabled === overlayEnabled) {
+      return snapshot;
+    }
+    return {
+      ...snapshot,
+      diagnostics: {
+        ...snapshot.diagnostics,
+        overlayEnabled
+      }
+    };
   } catch {
     return snapshot;
   }

@@ -404,6 +404,14 @@ function runWindowsSmokeHelperStaticChecks() {
   for (const expected of ["function readJsonFile", 'replace(/^\\uFEFF/, "")']) {
     assert.ok(electronSmokeMain.includes(expected), `Electron smoke app missing ${expected}`);
   }
+  const ensureOverlayStart = electronSmokeMain.indexOf("function ensureElectronSteamOverlay(");
+  const ensureOverlayEnd = electronSmokeMain.indexOf("\nfunction ", ensureOverlayStart + 1);
+  assert.ok(ensureOverlayStart >= 0 && ensureOverlayEnd > ensureOverlayStart, "Electron smoke app missing overlay factory");
+  const ensureOverlaySource = electronSmokeMain.slice(ensureOverlayStart, ensureOverlayEnd);
+  assert.ok(
+    !/\bpollIntervalMs\s*:/.test(ensureOverlaySource),
+    "Electron smoke app must exercise the platform presenter polling default"
+  );
   assert.ok(
     exampleReadme.includes("The helper leaves `-OverlayInProcessGpu` unset on Windows by default"),
     "Electron example README must document that Windows leaves in-process GPU unset by default"

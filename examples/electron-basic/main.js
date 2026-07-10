@@ -2942,7 +2942,6 @@ function ensureElectronSteamOverlay(activeClient = requireClient()) {
     presenterMode: PRESENTER_MODE || undefined,
     needsPresentFps: 30,
     activeOverlayFps: 30,
-    pollIntervalMs: 250,
     overlayShortcut: {
       target: shortcutTarget,
       onOpen: (target) => {

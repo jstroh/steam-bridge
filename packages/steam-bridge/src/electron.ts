@@ -51,6 +51,12 @@ export interface ElectronOverlayPresenterOptions {
   idleFps?: number;
   needsPresentFps?: number;
   activeOverlayFps?: number;
+  /**
+   * Idle presenter polling cadence. Persistent Windows presenters use
+   * lightweight needs-present reads between full diagnostics refreshes and
+   * default to 30 ms; other platforms default to 250 ms. Active presentation
+   * follows the configured FPS instead.
+   */
   pollIntervalMs?: number;
   activationBoostMs?: number;
   activeGraceMs?: number;

@@ -732,8 +732,17 @@ click-through while fully idle, polls without pumping frames by default, can
 become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while
 opening or showing Steam UI, and parks transparent after Steam emits overlay
-inactive callbacks. On macOS, Steam Bridge reports `overlayNeedsPresent=false`
-by default because Steam's injected renderer can crash inside
+inactive callbacks. On Windows, the default D3D11 presenter starts unattached
+and at zero FPS while fully idle. A needs-present signal or managed open
+attaches the reusable host; after use, the host may remain attached but parks
+transparent and click-through at zero FPS. The idle scheduler checks
+needs-present every 30 ms by default. Between full diagnostics refreshes it
+uses the lightweight `overlayNeedsPresent()` call; the cached full diagnostics
+object is refreshed no more often than every 250 ms. The smoke app deliberately
+leaves `pollIntervalMs` unset so packaged Windows runs exercise that library
+default. On macOS, Steam Bridge reports
+`overlayNeedsPresent=false` by default because Steam's injected renderer can
+crash inside
 `BOverlayNeedsPresent()` even on the Metal presenter path; smoke snapshots also
 report `overlayNeedsPresentPollingEnabled=false` to prove the JavaScript wrapper
 and native layer avoided the poll.
