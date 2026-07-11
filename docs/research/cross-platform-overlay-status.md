@@ -165,9 +165,38 @@ missing-task query result, and isolates cleanup phases so one exception cannot
 suppress later process, environment, file, or evidence guards. Native Windows
 PowerShell 5.1 behavior, PowerShell parsing, embedded C# compilation, package
 smoke, all 196 tests, API/platform/native checks, syntax, diff checks, and an
-independent final review pass. This is implementation evidence only; one exact
-task-wrapped focused live run must still prove activation, close/park/focus
-return, three-way D3D11 agreement, and the original green cleanup artifact.
+independent final review pass. Commit `35690a4` and exact CI run `29130684544`
+record that implementation.
+
+The exact `35690a4` package reused the verified native addon, matched all 128
+pre-sign source hashes, retained 12 valid signatures with app/addon publisher
+agreement and byte-preserved Valve DLLs, replaced the same stable path with a
+retained rollback, and passed an unchanged read-only shortcut audit without a
+Steam restart. Its focused run passed preflight, interactive Session 1
+readiness, native load, and default render health. Ready, pre-dispatch, and
+final-dispatch agreed on one nonzero physical target, stable client origin and
+size, 2.25 renderer/window scale, original HWND/main-window/owner/control/
+session, point owner/root, and foreground. The recorded native pointer instead
+reported `(0,0)` despite `3/3` inputs and zero API error. The gate stayed at one
+arm event and one ready event with no consumed/rejected event, created no overlay result,
+sent no close input, and timed out.
+
+Generated-script AST inspection explains the discrepancy: two terminal
+continuation backticks in the outer expandable PowerShell here-string were
+consumed during expansion, so the emitted activation command had zero arguments
+and its two `[int]` parameters defaulted to zero. The old success predicate
+checked only input count and error. This is a settled negative for that generated
+call shape, not evidence against same-process activation or D3D11. The same run
+settles the task-wrapper fix with its original green cleanup artifact: captured
+delete `0`, captured missing-task query `1`, zero phase errors, empty process
+guards, byte-matched launch-env restoration, task-file cleanup, and unchanged
+Steam process/session. The bounded worktree fix emits the activation call on
+one physical line, requires returned coordinates to equal the final target,
+rejects terminal backticks anywhere in the expandable probe template, exercises
+the expanded command shape on native PowerShell, and adds a zero-coordinate
+adversarial summary fixture. Repeat only after that slice is committed, passes
+exact CI, and is repackaged/signed into the stable deployment without a Steam
+restart.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

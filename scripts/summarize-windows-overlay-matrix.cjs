@@ -5546,6 +5546,7 @@ function runSelfTest() {
       ["final-wrong-rebound-math", { gestureFinalWrongReboundMath: true }],
       ["activation-final-target-mismatch", { gestureActivationFinalTargetMismatch: true }],
       ["pointer-uses-pre-dispatch-target", { gesturePointerUsesPreTarget: true }],
+      ["pointer-uses-zero-argument-defaults", { gesturePointerUsesZeroArgumentDefaults: true }],
       ["foreground-clear", { gestureForegroundClear: true }],
       ["dispatch-start-missing", { gestureDispatchStartMissing: true }],
       ["dispatch-start-state-wrong", { gestureDispatchStartStateWrong: true }],
@@ -7491,8 +7492,16 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       expected: 3,
       lastError: options.gestureActivationPointerFailed ? 5 : 0,
       method: "sendinput",
-      x: options.gesturePointerUsesPreTarget ? activationPreDispatch.target.x : activationTarget.x,
-      y: options.gesturePointerUsesPreTarget ? activationPreDispatch.target.y : activationTarget.y
+      x: options.gesturePointerUsesZeroArgumentDefaults
+        ? 0
+        : options.gesturePointerUsesPreTarget
+          ? activationPreDispatch.target.x
+          : activationTarget.x,
+      y: options.gesturePointerUsesZeroArgumentDefaults
+        ? 0
+        : options.gesturePointerUsesPreTarget
+          ? activationPreDispatch.target.y
+          : activationTarget.y
     };
     closeProbeEvents.splice(
       1,

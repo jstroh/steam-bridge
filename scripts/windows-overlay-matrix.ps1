@@ -5110,9 +5110,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
           })
           `$activationFinalDispatch = Confirm-AutorunUserGestureActivationTarget
           if (`$activationFinalDispatch.eligible) {
-            `$activationPointer = Send-NativeMouseClick `
-              ([int]`$activationFinalDispatch.target.x) `
-              ([int]`$activationFinalDispatch.target.y)
+            `$activationPointer = Send-NativeMouseClick ([int]`$activationFinalDispatch.target.x) ([int]`$activationFinalDispatch.target.y)
           } else {
             Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
               reason = `$activationFinalDispatch.reason
@@ -5136,7 +5134,9 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
           })
           `$activationSucceeded = (
             `$activationPointer.sent -eq `$activationPointer.expected -and
-            `$activationPointer.lastError -eq 0
+            `$activationPointer.lastError -eq 0 -and
+            `$activationPointer.x -eq [int]`$activationFinalDispatch.target.x -and
+            `$activationPointer.y -eq [int]`$activationFinalDispatch.target.y
           )
           if (-not `$activationSucceeded) {
             Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{

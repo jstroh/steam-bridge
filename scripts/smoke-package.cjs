@@ -427,6 +427,18 @@ function runWindowsSmokeHelperStaticChecks() {
   const packageReadme = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "README.md"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const electronSmokeMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const closeProbeTemplateStart = matrixHelper.indexOf('$probeScript = @"');
+  const closeProbeTemplateEnd = matrixHelper.indexOf('\n"@', closeProbeTemplateStart);
+  assert.ok(
+    closeProbeTemplateStart >= 0 && closeProbeTemplateEnd > closeProbeTemplateStart,
+    "Windows matrix must retain one bounded expandable close-probe template"
+  );
+  const closeProbeTemplate = matrixHelper.slice(closeProbeTemplateStart, closeProbeTemplateEnd);
+  assert.doesNotMatch(
+    closeProbeTemplate,
+    /`\s*$/m,
+    "Windows expandable close-probe template must not consume a generated-script line continuation"
+  );
   for (const [label, source] of [
     ["Windows smoke helper", helper],
     ["Windows matrix", matrixHelper],
@@ -1015,6 +1027,12 @@ function runWindowsSmokeHelperStaticChecks() {
       userGestureActivationBlock.includes('Write-ProbeEvent "probe:user-gesture-gate-activation-sent"') &&
       userGestureActivationBlock.includes('input = "renderer-button-click-sendinput"') &&
       userGestureActivationBlock.includes("finalDispatch = `$activationFinalDispatch") &&
+      userGestureActivationBlock.includes(
+        "`$activationPointer.x -eq [int]`$activationFinalDispatch.target.x"
+      ) &&
+      userGestureActivationBlock.includes(
+        "`$activationPointer.y -eq [int]`$activationFinalDispatch.target.y"
+      ) &&
       userGestureActivationBlock.includes("`$script:UserGestureActivationSent = `$true") &&
       userGestureActivationBlock.includes("`$script:UserGestureGateConsumed = `$true"),
     "Windows close probe must consume one ready gate through one renderer-button SendInput activation"
@@ -1055,12 +1073,26 @@ function runWindowsSmokeHelperStaticChecks() {
     finalUserGestureBindingStart,
     finalUserGestureSendEnd
   );
+  const exactFinalActivationCall =
+    "`$activationPointer = Send-NativeMouseClick ([int]`$activationFinalDispatch.target.x) ([int]`$activationFinalDispatch.target.y)";
   assert.ok(
     finalUserGestureValidPath.includes("if (`$activationFinalDispatch.eligible)") &&
-      finalUserGestureValidPath.includes("([int]`$activationFinalDispatch.target.x)") &&
-      finalUserGestureValidPath.includes("([int]`$activationFinalDispatch.target.y)"),
+      finalUserGestureValidPath.includes(exactFinalActivationCall),
     "Windows user-gesture SendInput must use the final rebound point"
   );
+  assert.equal(
+    (finalUserGestureValidPath.match(
+      /`\$activationPointer = Send-NativeMouseClick \(\[int\]`\$activationFinalDispatch\.target\.x\) \(\[int\]`\$activationFinalDispatch\.target\.y\)/g
+    ) || []).length,
+    1,
+    "Windows generated user-gesture click must retain both positional arguments on one physical line"
+  );
+  assert.doesNotMatch(
+    finalUserGestureValidPath,
+    /Send-NativeMouseClick\s+`\r?\n/,
+    "Windows expandable probe template must not consume a native-click line continuation"
+  );
+  assertWindowsExpandableClickShape(exactFinalActivationCall);
   assert.doesNotMatch(
     finalUserGestureValidPath,
     /Write-ProbeEvent|Read-SmokeControlDescriptor|Get-Content|Start-Sleep/,
@@ -1999,6 +2031,36 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(electronHelper.includes(expected), `Electron overlay helper missing ${expected}`);
   }
+}
+
+function assertWindowsExpandableClickShape(sourceLine) {
+  if (process.platform !== "win32") {
+    return;
+  }
+  const command = [
+    "$line = $env:STEAM_BRIDGE_EXPANDABLE_LINE",
+    "$outer = '$value = @\"' + [Environment]::NewLine + $line + [Environment]::NewLine + '\"@' + [Environment]::NewLine + '$value'",
+    "$expanded = & ([ScriptBlock]::Create($outer))",
+    "$tokens = $null",
+    "$errors = $null",
+    "$ast = [System.Management.Automation.Language.Parser]::ParseInput([string]$expanded, [ref]$tokens, [ref]$errors)",
+    "$calls = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Send-NativeMouseClick' }, $true))",
+    "if (@($errors).Count -ne 0 -or $calls.Count -ne 1 -or $calls[0].CommandElements.Count -ne 3) { Write-Error 'Expandable click command lost positional arguments.'; exit 1 }"
+  ].join("; ");
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", command],
+    {
+      encoding: "utf8",
+      env: { ...process.env, STEAM_BRIDGE_EXPANDABLE_LINE: sourceLine },
+      windowsHide: true
+    }
+  );
+  assert.equal(
+    result.status,
+    0,
+    `Windows expandable click AST check failed: ${String(result.stderr || "").trim()}`
+  );
 }
 
 function runPackagedWindowsOverlaySummarySelfTest() {
