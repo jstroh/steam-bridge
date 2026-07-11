@@ -179,8 +179,8 @@ the managed-web action):
 
 The coordinator must copy `action`, `requestOrdinal`, `mechanism`, and
 `challenge` from the exact ready marker after validating that marker against
-the selected case. It must not infer the action from a route name or hardcode
-the web action; every gated case currently uses requested transition ordinal
+the selected case. It must not hardcode the web action or infer the action from
+a route name; every gated case currently uses requested transition ordinal
 `1`.
 
 Write a temporary sibling and rename it to the acknowledgment path; do not
