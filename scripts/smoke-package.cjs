@@ -71,6 +71,7 @@ if (windowsCleanupSelfTestOnly) {
     assert.equal(process.platform, "win32", "Windows cleanup native self-test requires Windows");
     runWindowsExactProcessStopSelfTest();
     runWindowsTaskTreeAncestrySelfTest();
+    runWindowsSteamContinuitySelfTest();
     console.log("Windows overlay cleanup native self-test passed.");
   } finally {
     if (keepTemp) {
@@ -85,6 +86,12 @@ if (windowsCleanupSelfTestOnly) {
 
   run("node", [path.join(repoRoot, "scripts", "assert-electron-smoke-version.cjs")], { cwd: repoRoot });
   run("node", [path.join(repoRoot, "scripts", "native-binding-manifest.cjs")], { cwd: repoRoot });
+  run("node", [path.join(repoRoot, "scripts", "windows-release-candidate-fingerprint.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
+  run("node", [path.join(repoRoot, "scripts", "windows-live-proof-receipt.cjs"), "--self-test"], {
+    cwd: repoRoot
+  });
   run("node", [path.join(repoRoot, "examples", "electron-basic", "native-binding-probe.cjs")], {
     cwd: repoRoot
   });
@@ -488,6 +495,10 @@ function runWindowsSmokeHelperStaticChecks() {
     path.join(repoRoot, "scripts", "publish-release-candidate.cjs"),
     "utf8"
   );
+  const liveProofReceipt = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-live-proof-receipt.cjs"),
+    "utf8"
+  );
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
   const cargoConfig = fs.readFileSync(path.join(repoRoot, ".cargo", "config.toml"), "utf8");
   const nativeBuildScript = fs.readFileSync(path.join(repoRoot, "crates", "native", "build.rs"), "utf8");
@@ -557,6 +568,11 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(windowsAsarGate.includes(expected), `Windows ASAR gate missing ${expected}`);
   }
+  assert.ok(
+    windowsAsarGate.includes("windows-live-proof-receipt.cjs") &&
+      windowsAsarGate.includes("windows-release-candidate-fingerprint.cjs"),
+    "Windows ASAR gate must package the candidate fingerprint and live-proof receipt tools"
+  );
   for (const expected of [
     "IMAGE_FILE_MACHINE_AMD64",
     "PE32_PLUS_MAGIC",
@@ -581,6 +597,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "audit.package?.tarball",
     "executableProbe?.ok",
     "--bundle-archive",
+    "--live-proof-receipt",
+    "npm publication requires a matching Windows live-proof receipt",
+    "createVerifiedPublishCopy",
     "validatePublishTag",
     "shell: false",
     "npm JavaScript CLI from npm_execpath"
@@ -593,10 +612,31 @@ function runWindowsSmokeHelperStaticChecks() {
       releaseWorkflow.includes("npm run windows:package-gate") &&
       releaseWorkflow.includes("--require-signed") &&
       releaseWorkflow.includes("npm run release:publish-candidate") &&
+      releaseWorkflow.includes("--require-publishable") &&
       releaseWorkflow.includes("*-win-unpacked.tar") &&
       releaseWorkflow.includes("--bundle-archive"),
     "Release workflow must gate the fully assembled publish tarball in a Windows electron-builder ASAR package"
   );
+  assert.doesNotMatch(releaseWorkflow, /(?:^|\s)--publish(?:\s|$)/m, "Release workflow must remain candidate-only");
+  assert.ok(
+    !releaseWorkflow.includes("--live-proof-receipt"),
+    "Release workflow must not fabricate a live-proof receipt before Windows live testing"
+  );
+  for (const expected of [
+    "TOTAL_CASE_COUNT, 31",
+    "TOTAL_ACTIVE_CASE_COUNT, 27",
+    "--candidate-directory",
+    "privateEnvImported",
+    "webUrlUsesPublicDefault",
+    "hasCheckoutUrl",
+    "cleanStaleOverlayHelpers",
+    "taskRunLevel",
+    "sameSteamIdentityAcrossProfiles",
+    "verifyCandidateDirectory",
+    "readAndValidateLiveProofReceipt"
+  ]) {
+    assert.ok(liveProofReceipt.includes(expected), `Windows live-proof receipt missing ${expected}`);
+  }
   assert.ok(
     matrixHelper.includes("resources\\steam-bridge-tools") &&
       matrixHelper.includes("bin\\validate-checkout-target.cjs") &&
@@ -2427,6 +2467,20 @@ function runWindowsSmokeHelperStaticChecks() {
     "restoredBytesMatch",
     "launch-env-rollback.json",
     "TaskCleanupExpected",
+    "CandidateAuditManifest",
+    "Get-CandidateBinding",
+    "STEAM_BRIDGE_WINDOWS_CANDIDATE_BINDING ",
+    "candidateBinding = $candidateBinding",
+    "candidatePathHasNoReparsePoints",
+    "launchEnvOutsideCandidate",
+    "launchEnvPathHasNoReparsePoints",
+    "launchEnvUsesDefaultPath",
+    "webUrlUsesPublicDefault",
+    "cleanStaleOverlayHelpers",
+    "steamContinuityRequired",
+    "publicSyntheticCheckout",
+    "privateEnvImported = [bool]$PrivateEnvImported",
+    "steamClientHealthRecentMinutes",
     "Get-RedactedSteamConfigLabel",
     "LocalizedTagNames",
     " ...[truncated]",
@@ -2593,6 +2647,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "Convert-MatrixArgsToSplat",
     "Split-MatrixArgumentNameValue",
     "Format-RedactedMatrixArgs",
+    '"-CandidateAuditManifest"',
     "HashSet[string]",
     "StringComparer]::OrdinalIgnoreCase",
     "HasInlineValue",
@@ -2634,6 +2689,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "runnerProcessGuard",
     "launchEnvGuard",
     "packageProcessGuard",
+    "Start-SteamContinuityGuard",
+    "Complete-SteamContinuityGuard",
+    "steamContinuityGuard",
+    "taskRunLevel = $TaskRunLevel",
+    'arguments += "-PrivateEnvImported"',
     "taskFileGuard",
     "restoredBytesMatch",
     "emptyVerificationScanCount",
@@ -3050,6 +3110,64 @@ exit 0
   );
 }
 
+function runWindowsSteamContinuitySelfTest() {
+  if (process.platform !== "win32") {
+    return;
+  }
+  const taskWrapper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-overlay-task.ps1"),
+    "utf8"
+  );
+  const start = taskWrapper.indexOf("function Get-TaskProcessStartTicks");
+  const end = taskWrapper.indexOf("\nfunction New-TaskRunnerTreeState", start);
+  assert.ok(start >= 0 && end > start, "Windows Steam-continuity self-test could not isolate guard functions");
+  const testPath = path.join(tempRoot, "windows-steam-continuity-self-test.ps1");
+  const testScript = `${taskWrapper.slice(start, end)}
+$ErrorActionPreference = "Stop"
+$script:MockProcesses = @()
+function Get-CimInstance { return @($script:MockProcesses) }
+function Get-TaskProcessNativeStartTicks {
+  param($Process)
+  return Get-TaskProcessStartTicks -Process $Process
+}
+$started = [DateTime]::UtcNow
+$steam = [PSCustomObject]@{ ProcessId = 101; SessionId = 1; CreationDate = $started }
+$script:MockProcesses = @($steam)
+$guard = Start-SteamContinuityGuard -Required $true
+if (-not $guard.beforeCaptureSucceeded -or $guard.beforeIdentities.Count -ne 1) { exit 1 }
+$same = Complete-SteamContinuityGuard -Guard $guard
+if (-not $same.ok -or -not $same.sameIdentitySet -or -not $same.sameSessionSet) { exit 2 }
+if ($same.beforeIdentities[0].cimStartTicks -isnot [string] -or $same.beforeIdentities[0].nativeStartTicks -isnot [string]) { exit 3 }
+$script:MockProcesses = @([PSCustomObject]@{ ProcessId = 101; SessionId = 1; CreationDate = $started.AddSeconds(1) })
+$restarted = Complete-SteamContinuityGuard -Guard $guard
+if ($restarted.ok -or $restarted.sameIdentitySet -or $restarted.missingIdentityCount -ne 1 -or $restarted.additionalIdentityCount -ne 1) { exit 4 }
+$script:MockProcesses = @([PSCustomObject]@{ ProcessId = 101; SessionId = 2; CreationDate = $started })
+$sessionDrift = Complete-SteamContinuityGuard -Guard $guard
+if ($sessionDrift.ok -or -not $sessionDrift.sameIdentitySet -or $sessionDrift.sameSessionSet) { exit 5 }
+$script:MockProcesses = @(
+  $steam,
+  [PSCustomObject]@{ ProcessId = 102; SessionId = 1; CreationDate = $started }
+)
+$additional = Complete-SteamContinuityGuard -Guard $guard
+if ($additional.ok -or $additional.afterCount -ne 2 -or $additional.additionalIdentityCount -ne 1) { exit 6 }
+$optional = Start-SteamContinuityGuard -Required $false
+$optionalResult = Complete-SteamContinuityGuard -Guard $optional
+if (-not $optionalResult.ok -or $optionalResult.required) { exit 7 }
+exit 0
+`;
+  fs.writeFileSync(testPath, testScript);
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", testPath],
+    { encoding: "utf8", windowsHide: true }
+  );
+  assert.equal(
+    result.status,
+    0,
+    `Windows Steam-continuity self-test failed: ${String(result.stderr || "").trim()}`
+  );
+}
+
 function runPackagedWindowsOverlaySummarySelfTest() {
   const helperDir = path.join(tempRoot, "packaged-windows-overlay-summary");
   fs.mkdirSync(helperDir, { recursive: true });
@@ -3058,6 +3176,10 @@ function runPackagedWindowsOverlaySummarySelfTest() {
   fs.copyFileSync(
     path.join(repoRoot, "examples", "electron-basic", "checkout-proof.cjs"),
     path.join(helperDir, "checkout-proof.cjs")
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, "scripts", "windows-release-candidate-fingerprint.cjs"),
+    path.join(helperDir, "windows-release-candidate-fingerprint.cjs")
   );
   run("node", [summaryPath, "--self-test"], { cwd: helperDir });
 }

@@ -46,7 +46,10 @@ requires the exact ASAR-unpacked addon to expose every method in the tarball's
 canonical `NativeBinding` declaration without invoking those methods, packages
 the current public smoke action/matrix protocol, and retains a
 stable-metadata, hash-audited archive of the exact `win-unpacked` bundle for
-live proof and candidate recovery. That archive is currently a 90-day GitHub
+live proof and candidate recovery. Its schema-2 audit fingerprints every
+portable regular file by path, size, and content; retained archive and deployed
+directory verification must reproduce the same fingerprint. That archive is
+currently a 90-day GitHub
 Actions artifact, not durable rollback storage. Use the same shape in Windows
 apps:
 
@@ -94,11 +97,17 @@ The Release artifact's audited `.tgz` is the canonical npm candidate. Run
 <win-unpacked.tar> --audit-manifest <audit.json>` to rehash the npm bytes and
 retained Windows bundle and check that the audit records a successful final
 executable probe, live-smoke protocol, signing state, and expected filenames.
-Add `--publish` only when you intend to publish those exact npm bytes from an
-audit emitted by the signed gate, together with `--release-tag
-v<package-version>`. The JSON is not independently signed, so retain and trust
-its workflow-artifact provenance. Prerelease versions require an explicit
-non-`latest` npm `--tag`.
+Use `--require-publishable --release-tag v<package-version>` for the signed-tag
+candidate check before live testing; it intentionally needs no live receipt.
+Add `--publish --live-proof-receipt <receipt.json>` only when you intend to
+publish those exact npm bytes. The sanitized receipt must bind the same
+candidate to the complete public Windows `persistent-reuse`, synthetic
+`checkout`, `shortcut-routes`, and `managed-routes` profiles (31 exact cases,
+27 activation cases), with no private `InitTxn` inputs. The publisher uses a
+private verified tarball copy to close the verification-to-publication path
+race. The audit and receipt JSON are not independently signed, so retain and
+trust their workflow/release provenance. Prerelease versions require an
+explicit non-`latest` npm `--tag`.
 Publishing from the assembled workspace would repack it and is not the
 verified path. Tag-triggered Release runs set `forceCodeSigning`, require
 `WINDOWS_CSC_LINK`/`WINDOWS_CSC_KEY_PASSWORD` secrets, and match the app
@@ -107,8 +116,9 @@ executable and native addon against `WINDOWS_PUBLISHER_SUBJECT` or
 must be Authenticode-valid and retain their exact upstream bytes.
 The Release workflow validates this candidate but intentionally neither runs
 `--publish` nor creates a GitHub Release. Before production publication, retain
-the exact tarball, Windows bundle, audit, and probe in durable immutable release
-storage under the protected version tag. npm authority is needed only for
+the exact tarball, Windows bundle, audit, probe, and sanitized live-proof
+receipt in durable immutable release storage under the protected version tag.
+npm authority is needed only for
 publication: because trusted publishing cannot be configured until the package
 exists, use an explicitly approved provenance-emitting CI bootstrap for the
 first publish, then configure trusted publishing for later versions. For

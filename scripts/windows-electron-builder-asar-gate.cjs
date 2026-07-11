@@ -19,6 +19,11 @@ const {
   assertMatchingNativeBindingManifests,
   createNativeBindingManifest
 } = require("./native-binding-manifest.cjs");
+const {
+  createCandidateBinding,
+  inspectCandidateDirectory,
+  verifyBundleArchiveContent
+} = require("./windows-release-candidate-fingerprint.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const packageRoot = path.join(repoRoot, "packages", "steam-bridge");
@@ -59,9 +64,11 @@ const windowsToolFiles = Object.freeze([
   "upsert-steam-shortcut.cjs",
   "windows-app-control-dev-mode.ps1",
   "windows-electron-smoke.ps1",
+  "windows-live-proof-receipt.cjs",
   "windows-native-overlay-control.ps1",
   "windows-overlay-matrix.ps1",
   "windows-overlay-task.ps1",
+  "windows-release-candidate-fingerprint.cjs",
   "windows-render-health-probe.ps1",
   "windows-steam-app-launch-options.ps1"
 ]);
@@ -214,12 +221,13 @@ async function main() {
     const checkoutValidatorProbe = verifyCheckoutValidatorToolTree(appDir);
     const liveSmokeCapability = verifyLiveSmokeCapability(appDir);
 
-    const signatures = getAuthenticodeEvidence({
+    const signatureFiles = {
       appExecutable: appExe,
       [WINDOWS_RUNTIME_FILES[0]]: path.join(finalRuntimeDir, WINDOWS_RUNTIME_FILES[0]),
       [WINDOWS_RUNTIME_FILES[1]]: path.join(finalRuntimeDir, WINDOWS_RUNTIME_FILES[1]),
       [WINDOWS_RUNTIME_FILES[2]]: path.join(finalRuntimeDir, WINDOWS_RUNTIME_FILES[2])
-    });
+    };
+    const signatures = getAuthenticodeEvidence(signatureFiles);
     const publisherMatches = {
       appExecutable: false,
       nativeAddon: false
@@ -235,12 +243,25 @@ async function main() {
     }
 
     const executableProbe = runPackagedExecutable(appExe, outputRoot, sourceNativeBindingManifest);
+    const bundleInspection = inspectCandidateDirectory(appDir);
+    assertSignatureHashesMatchInspection(appDir, signatureFiles, signatures, bundleInspection);
+    const bundleArchivePath = path.join(
+      outputRoot,
+      `steam-bridge-${packageJson.version}-windows-x64-win-unpacked.tar`
+    );
     const bundleArchive = createDeterministicBundleArchive(
       appDir,
-      path.join(outputRoot, `steam-bridge-${packageJson.version}-windows-x64-win-unpacked.tar`)
+      bundleArchivePath,
+      bundleInspection
+    );
+    assert.equal(bundleArchive.fileCount, bundleInspection.fingerprint.fileCount);
+    verifyBundleArchiveContent(
+      bundleArchivePath,
+      bundleInspection.fingerprint,
+      bundleArchive.rootDirectory
     );
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       target: "x86_64-pc-windows-msvc",
       package: {
         name: packageJson.name,
@@ -275,6 +296,7 @@ async function main() {
         ...packageRuntimeEvidence(appDir, finalRuntimeDir, finalRuntime),
         authenticode: signatures,
         runtimeDllPreservation,
+        contentFingerprint: bundleInspection.fingerprint,
         archive: bundleArchive
       },
       signing: {
@@ -291,6 +313,7 @@ async function main() {
       checkoutValidatorProbe,
       liveSmokeCapability
     };
+    createCandidateBinding(manifest);
     const manifestPath = path.join(outputRoot, "steam-bridge-windows-package-audit.json");
     writeJson(manifestPath, manifest);
     fs.copyFileSync(tarball, path.join(outputRoot, path.basename(tarball)));
@@ -622,10 +645,8 @@ function assertRuntimeDllBytesPreserved(sourceRuntime, finalRuntime) {
   return evidence;
 }
 
-function createDeterministicBundleArchive(appDir, archivePath) {
-  const files = listFiles(appDir)
-    .map((filePath) => normalizeRelativePath(path.relative(appDir, filePath)))
-    .sort();
+function createDeterministicBundleArchive(appDir, archivePath, inspection = inspectCandidateDirectory(appDir)) {
+  const files = inspection.files.map((entry) => entry.relativePath);
   assert.ok(files.length > 0, "Packaged Windows bundle must contain files before archiving");
   fs.rmSync(archivePath, { force: true });
   tar.create(
@@ -651,6 +672,7 @@ function createDeterministicBundleArchive(appDir, archivePath) {
 function getAuthenticodeEvidence(files) {
   const evidence = {};
   for (const [label, filePath] of Object.entries(files)) {
+    const before = hashFile(filePath);
     const env = sanitizedChildEnvironment(process.env, { STEAM_BRIDGE_SIGNATURE_FILE: filePath });
     const result = spawnSync(
       "powershell.exe",
@@ -672,9 +694,26 @@ function getAuthenticodeEvidence(files) {
     if (result.status !== 0) {
       throw new Error(`Authenticode inspection failed for ${label}: ${result.stderr || result.stdout}`);
     }
-    evidence[label] = JSON.parse(result.stdout.trim());
+    const signature = JSON.parse(result.stdout.trim());
+    const after = hashFile(filePath);
+    assert.deepEqual(after, before, `${label} changed while its Authenticode signature was inspected`);
+    evidence[label] = { ...signature, sha256: after.sha256 };
   }
   return evidence;
+}
+
+function assertSignatureHashesMatchInspection(appDir, files, signatures, inspection) {
+  const inspectedByPath = new Map(inspection.files.map((entry) => [entry.relativePath, entry]));
+  for (const [label, filePath] of Object.entries(files)) {
+    const relativePath = normalizeRelativePath(path.relative(appDir, filePath));
+    const inspected = inspectedByPath.get(relativePath);
+    assert.ok(inspected, `Final bundle fingerprint is missing signed file ${label}`);
+    assert.equal(
+      signatures[label]?.sha256,
+      inspected.sha256,
+      `${label} differs from the bytes covered by its Authenticode evidence`
+    );
+  }
 }
 
 function assertExpectedPublisher(signature, label) {
@@ -712,19 +751,6 @@ function hashFile(filePath) {
   };
 }
 
-function listFiles(root) {
-  const files = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    const filePath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...listFiles(filePath));
-    } else if (entry.isFile()) {
-      files.push(filePath);
-    }
-  }
-  return files;
-}
-
 function selfTest() {
   const fixtureMainSource = fs.readFileSync(path.join(fixtureRoot, "main.cjs"), "utf8");
   assert.equal(fixtureConfig.productName, "SteamBridgeSmoke");
@@ -743,6 +769,8 @@ function selfTest() {
   assert.ok(fixtureConfig.files.includes("smoke/**/*"));
   assert.ok(fixtureConfig.files.includes("native-binding-manifest.json"));
   assert.ok(liveSmokeFiles.includes("native-binding-probe.cjs"));
+  assert.ok(windowsToolFiles.includes("windows-release-candidate-fingerprint.cjs"));
+  assert.ok(windowsToolFiles.includes("windows-live-proof-receipt.cjs"));
   assert.doesNotMatch(
     fixtureMainSource,
     /\bbinding(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[\s*["'][A-Za-z_$][A-Za-z0-9_$]*["']\s*\])\s*\(/,

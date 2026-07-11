@@ -7,6 +7,7 @@ param(
   [string]$LaunchMode = "steam-launch",
 
   [string]$AppDir = "",
+  [string]$CandidateAuditManifest = "",
   [string]$ArtifactRoot = "",
   [int]$AppId = 480,
   [string]$NativePath = "",
@@ -47,6 +48,7 @@ param(
   [switch]$CleanStaleOverlayHelpers,
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
+  [switch]$PrivateEnvImported,
   [switch]$CloseProbe,
   [ValidateSet("auto", "toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput")]
   [string]$CloseProbeInput = "auto",
@@ -256,6 +258,29 @@ $AutorunUserGestureGatePolicy = "single-cycle-active-v1"
 $PersistentReuseGatePolicy = "initial-user-gesture-verify-only-v1"
 $PersistentReuseEvidenceSchema = 1
 
+function Test-PathAncestorChainHasReparsePoint {
+  param([string]$Path)
+
+  $cursor = [System.IO.Path]::GetFullPath($Path)
+  if (-not (Test-Path -LiteralPath $cursor)) {
+    $cursor = Split-Path -Parent $cursor
+  }
+  while ($cursor) {
+    if (Test-Path -LiteralPath $cursor) {
+      $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+      if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        return $true
+      }
+    }
+    $parent = Split-Path -Parent $cursor
+    if (-not $parent -or $parent -eq $cursor) {
+      break
+    }
+    $cursor = $parent
+  }
+  return $false
+}
+
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
   if ($scriptDir -and (Test-Path -LiteralPath (Join-Path $scriptDir "SteamBridgeSmoke.exe"))) {
@@ -264,14 +289,44 @@ if (-not $AppDir) {
     $AppDir = Join-Path (Get-Location) "dist\electron-smoke\x86_64-pc-windows-msvc\SteamBridgeSmoke-win32-x64"
   }
 }
+$AppDir = [System.IO.Path]::GetFullPath($AppDir)
+
+if ($CandidateAuditManifest) {
+  $CandidateAuditManifest = [System.IO.Path]::GetFullPath($CandidateAuditManifest)
+}
 
 if (-not $ArtifactRoot) {
   $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
   $ArtifactRoot = Join-Path $env:TEMP "steam-bridge-windows-overlay-matrix-$timestamp"
 }
 
+$defaultLaunchEnvFile = [System.IO.Path]::GetFullPath(
+  (Join-Path $env:LOCALAPPDATA "SteamBridgeSmoke\steam-bridge-windows-smoke.env")
+)
 if (-not $LaunchEnvFile) {
-  $LaunchEnvFile = Join-Path $env:LOCALAPPDATA "SteamBridgeSmoke\steam-bridge-windows-smoke.env"
+  $LaunchEnvFile = $defaultLaunchEnvFile
+} else {
+  $LaunchEnvFile = [System.IO.Path]::GetFullPath($LaunchEnvFile)
+}
+$pathTrimChars = @([char]92, [char]47)
+$pathSeparator = [string][System.IO.Path]::DirectorySeparatorChar
+$normalizedCandidateRoot = $AppDir.TrimEnd($pathTrimChars).ToLowerInvariant()
+$normalizedLaunchEnvFile = $LaunchEnvFile.ToLowerInvariant()
+$launchEnvOutsideCandidate = [bool](
+  $normalizedLaunchEnvFile -ne $normalizedCandidateRoot -and
+  -not $normalizedLaunchEnvFile.StartsWith($normalizedCandidateRoot + $pathSeparator)
+)
+$launchEnvUsesDefaultPath = [bool]$LaunchEnvFile.Equals(
+  $defaultLaunchEnvFile,
+  [System.StringComparison]::OrdinalIgnoreCase
+)
+$candidatePathHasNoReparsePoints = -not (Test-PathAncestorChainHasReparsePoint -Path $AppDir)
+$launchEnvPathHasNoReparsePoints = -not (Test-PathAncestorChainHasReparsePoint -Path $LaunchEnvFile)
+if (-not $launchEnvOutsideCandidate) {
+  throw "-LaunchEnvFile must resolve outside -AppDir."
+}
+if ($CandidateAuditManifest -and (-not $candidatePathHasNoReparsePoints -or -not $launchEnvPathHasNoReparsePoints)) {
+  throw "Candidate-bound runs require reparse-point-free candidate and launch-environment path ancestry."
 }
 
 if (-not $WebUrl) {
@@ -1491,6 +1546,28 @@ function Resolve-JavaScriptRunner {
     Command = Resolve-SmokeExe
     UseElectronRunAsNode = $true
   }
+}
+
+function Get-CandidateBinding {
+  if (-not $CandidateAuditManifest) {
+    return $null
+  }
+  if (-not (Test-Path -LiteralPath $CandidateAuditManifest -PathType Leaf)) {
+    throw "Candidate audit manifest was not found."
+  }
+  $fingerprintHelper = Join-Path $AppDir "windows-release-candidate-fingerprint.cjs"
+  if (-not (Test-Path -LiteralPath $fingerprintHelper -PathType Leaf)) {
+    throw "The candidate package is missing windows-release-candidate-fingerprint.cjs."
+  }
+  $runner = Resolve-JavaScriptRunner
+  $output = Invoke-JavaScriptRunner -Runner $runner -Arguments @(
+    $fingerprintHelper,
+    "--directory", $AppDir,
+    "--audit-manifest", $CandidateAuditManifest
+  )
+  return Read-PrefixedJson `
+    -Text ($output -join [System.Environment]::NewLine) `
+    -Prefix "STEAM_BRIDGE_WINDOWS_CANDIDATE_BINDING "
 }
 
 function ConvertTo-WindowsProcessArgument {
@@ -3066,6 +3143,17 @@ function Write-MatrixManifest {
   param([object[]]$Cases)
 
   $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
+  $publicSyntheticCheckout = (
+    $Suite -eq "checkout" -and
+    $AppId -eq 480 -and
+    $CheckoutTransactionId -eq "123456789" -and
+    -not $CheckoutJsonFile -and
+    -not $InitTxnRequestFile -and
+    -not $InitTxnResponseFile -and
+    -not $InitTxnApiKeyEnv -and
+    -not $InitTxnEndpoint -and
+    -not $RequireMicroTxnCallback
+  )
   $launchKind = if ($LaunchMode -eq "steam-app") { "app" } elseif ($LaunchMode -eq "steam-launch") { "shortcut" } else { "direct" }
   $manifestCases = @(
     $Cases |
@@ -3129,6 +3217,14 @@ function Write-MatrixManifest {
     appId = $AppId
     onlyCase = $OnlyCase
     expectedCaseCount = $manifestCases.Count
+    candidatePathHasNoReparsePoints = $candidatePathHasNoReparsePoints
+    launchEnvOutsideCandidate = $launchEnvOutsideCandidate
+    launchEnvPathHasNoReparsePoints = $launchEnvPathHasNoReparsePoints
+    launchEnvUsesDefaultPath = $launchEnvUsesDefaultPath
+    webUrlUsesPublicDefault = [bool](
+      $AppId -eq 480 -and
+      $WebUrl -ceq "https://store.steampowered.com/app/480/"
+    )
     shortcutNamePresent = -not [string]::IsNullOrWhiteSpace($ShortcutName)
     shortcutExeConfigured = [bool]$ShortcutExe
     shortcutStartDirConfigured = [bool]$ShortcutStartDir
@@ -3164,17 +3260,28 @@ function Write-MatrixManifest {
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
+    allowUnhealthySteamClientLogs = [bool]$AllowUnhealthySteamClientLogs
+    cleanStaleOverlayHelpers = [bool]$CleanStaleOverlayHelpers
+    steamClientHealthRecentMinutes = [int]$SteamClientHealthRecentMinutes
+    privateEnvImported = [bool]$PrivateEnvImported
+    timeoutSeconds = [int]$TimeoutSeconds
+    closeProbeSettleMs = [int]$CloseProbeSettleMs
+    closeProbeTimeoutSeconds = [int]$CloseProbeTimeoutSeconds
     requireMicroTxnCallback = [bool]$RequireMicroTxnCallback
+    candidateBinding = $candidateBinding
     cleanupContract = [PSCustomObject]@{
       processCleanupRequired = [bool](Test-IsLiveSteamLaunchSuite)
       launchEnvRollbackRequired = [bool](Test-IsLiveSteamLaunchSuite)
       taskCleanupExpected = [bool]$TaskCleanupExpected
+      steamContinuityRequired = [bool]((Test-IsLiveSteamLaunchSuite) -and $TaskCleanupExpected)
     }
     initTxnCapture = [PSCustomObject]@{
       hasRequestFile = [bool]$InitTxnRequestFile
+      hasResponseFile = [bool]$InitTxnResponseFile
       captureInApp = [bool]$InitTxnRequestFile
       apiKeyEnvProvided = [bool]$InitTxnApiKeyEnv
       endpointOption = $InitTxnEndpoint
+      publicSyntheticCheckout = [bool]$publicSyntheticCheckout
     }
     installShortcut = [bool]$InstallShortcut
     assumeShortcutConfigured = [bool]$AssumeShortcutConfigured
@@ -7411,6 +7518,7 @@ function Invoke-MatrixCase {
 
 Resolve-SmokeExe | Out-Null
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
+$candidateBinding = Get-CandidateBinding
 $selectedMatrixCases = @(Get-SelectedMatrixCases)
 Invoke-InitTxnCapture -Cases $selectedMatrixCases
 Test-InitTxnEnvironmentReadiness -Cases $selectedMatrixCases
@@ -7422,6 +7530,7 @@ Write-Host "Windows overlay matrix:"
 Write-Host ("  suite: {0}" -f $Suite)
 Write-Host ("  launchMode: {0}" -f $LaunchMode)
 Write-Host ("  appDir: {0}" -f $AppDir)
+Write-Host ("  candidateAuditManifest: {0}" -f $(if ($CandidateAuditManifest) { "present" } else { "" }))
 Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
 Write-Host ("  appId: {0}" -f $AppId)
 Write-Host ("  overlayProfile: {0}" -f $OverlayProfile)

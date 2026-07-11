@@ -301,6 +301,7 @@ function Format-RedactedMatrixArgs {
   )
   foreach ($flag in @(
     "-AppId",
+    "-CandidateAuditManifest",
     "-CheckoutJsonFile",
     "-CheckoutReturnUrl",
     "-CheckoutTransactionId",
@@ -578,6 +579,115 @@ function Get-TaskProcessNativeStartTicks {
   return Get-ExactProcessNativeStartTicks `
     -ProcessId ([int]$Process.ProcessId) `
     -CimStartTicks $cimStartTicks
+}
+
+function Get-ExactSteamProcessIdentities {
+  $identities = @()
+  $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'steam.exe'" -ErrorAction Stop)
+  foreach ($process in $processes) {
+    $processId = [int]$process.ProcessId
+    $cimStartTicks = Get-TaskProcessStartTicks -Process $process
+    $nativeStartTicks = Get-TaskProcessNativeStartTicks -Process $process
+    if ($processId -le 0 -or $cimStartTicks -le 0 -or $nativeStartTicks -le 0) {
+      throw "Could not capture an exact Steam process identity."
+    }
+    $identities += [PSCustomObject][ordered]@{
+      processId = $processId
+      sessionId = [int]$process.SessionId
+      cimStartTicks = ([int64]$cimStartTicks).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+      nativeStartTicks = ([int64]$nativeStartTicks).ToString([System.Globalization.CultureInfo]::InvariantCulture)
+    }
+  }
+  return @($identities | Sort-Object processId,nativeStartTicks)
+}
+
+function Start-SteamContinuityGuard {
+  param([bool]$Required)
+
+  $guard = [PSCustomObject][ordered]@{
+    required = $Required
+    beforeCaptureAttempted = $false
+    beforeCaptureSucceeded = $false
+    beforeIdentities = @()
+  }
+  if (-not $Required) {
+    return $guard
+  }
+  $guard.beforeCaptureAttempted = $true
+  try {
+    $guard.beforeIdentities = @(Get-ExactSteamProcessIdentities)
+    $guard.beforeCaptureSucceeded = ($guard.beforeIdentities.Count -eq 1)
+  } catch {
+    $guard.beforeCaptureSucceeded = $false
+    $guard.beforeIdentities = @()
+  }
+  return $guard
+}
+
+function Complete-SteamContinuityGuard {
+  param($Guard)
+
+  $evidence = [ordered]@{
+    required = [bool]$Guard.required
+    beforeCaptureAttempted = [bool]$Guard.beforeCaptureAttempted
+    beforeCaptureSucceeded = [bool]$Guard.beforeCaptureSucceeded
+    afterCaptureAttempted = $false
+    afterCaptureSucceeded = $false
+    beforeCount = @($Guard.beforeIdentities).Count
+    afterCount = 0
+    missingIdentityCount = 0
+    additionalIdentityCount = 0
+    sameIdentitySet = $false
+    sameSessionSet = $false
+    beforeIdentities = @($Guard.beforeIdentities)
+    afterIdentities = @()
+    ok = $false
+  }
+  if (-not $Guard.required) {
+    $evidence.sameIdentitySet = $true
+    $evidence.sameSessionSet = $true
+    $evidence.ok = $true
+    return [PSCustomObject]$evidence
+  }
+
+  $evidence.afterCaptureAttempted = $true
+  try {
+    $afterIdentities = @(Get-ExactSteamProcessIdentities)
+    $evidence.afterIdentities = @($afterIdentities)
+    $evidence.afterCount = $afterIdentities.Count
+    $evidence.afterCaptureSucceeded = ($afterIdentities.Count -eq 1)
+    $beforeKeys = @($Guard.beforeIdentities | ForEach-Object {
+      "{0}:{1}:{2}" -f ([int]$_.processId),([int64]$_.cimStartTicks),([int64]$_.nativeStartTicks)
+    })
+    $afterKeys = @($afterIdentities | ForEach-Object {
+      "{0}:{1}:{2}" -f ([int]$_.processId),([int64]$_.cimStartTicks),([int64]$_.nativeStartTicks)
+    })
+    $beforeSessions = @($Guard.beforeIdentities | ForEach-Object { [int]$_.sessionId })
+    $afterSessions = @($afterIdentities | ForEach-Object { [int]$_.sessionId })
+    $evidence.missingIdentityCount = @($beforeKeys | Where-Object { $_ -notin $afterKeys }).Count
+    $evidence.additionalIdentityCount = @($afterKeys | Where-Object { $_ -notin $beforeKeys }).Count
+    $evidence.sameIdentitySet = (
+      $evidence.missingIdentityCount -eq 0 -and
+      $evidence.additionalIdentityCount -eq 0 -and
+      $beforeKeys.Count -eq $afterKeys.Count
+    )
+    $evidence.sameSessionSet = (
+      @($beforeSessions | Where-Object { $_ -notin $afterSessions }).Count -eq 0 -and
+      @($afterSessions | Where-Object { $_ -notin $beforeSessions }).Count -eq 0 -and
+      $beforeSessions.Count -eq $afterSessions.Count
+    )
+    $evidence.ok = (
+      $Guard.beforeCaptureSucceeded -and
+      $evidence.afterCaptureSucceeded -and
+      $evidence.beforeCount -eq 1 -and
+      $evidence.afterCount -eq 1 -and
+      $evidence.sameIdentitySet -and
+      $evidence.sameSessionSet
+    )
+  } catch {
+    $evidence.ok = $false
+  }
+  return [PSCustomObject]$evidence
 }
 
 function New-TaskRunnerTreeState {
@@ -1043,6 +1153,9 @@ $donePath = Join-Path $runDir "done.json"
 $logPath = Join-Path $runDir "task-output.log"
 
 $arguments = @("-AppDir", $AppDir, "-ArtifactRoot", $ArtifactRoot) + @($resolvedMatrixArgs)
+if ($PrivateEnvFile) {
+  $arguments += "-PrivateEnvImported"
+}
 if (-not $KeepTask) {
   $arguments += "-TaskCleanupExpected"
 }
@@ -1215,7 +1328,11 @@ $runnerTreeState = New-TaskRunnerTreeState -RunnerPath $runner
 $launchEnvGuard = New-TaskLaunchEnvGuard `
   -Required $isLiveMatrixSuite `
   -Path $resolvedLaunchEnvFile
+$steamContinuityGuard = Start-SteamContinuityGuard -Required $isLiveMatrixSuite
 try {
+  if ($steamContinuityGuard.required -and -not $steamContinuityGuard.beforeCaptureSucceeded) {
+    throw "Could not establish exact pre-run Steam continuity."
+  }
   Invoke-CheckedNative schtasks.exe @("/Create", "/TN", $taskName, "/TR", $taskCommand, "/SC", "ONCE", "/ST", "23:59", "/F", "/RL", $TaskRunLevel.ToUpperInvariant(), "/IT")
   $taskCreated = $true
   Start-TaskLaunchEnvGuard -Guard $launchEnvGuard
@@ -1327,6 +1444,7 @@ try {
     failureStage = $taskFailureStage
     errorKind = $taskErrorKind
     errorPresent = $taskErrorPresent
+    taskRunLevel = $TaskRunLevel
     endAttempted = $false
     endExitCodeCaptured = $false
     endExitCode = $null
@@ -1341,6 +1459,7 @@ try {
     runnerProcessGuard = $null
     launchEnvGuard = $null
     packageProcessGuard = $null
+    steamContinuityGuard = $null
     taskFileGuard = $null
     ok = $false
   }
@@ -1348,6 +1467,7 @@ try {
   $runnerProcessGuard = $null
   $packageProcessGuard = $null
   $launchEnvGuardEvidence = $null
+  $steamContinuityGuardEvidence = $null
   $taskFileGuard = $null
   try {
     $runnerProcessGuard = Start-TaskRunnerTreeGuard `
@@ -1428,9 +1548,15 @@ try {
   } catch {
     $cleanup.cleanupPhaseErrorCount += 1
   }
+  try {
+    $steamContinuityGuardEvidence = Complete-SteamContinuityGuard -Guard $steamContinuityGuard
+  } catch {
+    $cleanup.cleanupPhaseErrorCount += 1
+  }
   $cleanup.runnerProcessGuard = $runnerProcessGuard
   $cleanup.packageProcessGuard = $packageProcessGuard
   $cleanup.launchEnvGuard = $launchEnvGuardEvidence
+  $cleanup.steamContinuityGuard = $steamContinuityGuardEvidence
   $cleanup.taskFileGuard = $taskFileGuard
 
   $cleanup.ok = (
@@ -1440,6 +1566,7 @@ try {
     $cleanup.runnerProcessGuard.ok -eq $true -and
     $cleanup.packageProcessGuard.ok -eq $true -and
     $cleanup.launchEnvGuard.ok -eq $true -and
+    $cleanup.steamContinuityGuard.ok -eq $true -and
     $cleanup.taskFileGuard.ok -eq $true
   )
   New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null

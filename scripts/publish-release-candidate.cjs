@@ -6,6 +6,19 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const tar = require("tar");
+const {
+  createCandidateBinding,
+  inspectCandidateDirectory,
+  verifyBundleArchiveContent
+} = require("./windows-release-candidate-fingerprint.cjs");
+const {
+  assembleLiveProofReceipt,
+  PROFILE_CONTRACTS,
+  readAndValidateLiveProofReceipt
+} = require("./windows-live-proof-receipt.cjs");
+
+const MAX_BUNDLE_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024;
 
 if (process.argv.includes("--self-test")) {
   selfTest();
@@ -22,6 +35,7 @@ function main() {
       "Usage: node scripts/publish-release-candidate.cjs --tarball <steam-bridge.tgz> " +
         "[--bundle-archive <steam-bridge-win-unpacked.tar>] " +
         "--audit-manifest <steam-bridge-windows-package-audit.json> " +
+        "[--live-proof-receipt <windows-live-proof-receipt.json>] " +
         "[--require-publishable|--publish --release-tag <vX.Y.Z>] [--tag <npm-tag>]"
     );
   }
@@ -31,6 +45,7 @@ function main() {
   const requirePublishable = publishRequested || process.argv.includes("--require-publishable");
   const bundleArchiveArg = readArg("--bundle-archive");
   const npmTag = readArg("--tag");
+  const liveProofReceiptArg = readArg("--live-proof-receipt");
   const verified = verifyReleaseCandidate(tarball, auditManifest, {
     requirePublishable,
     releaseTag: readArg("--release-tag") || process.env.GITHUB_REF_NAME || "",
@@ -38,27 +53,143 @@ function main() {
   });
   console.log(`Verified canonical npm release candidate ${path.basename(tarball)} sha256=${verified.sha256}`);
 
+  const liveProofReceipt = validateLiveProofForPublish(
+    publishRequested,
+    liveProofReceiptArg,
+    verified.candidateBinding
+  );
+  if (liveProofReceipt) {
+    console.log(`Verified matching Windows live-proof receipt sha256=${liveProofReceipt.receiptSha256}`);
+  }
+
   if (!publishRequested) {
     console.log("Verification-only mode; pass --publish to publish this exact tarball without repacking the workspace.");
     return;
   }
   validatePublishTag(verified.packageVersion, npmTag);
-  const args = ["publish", tarball];
-  if (npmTag) {
-    args.push("--tag", npmTag);
+  const publishCopy = createVerifiedPublishCopy(tarball, verified);
+  try {
+    const args = ["publish", publishCopy.tarball];
+    if (npmTag) {
+      args.push("--tag", npmTag);
+    }
+    const invocation = resolveNpmInvocation(args);
+    const result = spawnSync(invocation.command, invocation.args, {
+      cwd: publishCopy.directory,
+      stdio: "inherit",
+      shell: false,
+      windowsHide: true
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      throw new Error(`npm publish of the verified tarball failed with status ${result.status ?? "unknown"}.`);
+    }
+  } finally {
+    fs.rmSync(publishCopy.directory, { recursive: true, force: true });
   }
-  const invocation = resolveNpmInvocation(args);
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: path.dirname(tarball),
-    stdio: "inherit",
-    shell: false,
-    windowsHide: true
-  });
-  if (result.error) {
-    throw result.error;
+}
+
+function validateLiveProofForPublish(publishRequested, receiptArg, candidateBinding) {
+  const receipt = receiptArg
+    ? readAndValidateLiveProofReceipt(path.resolve(receiptArg), candidateBinding)
+    : null;
+  if (publishRequested) {
+    assert.ok(receipt, "npm publication requires a matching Windows live-proof receipt");
   }
-  if (result.status !== 0) {
-    throw new Error(`npm publish of the verified tarball failed with status ${result.status ?? "unknown"}.`);
+  return receipt;
+}
+
+function createVerifiedPublishCopy(tarball, expected) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-npm-publish-"));
+  fs.chmodSync(directory, 0o700);
+  const destination = path.join(directory, path.basename(tarball));
+  try {
+    const bytes = readStableRegularFile(tarball, "release tarball");
+    const actual = hashBuffer(bytes);
+    for (const field of ["size", "sha1", "sha256", "sha512", "integrity"]) {
+      assert.equal(actual[field], expected[field], `publish copy ${field} differs from the verified candidate`);
+    }
+    const descriptor = fs.openSync(destination, "wx", 0o400);
+    try {
+      fs.writeFileSync(descriptor, bytes);
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    assert.deepEqual(hashBuffer(fs.readFileSync(destination)), actual);
+    return { directory, tarball: destination };
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function createStableSnapshot(source, label, expectedSize) {
+  assert.ok(
+    Number.isSafeInteger(expectedSize) && expectedSize > 0 && expectedSize <= MAX_BUNDLE_ARCHIVE_BYTES,
+    `${label} audited size is invalid`
+  );
+  const initial = fs.lstatSync(source, { bigint: true });
+  assert.ok(initial.isFile() && !initial.isSymbolicLink(), `${label} must be a regular file`);
+  assert.equal(initial.nlink, 1n, `${label} must not be hard linked`);
+  assert.equal(initial.size, BigInt(expectedSize), `${label} size differs from the package audit`);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-candidate-snapshot-"));
+  fs.chmodSync(directory, 0o700);
+  const file = path.join(directory, path.basename(source));
+  let sourceDescriptor;
+  let destinationDescriptor;
+  try {
+    sourceDescriptor = fs.openSync(source, "r");
+    destinationDescriptor = fs.openSync(file, "wx", 0o400);
+    const before = fs.fstatSync(sourceDescriptor, { bigint: true });
+    assertStableFileStats(initial, before, label);
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    let total = 0n;
+    for (;;) {
+      const count = fs.readSync(sourceDescriptor, buffer, 0, buffer.length, null);
+      if (count === 0) {
+        break;
+      }
+      let offset = 0;
+      while (offset < count) {
+        offset += fs.writeSync(destinationDescriptor, buffer, offset, count - offset);
+      }
+      total += BigInt(count);
+      assert.ok(total <= BigInt(expectedSize), `${label} exceeds its audited size while being copied`);
+    }
+    fs.fsyncSync(destinationDescriptor);
+    const after = fs.fstatSync(sourceDescriptor, { bigint: true });
+    const finalPathStats = fs.lstatSync(source, { bigint: true });
+    assertStableFileStats(before, after, label);
+    assertStableFileStats(after, finalPathStats, label);
+    assert.equal(total, BigInt(expectedSize), `${label} changed size while being copied`);
+    const destinationStats = fs.fstatSync(destinationDescriptor, { bigint: true });
+    assert.equal(destinationStats.size, total, `${label} snapshot has the wrong size`);
+    fs.closeSync(destinationDescriptor);
+    destinationDescriptor = undefined;
+    fs.closeSync(sourceDescriptor);
+    sourceDescriptor = undefined;
+    return { directory, file };
+  } catch (error) {
+    if (destinationDescriptor !== undefined) {
+      fs.closeSync(destinationDescriptor);
+      destinationDescriptor = undefined;
+    }
+    if (sourceDescriptor !== undefined) {
+      fs.closeSync(sourceDescriptor);
+      sourceDescriptor = undefined;
+    }
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  } finally {
+    if (destinationDescriptor !== undefined) {
+      fs.closeSync(destinationDescriptor);
+    }
+    if (sourceDescriptor !== undefined) {
+      fs.closeSync(sourceDescriptor);
+    }
   }
 }
 
@@ -78,8 +209,8 @@ function resolveNpmInvocation(args, options = {}) {
 function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
   assertNonEmptyFile(tarball, "release tarball");
   assertNonEmptyFile(auditManifest, "package audit manifest");
-  const audit = JSON.parse(fs.readFileSync(auditManifest, "utf8"));
-  assert.equal(audit.schemaVersion, 1, "unsupported package audit schema");
+  const audit = readJsonFile(auditManifest, "package audit manifest");
+  assert.equal(audit.schemaVersion, 2, "unsupported package audit schema");
   assert.equal(audit.executableProbe?.ok, true, "package audit is missing a successful final executable probe");
   const nativeBinding = audit.package?.nativeBinding;
   assert.equal(nativeBinding?.schemaVersion, 1, "package audit is missing native binding schema 1");
@@ -129,18 +260,12 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
     "native binding probe reports non-function methods"
   );
   assert.equal(audit.checkoutValidatorProbe?.ok, true, "package audit is missing a successful checkout-validator probe");
+  const candidateBinding = createCandidateBinding(audit);
   const expected = audit.package?.tarball;
   assert.ok(expected, "package audit is missing tarball identity");
   assert.equal(expected.fileName, path.basename(tarball), "tarball filename differs from the audited candidate");
 
-  const bytes = fs.readFileSync(tarball);
-  const actual = {
-    size: bytes.length,
-    sha1: crypto.createHash("sha1").update(bytes).digest("hex"),
-    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
-    sha512: crypto.createHash("sha512").update(bytes).digest("hex"),
-    integrity: `sha512-${crypto.createHash("sha512").update(bytes).digest("base64")}`
-  };
+  const actual = hashBuffer(readStableRegularFile(tarball, "release tarball"));
   for (const field of Object.keys(actual)) {
     assert.equal(actual[field], expected[field], `tarball ${field} differs from the audited candidate`);
   }
@@ -154,22 +279,38 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
       expectedArchive.fileName,
       "Windows bundle archive filename differs from the audited candidate"
     );
-    const archiveBytes = fs.readFileSync(bundleArchive);
-    const actualArchive = {
-      size: archiveBytes.length,
-      sha1: crypto.createHash("sha1").update(archiveBytes).digest("hex"),
-      sha256: crypto.createHash("sha256").update(archiveBytes).digest("hex"),
-      sha512: crypto.createHash("sha512").update(archiveBytes).digest("hex"),
-      integrity: `sha512-${crypto.createHash("sha512").update(archiveBytes).digest("base64")}`
-    };
-    for (const field of Object.keys(actualArchive)) {
-      assert.equal(
-        actualArchive[field],
-        expectedArchive[field],
-        `Windows bundle archive ${field} differs from the audited candidate`
+    assert.ok(
+      Number.isSafeInteger(expectedArchive.size) &&
+        expectedArchive.size > 0 &&
+        expectedArchive.size <= MAX_BUNDLE_ARCHIVE_BYTES,
+      "Windows bundle archive audit has an invalid size"
+    );
+    const archiveSnapshot = createStableSnapshot(
+      bundleArchive,
+      "retained Windows bundle archive",
+      expectedArchive.size
+    );
+    try {
+      const actualArchive = hashStableRegularFile(
+        archiveSnapshot.file,
+        "private retained Windows bundle archive snapshot"
       );
+      for (const field of Object.keys(actualArchive)) {
+        assert.equal(
+          actualArchive[field],
+          expectedArchive[field],
+          `Windows bundle archive ${field} differs from the audited candidate`
+        );
+      }
+      verifyBundleArchiveContent(
+        archiveSnapshot.file,
+        audit.finalBundle.contentFingerprint,
+        expectedArchive.rootDirectory
+      );
+      actual.bundleArchiveSha256 = actualArchive.sha256;
+    } finally {
+      fs.rmSync(archiveSnapshot.directory, { recursive: true, force: true });
     }
-    actual.bundleArchiveSha256 = actualArchive.sha256;
   }
   if (options.requirePublishable) {
     assert.ok(bundleArchive, "publishing requires the retained, audited Windows bundle archive");
@@ -179,6 +320,12 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
       "publishing requires the retained Windows bundle to contain the live smoke protocol"
     );
     assert.equal(audit.signing?.required, true, "publishing requires an audit produced by the signed package gate");
+    assert.equal(
+      audit.signing?.expectedPublisherSubjectConfigured === true ||
+        audit.signing?.expectedPublisherThumbprintConfigured === true,
+      true,
+      "publishing requires an exact expected publisher policy in the package audit"
+    );
     for (const fileName of [
       "appExecutable",
       "steam_bridge_native.win32-x64-msvc.node",
@@ -220,6 +367,7 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
     );
   }
   actual.packageVersion = audit.package?.version;
+  actual.candidateBinding = candidateBinding;
   return actual;
 }
 
@@ -241,8 +389,24 @@ function selfTest() {
     const audit = path.join(tempRoot, "audit.json");
     const bytes = Buffer.from("canonical publish bytes");
     fs.writeFileSync(tarball, bytes);
-    const bundleBytes = Buffer.from("retained signed Windows bundle bytes");
-    fs.writeFileSync(bundleArchive, bundleBytes);
+    const bundleDir = path.join(tempRoot, "win-unpacked-source");
+    fs.mkdirSync(path.join(bundleDir, "resources"), { recursive: true });
+    fs.writeFileSync(path.join(bundleDir, "SteamBridgeSmoke.exe"), "signed app");
+    fs.writeFileSync(path.join(bundleDir, "resources", "app.asar"), "asar bytes");
+    const bundleInspection = inspectCandidateDirectory(bundleDir);
+    tar.create(
+      { cwd: bundleDir, file: bundleArchive, sync: true, portable: true, noMtime: true, prefix: "win-unpacked" },
+      bundleInspection.files.map((entry) => entry.relativePath)
+    );
+    const bundleBytes = fs.readFileSync(bundleArchive);
+    assert.throws(
+      () => createStableSnapshot(bundleArchive, "retained Windows bundle archive", bundleBytes.length + 1),
+      /size differs from the package audit/
+    );
+    assert.throws(
+      () => createStableSnapshot(bundleArchive, "retained Windows bundle archive", MAX_BUNDLE_ARCHIVE_BYTES + 1),
+      /audited size is invalid/
+    );
     const fakeNpmCli = path.join(tempRoot, "npm-cli.js");
     fs.writeFileSync(fakeNpmCli, "// test npm CLI\n");
     assert.deepEqual(
@@ -264,8 +428,10 @@ function selfTest() {
     fs.writeFileSync(
       audit,
       `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
+        target: "x86_64-pc-windows-msvc",
         package: {
+          name: "steam-bridge",
           version: "0.1.0",
           nativeBinding: {
             schemaVersion: 1,
@@ -289,13 +455,19 @@ function selfTest() {
         },
         checkoutValidatorProbe: { ok: true },
         liveSmokeCapability: { protocolPackaged: true },
+        electronBuilder: { electronVersion: "43.1.0" },
         signing: {
           required: true,
+          expectedPublisherSubjectConfigured: false,
+          expectedPublisherThumbprintConfigured: true,
           publisherMatches: { appExecutable: true, nativeAddon: true }
         },
         finalBundle: {
+          contentFingerprint: bundleInspection.fingerprint,
           archive: {
             fileName: path.basename(bundleArchive),
+            rootDirectory: "win-unpacked",
+            fileCount: bundleInspection.fingerprint.fileCount,
             size: bundleBytes.length,
             sha1: crypto.createHash("sha1").update(bundleBytes).digest("hex"),
             sha256: crypto.createHash("sha256").update(bundleBytes).digest("hex"),
@@ -321,18 +493,32 @@ function selfTest() {
             "sdkencryptedappticket64.dll": { status: "Valid" }
           }
         },
-        release: { gitCommit: "0123456789abcdef", gitRefName: "v0.1.0" }
+        release: { gitCommit: "0123456789abcdef0123456789abcdef01234567", gitRefName: "v0.1.0" }
       })}\n`
     );
     assert.equal(verifyReleaseCandidate(tarball, audit).sha256, expected.sha256);
-    assert.equal(
-      verifyReleaseCandidate(tarball, audit, {
-        requirePublishable: true,
-        releaseTag: "v0.1.0",
-        bundleArchive
-      }).sha256,
-      expected.sha256
+    const publishableCandidate = verifyReleaseCandidate(tarball, audit, {
+      requirePublishable: true,
+      releaseTag: "v0.1.0",
+      bundleArchive
+    });
+    assert.equal(publishableCandidate.sha256, expected.sha256);
+    assert.equal(validateLiveProofForPublish(false, undefined, publishableCandidate.candidateBinding), null);
+    assert.throws(
+      () => validateLiveProofForPublish(true, undefined, publishableCandidate.candidateBinding),
+      /requires a matching Windows live-proof receipt/
     );
+    const receiptPath = path.join(tempRoot, "windows-live-proof-receipt.json");
+    writeJson(receiptPath, createSelfTestReceipt(publishableCandidate.candidateBinding));
+    assert.ok(validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding));
+    const publishCopy = createVerifiedPublishCopy(tarball, publishableCandidate);
+    try {
+      fs.appendFileSync(tarball, "changed-after-private-copy");
+      assert.equal(hashBuffer(fs.readFileSync(publishCopy.tarball)).sha256, expected.sha256);
+    } finally {
+      fs.rmSync(publishCopy.directory, { recursive: true, force: true });
+      fs.writeFileSync(tarball, bytes);
+    }
     const validAudit = JSON.parse(fs.readFileSync(audit, "utf8"));
     for (const [mutate, expectedError] of [
       [(value) => (value.package.nativeBinding.schemaVersion = 2), /native binding schema 1/],
@@ -393,10 +579,115 @@ function selfTest() {
   }
 }
 
+function createSelfTestReceipt(candidateBinding) {
+  const profiles = PROFILE_CONTRACTS.map((contract, index) => ({
+    name: contract.name,
+    suite: contract.suite,
+    candidateBindingSha256: candidateBinding.bindingSha256,
+    manifestSha256: (index + 1).toString(16).repeat(64),
+    evidenceSha256: (index + 5).toString(16).repeat(64),
+    caseIds: contract.cases.map((entry) => entry.id),
+    caseCount: contract.cases.length,
+    activeCaseCount: contract.activeCaseCount,
+    steamLaunchCaseCount: contract.cases.length,
+    cleanCaseCount: contract.cases.length,
+    readinessPassed: true,
+    nativeLoadPassed: true,
+    renderHealthPassed: true,
+    semanticPassed: true,
+    cleanupPassed: true,
+    steamContinuityPassed: true,
+    crashCount: 0
+  }));
+  return assembleLiveProofReceipt(candidateBinding, profiles, "2026-07-11T00:00:00.000Z", true);
+}
+
 function assertNonEmptyFile(filePath, label) {
-  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile() || fs.statSync(filePath).size === 0) {
+  if (!filePath || !fs.existsSync(filePath)) {
     throw new Error(`Missing or empty ${label}: ${filePath}`);
   }
+  const stats = fs.lstatSync(filePath);
+  if (!stats.isFile() || stats.isSymbolicLink() || stats.size === 0) {
+    throw new Error(`Missing or empty ${label}: ${filePath}`);
+  }
+}
+
+function readJsonFile(filePath, label) {
+  const stats = fs.lstatSync(filePath);
+  assert.ok(stats.isFile() && !stats.isSymbolicLink() && stats.size > 0, `${label} must be a regular file`);
+  assert.ok(stats.size <= 16 * 1024 * 1024, `${label} exceeds the supported size`);
+  return JSON.parse(readStableRegularFile(filePath, label, 16 * 1024 * 1024).toString("utf8"));
+}
+
+function readStableRegularFile(filePath, label, maxBytes = 512 * 1024 * 1024) {
+  assertNonEmptyFile(filePath, label);
+  const descriptor = fs.openSync(filePath, "r");
+  try {
+    const before = fs.fstatSync(descriptor, { bigint: true });
+    assert.ok(before.isFile() && before.size > 0n && before.size <= BigInt(maxBytes), `${label} has an invalid size`);
+    const bytes = fs.readFileSync(descriptor);
+    const after = fs.fstatSync(descriptor, { bigint: true });
+    assertStableFileStats(before, after, label);
+    assert.equal(BigInt(bytes.length), after.size, `${label} changed size while being read`);
+    return bytes;
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function hashStableRegularFile(filePath, label) {
+  assertNonEmptyFile(filePath, label);
+  const descriptor = fs.openSync(filePath, "r");
+  try {
+    const before = fs.fstatSync(descriptor, { bigint: true });
+    assert.ok(before.isFile() && before.size > 0n && before.size <= BigInt(Number.MAX_SAFE_INTEGER));
+    const sha1 = crypto.createHash("sha1");
+    const sha256Hash = crypto.createHash("sha256");
+    const sha512Hex = crypto.createHash("sha512");
+    const sha512Base64 = crypto.createHash("sha512");
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    let total = 0;
+    for (;;) {
+      const count = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+      if (count === 0) {
+        break;
+      }
+      const chunk = buffer.subarray(0, count);
+      sha1.update(chunk);
+      sha256Hash.update(chunk);
+      sha512Hex.update(chunk);
+      sha512Base64.update(chunk);
+      total += count;
+    }
+    const after = fs.fstatSync(descriptor, { bigint: true });
+    assertStableFileStats(before, after, label);
+    assert.equal(BigInt(total), after.size, `${label} changed size while being hashed`);
+    return {
+      size: total,
+      sha1: sha1.digest("hex"),
+      sha256: sha256Hash.digest("hex"),
+      sha512: sha512Hex.digest("hex"),
+      integrity: `sha512-${sha512Base64.digest("base64")}`
+    };
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function assertStableFileStats(before, after, label) {
+  for (const field of ["dev", "ino", "size", "nlink", "mtimeNs", "ctimeNs"]) {
+    assert.equal(after[field], before[field], `${label} changed while being inspected`);
+  }
+}
+
+function hashBuffer(bytes) {
+  return {
+    size: bytes.length,
+    sha1: crypto.createHash("sha1").update(bytes).digest("hex"),
+    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    sha512: crypto.createHash("sha512").update(bytes).digest("hex"),
+    integrity: `sha512-${crypto.createHash("sha512").update(bytes).digest("base64")}`
+  };
 }
 
 function writeJson(filePath, value) {

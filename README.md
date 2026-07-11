@@ -821,15 +821,28 @@ the private `--checkout-json-file` checkout suite.
   packages the current public smoke action/matrix protocol and
   retains a hash-audited archive of the exact `win-unpacked` bundle as a
   time-bounded workflow artifact for live proof and candidate recovery. The
-  signed candidate must still pass
+  schema-2 audit binds the complete portable regular-file set by path, size,
+  and content hash. Empty directories and directory metadata are outside this
+  content-fingerprint contract. The publisher independently reopens the
+  retained archive and requires the same content fingerprint. The live matrix recomputes that
+  fingerprint for the deployed directory.
+  The signed candidate must still pass
   `presenter-ready` and the live Windows overlay gates before it carries an
   overlay release claim.
 - The ASAR gate's audited `.tgz` is the canonical npm release candidate. Verify
   it with `npm run release:publish-candidate -- --tarball <file.tgz>
   --bundle-archive <win-unpacked.tar> --audit-manifest <audit.json>`, then add
-  `--publish` to publish those exact bytes from an audit emitted by the signed
-  gate together with `--release-tag v<package-version>`. The audit JSON is not
-  independently signed, so retain and trust its workflow-artifact provenance.
+  `--require-publishable --release-tag v<package-version>` to validate a signed
+  tag candidate before live testing. That pre-live check intentionally does not
+  require a receipt. An actual `--publish` additionally requires
+  `--live-proof-receipt <receipt.json>`. The receipt is generated only after
+  the exact candidate passes the complete public Windows `persistent-reuse`,
+  synthetic `checkout`, `shortcut-routes`, and `managed-routes` profiles: 31
+  exact cases, 27 of them activation cases. Private `InitTxn` evidence is never
+  eligible. Publication uses a private verified copy of the audited tarball so
+  later changes to the original path cannot affect the bytes sent to npm.
+  The audit and receipt JSON are not independently signed, so retain and trust
+  their workflow/release provenance.
   Prerelease versions also require an explicit non-`latest` npm `--tag`.
   Do not run `npm publish` from the assembled workspace and silently
   create a different tarball. Tag-triggered Release runs require Windows
@@ -839,8 +852,9 @@ the private `--checkout-json-file` checkout suite.
   a GitHub Release. This public repository currently retains Actions artifacts
   for 90 days, which is also GitHub's public-repository maximum, so an Actions
   artifact alone is not durable rollback storage. Before a production publish,
-  copy the exact tarball, Windows bundle, audit, and probe to durable immutable
-  release storage and keep them bound to the protected version tag. See
+  copy the exact tarball, Windows bundle, audit, probe, and sanitized live-proof
+  receipt to durable immutable release storage and keep all five records bound
+  to the protected version tag. See
   [Contributing](CONTRIBUTING.md#release-candidates-publication-and-rollback) and
   [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
   npm authority is not required to sign or live-test the candidate. Because

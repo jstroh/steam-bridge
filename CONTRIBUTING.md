@@ -58,13 +58,26 @@ diagnostic run may remain unsigned. The workflow does not publish npm bytes or
 create a GitHub Release, and a signed tag run is still a candidate until its
 exact retained bundle passes the required live Windows gates.
 
+`--require-publishable` is the signed-tag candidate gate and deliberately runs
+before live proof, so it must remain receipt-free. An actual `--publish` must
+also receive `--live-proof-receipt <receipt.json>`. Generate that sanitized
+receipt only from the exact candidate's complete public `persistent-reuse`,
+synthetic `checkout`, `shortcut-routes`, and `managed-routes` roots. The
+generator requires all 31 exact cases, including 27 activation cases, rejects
+private `InitTxn` inputs, nondefault web/checkout inputs, renderer/health
+overrides, elevated tasks, custom runners, and stale-helper cleanup; compares
+exact Steam identity through each task cleanup and across profiles; and
+fingerprints the deployed candidate again after the live batch. The workflow
+must not fabricate this post-live record or run `--publish` automatically.
+
 GitHub Actions artifacts in this public repository are retained for 90 days;
 GitHub permits at most 90 days for public repositories. Before the first
 production publish, copy the exact `.tgz`, retained Windows bundle, audit JSON,
-and executable-probe result to durable immutable release storage, bind them to
-the protected `v<package-version>` tag, and keep the four files together. The
-audit JSON is not independently signed, so its trusted workflow/release
-provenance is part of the evidence boundary. See
+executable-probe result, and sanitized live-proof receipt to durable immutable
+release storage, bind them to the protected `v<package-version>` tag, and keep
+the five records together. The audit and receipt JSON are not independently
+signed, so their trusted workflow/release provenance is part of the evidence
+boundary. See
 [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
 
 Publication authority is an explicit maintainer decision and is not required

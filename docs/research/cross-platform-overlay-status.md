@@ -493,6 +493,27 @@ checks at Electron `43.1.0`. The exact Windows package above remains historical
 Electron `43.0.0` evidence; a fresh `43.1.0` Windows ASAR candidate must pass
 the new gate before this becomes a current Windows release claim.
 
+The following release-boundary slice now binds those future live artifacts to
+one exact candidate without adding another modal experiment. Package-audit
+schema 2 fingerprints the complete portable regular-file set under
+`win-unpacked`; empty directories and directory metadata are outside this
+content-fingerprint contract. Retained-archive verification works from one
+stable private snapshot, and the matrix recomputes the deployed-directory
+binding before cases. The task wrapper also
+captures the one exact Steam PID/session/CIM/native-start identity before a live
+profile and compares it after all runner, package, environment, task, and file
+cleanup without stopping Steam. A sanitized receipt generator accepts only the
+complete public `persistent-reuse`, synthetic `checkout`, `shortcut-routes`, and
+`managed-routes` roots: four profiles, 31 exact cases, and 27 activation cases.
+It rejects private inputs, partial suites, renderer overrides, skipped or
+unhealthy gates, candidate drift, crash/semantic/cleanup failures, and Steam
+identity drift, then fingerprints the deployed directory again. Actual
+`--publish` requires that matching receipt and publishes from a private verified
+tarball copy; the candidate-only Release workflow and pre-live
+`--require-publishable` path remain receipt-free. This is an evidence and
+publication contract, not new live success: the fresh Electron `43.1.0` Windows
+candidate and assisted four-profile proof remain pending.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

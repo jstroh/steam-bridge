@@ -1176,6 +1176,68 @@ and transcript after the exact runner tree is gone. `-KeepTask` is an explicit
 local-debug escape hatch that retains the task and those raw handoff files; they
 can contain private paths or arguments, so do not share or archive them as test
 evidence.
+
+For a production release claim, pass the exact schema-2 package audit to every
+task-wrapped profile with `-CandidateAuditManifest`. The matrix fingerprints
+the deployed `AppDir` before any case and writes only a sanitized candidate
+binding into its manifest. Use four complete roots, with no `-OnlyCase`, private
+env file, `InitTxn` input, renderer override, skipped gate, shortened health
+window, allow-unhealthy flag, custom JavaScript runner, elevated task, or stale-
+helper cleanup. Keep the exact public App ID `480` web URL default and
+`-TaskRunLevel Limited`; candidate-bound runs also reject reparse-point ancestry
+for the candidate and launch-environment paths:
+
+```json
+[
+  "-Suite", "persistent-reuse",
+  "-LaunchMode", "steam-launch",
+  "-CandidateAuditManifest", "C:\\path\\to\\steam-bridge-windows-package-audit.json",
+  "-AssumeShortcutConfigured",
+  "-CloseProbe",
+  "-CloseProbeInput", "auto"
+]
+```
+
+Run that task once for `persistent-reuse`, then use otherwise identical argument
+files for `checkout`, `shortcut-routes`, and `managed-routes`, each with a
+separate artifact root. These profiles contain exactly 31 cases and 27
+activation cases. The checkout profile is the public App ID `480` synthetic
+routing proof; a private configured-app or `InitTxn` run cannot satisfy this
+release contract. Each wrapper records one exact `steam.exe` identity before
+launch and verifies the same PID, session, CIM creation time, and native creation
+time after runner, package, launch-environment, task, and handoff-file cleanup.
+It never stops Steam.
+
+After all four roots pass, generate the fifth durable release record from the
+packaged helper. The output path must not already exist and must be outside the
+candidate directory and all four evidence roots:
+
+```powershell
+node .\windows-live-proof-receipt.cjs `
+  --audit-manifest C:\path\to\steam-bridge-windows-package-audit.json `
+  --candidate-directory C:\path\to\SteamBridgeSmoke-win32-x64 `
+  --persistent-reuse-root C:\path\to\artifacts\persistent-reuse `
+  --checkout-root C:\path\to\artifacts\checkout `
+  --shortcut-routes-root C:\path\to\artifacts\shortcut-routes `
+  --managed-routes-root C:\path\to\artifacts\managed-routes `
+  --output C:\path\to\windows-live-proof-receipt.json
+```
+
+The generator validates readiness, a successful no-modal native-load gate,
+default render health, exact ordered case/action/target contracts, resolved
+default runtime configuration, three-way D3D11 identity, semantic lifecycle,
+crash state, all cleanup guards, unchanged Steam identity across all four
+profiles, and a final deployed-directory fingerprint. Its receipt contains only
+allowlisted release metadata, hashes, enums, booleans, counts, and fixed case
+IDs—no paths, process or session IDs, URLs, Steam IDs, transaction IDs,
+publisher identity, or screenshot names. Retain it beside the exact `.tgz`,
+bundle archive, package audit, and executable probe. The audit and receipt are
+not independently signed; trusted generation and immutable storage provenance
+remain part of the release boundary.
+`--require-publishable` intentionally needs no receipt because it assembles the
+pre-live candidate. Actual npm publication additionally requires
+`--publish --live-proof-receipt <receipt.json>`.
+
 For a retained `-KeepTask` run, copy the printed `taskName` and `taskFiles`
 values, replace the placeholders below, and clean up that one task and run
 directory explicitly:

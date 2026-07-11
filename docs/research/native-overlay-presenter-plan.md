@@ -2453,14 +2453,25 @@ Windows gates:
 - the gate retains a stable-metadata, hash-audited archive of the exact
   `win-unpacked` bundle with the current public smoke action/matrix protocol for
   subsequent `presenter-ready`, live proof, rollback, and independent re-audit
-  instead of discarding the signed candidate;
+  instead of discarding the signed candidate. Audit schema 2 also commits to a
+  path-, size-, and content-derived fingerprint of every portable regular file;
+  archive verification uses a stable private snapshot, and deployed live runs
+  must reproduce the same fingerprint before cases and again when the final
+  receipt is created;
 - the audited `.tgz` produced by that gate is the canonical npm candidate. The
   release-candidate command rehashes the tarball and retained bundle, checks the
   audit-recorded executable probe, live protocol, signing state, and publisher
-  evidence, and publishes that tarball only after an explicit `--publish` and
-  exact `v<package-version>` release tag; prerelease versions also require an
-  explicit non-`latest` npm dist-tag. The audit JSON itself is not signed, so
-  trusted workflow-artifact provenance is part of the release boundary.
+  evidence. `--require-publishable` remains the receipt-free pre-live signed-tag
+  candidate check. An explicit `--publish` also requires a sanitized receipt
+  binding the exact candidate to all 31 cases in the public `persistent-reuse`,
+  synthetic `checkout`, `shortcut-routes`, and `managed-routes` profiles,
+  including 27 activation cases, successful native-load/readiness/default-
+  render gates, semantic and crash checks, complete cleanup, and exact Steam
+  continuity. Private `InitTxn` roots are ineligible. Publication uses a private
+  verified tarball copy and an exact `v<package-version>` release tag;
+  prerelease versions also require an explicit non-`latest` npm dist-tag. The
+  audit and receipt JSON are not signed, so trusted workflow/release provenance
+  is part of the release boundary.
   Rebuilding from the workspace is outside the verified path. Tag-triggered
   Release jobs require code signing and configured publisher identity, while
   manual unsigned dispatches remain diagnostic;

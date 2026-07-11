@@ -21,6 +21,7 @@ const {
   normalizeQueryReason,
   normalizeRequestError
 } = require(checkoutProofPath);
+const { validateCandidateBinding } = require("./windows-release-candidate-fingerprint.cjs");
 
 const RESULT_PREFIX = "STEAM_BRIDGE_SMOKE_RESULT ";
 const KNOWN_NATIVE_LOAD_BLOCKERS = new Set([
@@ -292,7 +293,9 @@ function getPersistentReuseGateExpectation(manifest, entry) {
   return PERSISTENT_REUSE_GATE_EXPECTATION;
 }
 
-main();
+if (require.main === module) {
+  main();
+}
 
 function main() {
   let options;
@@ -413,12 +416,17 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     path.join(root, "smoke-process-cleanup-after-cases.json"),
     failures
   );
+  const processCleanupAfterRenderHealth = readJsonIfPresent(
+    path.join(root, "00-preflight", "smoke-process-cleanup-after-render-health.json"),
+    failures
+  );
   const launchEnvRollback = readJsonIfPresent(path.join(root, "launch-env-rollback.json"), failures);
   const taskCleanup = readJsonIfPresent(path.join(root, "task-cleanup.json"), failures);
   validateCleanupArtifacts(
     manifest,
     processCleanupBefore,
     processCleanupAfter,
+    processCleanupAfterRenderHealth,
     launchEnvRollback,
     taskCleanup,
     failures
@@ -469,6 +477,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   if (nativeLoadBlocker) {
     validateNativeLoadBlocker(nativeLoadBlocker, appControlGate, failures);
   }
+  const nativeLoadGate = readSuccessfulNativeLoadGate(preflightDir, manifest, nativeLoadBlocker, failures);
 
   for (const caseName of findCaseDirectories(root)) {
     const caseDir = path.join(root, caseName);
@@ -562,10 +571,12 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
     liveRunReadiness: liveRunReadiness ? summarizeReadiness(liveRunReadiness) : null,
     assumedShortcut: assumedShortcut ? summarizeAssumedShortcut(assumedShortcut) : null,
     renderHealth: renderHealth || renderHealthGate ? summarizeRenderHealth(renderHealth, renderHealthGate) : null,
+    nativeLoadGate,
     nativeLoadBlocker: nativeLoadBlocker ? summarizeNativeLoadBlocker(nativeLoadBlocker) : null,
     cleanup: summarizeCleanupArtifacts(
       processCleanupBefore,
       processCleanupAfter,
+      processCleanupAfterRenderHealth,
       launchEnvRollback,
       taskCleanup
     ),
@@ -577,6 +588,78 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
   };
 }
 
+function readSuccessfulNativeLoadGate(preflightDir, manifest, nativeLoadBlocker, failures) {
+  const required = Boolean(manifest?.candidateBinding) && manifest.skipNativeLoadGate !== true;
+  const resultLog = path.join(preflightDir, "native-load-gate", "result.log");
+  if (nativeLoadBlocker) {
+    return null;
+  }
+  if (!fs.existsSync(resultLog)) {
+    if (required) {
+      failures.push("candidate-bound matrix is missing successful native-load gate evidence");
+    }
+    return null;
+  }
+
+  let result;
+  try {
+    result = readSmokeResult(resultLog);
+  } catch {
+    failures.push("native-load gate result is malformed");
+    return null;
+  }
+  const failureCountBefore = failures.length;
+  const gateDir = path.dirname(resultLog);
+  const summary = summarizeCaseResult(
+    "native-load-gate",
+    result,
+    resultLog,
+    null,
+    [],
+    gateDir,
+    manifest,
+    null
+  );
+  failures.push(...summary.failures);
+  expect(summary.appId === manifest?.appId, "native-load gate App ID matches the matrix", failures);
+  expect(summary.action === "presenter-ready", "native-load gate uses presenter-ready", failures);
+  expect(summary.overlayActiveEvents === 0, "native-load gate does not activate a modal overlay", failures);
+  const expectedBackend = String(manifest?.expectedNativeHostBackend || "");
+  const backend = objectOrEmpty(summary.presenterBackendEvidence?.result);
+  const lifecycle = Array.isArray(summary.presenterBackendEvidence?.lifecycle)
+    ? summary.presenterBackendEvidence.lifecycle
+    : [];
+  if (expectedBackend) {
+    expect(
+      backend.attached === true &&
+        backend.backend === expectedBackend &&
+        backend.hostBackend === expectedBackend &&
+        backend.rendererBackend === expectedBackend &&
+        backend.agrees === true,
+      `native-load gate result has complete ${expectedBackend} backend agreement`,
+      failures
+    );
+    expect(
+      lifecycle.some((entry) => entry.complete && entry.agrees && entry.backend === expectedBackend),
+      `native-load gate lifecycle has complete ${expectedBackend} backend agreement`,
+      failures
+    );
+  }
+  return {
+    ok: failures.length === failureCountBefore,
+    appId: summary.appId,
+    action: summary.action,
+    backend: backend.backend || "",
+    hostBackend: backend.hostBackend || "",
+    rendererBackend: backend.rendererBackend || "",
+    backendAgrees: backend.agrees === true,
+    lifecycleCompleteCount: summary.presenterBackendEvidence?.lifecycleCompleteCount || 0,
+    runtimeConfig: summary.runtimeConfig,
+    crashDumpCount: summary.crashDumpCount,
+    fatalLifecycleEventCount: summary.fatalLifecycleEventCount
+  };
+}
+
 function validateManifest(manifest, failures) {
   expect(
     manifest.kind === "steam-bridge-windows-overlay-matrix-manifest",
@@ -584,6 +667,76 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
+  if (manifest.candidateBinding !== undefined && manifest.candidateBinding !== null) {
+    try {
+      validateCandidateBinding(manifest.candidateBinding);
+    } catch {
+      failures.push("matrix manifest candidate binding is invalid");
+    }
+    for (const field of [
+      "skipNativeLoadGate",
+      "skipRenderHealthGate",
+      "allowUnhealthyDefaultRender",
+      "allowUnhealthySteamClientLogs",
+      "candidatePathHasNoReparsePoints",
+      "cleanStaleOverlayHelpers",
+      "launchEnvOutsideCandidate",
+      "launchEnvPathHasNoReparsePoints",
+      "launchEnvUsesDefaultPath",
+      "privateEnvImported",
+      "webUrlUsesPublicDefault"
+    ]) {
+      expect(
+        hasOwn(manifest, field) && typeof manifest[field] === "boolean",
+        `candidate-bound matrix manifest records boolean ${field}`,
+        failures
+      );
+    }
+    expect(manifest.skipNativeLoadGate === false, "candidate-bound matrix requires the native-load gate", failures);
+    expect(manifest.skipRenderHealthGate === false, "candidate-bound matrix requires the render-health gate", failures);
+    expect(
+      manifest.allowUnhealthyDefaultRender === false,
+      "candidate-bound matrix rejects an unhealthy default renderer",
+      failures
+    );
+    expect(
+      manifest.allowUnhealthySteamClientLogs === false,
+      "candidate-bound matrix rejects unhealthy Steam client logs",
+      failures
+    );
+    expect(manifest.privateEnvImported === false, "candidate-bound matrix records no private env import", failures);
+    expect(
+      manifest.webUrlUsesPublicDefault === true,
+      "candidate-bound matrix uses the public default web URL",
+      failures
+    );
+    expect(
+      manifest.cleanStaleOverlayHelpers === false,
+      "candidate-bound matrix does not clean pre-existing overlay helpers",
+      failures
+    );
+    expect(
+      manifest.javaScriptRunnerExeConfigured === false,
+      "candidate-bound matrix uses the default audited JavaScript runner",
+      failures
+    );
+    expect(
+      manifest.launchEnvOutsideCandidate === true,
+      "candidate-bound matrix launch environment stays outside the candidate",
+      failures
+    );
+    expect(
+      manifest.candidatePathHasNoReparsePoints === true &&
+        manifest.launchEnvPathHasNoReparsePoints === true,
+      "candidate-bound matrix paths have no reparse-point ancestry",
+      failures
+    );
+    expect(
+      manifest.launchEnvUsesDefaultPath === true,
+      "candidate-bound matrix uses the default launch-environment path",
+      failures
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(manifest, "autorunUserGestureGatePolicy")) {
     expect(
       manifest.autorunUserGestureGatePolicy === USER_GESTURE_GATE_POLICY,
@@ -677,6 +830,13 @@ function validateManifest(manifest, failures) {
       expect(
         typeof cleanupContract[field] === "boolean",
         `matrix manifest cleanupContract.${field} is boolean`,
+        failures
+      );
+    }
+    if (manifest.candidateBinding || hasOwn(cleanupContract, "steamContinuityRequired")) {
+      expect(
+        typeof cleanupContract.steamContinuityRequired === "boolean",
+        "matrix manifest cleanupContract.steamContinuityRequired is boolean",
         failures
       );
     }
@@ -1027,6 +1187,7 @@ function validateCleanupArtifacts(
   manifest,
   processCleanupBefore,
   processCleanupAfter,
+  processCleanupAfterRenderHealth,
   launchEnvRollback,
   taskCleanup,
   failures
@@ -1035,6 +1196,8 @@ function validateCleanupArtifacts(
   const processRequired = cleanupContract.processCleanupRequired === true;
   const rollbackRequired = cleanupContract.launchEnvRollbackRequired === true;
   const taskRequired = cleanupContract.taskCleanupExpected === true;
+  const steamContinuityRequired = cleanupContract.steamContinuityRequired === true;
+  const renderCleanupRequired = Boolean(manifest?.candidateBinding) && manifest.skipRenderHealthGate !== true;
 
   if (processRequired) {
     expect(Boolean(processCleanupBefore), "live matrix includes before-run package-process cleanup evidence", failures);
@@ -1043,12 +1206,20 @@ function validateCleanupArtifacts(
   if (rollbackRequired) {
     expect(Boolean(launchEnvRollback), "live matrix includes launch-env rollback evidence", failures);
   }
+  if (renderCleanupRequired) {
+    expect(
+      Boolean(processCleanupAfterRenderHealth),
+      "candidate-bound matrix includes post-render-health process cleanup evidence",
+      failures
+    );
+  }
   if (taskRequired) {
     expect(Boolean(taskCleanup), "task-wrapped matrix includes task cleanup evidence", failures);
   }
 
   validateProcessCleanupArtifact(processCleanupBefore, "before-run", failures);
   validateProcessCleanupArtifact(processCleanupAfter, "after-cases", failures);
+  validateProcessCleanupArtifact(processCleanupAfterRenderHealth, "after-render-health", failures);
   if (launchEnvRollback) {
     expect(
       launchEnvRollback.kind === "steam-bridge-windows-launch-env-rollback",
@@ -1070,6 +1241,18 @@ function validateCleanupArtifacts(
     }
   }
   if (taskCleanup) {
+    expect(
+      taskCleanup.taskRunLevel === "Limited" || taskCleanup.taskRunLevel === "Highest",
+      "task cleanup records a supported task run level",
+      failures
+    );
+    if (manifest?.candidateBinding) {
+      expect(
+        taskCleanup.taskRunLevel === "Limited",
+        "candidate-bound matrix task runs with limited privileges",
+        failures
+      );
+    }
     expect(
       taskCleanup.kind === "steam-bridge-windows-overlay-task-cleanup",
       "task cleanup artifact kind is valid",
@@ -1168,6 +1351,11 @@ function validateCleanupArtifacts(
       failures
     );
     validateTaskPackageProcessGuard(taskCleanup.packageProcessGuard, taskRequired, failures);
+    validateTaskSteamContinuityGuard(
+      taskCleanup.steamContinuityGuard,
+      steamContinuityRequired,
+      failures
+    );
     validateTaskFileGuard(taskCleanup.taskFileGuard, taskRequired, failures);
   }
 }
@@ -1298,6 +1486,89 @@ function validateTaskPackageProcessGuard(value, required, failures) {
   }
 }
 
+function validateTaskSteamContinuityGuard(value, required, failures) {
+  const guard = objectOrEmpty(value);
+  if (required) {
+    expect(guard.required === true, "task wrapper Steam-continuity guard is required", failures);
+  }
+  if (!value) {
+    expect(!required, "task cleanup includes Steam-continuity guard evidence", failures);
+    return;
+  }
+  expect(guard.ok === true, "task wrapper Steam-continuity guard completed successfully", failures);
+  for (const field of [
+    "beforeCaptureAttempted",
+    "beforeCaptureSucceeded",
+    "afterCaptureAttempted",
+    "afterCaptureSucceeded",
+    "sameIdentitySet",
+    "sameSessionSet"
+  ]) {
+    expect(typeof guard[field] === "boolean", `task wrapper Steam-continuity guard records boolean ${field}`, failures);
+  }
+  for (const field of ["beforeCount", "afterCount", "missingIdentityCount", "additionalIdentityCount"]) {
+    expect(
+      Number.isInteger(guard[field]) && guard[field] >= 0,
+      `task wrapper Steam-continuity guard records nonnegative ${field}`,
+      failures
+    );
+  }
+  const before = Array.isArray(guard.beforeIdentities) ? guard.beforeIdentities : [];
+  const after = Array.isArray(guard.afterIdentities) ? guard.afterIdentities : [];
+  expect(Array.isArray(guard.beforeIdentities), "task wrapper Steam-continuity guard records before identities", failures);
+  expect(Array.isArray(guard.afterIdentities), "task wrapper Steam-continuity guard records after identities", failures);
+  expect(before.length === guard.beforeCount, "task wrapper Steam before-identity count agrees", failures);
+  expect(after.length === guard.afterCount, "task wrapper Steam after-identity count agrees", failures);
+  for (const [phase, identities] of [
+    ["before", before],
+    ["after", after]
+  ]) {
+    for (const identity of identities) {
+      const entry = objectOrEmpty(identity);
+      expect(
+        Number.isInteger(entry.processId) && entry.processId > 0,
+        `task wrapper Steam ${phase} identity has a positive process ID`,
+        failures
+      );
+      expect(
+        Number.isInteger(entry.sessionId) && entry.sessionId >= 0,
+        `task wrapper Steam ${phase} identity has a nonnegative session ID`,
+        failures
+      );
+      expect(
+        typeof entry.cimStartTicks === "string" && /^[1-9][0-9]+$/.test(entry.cimStartTicks),
+        `task wrapper Steam ${phase} identity has exact CIM start ticks`,
+        failures
+      );
+      expect(
+        typeof entry.nativeStartTicks === "string" && /^[1-9][0-9]+$/.test(entry.nativeStartTicks),
+        `task wrapper Steam ${phase} identity has exact native start ticks`,
+        failures
+      );
+    }
+  }
+  if (guard.required === true) {
+    expect(guard.beforeCaptureAttempted === true, "task wrapper captured Steam before launch", failures);
+    expect(guard.beforeCaptureSucceeded === true, "task wrapper captured exact Steam identity before launch", failures);
+    expect(guard.afterCaptureAttempted === true, "task wrapper captured Steam after cleanup", failures);
+    expect(guard.afterCaptureSucceeded === true, "task wrapper captured exact Steam identity after cleanup", failures);
+    expect(guard.beforeCount === 1 && guard.afterCount === 1, "task wrapper observed one Steam root throughout", failures);
+    expect(guard.missingIdentityCount === 0, "task wrapper did not lose the original Steam identity", failures);
+    expect(guard.additionalIdentityCount === 0, "task wrapper did not observe a replacement Steam identity", failures);
+    expect(guard.sameIdentitySet === true, "task wrapper preserved the exact Steam identity set", failures);
+    expect(guard.sameSessionSet === true, "task wrapper preserved the Steam session set", failures);
+    if (before.length === 1 && after.length === 1) {
+      expect(
+        ["processId", "sessionId", "cimStartTicks", "nativeStartTicks"].every(
+          (field) => before[0][field] === after[0][field]
+        ),
+        "task wrapper before/after Steam identities agree exactly",
+        failures
+      );
+    }
+  }
+}
+
 function validateExactProcessStopCounters(value, prefix, label, failures) {
   const fields = [
     `${prefix}AttemptCount`,
@@ -1394,10 +1665,19 @@ function validateProcessCleanupArtifact(value, phase, failures) {
   );
 }
 
-function summarizeCleanupArtifacts(processCleanupBefore, processCleanupAfter, launchEnvRollback, taskCleanup) {
+function summarizeCleanupArtifacts(
+  processCleanupBefore,
+  processCleanupAfter,
+  processCleanupAfterRenderHealth,
+  launchEnvRollback,
+  taskCleanup
+) {
   return {
     processBeforeOk: processCleanupBefore ? processCleanupBefore.ok === true : null,
     processAfterOk: processCleanupAfter ? processCleanupAfter.ok === true : null,
+    processAfterRenderHealthOk: processCleanupAfterRenderHealth
+      ? processCleanupAfterRenderHealth.ok === true
+      : null,
     launchEnvRollbackOk: launchEnvRollback ? launchEnvRollback.ok === true : null,
     launchEnvRollbackAttempted: launchEnvRollback ? launchEnvRollback.attempted === true : null,
     taskCleanupOk: taskCleanup ? taskCleanup.ok === true : null,
@@ -1410,9 +1690,26 @@ function summarizeCleanupArtifacts(processCleanupBefore, processCleanupAfter, la
     taskRunnerTerminatedWithoutDone: taskCleanup ? taskCleanup.runnerTerminatedWithoutDone === true : null,
     taskFailureStage: taskCleanup ? taskCleanup.failureStage || null : null,
     taskErrorKind: taskCleanup ? taskCleanup.errorKind || null : null,
+    taskRunLevel: taskCleanup ? String(taskCleanup.taskRunLevel || "") : "",
     taskRunnerGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.runnerProcessGuard).ok === true : null,
     taskLaunchEnvGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.launchEnvGuard).ok === true : null,
     taskPackageProcessGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.packageProcessGuard).ok === true : null,
+    taskSteamContinuityGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.steamContinuityGuard).ok === true : null,
+    steamContinuityRequired: taskCleanup
+      ? objectOrEmpty(taskCleanup.steamContinuityGuard).required === true
+      : null,
+    steamContinuityBeforeCount: taskCleanup
+      ? objectOrEmpty(taskCleanup.steamContinuityGuard).beforeCount ?? null
+      : null,
+    steamContinuityAfterCount: taskCleanup
+      ? objectOrEmpty(taskCleanup.steamContinuityGuard).afterCount ?? null
+      : null,
+    sameSteamIdentitySet: taskCleanup
+      ? objectOrEmpty(taskCleanup.steamContinuityGuard).sameIdentitySet === true
+      : null,
+    sameSteamSessionSet: taskCleanup
+      ? objectOrEmpty(taskCleanup.steamContinuityGuard).sameSessionSet === true
+      : null,
     taskFileGuardOk: taskCleanup ? objectOrEmpty(taskCleanup.taskFileGuard).ok === true : null
   };
 }
@@ -2055,10 +2352,31 @@ function validatePreflight(preflight, failures) {
     expect(Boolean(preflight.app.exe && preflight.app.exe.exists), "preflight app executable exists", failures);
     expect(Boolean(preflight.app.nativeAddon && preflight.app.nativeAddon.exists), "preflight native addon exists", failures);
   }
+  if (preflight.files) {
+    const executable = objectOrEmpty(preflight.files.executable);
+    const nativeAddon = objectOrEmpty(preflight.files.nativeAddon);
+    expect(executable.exists === true, "preflight packaged executable exists", failures);
+    expect(nativeAddon.exists === true, "preflight packaged native addon exists", failures);
+    for (const [entry, label] of [
+      [executable, "executable"],
+      [nativeAddon, "native addon"]
+    ]) {
+      expect(Number.isFinite(entry.length) && entry.length > 0, `preflight ${label} is non-empty`, failures);
+      expect(typeof entry.authenticodeStatus === "string", `preflight ${label} records Authenticode status`, failures);
+      expect(typeof entry.zoneIdentifier === "boolean", `preflight ${label} records zone-stream status`, failures);
+    }
+  }
   if (preflight.appControlPolicy) {
     expect(
       typeof preflight.appControlPolicy.verifiedAndReputableEnforced === "boolean",
       "preflight appControlPolicy.verifiedAndReputableEnforced is boolean",
+      failures
+    );
+  }
+  if (preflight.appControl) {
+    expect(
+      typeof preflight.appControl.verifiedAndReputableEnforced === "boolean",
+      "preflight appControl.verifiedAndReputableEnforced is boolean",
       failures
     );
   }
@@ -4640,6 +4958,34 @@ function summarizeCaseResult(
   validateClientSessionPromptMissingQueryProof(clientSessionPromptMissing, clientSessionQuery, failures);
 
   const steamRenderingHealth = summarizeCaseRenderingHealth(renderingHealth);
+  const nativeHostDiagnostics = objectOrEmpty(objectOrEmpty(nativePresenter).nativeHostDiagnostics);
+  const runtimeConfigComplete = [
+    "overlayProfile",
+    "authIdentityUsesPublicDefault",
+    "overlayScrubChildEnv",
+    "overlayIsolateChildProcesses",
+    "overlayInProcessGpu",
+    "overlayDisableDirectComposition",
+    "nativeHostBackend",
+    "nativeHostStyle",
+    "nativePathOverride",
+    "presenterMode",
+    "configuredPresenterMode",
+    "disableElectronOverlayPresenter",
+    "webUrlUsesPublicDefault",
+    "hasCheckoutUrl",
+    "hasCheckoutTransactionId",
+    "hasCheckoutReturnUrl",
+    "hasCheckoutJsonFile",
+    "hasInitTxnRequestFile",
+    "hasInitTxnApiKeyEnv",
+    "initTxnEndpoint",
+    "isPackaged",
+    "managedOverlayWaitTimeoutMs",
+    "managedOverlayParkTimeoutMs",
+    "achievementNameConfigured",
+    "achievementProgressUsesDefaults"
+  ].every((field) => hasOwn(app, field)) && hasOwn(processInfo, "electron") && hasOwn(nativeHostDiagnostics, "hostStyle");
 
   return {
     caseName,
@@ -4647,6 +4993,36 @@ function summarizeCaseResult(
     resultLog,
     appId: app.appId,
     managedOverlayResultMode: app.managedOverlayResultMode || "",
+    runtimeConfig: {
+      complete: runtimeConfigComplete,
+      overlayProfile: String(app.overlayProfile || ""),
+      authIdentityUsesPublicDefault: app.authIdentityUsesPublicDefault === true,
+      overlayScrubChildEnv: app.overlayScrubChildEnv,
+      overlayIsolateChildProcesses: app.overlayIsolateChildProcesses,
+      overlayInProcessGpu: app.overlayInProcessGpu,
+      overlayDisableDirectComposition: app.overlayDisableDirectComposition,
+      configuredNativeHostBackend: app.nativeHostBackend == null ? "" : String(app.nativeHostBackend),
+      configuredNativeHostStyle: app.nativeHostStyle == null ? "" : String(app.nativeHostStyle),
+      actualNativeHostStyle: String(nativeHostDiagnostics.hostStyle || ""),
+      nativePathOverride: app.nativePathOverride === true,
+      presenterMode: String(app.presenterMode || ""),
+      configuredPresenterMode: app.configuredPresenterMode == null ? "" : String(app.configuredPresenterMode),
+      disableElectronOverlayPresenter: app.disableElectronOverlayPresenter,
+      webUrlUsesPublicDefault: app.webUrlUsesPublicDefault === true,
+      hasCheckoutUrl: app.hasCheckoutUrl === true,
+      hasCheckoutTransactionId: app.hasCheckoutTransactionId === true,
+      hasCheckoutReturnUrl: app.hasCheckoutReturnUrl === true,
+      hasCheckoutJsonFile: app.hasCheckoutJsonFile === true,
+      hasInitTxnRequestFile: app.hasInitTxnRequestFile,
+      hasInitTxnApiKeyEnv: app.hasInitTxnApiKeyEnv,
+      initTxnEndpointConfigured: Boolean(app.initTxnEndpoint),
+      managedOverlayWaitTimeoutMs: app.managedOverlayWaitTimeoutMs,
+      managedOverlayParkTimeoutMs: app.managedOverlayParkTimeoutMs,
+      achievementNameConfigured: app.achievementNameConfigured === true,
+      achievementProgressUsesDefaults: app.achievementProgressUsesDefaults === true,
+      isPackaged: app.isPackaged,
+      electronVersion: String(processInfo.electron || "")
+    },
     windowPresent: windowState.present === true,
     windowVisible: windowState.visible === true,
     windowFocused: windowState.focused === true,
@@ -4968,10 +5344,33 @@ function printSummary(summary) {
 function summarizePreflight(preflight) {
   const appControl = preflight.appControl || preflight.appControlPolicy || {};
   const windowsSession = preflight.windowsSession || {};
+  const files = objectOrEmpty(preflight.files);
+  const executable = objectOrEmpty(files.executable || objectOrEmpty(preflight.app).exe);
+  const nativeAddon = objectOrEmpty(files.nativeAddon || objectOrEmpty(preflight.app).nativeAddon);
+  const nativeOverride = files.nativeOverride;
   return {
     generatedAt: preflight.generatedAt || "",
+    appId: preflight.appId,
+    steamRunning: objectOrEmpty(preflight.steam).running === true,
     verifiedAndReputableEnforced: Boolean(appControl.verifiedAndReputableEnforced),
     currentSessionId: windowsSession.currentSessionId,
+    currentSessionInteractive: windowsSession.currentSessionInteractive === true,
+    executableExists: executable.exists === true,
+    executableNonEmpty: Number.isFinite(executable.length) ? executable.length > 0 : executable.exists === true,
+    executableAuthenticodeValid: executable.authenticodeStatus === "Valid",
+    executableZoneIdentifier: executable.zoneIdentifier === true,
+    nativeAddonExists: nativeAddon.exists === true,
+    nativeAddonNonEmpty: Number.isFinite(nativeAddon.length) ? nativeAddon.length > 0 : nativeAddon.exists === true,
+    nativeAddonAuthenticodeValid: nativeAddon.authenticodeStatus === "Valid",
+    nativeAddonZoneIdentifier: nativeAddon.zoneIdentifier === true,
+    publisherMatches:
+      typeof executable.signerThumbprint === "string" &&
+      executable.signerThumbprint.length > 0 &&
+      executable.signerThumbprint === nativeAddon.signerThumbprint,
+    nativeOverridePresent: Boolean(nativeOverride),
+    nativePathOverride: preflight.nativePathOverride === true,
+    packagedRuntimeResolutionErrorPresent: Boolean(preflight.packagedRuntimeResolutionError),
+    warningCount: Array.isArray(preflight.warnings) ? preflight.warnings.length : 0,
     recentCodeIntegrityEventCount: Array.isArray(preflight.recentCodeIntegrityEvents)
       ? preflight.recentCodeIntegrityEvents.length
       : 0
@@ -4994,17 +5393,57 @@ function summarizeInitTxnRequestShapePreflight(shape) {
 }
 
 function summarizeManifest(manifest) {
+  const cleanupContract = objectOrEmpty(manifest.cleanupContract);
+  const initTxnCapture = objectOrEmpty(manifest.initTxnCapture);
   return {
     suite: manifest.suite || "",
     launchMode: manifest.launchMode || "",
+    launchKind: manifest.launchKind || "",
+    candidatePathHasNoReparsePoints: manifest.candidatePathHasNoReparsePoints === true,
+    launchEnvOutsideCandidate: manifest.launchEnvOutsideCandidate === true,
+    launchEnvPathHasNoReparsePoints: manifest.launchEnvPathHasNoReparsePoints === true,
+    launchEnvUsesDefaultPath: manifest.launchEnvUsesDefaultPath === true,
     appId: manifest.appId,
     onlyCase: manifest.onlyCase || "",
+    overlayProfile: manifest.overlayProfile || "",
+    presenterMode: manifest.presenterMode || "",
+    nativeHostBackend: manifest.nativeHostBackend || "",
+    nativeHostStyle: manifest.nativeHostStyle || "",
     overlayInProcessGpu: manifest.overlayInProcessGpu || "",
     overlayDisableDirectComposition: manifest.overlayDisableDirectComposition || "",
     overlayScrubChildEnv: manifest.overlayScrubChildEnv || "",
     overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
+    windowMode: manifest.windowMode || "",
     expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
+    skipNativeLoadGate: manifest.skipNativeLoadGate === true,
+    skipRenderHealthGate: manifest.skipRenderHealthGate === true,
+    allowUnhealthyDefaultRender: manifest.allowUnhealthyDefaultRender === true,
+    allowUnhealthySteamClientLogs: manifest.allowUnhealthySteamClientLogs === true,
+    steamClientHealthRecentMinutes: manifest.steamClientHealthRecentMinutes,
+    cleanStaleOverlayHelpers: manifest.cleanStaleOverlayHelpers === true,
+    privateEnvImported: manifest.privateEnvImported === true,
+    webUrlUsesPublicDefault: manifest.webUrlUsesPublicDefault === true,
+    timeoutSeconds: manifest.timeoutSeconds,
+    closeProbeSettleMs: manifest.closeProbeSettleMs,
+    closeProbeTimeoutSeconds: manifest.closeProbeTimeoutSeconds,
+    candidateBinding: manifest.candidateBinding || null,
+    cleanupContract: {
+      processCleanupRequired: cleanupContract.processCleanupRequired === true,
+      launchEnvRollbackRequired: cleanupContract.launchEnvRollbackRequired === true,
+      taskCleanupExpected: cleanupContract.taskCleanupExpected === true,
+      steamContinuityRequired: cleanupContract.steamContinuityRequired === true
+    },
+    initTxnCapture: {
+      hasRequestFile: initTxnCapture.hasRequestFile === true,
+      hasResponseFile: initTxnCapture.hasResponseFile === true,
+      captureInApp: initTxnCapture.captureInApp === true,
+      apiKeyEnvProvided: initTxnCapture.apiKeyEnvProvided === true,
+      endpointConfigured: Boolean(initTxnCapture.endpointOption),
+      publicSyntheticCheckout: initTxnCapture.publicSyntheticCheckout === true
+    },
+    installShortcut: manifest.installShortcut === true,
+    assumeShortcutConfigured: manifest.assumeShortcutConfigured === true,
     autorunUserGestureGatePolicy: String(manifest.autorunUserGestureGatePolicy || ""),
     persistentReuseGatePolicy: String(manifest.persistentReuseGatePolicy || ""),
     closeProbeEvidenceSchema: Number(manifest.closeProbeEvidenceSchema || 0),
@@ -5016,12 +5455,18 @@ function summarizeManifest(manifest) {
 
 function summarizeReadiness(readiness) {
   const windowsSession = readiness.windowsSession || {};
+  const renderingHealth = objectOrEmpty(readiness.renderingHealth);
   return {
     ready: readiness.ready === true,
     errorCount: Array.isArray(readiness.errors) ? readiness.errors.length : 0,
     warningCount: Array.isArray(readiness.warnings) ? readiness.warnings.length : 0,
     currentSessionId: windowsSession.currentSessionId,
-    currentSessionInteractive: windowsSession.currentSessionInteractive
+    currentSessionInteractive: windowsSession.currentSessionInteractive,
+    steamProcessCount: Array.isArray(readiness.steamProcesses) ? readiness.steamProcesses.length : 0,
+    staleOverlayHelperCount: Number(readiness.staleOverlayHelperCount || 0),
+    renderingHealthStatus: String(renderingHealth.status || ""),
+    renderingHealthRecentSevereSignalCount: Number(renderingHealth.recentSevereSignalCount || 0),
+    renderingHealthStaleSevereSignalCount: Number(renderingHealth.staleSevereSignalCount || 0)
   };
 }
 
@@ -5051,6 +5496,8 @@ function summarizeRenderHealth(renderHealth, gate) {
     cases.find((entry) => entry && entry.name === "in-process-gpu-on") ||
     {};
   return {
+    gatePresent: Boolean(gate),
+    summaryPresent: Boolean(renderHealth),
     status: gate && gate.status ? gate.status : recommendation.status || "",
     readyForSteamOverlayMatrix: Boolean(
       gate && "readyForSteamOverlayMatrix" in gate
@@ -5059,9 +5506,14 @@ function summarizeRenderHealth(renderHealth, gate) {
     ),
     required: gate ? gate.required !== false : true,
     skipped: Boolean(gate && gate.skipped === true),
+    passed: gate ? gate.passed === true : recommendation.readyForSteamOverlayMatrix === true,
+    errorPresent: Boolean(gate && gate.error),
+    defaultCasePresent: defaultCase.name === "default",
     reason: (gate && gate.reason) || "",
     defaultVisible: defaultCase.contentVisible,
     defaultBlankLike: defaultCase.blankLike,
+    defaultFatalLifecycleEventCount:
+      Number.isInteger(defaultCase.fatalLifecycleEventCount) ? defaultCase.fatalLifecycleEventCount : null,
     disableDirectCompositionVisible: recommendation.disableDirectCompositionVisible,
     disableDirectCompositionFatal: recommendation.disableDirectCompositionFatal,
     nextAction: (gate && gate.nextAction) || recommendation.nextAction || ""
@@ -7703,6 +8155,10 @@ function runSelfTest() {
       ["task-timeout-no-root-stop", { taskTimedOutNoRootStop: true }, "attempted exact verified runner-root termination before rollback"],
       ["task-guard-byte-mismatch", { taskGuardByteMismatch: true }, "task wrapper launch-env guard completed successfully"],
       ["task-process-leftover", { taskProcessLeftover: true }, "task wrapper package-process guard completed successfully"],
+      ["task-steam-restarted", { taskSteamRestarted: true }, "preserved the exact Steam identity set"],
+      ["task-steam-session-drift", { taskSteamSessionDrift: true }, "preserved the Steam session set"],
+      ["task-steam-additional", { taskSteamAdditional: true }, "observed one Steam root throughout"],
+      ["task-steam-capture-failed", { taskSteamCaptureFailed: true }, "captured exact Steam identity before launch"],
       ["task-files-left", { taskFilesLeft: true }, "task wrapper handoff-file cleanup completed successfully"]
     ]) {
       assertFixtureSummaryFailure(
@@ -12559,6 +13015,12 @@ function writeCleanupFixture(root, options = {}) {
   const taskProcessOk = !options.taskProcessLeftover;
   const taskRunnerOk = !options.taskRunnerLeftover;
   const taskFileOk = !options.taskFilesLeft;
+  const taskSteamOk = !(
+    options.taskSteamRestarted ||
+    options.taskSteamSessionDrift ||
+    options.taskSteamAdditional ||
+    options.taskSteamCaptureFailed
+  );
   const taskDeadline = options.taskDeadlineTimeout === true || options.taskTimedOutNoRootStop === true;
   const runnerDoneMissing = options.taskRunnerDoneMissing === true;
   const taskCleanupOk =
@@ -12571,7 +13033,34 @@ function writeCleanupFixture(root, options = {}) {
     !options.taskTimedOutNoRootStop &&
     taskLaunchEnvOk &&
     taskProcessOk &&
+    taskSteamOk &&
     taskFileOk;
+  const beforeSteamIdentity = {
+    processId: 4242,
+    sessionId: 1,
+    cimStartTicks: "639142272000000000",
+    nativeStartTicks: "639142272000000001"
+  };
+  const afterSteamIdentities = options.taskSteamAdditional
+    ? [
+        beforeSteamIdentity,
+        {
+          processId: 4243,
+          sessionId: 1,
+          cimStartTicks: "639142272000000010",
+          nativeStartTicks: "639142272000000011"
+        }
+      ]
+    : [
+        {
+          ...beforeSteamIdentity,
+          sessionId: options.taskSteamSessionDrift ? 2 : 1,
+          cimStartTicks: options.taskSteamRestarted ? "639142272000000020" : beforeSteamIdentity.cimStartTicks,
+          nativeStartTicks: options.taskSteamRestarted
+            ? "639142272000000021"
+            : beforeSteamIdentity.nativeStartTicks
+        }
+      ];
   writeJson(path.join(root, "task-cleanup.json"), {
     kind: "steam-bridge-windows-overlay-task-cleanup",
     generatedAt: "2026-07-10T00:00:00.000Z",
@@ -12580,6 +13069,7 @@ function writeCleanupFixture(root, options = {}) {
     failureStage: runnerDoneMissing ? "runner-termination" : taskDeadline ? "runner-timeout" : "success",
     errorKind: runnerDoneMissing ? "done-missing" : taskDeadline ? "deadline-exceeded" : "none",
     errorPresent: runnerDoneMissing || taskDeadline,
+    taskRunLevel: options.taskRunLevelHighest ? "Highest" : "Limited",
     endAttempted: runnerDoneMissing || taskDeadline,
     endExitCodeCaptured: runnerDoneMissing || taskDeadline,
     endExitCode: runnerDoneMissing ? 1 : taskDeadline ? 0 : null,
@@ -12654,6 +13144,22 @@ function writeCleanupFixture(root, options = {}) {
       emptyVerificationScanCount: options.taskProcessLeftover ? 0 : 2,
       verifiedEmpty: taskProcessOk,
       ok: taskProcessOk
+    },
+    steamContinuityGuard: {
+      required: true,
+      beforeCaptureAttempted: true,
+      beforeCaptureSucceeded: !options.taskSteamCaptureFailed,
+      afterCaptureAttempted: true,
+      afterCaptureSucceeded: !options.taskSteamAdditional,
+      beforeCount: options.taskSteamCaptureFailed ? 0 : 1,
+      afterCount: afterSteamIdentities.length,
+      missingIdentityCount: options.taskSteamRestarted ? 1 : options.taskSteamCaptureFailed ? 0 : 0,
+      additionalIdentityCount: options.taskSteamRestarted || options.taskSteamAdditional ? 1 : 0,
+      sameIdentitySet: taskSteamOk || options.taskSteamSessionDrift,
+      sameSessionSet: taskSteamOk || options.taskSteamRestarted,
+      beforeIdentities: options.taskSteamCaptureFailed ? [] : [beforeSteamIdentity],
+      afterIdentities: afterSteamIdentities,
+      ok: taskSteamOk
     },
     taskFileGuard: {
       required: true,
@@ -13381,3 +13887,5 @@ function writeText(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, text);
 }
+
+module.exports = { summarizeWindowsOverlayMatrixArtifacts };
