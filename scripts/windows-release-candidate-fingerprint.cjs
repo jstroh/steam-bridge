@@ -525,12 +525,15 @@ function selfTest() {
     fs.renameSync(path.join(bundle, "renamed.txt"), path.join(bundle, "z.txt"));
 
     for (const invalidName of ["CON.txt", "trailing.", "stream:name", "é.txt"]) {
-      fs.writeFileSync(path.join(bundle, invalidName), "invalid");
-      assert.throws(() => inspectCandidateDirectory(bundle));
-      fs.rmSync(path.join(bundle, invalidName));
+      assert.throws(() => validatePathComponent(invalidName));
     }
 
     if (process.platform !== "win32") {
+      for (const invalidName of ["CON.txt", "trailing.", "stream:name", "é.txt"]) {
+        fs.writeFileSync(path.join(bundle, invalidName), "invalid");
+        assert.throws(() => inspectCandidateDirectory(bundle));
+        fs.rmSync(path.join(bundle, invalidName));
+      }
       fs.writeFileSync(path.join(bundle, "A.txt"), "A");
       fs.writeFileSync(path.join(bundle, "a.txt"), "a");
       const caseVariants = fs.readdirSync(bundle).filter((entry) => entry.toLowerCase() === "a.txt");
