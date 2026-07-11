@@ -84,6 +84,10 @@ if (windowsCleanupSelfTestOnly) {
   fs.mkdirSync(consumerDir);
 
   run("node", [path.join(repoRoot, "scripts", "assert-electron-smoke-version.cjs")], { cwd: repoRoot });
+  run("node", [path.join(repoRoot, "scripts", "native-binding-manifest.cjs")], { cwd: repoRoot });
+  run("node", [path.join(repoRoot, "examples", "electron-basic", "native-binding-probe.cjs")], {
+    cwd: repoRoot
+  });
   run("npm", ["run", "build", "-w", "steam-bridge"], { cwd: repoRoot });
   const tarball = packPackage();
   installConsumer(tarball);

@@ -3,6 +3,10 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { packager } = require("@electron/packager");
+const {
+  assertMatchingNativeBindingManifests,
+  createNativeBindingManifest
+} = require("./native-binding-manifest.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const exampleRoot = path.join(repoRoot, "examples", "electron-basic");
@@ -91,6 +95,7 @@ async function main() {
     const tarball = packSteamBridge(packDir);
     stageExample(stageDir, tarball);
     installStageDependencies(stageDir);
+    writeStageNativeBindingManifest(stageDir);
     copyStagePackageArtifacts(stageDir, packageArtifactSources);
     pruneStagePackageArtifacts(stageDir, config.requiredFiles);
     validateStagePackageArtifacts(stageDir, config.requiredFiles);
@@ -128,7 +133,8 @@ function stageExample(stageDir, tarball) {
     "index.html",
     "smoke-sanitize.cjs",
     "smoke-error.cjs",
-    "checkout-proof.cjs"
+    "checkout-proof.cjs",
+    "native-binding-probe.cjs"
   ]) {
     fs.copyFileSync(path.join(exampleRoot, fileName), path.join(stageDir, fileName));
   }
@@ -154,6 +160,23 @@ function stageExample(stageDir, tarball) {
 
 function installStageDependencies(stageDir) {
   run("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], stageDir);
+}
+
+function writeStageNativeBindingManifest(stageDir) {
+  const sourceManifest = createNativeBindingManifest(path.join(packageRoot, "src", "native.ts"));
+  const installedManifest = createNativeBindingManifest(
+    path.join(stageDir, "node_modules", "steam-bridge", "dist", "native.d.ts")
+  );
+  assertMatchingNativeBindingManifests(
+    sourceManifest,
+    installedManifest,
+    "workspace NativeBinding",
+    "installed package NativeBinding"
+  );
+  fs.writeFileSync(
+    path.join(stageDir, "native-binding-manifest.json"),
+    `${JSON.stringify(installedManifest, null, 2)}\n`
+  );
 }
 
 function pruneStagePackageArtifacts(stageDir, requiredFiles) {
@@ -183,7 +206,7 @@ function validateStagePackageArtifacts(stageDir, requiredFiles) {
   }
 
   if (isCurrentHostTarget(target)) {
-    validateStageNativeBindingLoads(stageDir, requiredNativeExports);
+    validateStageNativeBindingLoads(stageDir);
   }
 }
 
@@ -198,16 +221,16 @@ function validateNativeArtifactExports(filePath, exportNames) {
   }
 }
 
-function validateStageNativeBindingLoads(stageDir, exportNames) {
+function validateStageNativeBindingLoads(stageDir) {
   const script = `
+const { verifyNativeBinding } = require("./native-binding-probe.cjs");
 const { loadNativeBinding } = require("./node_modules/steam-bridge/dist/native.js");
 const binding = loadNativeBinding();
-const exportNames = ${JSON.stringify(exportNames)};
-for (const exportName of exportNames) {
-  if (typeof binding[exportName] !== "function") {
-    throw new Error(\`Native binding missing required export \${exportName}\`);
-  }
-}
+const manifest = require("./native-binding-manifest.json");
+const evidence = verifyNativeBinding(binding, manifest);
+process.stdout.write(
+  \`Native binding contract verified: methods=\${evidence.verifiedMethodCount} sha256=\${evidence.verifiedMethodsSha256}\\n\`
+);
 `;
   run(process.execPath, ["-e", script], stageDir);
 }
@@ -233,10 +256,37 @@ async function packageStage(stageDir) {
 
   for (const appPath of appPaths) {
     copyTargetHelpers(appPath);
+    if (isCurrentHostTarget(target)) {
+      validatePackagedNativeBinding(appPath);
+    }
     console.log(`Packaged ${appPath}`);
   }
 
   console.log(`Primary launch path: ${path.join(targetOut, config.appPath)}`);
+}
+
+function validatePackagedNativeBinding(appPath) {
+  const isMac = target === "aarch64-apple-darwin";
+  const executable = isMac
+    ? path.join(appPath, "SteamBridgeSmoke.app", "Contents", "MacOS", "SteamBridgeSmoke")
+    : path.join(appPath, process.platform === "win32" ? "SteamBridgeSmoke.exe" : "SteamBridgeSmoke");
+  const appResources = isMac
+    ? path.join(appPath, "SteamBridgeSmoke.app", "Contents", "Resources", "app")
+    : path.join(appPath, "resources", "app");
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+  delete env.STEAM_BRIDGE_NATIVE_PATH;
+  run(
+    executable,
+    [
+      path.join(appResources, "native-binding-probe.cjs"),
+      "--native-binding-module",
+      path.join(appResources, "node_modules", "steam-bridge", "dist", "native.js"),
+      "--manifest",
+      path.join(appResources, "native-binding-manifest.json")
+    ],
+    appPath,
+    { env }
+  );
 }
 
 function copyTargetHelpers(appPath) {
@@ -420,7 +470,8 @@ function run(command, args, cwd, options = {}) {
     cwd,
     encoding: options.encoding,
     stdio: options.encoding ? ["ignore", "pipe", "inherit"] : "inherit",
-    shell: process.platform === "win32"
+    shell: process.platform === "win32",
+    env: options.env
   });
 
   if (result.error) {

@@ -28,10 +28,12 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 - Linux x64: `x86_64-unknown-linux-gnu`
 
 Package metadata currently declares Node `>=18` and optional Electron `>=24`.
-Repository CI runs Node 22, while current Windows live overlay artifacts use
-Windows 11 x64 and Electron `43.0.0`. Those metadata ranges are not a live
-overlay certification matrix: other Electron versions and Windows releases
-have not all been exercised by the current Windows overlay suite.
+Repository CI runs Node 22, and the smoke runtime is pinned to Electron
+`43.1.0`. The most recent completed Windows live overlay artifacts used Windows
+11 x64 and Electron `43.0.0`; the `43.1.0` candidate still needs the documented
+exact-package live gates. Those metadata ranges are not a live overlay
+certification matrix: other Electron versions and Windows releases have not all
+been exercised by the current Windows overlay suite.
 
 The supplied Windows live-smoke app still uses `asar: false` so historical live
 results remain comparable. The Release workflow is configured to build the
@@ -40,7 +42,9 @@ A successful Windows gate keeps package JavaScript in `app.asar`, requires the
 Windows addon and both Steam runtime DLLs together in `app.asar.unpacked`,
 verifies PE32+/AMD64/N-API identity and integrity from tarball to bundle,
 launches the final executable without a native override or post-install repair,
-packages the current public smoke action/matrix protocol, and retains a
+requires the exact ASAR-unpacked addon to expose every method in the tarball's
+canonical `NativeBinding` declaration without invoking those methods, packages
+the current public smoke action/matrix protocol, and retains a
 stable-metadata, hash-audited archive of the exact `win-unpacked` bundle for
 live proof and candidate recovery. That archive is currently a 90-day GitHub
 Actions artifact, not durable rollback storage. Use the same shape in Windows

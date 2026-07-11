@@ -29,10 +29,12 @@ Steam Bridge targets Steam desktop platforms for Electron and Node:
 - Linux x64: `x86_64-unknown-linux-gnu`
 
 Package metadata currently declares Node `>=18` and optional Electron `>=24`.
-Repository CI runs Node 22, while current Windows live overlay artifacts use
-Windows 11 x64 and Electron `43.0.0`. Those metadata ranges are not a live
-overlay certification matrix: other Electron versions and Windows releases
-have not all been exercised by the current Windows overlay suite.
+Repository CI runs Node 22, and the smoke runtime is pinned to Electron
+`43.1.0`. The most recent completed Windows live overlay artifacts used Windows
+11 x64 and Electron `43.0.0`; the `43.1.0` candidate still needs the documented
+exact-package live gates. Those metadata ranges are not a live overlay
+certification matrix: other Electron versions and Windows releases have not all
+been exercised by the current Windows overlay suite.
 
 ### macOS Apple Silicon Only
 
@@ -813,7 +815,10 @@ the private `--checkout-json-file` checkout suite.
   `sdkencryptedappticket64.dll` together under `resources/app.asar.unpacked`,
   checks PE32+/AMD64/N-API/dependency identity and source-to-bundle hashes, and
   starts the final executable without `STEAM_BRIDGE_NATIVE_PATH` or post-install
-  repair. It also packages the current public smoke action/matrix protocol and
+  repair. That executable must load the exact ASAR-unpacked addon and expose
+  every method in the tarball's canonical `NativeBinding` declaration; the gate
+  records only the method count/hash and invokes none of those methods. It also
+  packages the current public smoke action/matrix protocol and
   retains a hash-audited archive of the exact `win-unpacked` bundle as a
   time-bounded workflow artifact for live proof and candidate recovery. The
   signed candidate must still pass

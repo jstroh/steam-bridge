@@ -45,9 +45,12 @@ into one exact publish tarball and run a dedicated Windows x64
 `electron-builder` ASAR gate. A successful gate performs no post-install
 native-file copy, requires the addon and both Steam DLLs in
 `app.asar.unpacked`, launches the final packaged executable with no native
-override, packages this example's current action/matrix protocol, and retains
-the hash-audited `win-unpacked` bundle for exact live proof. The live smoke
-package above remains unpacked for continuity with
+override, and requires the exact unpacked addon to expose every method in the
+tarball's canonical `NativeBinding` declaration. That probe records the method
+count/hash without invoking any Steam method. The gate also packages this
+example's current action/matrix protocol and retains the hash-audited
+`win-unpacked` bundle for exact live proof. The live smoke package above remains
+unpacked for continuity with
 existing Windows evidence; do not treat its layout as the ASAR gate.
 
 For the current supported host platform, `npm run native:build` is enough for a

@@ -45,12 +45,17 @@ if (!resultPath) {
     }
 
     const { loadNativeBinding } = require(path.join(packageDistDir, "native.js"));
+    const { verifyNativeBinding } = require("./smoke/native-binding-probe.cjs");
+    const nativeBindingManifest = require("./native-binding-manifest.json");
     const binding = loadNativeBinding();
-    if (typeof binding.isSteamRunning !== "function") {
-      throw new Error("Native binding is missing isSteamRunning().");
-    }
-    if (typeof binding.isOverlayNeedsPresentPollingEnabled !== "function") {
-      throw new Error("Native binding is missing isOverlayNeedsPresentPollingEnabled().");
+    const nativeBindingProbe = verifyNativeBinding(binding, nativeBindingManifest);
+    const physicalAddonLoaded = Object.keys(require.cache).some(
+      (cachedPath) =>
+        cachedPath.endsWith(".node") &&
+        path.resolve(cachedPath).toLowerCase() === path.resolve(physicalAddonPath).toLowerCase()
+    );
+    if (!physicalAddonLoaded) {
+      throw new Error("Native binding did not load from the exact ASAR-unpacked addon path.");
     }
 
     finish(
@@ -63,9 +68,11 @@ if (!resultPath) {
         electron: process.versions.electron,
         packageEntryInAsar: packageEntry.includes("app.asar"),
         physicalAddonPresent: true,
+        physicalAddonLoaded,
         nativeOverridePresent: false,
-        steamRunningType: typeof binding.isSteamRunning(),
-        needsPresentPollingEnabledType: typeof binding.isOverlayNeedsPresentPollingEnabled()
+        steamRunningType: typeof binding.isSteamRunning,
+        needsPresentPollingEnabledType: typeof binding.isOverlayNeedsPresentPollingEnabled,
+        nativeBindingProbe
       },
       0
     );

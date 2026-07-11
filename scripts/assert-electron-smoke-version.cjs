@@ -6,11 +6,18 @@ const { spawnSync } = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
 const examplePackagePath = path.join(repoRoot, "examples", "electron-basic", "package.json");
+const windowsAsarConfigPath = path.join(
+  repoRoot,
+  "fixtures",
+  "windows-electron-builder-asar",
+  "electron-builder.config.cjs"
+);
 const lockfilePath = path.join(repoRoot, "package-lock.json");
 const installedElectronPackagePath = path.join(repoRoot, "node_modules", "electron", "package.json");
 const checkLatest = process.argv.includes("--latest");
 
 const examplePackage = readJson(examplePackagePath);
+const windowsAsarConfig = require(windowsAsarConfigPath);
 const lockfile = readJson(lockfilePath);
 const declaredElectronVersion = examplePackage.dependencies?.electron;
 
@@ -23,6 +30,11 @@ assert.match(
   declaredElectronVersion,
   /^\d+\.\d+\.\d+$/,
   "Electron smoke example must pin an exact stable Electron version"
+);
+assert.equal(
+  windowsAsarConfig.electronVersion,
+  declaredElectronVersion,
+  "Windows electron-builder ASAR fixture must match examples/electron-basic/package.json"
 );
 
 const workspaceElectronVersion = lockfile.packages?.["examples/electron-basic"]?.dependencies?.electron;

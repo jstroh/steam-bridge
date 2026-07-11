@@ -1,7 +1,9 @@
+const { electron: electronVersion } = require("../../examples/electron-basic/package.json").dependencies;
+
 module.exports = {
   appId: "dev.steambridge.asar-gate",
   productName: "SteamBridgeSmoke",
-  electronVersion: "43.0.0",
+  electronVersion,
   asar: {
     smartUnpack: false
   },
@@ -16,6 +18,7 @@ module.exports = {
   files: [
     "main.cjs",
     "smoke/**/*",
+    "native-binding-manifest.json",
     "steam-bridge-package-provenance.json",
     "package.json",
     "node_modules/steam-bridge/**/*"

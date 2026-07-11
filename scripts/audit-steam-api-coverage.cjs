@@ -1,6 +1,10 @@
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const {
+  readNativeBindingMethodNames: readNativeBindingMethodNamesFromManifest
+} = require("./native-binding-manifest.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const steamworksSysRoot = findSteamworksSysRoot();
@@ -22,6 +26,11 @@ const napiExportSourceFiles = [
   path.join(repoRoot, "crates", "native", "src", "lib.rs"),
   path.join(repoRoot, "crates", "native", "src", "compat.rs")
 ];
+const napiWrapperMacros = new Set([
+  "game_server_inventory_wrapper",
+  "game_server_networking_sockets_wrapper"
+]);
+const auditedTopLevelMacros = new Set([...napiWrapperMacros, "thread_local"]);
 const manualCallbackAliases = ["GCMessageAvailable", "GCMessageFailed"];
 const manualHeaderOnlyNativeSymbols = [
   "steam_bridge_client_run_frame",
@@ -51,8 +60,7 @@ const intentionallyInternalSdkExports = [
   "SteamInternal_FindOrCreateGameServerInterface",
   "SteamInternal_SteamAPI_Init"
 ];
-const napiClassMethodExports = ["getBytes"];
-
+assertNapiExportScannerSelfTest();
 assertFlatApiCoverage();
 assertSdkExportCoverage();
 assertHeaderOnlyShimCoverage();
@@ -196,6 +204,7 @@ function assertNativeBindingCoverage() {
   const nativeBindingMethods = readNativeBindingMethodNames();
   const nativeBindingMethodSet = new Set(nativeBindingMethods);
   const napiExports = readNapiExportNames();
+  const napiExportSet = new Set(napiExports);
   const indexSource = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"), "utf8");
 
   const missingBindingMethods = napiExports.filter((method) => !nativeBindingMethodSet.has(method));
@@ -204,6 +213,16 @@ function assertNativeBindingCoverage() {
       [
         `NativeBinding is missing declarations for ${missingBindingMethods.length} N-API exports:`,
         ...missingBindingMethods.map((method) => `  - ${method}`)
+      ].join("\n")
+    );
+  }
+
+  const missingNapiExports = nativeBindingMethods.filter((method) => !napiExportSet.has(method));
+  if (missingNapiExports.length > 0) {
+    throw new Error(
+      [
+        `Native implementation is missing ${missingNapiExports.length} NativeBinding methods:`,
+        ...missingNapiExports.map((method) => `  - ${method}`)
       ].join("\n")
     );
   }
@@ -237,22 +256,212 @@ function readNativeSource() {
 }
 
 function readNapiExportNames() {
-  return unique(
-    napiExportSourceFiles.flatMap((file) => {
-      const source = fs.readFileSync(file, "utf8");
-      return [...source.matchAll(/#\[napi\(js_name\s*=\s*"([^"]+)"\)\]/g)].map((match) => match[1]);
-    })
-  ).filter((name) => !napiClassMethodExports.includes(name));
+  const names = napiExportSourceFiles.flatMap((file) => {
+    return readNapiExportNamesFromSource(fs.readFileSync(file, "utf8"), path.relative(repoRoot, file));
+  });
+  assert.equal(new Set(names).size, names.length, "N-API exports must not contain duplicate JavaScript names.");
+  return names;
+}
+
+function readNapiExportNamesFromSource(source, sourceLabel) {
+  const stripped = stripRustComments(source);
+  const validatedNapiWrapperDefinitions = validateNapiGeneratingMacros(stripped, sourceLabel);
+  assertAuditedTopLevelMacroInvocations(stripped, sourceLabel);
+  const lines = stripped.split(/\r?\n/);
+  const direct = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.startsWith("#[napi")) {
+      continue;
+    }
+    const attribute = line.match(/^#\[napi(?:\((.*)\))?\]$/);
+    if (!attribute) {
+      throw new Error(`${sourceLabel}:${index + 1} uses an unsupported top-level #[napi] attribute shape.`);
+    }
+    const item = findNextRustItem(lines, index + 1);
+    if (!item) {
+      throw new Error(`${sourceLabel}:${index + 1} has a top-level #[napi] attribute without an item.`);
+    }
+    if (isRustFunctionItem(item.line)) {
+      const jsName = attribute[1]?.match(/^js_name\s*=\s*"([A-Za-z_$][A-Za-z0-9_$]*)"$/);
+      if (!jsName) {
+        throw new Error(
+          `${sourceLabel}:${index + 1} must give every top-level N-API function exactly one ASCII js_name.`
+        );
+      }
+      direct.push(jsName[1]);
+    } else if (!isKnownNonFunctionNapiItem(item.line)) {
+      throw new Error(`${sourceLabel}:${item.lineNumber} uses #[napi] on an unsupported top-level item.`);
+    }
+  }
+
+  const generated = [];
+  const wrapperStart = /^(game_server_inventory_wrapper|game_server_networking_sockets_wrapper)!\(\s*/gm;
+  for (const match of stripped.matchAll(wrapperStart)) {
+    const argument = stripped.slice(match.index + match[0].length).match(/^"([A-Za-z_$][A-Za-z0-9_$]*)"/);
+    if (!argument) {
+      const lineNumber = stripped.slice(0, match.index).split("\n").length;
+      throw new Error(`${sourceLabel}:${lineNumber} must give ${match[1]} an ASCII string-literal js_name first.`);
+    }
+    if (!validatedNapiWrapperDefinitions.has(match[1])) {
+      const lineNumber = stripped.slice(0, match.index).split("\n").length;
+      throw new Error(`${sourceLabel}:${lineNumber} invokes ${match[1]} without its audited N-API definition.`);
+    }
+    generated.push(argument[1]);
+  }
+  return [...direct, ...generated];
+}
+
+function validateNapiGeneratingMacros(source, sourceLabel) {
+  const validated = new Set();
+  const definition = /^macro_rules!\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)^\}/gm;
+  for (const match of source.matchAll(definition)) {
+    const name = match[1];
+    const body = match[2];
+    const lineNumber = source.slice(0, match.index).split("\n").length;
+    const napiAttributes = [...body.matchAll(/#\[napi(?:\([^\n]*\))?\]/g)].map((entry) => entry[0]);
+    if (napiAttributes.length > 0 && !napiWrapperMacros.has(name)) {
+      throw new Error(`${sourceLabel}:${lineNumber} defines an unaudited N-API-generating macro ${match[1]}.`);
+    }
+    if (napiWrapperMacros.has(name)) {
+      if (
+        napiAttributes.length !== 1 ||
+        napiAttributes[0] !== "#[napi(js_name = $js_name)]" ||
+        !/\(\$js_name:literal,/.test(body) ||
+        !/^\s*pub fn \$fn_name\b/m.test(body)
+      ) {
+        throw new Error(`${sourceLabel}:${lineNumber} changed the audited N-API template for ${name}.`);
+      }
+      validated.add(name);
+    }
+  }
+  return validated;
+}
+
+function assertAuditedTopLevelMacroInvocations(source, sourceLabel) {
+  const invocation = /^([A-Za-z_][A-Za-z0-9_]*)!\s*[({\[]/gm;
+  for (const match of source.matchAll(invocation)) {
+    if (!auditedTopLevelMacros.has(match[1])) {
+      const lineNumber = source.slice(0, match.index).split("\n").length;
+      throw new Error(`${sourceLabel}:${lineNumber} invokes an unaudited top-level macro ${match[1]}.`);
+    }
+  }
+}
+
+function findNextRustItem(lines, startIndex) {
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "" || /^#\[.*\]$/.test(line)) {
+      continue;
+    }
+    return { line, lineNumber: index + 1 };
+  }
+  return undefined;
+}
+
+function isRustFunctionItem(line) {
+  return /^(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|const|unsafe)\s+)*(?:extern\s+"[^"]+"\s+)?fn\b/.test(line);
+}
+
+function isKnownNonFunctionNapiItem(line) {
+  return /^(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum)\b/.test(line) || /^impl\b/.test(line);
+}
+
+function stripRustComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "))
+    .replace(/\/\/.*$/gm, "");
+}
+
+function assertNapiExportScannerSelfTest() {
+  const parsed = readNapiExportNamesFromSource(
+    [
+      '// #[napi(js_name = "commentedDirect")]',
+      "// game_server_inventory_wrapper!(\"commentedWrapper\", ignored);",
+      "/*",
+      '#[napi(js_name = "blockCommentedDirect")]',
+      "game_server_networking_sockets_wrapper!(\"blockCommentedWrapper\", ignored);",
+      "*/",
+      '#[napi(js_name = "alpha")]',
+      "pub fn alpha() {}",
+      "macro_rules! game_server_inventory_wrapper {",
+      "    ($js_name:literal, $fn_name:ident, $ignored:ident) => {",
+      "        #[napi(js_name = $js_name)]",
+      "        pub fn $fn_name() {}",
+      "    };",
+      "}",
+      "game_server_inventory_wrapper!(",
+      '    "beta",',
+      "    ignored",
+      ");",
+      "#[napi(object)]",
+      "pub struct Shape {}",
+      "#[napi]",
+      "impl Shape {",
+      "    #[napi]",
+      "    pub fn nested(&self) {}",
+      "}",
+      ""
+    ].join("\n"),
+    "self-test.rs"
+  );
+  assert.deepEqual(parsed, ["alpha", "beta"]);
+  assert.throws(
+    () => readNapiExportNamesFromSource("#[napi]\npub fn implicit() {}\n", "implicit.rs"),
+    /exactly one ASCII js_name/
+  );
+  assert.throws(
+    () =>
+      readNapiExportNamesFromSource(
+        '#[napi(js_name = "extra", catch_unwind)]\npub fn extra() {}\n',
+        "extra.rs"
+      ),
+    /exactly one ASCII js_name/
+  );
+  assert.throws(
+    () => readNapiExportNamesFromSource("game_server_inventory_wrapper!(NAME, ignored);\n", "macro.rs"),
+    /ASCII string-literal js_name/
+  );
+  assert.throws(
+    () =>
+      readNapiExportNamesFromSource(
+        [
+          "macro_rules! game_server_inventory_wrapper {",
+          "    ($js_name:literal, $fn_name:ident, $ignored:ident) => {",
+          "        pub fn $fn_name() {}",
+          "    };",
+          "}",
+          'game_server_inventory_wrapper!("missing", ignored, ignored);',
+          ""
+        ].join("\n"),
+        "missing-template.rs"
+      ),
+    /changed the audited N-API template/
+  );
+  assert.throws(
+    () =>
+      readNapiExportNamesFromSource(
+        [
+          "macro_rules! hidden_export {",
+          "    () => {",
+          '        #[napi(js_name = "hidden")]',
+          "        pub fn hidden() {}",
+          "    };",
+          "}",
+          "hidden_export!();",
+          ""
+        ].join("\n"),
+        "hidden.rs"
+      ),
+    /unaudited N-API-generating macro/
+  );
 }
 
 function readNativeBindingMethodNames() {
-  const source = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "native.ts"), "utf8");
-  const match = source.match(/export interface NativeBinding \{([\s\S]*?)\n\}/);
-  if (!match) {
-    throw new Error("Could not find NativeBinding interface.");
-  }
-
-  return unique([...match[1].matchAll(/^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/gm)].map((entry) => entry[1]));
+  return readNativeBindingMethodNamesFromManifest(
+    path.join(repoRoot, "packages", "steam-bridge", "src", "native.ts")
+  );
 }
 
 function readSdkExportNames() {

@@ -15,6 +15,10 @@ const {
   inspectWindowsRuntimeDirectory,
   resolvePackagedWindowsRuntimeDirectory
 } = require("./verify-windows-packaged-artifacts.cjs");
+const {
+  assertMatchingNativeBindingManifests,
+  createNativeBindingManifest
+} = require("./native-binding-manifest.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const packageRoot = path.join(repoRoot, "packages", "steam-bridge");
@@ -45,7 +49,8 @@ const liveSmokeFiles = Object.freeze([
   "index.html",
   "smoke-sanitize.cjs",
   "smoke-error.cjs",
-  "checkout-proof.cjs"
+  "checkout-proof.cjs",
+  "native-binding-probe.cjs"
 ]);
 const windowsToolFiles = Object.freeze([
   "sign-windows-package.ps1",
@@ -130,11 +135,39 @@ async function main() {
       assertNonEmptyFile(path.join(extractedPackageRoot, fileName), `publish artifact ${fileName}`);
     }
     const sourceRuntime = inspectWindowsRuntimeDirectory(extractedPackageRoot);
+    const workspaceNativeBindingManifest = createNativeBindingManifest(
+      path.join(packageRoot, "src", "native.ts")
+    );
+    const sourceNativeBindingManifest = createNativeBindingManifest(
+      path.join(extractedPackageRoot, "dist", "native.d.ts")
+    );
+    assertMatchingNativeBindingManifests(
+      workspaceNativeBindingManifest,
+      sourceNativeBindingManifest,
+      "workspace NativeBinding",
+      "exact tarball NativeBinding"
+    );
 
-    stageFixture(stageDir, tarball, packageJson.version, tarballHashes, sourceRuntime);
+    stageFixture(
+      stageDir,
+      tarball,
+      packageJson.version,
+      tarballHashes,
+      sourceRuntime,
+      sourceNativeBindingManifest
+    );
     installExactTarball(stageDir);
     const installedPackageRoot = path.join(stageDir, "node_modules", "steam-bridge");
     const installedRuntime = inspectWindowsRuntimeDirectory(installedPackageRoot);
+    const installedNativeBindingManifest = createNativeBindingManifest(
+      path.join(installedPackageRoot, "dist", "native.d.ts")
+    );
+    assertMatchingNativeBindingManifests(
+      sourceNativeBindingManifest,
+      installedNativeBindingManifest,
+      "exact tarball NativeBinding",
+      "installed package NativeBinding"
+    );
     assertMatchingRuntimeFiles(sourceRuntime, installedRuntime, "tarball", "installed package");
     assertNoPostInstallRepair(stageDir, sourceRuntime, installedRuntime);
 
@@ -177,7 +210,7 @@ async function main() {
       allowAuthenticodeChanges: true
     });
     const runtimeDllPreservation = assertRuntimeDllBytesPreserved(sourceRuntime, finalRuntime);
-    verifyAsarLayout(appDir, provenance, packageJson);
+    verifyAsarLayout(appDir, provenance, packageJson, sourceNativeBindingManifest);
     const checkoutValidatorProbe = verifyCheckoutValidatorToolTree(appDir);
     const liveSmokeCapability = verifyLiveSmokeCapability(appDir);
 
@@ -201,7 +234,7 @@ async function main() {
       publisherMatches.nativeAddon = true;
     }
 
-    const executableProbe = runPackagedExecutable(appExe, outputRoot);
+    const executableProbe = runPackagedExecutable(appExe, outputRoot, sourceNativeBindingManifest);
     const bundleArchive = createDeterministicBundleArchive(
       appDir,
       path.join(outputRoot, `steam-bridge-${packageJson.version}-windows-x64-win-unpacked.tar`)
@@ -212,6 +245,7 @@ async function main() {
       package: {
         name: packageJson.name,
         version: packageJson.version,
+        nativeBinding: sanitizeNativeBindingManifest(sourceNativeBindingManifest),
         tarball: {
           fileName: path.basename(tarball),
           size: tarballHashes.size,
@@ -286,7 +320,7 @@ function extractTarball(tarball, extractDir) {
   run("tar", ["-xzf", tarball, "-C", extractDir], repoRoot);
 }
 
-function stageFixture(stageDir, tarball, packageVersion, tarballHashes, sourceRuntime) {
+function stageFixture(stageDir, tarball, packageVersion, tarballHashes, sourceRuntime, nativeBindingManifest) {
   fs.copyFileSync(path.join(fixtureRoot, "main.cjs"), path.join(stageDir, "main.cjs"));
   const smokeDir = path.join(stageDir, "smoke");
   fs.mkdirSync(smokeDir);
@@ -333,6 +367,7 @@ function stageFixture(stageDir, tarball, packageVersion, tarballHashes, sourceRu
     },
     windowsRuntime: sourceRuntime.files
   });
+  writeJson(path.join(stageDir, "native-binding-manifest.json"), nativeBindingManifest);
 }
 
 function installExactTarball(stageDir) {
@@ -355,7 +390,7 @@ function assertNoPostInstallRepair(stageDir, sourceRuntime, installedRuntime) {
   }
 }
 
-function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson) {
+function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson, expectedNativeBindingManifest) {
   const resourcesDir = path.join(appDir, "resources");
   const asarPath = path.join(resourcesDir, "app.asar");
   assertNonEmptyFile(asarPath, "app.asar");
@@ -370,6 +405,7 @@ function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson) {
   for (const entryParts of [
     ["main.cjs"],
     ...liveSmokeFiles.map((fileName) => ["smoke", fileName]),
+    ["native-binding-manifest.json"],
     ["steam-bridge-package-provenance.json"],
     ["node_modules", "steam-bridge", "package.json"],
     ...publicExportEntries,
@@ -386,6 +422,14 @@ function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson) {
   );
   const archivedFixturePackage = JSON.parse(
     asar.extractFile(asarPath, asarEntryPath(["package.json"])).toString("utf8")
+  );
+  const archivedNativeBindingManifest = JSON.parse(
+    asar.extractFile(asarPath, asarEntryPath(["native-binding-manifest.json"])).toString("utf8")
+  );
+  assert.deepEqual(
+    archivedNativeBindingManifest,
+    expectedNativeBindingManifest,
+    "Archived native binding manifest must match the exact tarball declaration"
   );
   assert.equal(
     archivedFixturePackage.dependencies?.["steam-bridge"],
@@ -425,7 +469,7 @@ function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson) {
   assert.deepEqual(archivedProvenance, expectedProvenance, "Archived provenance must match the exact tarball stage");
 }
 
-function runPackagedExecutable(appExe, artifactDir) {
+function runPackagedExecutable(appExe, artifactDir, expectedNativeBindingManifest) {
   const resultPath = path.join(artifactDir, "electron-native-load-result.json");
   const profileRoot = path.join(artifactDir, ".electron-probe-profile");
   fs.rmSync(resultPath, { force: true });
@@ -459,10 +503,27 @@ function runPackagedExecutable(appExe, artifactDir) {
   assert.equal(probe.arch, "x64");
   assert.equal(probe.packageEntryInAsar, true);
   assert.equal(probe.physicalAddonPresent, true);
+  assert.equal(probe.physicalAddonLoaded, true);
   assert.equal(probe.nativeOverridePresent, false);
-  assert.equal(probe.steamRunningType, "boolean");
-  assert.equal(probe.needsPresentPollingEnabledType, "boolean");
+  assert.equal(probe.steamRunningType, "function");
+  assert.equal(probe.needsPresentPollingEnabledType, "function");
+  assert.equal(probe.nativeBindingProbe?.ok, true);
+  assert.equal(probe.nativeBindingProbe?.expectedMethodCount, expectedNativeBindingManifest.methodCount);
+  assert.equal(probe.nativeBindingProbe?.verifiedMethodCount, expectedNativeBindingManifest.methodCount);
+  assert.equal(probe.nativeBindingProbe?.expectedMethodsSha256, expectedNativeBindingManifest.methodsSha256);
+  assert.equal(probe.nativeBindingProbe?.verifiedMethodsSha256, expectedNativeBindingManifest.methodsSha256);
+  assert.equal(probe.nativeBindingProbe?.missingMethodCount, 0);
+  assert.equal(probe.nativeBindingProbe?.nonFunctionMethodCount, 0);
   return probe;
+}
+
+function sanitizeNativeBindingManifest(manifest) {
+  return {
+    schemaVersion: manifest.schemaVersion,
+    interfaceName: manifest.interfaceName,
+    methodCount: manifest.methodCount,
+    methodsSha256: manifest.methodsSha256
+  };
 }
 
 function verifyCheckoutValidatorToolTree(appDir) {
@@ -665,6 +726,7 @@ function listFiles(root) {
 }
 
 function selfTest() {
+  const fixtureMainSource = fs.readFileSync(path.join(fixtureRoot, "main.cjs"), "utf8");
   assert.equal(fixtureConfig.productName, "SteamBridgeSmoke");
   assert.deepEqual(fixtureConfig.asar, { smartUnpack: false });
   assert.deepEqual(
@@ -679,6 +741,13 @@ function selfTest() {
   );
   assert.ok(fixtureConfig.extraResources.some((entry) => entry.to === "steam-bridge-tools/dist"));
   assert.ok(fixtureConfig.files.includes("smoke/**/*"));
+  assert.ok(fixtureConfig.files.includes("native-binding-manifest.json"));
+  assert.ok(liveSmokeFiles.includes("native-binding-probe.cjs"));
+  assert.doesNotMatch(
+    fixtureMainSource,
+    /\bbinding(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[\s*["'][A-Za-z_$][A-Za-z0-9_$]*["']\s*\])\s*\(/,
+    "Native binding package probes must inspect function shape without invoking Steam methods"
+  );
   assert.ok(fixtureConfig.extraFiles.some((entry) => entry.from === "windows-tools" && entry.to === "."));
   assert.equal(
     asarEntryPath(["node_modules", "steam-bridge", "package.json"], path.win32),

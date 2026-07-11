@@ -81,6 +81,53 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
   const audit = JSON.parse(fs.readFileSync(auditManifest, "utf8"));
   assert.equal(audit.schemaVersion, 1, "unsupported package audit schema");
   assert.equal(audit.executableProbe?.ok, true, "package audit is missing a successful final executable probe");
+  const nativeBinding = audit.package?.nativeBinding;
+  assert.equal(nativeBinding?.schemaVersion, 1, "package audit is missing native binding schema 1");
+  assert.equal(nativeBinding?.interfaceName, "NativeBinding", "package audit has the wrong native binding interface");
+  assert.ok(
+    Number.isInteger(nativeBinding?.methodCount) && nativeBinding.methodCount > 0,
+    "package audit is missing a positive native binding method count"
+  );
+  assert.match(
+    nativeBinding?.methodsSha256 || "",
+    /^[a-f0-9]{64}$/,
+    "package audit is missing the native binding method hash"
+  );
+  assert.equal(
+    audit.executableProbe?.nativeBindingProbe?.ok,
+    true,
+    "package audit is missing a successful native binding probe"
+  );
+  assert.equal(
+    audit.executableProbe.nativeBindingProbe.expectedMethodCount,
+    nativeBinding.methodCount,
+    "native binding probe expected count differs from the package contract"
+  );
+  assert.equal(
+    audit.executableProbe.nativeBindingProbe.verifiedMethodCount,
+    nativeBinding.methodCount,
+    "native binding probe verified count differs from the package contract"
+  );
+  assert.equal(
+    audit.executableProbe.nativeBindingProbe.expectedMethodsSha256,
+    nativeBinding.methodsSha256,
+    "native binding probe expected hash differs from the package contract"
+  );
+  assert.equal(
+    audit.executableProbe.nativeBindingProbe.verifiedMethodsSha256,
+    nativeBinding.methodsSha256,
+    "native binding probe verified hash differs from the package contract"
+  );
+  assert.equal(
+    audit.executableProbe.nativeBindingProbe.missingMethodCount,
+    0,
+    "native binding probe reports missing methods"
+  );
+  assert.equal(
+    audit.executableProbe.nativeBindingProbe.nonFunctionMethodCount,
+    0,
+    "native binding probe reports non-function methods"
+  );
   assert.equal(audit.checkoutValidatorProbe?.ok, true, "package audit is missing a successful checkout-validator probe");
   const expected = audit.package?.tarball;
   assert.ok(expected, "package audit is missing tarball identity");
@@ -218,8 +265,28 @@ function selfTest() {
       audit,
       `${JSON.stringify({
         schemaVersion: 1,
-        package: { version: "0.1.0", tarball: expected },
-        executableProbe: { ok: true },
+        package: {
+          version: "0.1.0",
+          nativeBinding: {
+            schemaVersion: 1,
+            interfaceName: "NativeBinding",
+            methodCount: 1121,
+            methodsSha256: "f77039e3a26e3a6fcb68bcc695d1cb7393cd5712a901ce57c0425f539fa272ad"
+          },
+          tarball: expected
+        },
+        executableProbe: {
+          ok: true,
+          nativeBindingProbe: {
+            ok: true,
+            expectedMethodCount: 1121,
+            verifiedMethodCount: 1121,
+            expectedMethodsSha256: "f77039e3a26e3a6fcb68bcc695d1cb7393cd5712a901ce57c0425f539fa272ad",
+            verifiedMethodsSha256: "f77039e3a26e3a6fcb68bcc695d1cb7393cd5712a901ce57c0425f539fa272ad",
+            missingMethodCount: 0,
+            nonFunctionMethodCount: 0
+          }
+        },
         checkoutValidatorProbe: { ok: true },
         liveSmokeCapability: { protocolPackaged: true },
         signing: {
@@ -266,6 +333,38 @@ function selfTest() {
       }).sha256,
       expected.sha256
     );
+    const validAudit = JSON.parse(fs.readFileSync(audit, "utf8"));
+    for (const [mutate, expectedError] of [
+      [(value) => (value.package.nativeBinding.schemaVersion = 2), /native binding schema 1/],
+      [(value) => (value.package.nativeBinding.interfaceName = "OtherBinding"), /wrong native binding interface/],
+      [(value) => (value.package.nativeBinding.methodCount = 0), /positive native binding method count/],
+      [(value) => (value.package.nativeBinding.methodsSha256 = "invalid"), /native binding method hash/],
+      [(value) => (value.executableProbe.nativeBindingProbe.ok = false), /successful native binding probe/],
+      [
+        (value) => (value.executableProbe.nativeBindingProbe.expectedMethodCount -= 1),
+        /expected count differs/
+      ],
+      [
+        (value) => (value.executableProbe.nativeBindingProbe.verifiedMethodCount -= 1),
+        /verified count differs/
+      ],
+      [
+        (value) => (value.executableProbe.nativeBindingProbe.expectedMethodsSha256 = "0".repeat(64)),
+        /expected hash differs/
+      ],
+      [
+        (value) => (value.executableProbe.nativeBindingProbe.verifiedMethodsSha256 = "0".repeat(64)),
+        /verified hash differs/
+      ],
+      [(value) => (value.executableProbe.nativeBindingProbe.missingMethodCount = 1), /missing methods/],
+      [(value) => (value.executableProbe.nativeBindingProbe.nonFunctionMethodCount = 1), /non-function methods/]
+    ]) {
+      const invalidAudit = JSON.parse(JSON.stringify(validAudit));
+      mutate(invalidAudit);
+      writeJson(audit, invalidAudit);
+      assert.throws(() => verifyReleaseCandidate(tarball, audit), expectedError);
+    }
+    writeJson(audit, validAudit);
     assert.throws(
       () =>
         verifyReleaseCandidate(tarball, audit, {
@@ -298,6 +397,10 @@ function assertNonEmptyFile(filePath, label) {
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile() || fs.statSync(filePath).size === 0) {
     throw new Error(`Missing or empty ${label}: ${filePath}`);
   }
+}
+
+function writeJson(filePath, value) {
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function readArg(name) {

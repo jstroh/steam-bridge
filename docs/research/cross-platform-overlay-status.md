@@ -473,6 +473,26 @@ The next live attempt is meaningful on the exact signed candidate when the
 source naturally launches foreground or a real local/Parsec click and exact
 challenge acknowledgment can follow the fresh atomic marker.
 
+The same exact signed active candidate also passed a side-effect-free native
+API registration probe through its packaged Electron executable. The canonical
+`NativeBinding` declaration contains 1,121 required methods; all 1,121 were
+present as own function properties with the exact declaration hash, zero were
+missing or non-functions, and the only extra functions were the two expected
+native constructors. The probe invoked no Steam method and left zero Smoke
+processes. This is direct evidence that the complete declared native surface is
+registered and loadable in that Electron package, not a claim that every
+account-, app-, transaction-, server-, or state-dependent method was invoked or
+semantically proved.
+
+The local packaging gate now derives the ASAR fixture's Electron version from
+the canonical smoke pin, which is updated to `43.1.0`, and carries the exact
+method manifest from source declaration through npm tarball, installation,
+ASAR, and the physical unpacked addon loaded by the final executable. A fresh
+Apple Silicon package passed the same 1,121-method stage and final-executable
+checks at Electron `43.1.0`. The exact Windows package above remains historical
+Electron `43.0.0` evidence; a fresh `43.1.0` Windows ASAR candidate must pass
+the new gate before this becomes a current Windows release claim.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
