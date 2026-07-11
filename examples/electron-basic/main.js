@@ -125,7 +125,10 @@ const AUTORUN_USER_GESTURE_GATE = readBoolean(
   CLI_OPTIONS.autorunUserGestureGate || process.env.STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE,
   false
 );
-const AUTORUN_USER_GESTURE_GATE_ACTION = "presenter-web-open-and-wait";
+const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({
+  "presenter-web-open-and-wait": "presenter-web-wait",
+  "presenter-duplicate-open-guard": "presenter-duplicate-guard"
+});
 const AUTORUN_USER_GESTURE_GATE_REJECTION_REASONS = new Set([
   "gate-disabled",
   "unsupported-action",
@@ -569,7 +572,8 @@ async function runAutorunSmoke() {
 }
 
 function armAutorunUserGestureGate(action) {
-  if (action !== AUTORUN_USER_GESTURE_GATE_ACTION) {
+  const targetId = getAutorunUserGestureGateTargetId(action);
+  if (!targetId) {
     recordAutorunUserGestureGateRejection("arm", "unsupported-action", "unarmed", action);
     return Promise.resolve(createAutorunUserGestureGateFailureResult(action, "unsupported-action"));
   }
@@ -586,6 +590,7 @@ function armAutorunUserGestureGate(action) {
   });
   const gate = {
     action,
+    targetId,
     nonce: crypto.randomBytes(32).toString("hex"),
     state: "armed",
     readyEvidence: undefined,
@@ -633,13 +638,10 @@ function handleAutorunUserGestureGateReady(event, payload) {
   if (!matchesAutorunUserGestureGateNonce(payload.nonce, gate.nonce)) {
     return rejectAutorunUserGestureGate("ready", "wrong-nonce");
   }
-  if (!payload.evidence || !payload.evidence.button || payload.evidence.button.id !== "presenter-web-wait") {
-    return rejectAutorunUserGestureGate("ready", "wrong-target");
-  }
-
-  const readyEvidence = normalizeAutorunUserGestureGateReadyEvidence(payload.evidence);
+  const readyEvidence = normalizeAutorunUserGestureGateReadyEvidence(payload.evidence, gate.targetId);
   if (!readyEvidence) {
-    return rejectAutorunUserGestureGate("ready", "invalid-geometry");
+    const reason = payload?.evidence?.button?.id === gate.targetId ? "invalid-geometry" : "wrong-target";
+    return rejectAutorunUserGestureGate("ready", reason);
   }
 
   gate.state = "ready";
@@ -797,8 +799,18 @@ function matchesAutorunUserGestureGateNonce(received, expected) {
   return receivedBytes.length === expectedBytes.length && crypto.timingSafeEqual(receivedBytes, expectedBytes);
 }
 
-function normalizeAutorunUserGestureGateReadyEvidence(evidence) {
+function getAutorunUserGestureGateTargetId(action) {
+  if (typeof action !== "string" || !Object.prototype.hasOwnProperty.call(AUTORUN_USER_GESTURE_GATE_TARGETS, action)) {
+    return undefined;
+  }
+  return AUTORUN_USER_GESTURE_GATE_TARGETS[action];
+}
+
+function normalizeAutorunUserGestureGateReadyEvidence(evidence, expectedTargetId) {
   if (!evidence || !evidence.button || !evidence.viewport) {
+    return undefined;
+  }
+  if (evidence.button.id !== expectedTargetId) {
     return undefined;
   }
   if (evidence.button.connected !== true || evidence.button.enabled !== true || evidence.button.visible !== true) {
@@ -841,7 +853,7 @@ function normalizeAutorunUserGestureGateReadyEvidence(evidence) {
 
   return {
     button: {
-      id: "presenter-web-wait",
+      id: expectedTargetId,
       connected: true,
       enabled: true,
       visible: true,
@@ -1212,13 +1224,16 @@ function isHandoffOnlySmokeControlRequestAllowed(method, pathname) {
 }
 
 function canCompleteAutorunUserGestureRun() {
+  const expectedTargetId = getAutorunUserGestureGateTargetId(AUTORUN_ACTION);
   return Boolean(
     AUTORUN &&
       AUTORUN_USER_GESTURE_GATE &&
       AUTORUN_KEEP_OPEN_AFTER_RESULT &&
-      AUTORUN_ACTION === AUTORUN_USER_GESTURE_GATE_ACTION &&
+      expectedTargetId &&
       AUTORUN_RESULT_FILE &&
       autorunUserGestureResultWritten &&
+      autorunUserGestureGate?.action === AUTORUN_ACTION &&
+      autorunUserGestureGate?.targetId === expectedTargetId &&
       autorunUserGestureGate?.state === "consumed" &&
       !autorunUserGestureCompletionQuitConsumed
   );

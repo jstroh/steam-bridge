@@ -138,9 +138,10 @@ close target first, binds the exact lifecycle native-host window to the Smoke
 process and interactive session, then makes one authenticated loopback request
 for that owning process to run its existing native-host activation path.
 
-The managed web-wait case instead uses schema-3
-`same-process-user-gesture-v1`. Its context-isolated preload privately arms
-the exact **Presenter Web Wait** button and records one actual DOM click; main
+The exact managed web-wait and duplicate-open cases instead use schema-3
+`same-process-user-gesture-v1`. Their context-isolated preload privately maps
+each action to its own **Presenter Web Wait** or **Duplicate Guard** button and
+records one actual DOM click; main
 world receives neither the nonce nor a generic consume API. Before one renderer
 activation `SendInput`, the probe binds the source window to the lifecycle and
 authenticated control process, exact HWND and process-start identity, and
@@ -151,12 +152,13 @@ foreground, the probe installs a
 listener for
 [`EVENT_SYSTEM_FOREGROUND`](https://learn.microsoft.com/en-us/windows/win32/winauto/event-constants#event_system_foreground)
 and its exact PID and HWND, records one sanitized source-ready event, arms the
-listener, and atomically writes the actionable
-`11-managed-web-open-and-wait\external-foreground-ready.json`. The marker
+listener, and atomically writes the actionable case-local
+`external-foreground-ready.json`. The marker
 contains a fresh non-secret challenge. An external interactive-desktop
 coordinator may then perform exactly one safe title-bar click in that Smoke
 window. Only after that click call succeeds, it must copy the challenge into an
-atomic `external-foreground-ack.json` with this closed shape:
+atomic `external-foreground-ack.json` with this closed shape (the example is
+the managed-web action):
 
 ```json
 {
@@ -171,6 +173,12 @@ atomic `external-foreground-ack.json` with this closed shape:
   "closeInputCount": 0
 }
 ```
+
+The coordinator must copy `action`, `requestOrdinal`, `mechanism`, and
+`challenge` from the exact ready marker after validating that marker against
+the selected case. It must not hardcode the web action when controlling the
+duplicate-open case, whose action is `presenter-duplicate-open-guard`; both
+currently use requested transition ordinal `1`.
 
 Write a temporary sibling and rename it to the acknowledgment path; do not
 write the final file incrementally. The probe removes stale acknowledgment and
@@ -204,11 +212,13 @@ one complete terminal state. The handoff-only loopback server then accepts one
 authenticated graceful quit only when the gate was consumed and the configured
 result file was written. It rejects the legacy foreground-handoff route for
 this case. The branch never runs the blocker-clear key input. The standalone
-helper exposes `-AutorunUserGestureGate` only for
-`presenter-web-open-and-wait` and requires keep-open plus one handoff-only
-control file; the matrix configures that scope automatically for case
-`11-managed-web-open-and-wait`. Historical schema-2 artifacts remain auditable,
-but they do not contain the external foreground-transition contract.
+helper exposes `-AutorunUserGestureGate` only for the exact
+`presenter-web-open-and-wait` and `presenter-duplicate-open-guard` actions and
+requires keep-open plus one handoff-only control file. The matrix configures
+that scope automatically for cases `11-managed-web-open-and-wait` and
+`11b-managed-duplicate-open-guard`. Historical schema-2 web artifacts remain
+auditable, but duplicate-open requires schema 3 and neither historical format
+contains the external foreground-transition contract.
 
 Both branches record only sanitized relationship booleans and counts—never
 handles, process/session IDs, ports, tokens, or the private nonce—while the
@@ -280,15 +290,16 @@ all three input events with no API error but missed the close control because
 the remaining literal panel-corner offset was not scaled; do not rerun that
 unchanged target or extend its wait.
 
-The Windows managed suite now includes
-`11b-managed-duplicate-open-guard`. Its summary audit requires the intended
+The Windows managed suite includes `11b-managed-duplicate-open-guard` and gives
+it the same exact schema-3 user-gesture gate used by the proved managed-web
+path. Its summary audit requires the intended
 generic, named direct/wait, shortcut/controller, and checkout helpers to return
 the busy result without invoking the checkout operation. Treat the case as
 implemented but not yet live-proved on Windows until a packaged run also shows
 one overlay target, close/back-to-app, parking, D3D11 identity in all three
 diagnostic fields, and clean crash/cleanup evidence.
 
-After the focused foreground/close gate passes, use the dedicated persistent
+After both focused foreground/close gates pass, use the dedicated persistent
 reuse suite to prove that one Steam-launched process keeps one managed
 controller, native surface lease, D3D11 surface instance, and HWND across three
 complete web open/close/park cycles:
@@ -311,7 +322,7 @@ native-instance, and opaque HWND-identity values in every shown and parked
 snapshot, exactly one attach and no detach before final shutdown, and three
 single close inputs with exact-host foreground rechecks. This is implemented
 coverage awaiting current-package live proof; do not run it ahead of the
-focused genuine-user-gesture close gate.
+focused duplicate-open close gate.
 
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic

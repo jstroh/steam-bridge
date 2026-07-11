@@ -775,7 +775,9 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   for (const expected of [
     "atomically writes the actionable",
-    "`11-managed-web-open-and-wait\\external-foreground-ready.json`",
+    "case-local `external-foreground-ready.json`",
+    "copy `action`, `requestOrdinal`, `mechanism`, and `challenge`",
+    "must not hardcode the web action",
     "arms the listener",
     "exactly one safe title-bar click",
     "external-foreground-ack.json",
@@ -1009,8 +1011,10 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   assert.ok(
     helper.includes('[switch]$AutorunUserGestureGate') &&
-      helper.includes('if ($AutorunUserGestureGate -and $Action -ne "presenter-web-open-and-wait")') &&
-      helper.includes('throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."') &&
+      helper.includes('if ($AutorunUserGestureGate -and $Action -cnotin @(') &&
+      helper.includes('"presenter-web-open-and-wait",') &&
+      helper.includes('"presenter-duplicate-open-guard"') &&
+      helper.includes('throw "-AutorunUserGestureGate requires presenter-web-open-and-wait or presenter-duplicate-open-guard."') &&
       helper.includes("-not $KeepOpenAfterResult") &&
       helper.includes("-not $ControlServer") &&
       helper.includes("-not $ControlHandoffOnly") &&
@@ -1018,7 +1022,7 @@ function runWindowsSmokeHelperStaticChecks() {
       helper.includes('throw "-AutorunUserGestureGate requires keep-open, handoff-only control, and one control file."') &&
       helper.includes("$app.autorunKeepOpenAfterResult -isnot [bool]") &&
       helper.includes("$app.autorunKeepOpenAfterResult -ne [bool]$KeepOpenAfterResult"),
-    "Windows smoke helper must restrict the user-gesture gate to one keep-open handoff-only completion scope"
+    "Windows smoke helper must restrict the user-gesture gate to two exact actions in one keep-open handoff-only completion scope"
   );
   const userGestureTargetStart = matrixHelper.indexOf("function Resolve-AutorunUserGestureGateTarget");
   const userGestureTargetEnd = matrixHelper.indexOf(
@@ -1031,9 +1035,9 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   const userGestureTargetBlock = matrixHelper.slice(userGestureTargetStart, userGestureTargetEnd);
   for (const expected of [
-    'mechanism -ne "same-process-user-gesture"',
-    'action -ne "presenter-web-open-and-wait"',
-    'targetId -ne "presenter-web-wait"',
+    'mechanism -cne "same-process-user-gesture"',
+    "action -cne `$script:UserGestureAction",
+    "targetId -cne `$script:UserGestureTargetId",
     "GetWindowThreadProcessId(`$sourceHandle",
     "ownerMatchesLifecycleProcess",
     "sourceMatchesControlProcess",
@@ -1057,6 +1061,19 @@ function runWindowsSmokeHelperStaticChecks() {
     '"gate-source-window-awaiting-external-foreground"'
   ]) {
     assert.ok(userGestureTargetBlock.includes(expected), `Windows user-gesture target resolver missing ${expected}`);
+  }
+  for (const expected of [
+    '$Case.id -ceq "11-managed-web-open-and-wait"',
+    '$Case.action -ceq "presenter-web-open-and-wait"',
+    '$userGestureTargetId = "presenter-web-wait"',
+    '$Case.id -ceq "11b-managed-duplicate-open-guard"',
+    '$Case.action -ceq "presenter-duplicate-open-guard"',
+    '$userGestureTargetId = "presenter-duplicate-guard"',
+    "`$script:UserGestureAction = '$userGestureAction'",
+    "`$script:UserGestureTargetId = '$userGestureTargetId'",
+    "`$script:ExternalForegroundRequestOrdinal = 1"
+  ]) {
+    assert.ok(matrixHelper.includes(expected), `Windows user-gesture closed mapping missing ${expected}`);
   }
   assert.doesNotMatch(
     userGestureTargetBlock,
@@ -1249,6 +1266,8 @@ function runWindowsSmokeHelperStaticChecks() {
     externalMarkerStart >= 0 &&
       externalMarkerEnd > externalMarkerStart &&
       externalMarkerBlock.includes('kind = "steam-bridge-windows-external-foreground-ready"') &&
+      externalMarkerBlock.includes("action = `$script:UserGestureAction") &&
+      externalMarkerBlock.includes("requestOrdinal = `$script:ExternalForegroundRequestOrdinal") &&
       externalMarkerBlock.includes("challenge = `$script:ExternalForegroundChallenge") &&
       externalMarkerBlock.includes("activationInputCount = 0") &&
       externalMarkerBlock.includes("closeInputCount = 0") &&
@@ -1257,6 +1276,8 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     'kind -ceq "steam-bridge-windows-external-foreground-ack"',
+    "`$ack.action -ceq `$script:UserGestureAction",
+    "Test-ExternalForegroundJsonInteger `$ack.requestOrdinal `$script:ExternalForegroundRequestOrdinal",
     "Test-ExternalForegroundJsonInteger `$ack.schema 1",
     "`$ack.clickCompleted -is [bool]",
     "`$ack.challenge -ceq `$script:ExternalForegroundChallenge",
@@ -1457,6 +1478,20 @@ function runWindowsSmokeHelperStaticChecks() {
     'const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1"',
     'const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1"',
     'const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1"',
+    "const USER_GESTURE_GATE_EXPECTATIONS = Object.freeze({",
+    '"11b-managed-duplicate-open-guard": Object.freeze({',
+    'action: "presenter-duplicate-open-guard"',
+    'targetId: "presenter-duplicate-guard"',
+    "evidenceSchemas: Object.freeze([3])",
+    "getUserGestureGateExpectation(caseName)",
+    "Number.isInteger(recordedCaseEvidenceSchema)",
+    "Number.isInteger(startPayload.evidenceSchema)",
+    "sameProcessUserGestureEvidencePresent",
+    "action.action === userGestureExpectation.action",
+    "closeProbe.userGestureGate === true",
+    "readyPayload.action === expectedAction",
+    "readyPayload.targetId === expectedTargetId",
+    "guardEvents.length !== 1",
     "SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2, 3])",
     "manifest.supportedCloseProbeForegroundHandoffs.includes(OWNER_PROCESS_FOREGROUND_HANDOFF)",
     "manifest.supportedCloseProbeForegroundHandoffs.includes(SAME_PROCESS_USER_GESTURE_HANDOFF)",
@@ -2020,7 +2055,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "Windows keyboard shortcut checkout must not claim operation-scoped MicroTxn callback proof"
   );
   const duplicateOpenGuardCase = matrixHelper.match(
-    /-Id "11b-managed-duplicate-open-guard"[\s\S]*?-WebModal "true"/
+    /-Id "11b-managed-duplicate-open-guard"[\s\S]*?-AutorunUserGestureGate/
   )?.[0];
   assert.ok(duplicateOpenGuardCase, "Windows managed duplicate-open guard case is missing");
   assert.match(
@@ -2037,7 +2072,8 @@ function runWindowsSmokeHelperStaticChecks() {
     '"overlay:presenter-open-and-wait-complete"',
     "-RequireOverlayActivated",
     "-RequireManagedOverlayComplete",
-    '-ManagedOverlayResultMode "complete"'
+    '-ManagedOverlayResultMode "complete"',
+    "-AutorunUserGestureGate"
   ]) {
     assert.ok(
       duplicateOpenGuardCase.includes(expected),
@@ -2699,7 +2735,6 @@ function runElectronSmokeActionStaticChecks() {
   for (const expected of [
     "STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE",
     "--steam-bridge-smoke-autorun-user-gesture-gate",
-    'const AUTORUN_USER_GESTURE_GATE_ACTION = "presenter-web-open-and-wait"',
     'ipcMain.handle("steam-smoke:autorun-user-gesture-gate-ready"',
     'ipcMain.handle("steam-smoke:autorun-user-gesture-gate-consume"',
     'recordEvent("autorun:user-gesture-gate-armed"',
@@ -2709,17 +2744,39 @@ function runElectronSmokeActionStaticChecks() {
   ]) {
     assert.ok(main.includes(expected), `Electron smoke user-gesture gate missing ${expected}`);
   }
+  for (const [label, source] of [
+    ["main", main],
+    ["preload", preload]
+  ]) {
+    for (const expected of [
+      "const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({",
+      '"presenter-web-open-and-wait": "presenter-web-wait"',
+      '"presenter-duplicate-open-guard": "presenter-duplicate-guard"',
+      'typeof action !== "string"',
+      "Object.prototype.hasOwnProperty.call(AUTORUN_USER_GESTURE_GATE_TARGETS, action)"
+    ]) {
+      assert.ok(source.includes(expected), `Electron smoke ${label} closed gate mapping missing ${expected}`);
+    }
+  }
 
   const gateArmStart = main.indexOf("function armAutorunUserGestureGate");
   const gateArmEnd = main.indexOf("\nfunction handleAutorunUserGestureGateReady", gateArmStart);
   assert.ok(gateArmStart >= 0 && gateArmEnd > gateArmStart, "Electron smoke app must define a bounded gate arm step");
   const gateArmBlock = main.slice(gateArmStart, gateArmEnd);
   assert.ok(
-    gateArmBlock.includes("crypto.randomBytes(32).toString(\"hex\")") &&
+    gateArmBlock.includes("const targetId = getAutorunUserGestureGateTargetId(action)") &&
+      gateArmBlock.includes("if (!targetId)") &&
+      gateArmBlock.includes("targetId,") &&
+      gateArmBlock.includes("crypto.randomBytes(32).toString(\"hex\")") &&
       gateArmBlock.includes('state: "armed"') &&
       gateArmBlock.includes('window.webContents.send("steam-smoke:autorun-user-gesture-gate-arm"') &&
       gateArmBlock.includes("nonce: gate.nonce"),
     "Electron smoke gate must arm one private nonce before notifying its renderer"
+  );
+  assert.doesNotMatch(
+    gateArmBlock.slice(gateArmBlock.indexOf("window.webContents.send")),
+    /targetId/,
+    "Electron smoke arm IPC must send only the action and private nonce, not a renderer-selected target"
   );
   assert.doesNotMatch(
     gateArmBlock,
@@ -2778,7 +2835,7 @@ function runElectronSmokeActionStaticChecks() {
     "Electron smoke gate must bind ready and consume IPC to the main window and main frame"
   );
   const gateNonceStart = main.indexOf("function matchesAutorunUserGestureGateNonce");
-  const gateNonceEnd = main.indexOf("\nfunction normalizeAutorunUserGestureGateReadyEvidence", gateNonceStart);
+  const gateNonceEnd = main.indexOf("\nfunction getAutorunUserGestureGateTargetId", gateNonceStart);
   const gateNonceBlock = main.slice(gateNonceStart, gateNonceEnd);
   assert.ok(
     gateNonceStart >= 0 &&
@@ -2786,6 +2843,43 @@ function runElectronSmokeActionStaticChecks() {
       gateNonceBlock.includes("receivedBytes.length === expectedBytes.length") &&
       gateNonceBlock.includes("crypto.timingSafeEqual(receivedBytes, expectedBytes)"),
     "Electron smoke gate must compare its private nonce exactly and timing-safely"
+  );
+  const gateTargetResolverStart = gateNonceEnd + 1;
+  const gateTargetResolverEnd = main.indexOf(
+    "\nfunction normalizeAutorunUserGestureGateReadyEvidence",
+    gateTargetResolverStart
+  );
+  const gateTargetResolverBlock = main.slice(gateTargetResolverStart, gateTargetResolverEnd);
+  assert.ok(
+    gateTargetResolverBlock.includes('typeof action !== "string"') &&
+      gateTargetResolverBlock.includes(
+        "Object.prototype.hasOwnProperty.call(AUTORUN_USER_GESTURE_GATE_TARGETS, action)"
+      ) &&
+      gateTargetResolverBlock.includes("return AUTORUN_USER_GESTURE_GATE_TARGETS[action]"),
+    "Electron smoke main process must derive targets from its own exact mapping"
+  );
+  const gateReadyStart = main.indexOf("function handleAutorunUserGestureGateReady");
+  const gateReadyEnd = main.indexOf("\nfunction handleAutorunUserGestureGateConsume", gateReadyStart);
+  const gateReadyBlock = main.slice(gateReadyStart, gateReadyEnd);
+  assert.ok(
+    gateReadyStart >= 0 &&
+      gateReadyEnd > gateReadyStart &&
+      gateReadyBlock.includes(
+        "normalizeAutorunUserGestureGateReadyEvidence(payload.evidence, gate.targetId)"
+      ) &&
+      gateReadyBlock.includes("payload?.evidence?.button?.id === gate.targetId"),
+    "Electron smoke ready gate must bind renderer evidence to the main-owned mapped target"
+  );
+  const gateNormalizeStart = gateTargetResolverEnd + 1;
+  const gateNormalizeEnd = main.indexOf(
+    "\nfunction isPointInsideAutorunUserGestureGateButton",
+    gateNormalizeStart
+  );
+  const gateNormalizeBlock = main.slice(gateNormalizeStart, gateNormalizeEnd);
+  assert.ok(
+    gateNormalizeBlock.includes("evidence.button.id !== expectedTargetId") &&
+      gateNormalizeBlock.includes("id: expectedTargetId"),
+    "Electron smoke ready evidence normalizer must retain only the exact expected target"
   );
   const gateRejectStart = main.indexOf("function rejectAutorunUserGestureGate");
   const gateRejectEnd = main.indexOf("\nfunction recordAutorunUserGestureGateRejection", gateRejectStart);
@@ -2833,9 +2927,12 @@ function runElectronSmokeActionStaticChecks() {
   for (const expected of [
     "AUTORUN_USER_GESTURE_GATE",
     "AUTORUN_KEEP_OPEN_AFTER_RESULT",
-    "AUTORUN_ACTION === AUTORUN_USER_GESTURE_GATE_ACTION",
+    "const expectedTargetId = getAutorunUserGestureGateTargetId(AUTORUN_ACTION)",
+    "expectedTargetId",
     "AUTORUN_RESULT_FILE",
     "autorunUserGestureResultWritten",
+    "autorunUserGestureGate?.action === AUTORUN_ACTION",
+    "autorunUserGestureGate?.targetId === expectedTargetId",
     'autorunUserGestureGate?.state === "consumed"',
     "!autorunUserGestureCompletionQuitConsumed"
   ]) {
@@ -2901,10 +2998,12 @@ function runElectronSmokeActionStaticChecks() {
 
   for (const expected of [
     'ipcRenderer.on("steam-smoke:autorun-user-gesture-gate-arm"',
-    'value.action !== AUTORUN_USER_GESTURE_GATE_ACTION',
+    "const targetId = getAutorunUserGestureGateTargetId(value?.action)",
+    "!targetId",
     "typeof value.nonce !== \"string\"",
     "!/^[0-9a-f]{64}$/.test(value.nonce)",
-    "document.getElementById(AUTORUN_USER_GESTURE_GATE_TARGET_ID)",
+    "targetId,",
+    "document.getElementById(autorunUserGestureGate.targetId)",
     'button.addEventListener("click", consumeAutorunUserGestureGate, { capture: true, once: true })',
     "autorunUserGestureGateHandler({ action: autorunUserGestureGate.action })",
     'ipcRenderer\n    .invoke("steam-smoke:autorun-user-gesture-gate-ready"',
@@ -2980,7 +3079,7 @@ function runElectronSmokeActionStaticChecks() {
 
   const rendererClickStart = html.indexOf("presenterWebWaitButton.onclick = (event) => {");
   const rendererClickEnd = html.indexOf(
-    '\n      document.getElementById("presenter-duplicate-guard")',
+    "\n      const presenterDuplicateGuardButton",
     rendererClickStart
   );
   assert.ok(
@@ -2989,7 +3088,9 @@ function runElectronSmokeActionStaticChecks() {
   );
   const rendererClickBlock = html.slice(rendererClickStart, rendererClickEnd);
   assert.ok(
-    rendererClickBlock.includes("if (!autorunUserGestureGate)") &&
+    rendererClickBlock.includes(
+      'if (autorunUserGestureGate?.action !== "presenter-web-open-and-wait")'
+    ) &&
       rendererClickBlock.includes(
         'return run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait())'
       ) &&
@@ -2998,6 +3099,32 @@ function runElectronSmokeActionStaticChecks() {
       !rendererClickBlock.includes("event.isTrusted") &&
       !rendererClickBlock.includes("navigator.userActivation"),
     "Electron smoke renderer must preserve the manual path and suppress it while isolated preload owns the gate"
+  );
+  const duplicateRendererClickStart = html.indexOf(
+    "presenterDuplicateGuardButton.onclick = (event) => {"
+  );
+  const duplicateRendererClickEnd = html.indexOf(
+    '\n      document.getElementById("presenter-store-wait")',
+    duplicateRendererClickStart
+  );
+  const duplicateRendererClickBlock = html.slice(
+    duplicateRendererClickStart,
+    duplicateRendererClickEnd
+  );
+  assert.ok(
+    duplicateRendererClickStart >= 0 &&
+      duplicateRendererClickEnd > duplicateRendererClickStart &&
+      duplicateRendererClickBlock.includes(
+        'if (autorunUserGestureGate?.action !== "presenter-duplicate-open-guard")'
+      ) &&
+      duplicateRendererClickBlock.includes(
+        'return run("Duplicate Guard", () => window.steamSmoke.openPresenterDuplicateOpenGuard())'
+      ) &&
+      duplicateRendererClickBlock.includes("event.preventDefault()") &&
+      !duplicateRendererClickBlock.includes("consumeAutorunUserGestureGate") &&
+      !duplicateRendererClickBlock.includes("event.isTrusted") &&
+      !duplicateRendererClickBlock.includes("navigator.userActivation"),
+    "Electron smoke renderer must preserve the duplicate manual path and suppress only its matching isolated gate"
   );
   assert.ok(
     html.includes("window.steamSmoke.onAutorunUserGestureGateArm((gate) => {") &&
@@ -3009,132 +3136,190 @@ function runElectronSmokeActionStaticChecks() {
 function runElectronPreloadUserGestureGateSelfTest() {
   const preloadPath = path.join(repoRoot, "examples", "electron-basic", "preload.js");
   const source = fs.readFileSync(preloadPath, "utf8");
-  const ipcListeners = new Map();
-  const ipcInvocations = [];
-  let exposedApi;
-  let clickListener;
-  let clickListenerOptions;
-  const rect = {
-    left: 100,
-    top: 40,
-    right: 220,
-    bottom: 76,
-    width: 120,
-    height: 36
-  };
-  const button = {
-    id: "presenter-web-wait",
-    isConnected: true,
-    disabled: false,
-    getBoundingClientRect: () => ({ ...rect }),
-    contains: () => false,
-    addEventListener(type, listener, options) {
-      assert.equal(type, "click");
-      clickListener = listener;
-      clickListenerOptions = options;
-    }
-  };
-  const electron = {
-    contextBridge: {
-      exposeInMainWorld(name, api) {
-        assert.equal(name, "steamSmoke");
-        exposedApi = api;
-      }
+  const cases = [
+    {
+      action: "presenter-web-open-and-wait",
+      targetId: "presenter-web-wait",
+      otherAction: "presenter-duplicate-open-guard",
+      otherTargetId: "presenter-duplicate-guard"
     },
-    ipcRenderer: {
-      on(channel, listener) {
-        ipcListeners.set(channel, listener);
+    {
+      action: "presenter-duplicate-open-guard",
+      targetId: "presenter-duplicate-guard",
+      otherAction: "presenter-web-open-and-wait",
+      otherTargetId: "presenter-web-wait"
+    }
+  ];
+
+  for (const gateCase of cases) {
+    runPreloadGateCase(gateCase);
+  }
+
+  function runPreloadGateCase({ action, targetId, otherAction, otherTargetId }) {
+    const ipcListeners = new Map();
+    const ipcInvocations = [];
+    const buttonListeners = new Map();
+    const buttonLookups = [];
+    let exposedApi;
+    const rect = {
+      left: 100,
+      top: 40,
+      right: 220,
+      bottom: 76,
+      width: 120,
+      height: 36
+    };
+    const createButton = (id) => ({
+      id,
+      isConnected: true,
+      disabled: false,
+      getBoundingClientRect: () => ({ ...rect }),
+      contains: () => false,
+      addEventListener(type, listener, options) {
+        assert.equal(type, "click");
+        buttonListeners.set(id, { listener, options });
+      }
+    });
+    const buttons = new Map([
+      [targetId, createButton(targetId)],
+      [otherTargetId, createButton(otherTargetId)]
+    ]);
+    const electron = {
+      contextBridge: {
+        exposeInMainWorld(name, api) {
+          assert.equal(name, "steamSmoke");
+          exposedApi = api;
+        }
       },
-      invoke(channel, payload) {
-        ipcInvocations.push({ channel, payload });
-        return Promise.resolve({ accepted: true });
+      ipcRenderer: {
+        on(channel, listener) {
+          ipcListeners.set(channel, listener);
+        },
+        invoke(channel, payload) {
+          ipcInvocations.push({ channel, payload });
+          return Promise.resolve({ accepted: true });
+        }
       }
+    };
+    const sandbox = {
+      require(specifier) {
+        assert.equal(specifier, "electron");
+        return electron;
+      },
+      document: {
+        getElementById(id) {
+          buttonLookups.push(id);
+          return buttons.get(id) || null;
+        },
+        elementFromPoint: () => buttons.get(targetId)
+      },
+      navigator: { userActivation: { isActive: true } },
+      window: {
+        innerWidth: 1060,
+        innerHeight: 760,
+        devicePixelRatio: 2.25,
+        getComputedStyle: () => ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1"
+        })
+      },
+      console
+    };
+    vm.runInNewContext(source, sandbox, { filename: preloadPath });
+
+    assert.ok(exposedApi, "Electron smoke preload did not expose its bridge API");
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(exposedApi, "reportAutorunUserGestureGateReady"),
+      false,
+      "Electron smoke preload must not expose generic ready evidence injection"
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(exposedApi, "consumeAutorunUserGestureGate"),
+      false,
+      "Electron smoke preload must not expose generic user-gesture consumption"
+    );
+
+    const armListener = ipcListeners.get("steam-smoke:autorun-user-gesture-gate-arm");
+    assert.equal(typeof armListener, "function", "Electron smoke preload did not register its private arm listener");
+    const nonce = "a".repeat(64);
+    for (const invalidAction of [
+      action.toUpperCase(),
+      `${action} `,
+      "constructor",
+      "__proto__",
+      42,
+      null,
+      {}
+    ]) {
+      armListener({}, { action: invalidAction, nonce });
     }
-  };
-  const sandbox = {
-    require(specifier) {
-      assert.equal(specifier, "electron");
-      return electron;
-    },
-    document: {
-      getElementById: (id) => (id === "presenter-web-wait" ? button : null),
-      elementFromPoint: () => button
-    },
-    navigator: {
-      userActivation: { isActive: true }
-    },
-    window: {
-      innerWidth: 1060,
-      innerHeight: 760,
-      devicePixelRatio: 2.25,
-      getComputedStyle: () => ({
-        display: "block",
-        visibility: "visible",
-        opacity: "1"
-      })
-    },
-    console
-  };
-  vm.runInNewContext(source, sandbox, { filename: preloadPath });
+    assert.equal(ipcInvocations.length, 0, "Invalid actions must not invoke gate IPC");
+    assert.equal(buttonLookups.length, 0, "Invalid actions must not select a renderer target");
 
-  assert.ok(exposedApi, "Electron smoke preload did not expose its bridge API");
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(exposedApi, "reportAutorunUserGestureGateReady"),
-    false,
-    "Electron smoke preload must not expose generic ready evidence injection"
-  );
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(exposedApi, "consumeAutorunUserGestureGate"),
-    false,
-    "Electron smoke preload must not expose generic user-gesture consumption"
-  );
+    armListener({}, { action, targetId: otherTargetId, nonce });
+    assert.equal(ipcInvocations.length, 0, "Electron smoke preload must buffer arm until the page registers");
 
-  const armListener = ipcListeners.get("steam-smoke:autorun-user-gesture-gate-arm");
-  assert.equal(typeof armListener, "function", "Electron smoke preload did not register its private arm listener");
-  const nonce = "a".repeat(64);
-  armListener({}, { action: "presenter-web-open-and-wait", nonce });
-  assert.equal(ipcInvocations.length, 0, "Electron smoke preload must buffer arm until the page registers");
+    let armNotice;
+    exposedApi.onAutorunUserGestureGateArm((value) => {
+      armNotice = value;
+    });
+    assert.deepEqual(Object.keys(armNotice), ["action"]);
+    assert.equal(armNotice.action, action);
+    assert.deepEqual(buttonLookups, [targetId]);
+    assert.equal(buttonListeners.has(otherTargetId), false, "The other action button must remain untouched");
+    const { listener: clickListener, options: clickListenerOptions } = buttonListeners.get(targetId);
+    assert.equal(clickListenerOptions.capture, true);
+    assert.equal(clickListenerOptions.once, true);
+    assert.equal(typeof clickListener, "function");
 
-  let armNotice;
-  exposedApi.onAutorunUserGestureGateArm((value) => {
-    armNotice = value;
-  });
-  assert.deepEqual(Object.keys(armNotice), ["action"]);
-  assert.equal(armNotice.action, "presenter-web-open-and-wait");
-  assert.equal(clickListenerOptions.capture, true);
-  assert.equal(clickListenerOptions.once, true);
-  assert.equal(typeof clickListener, "function");
+    const readyCalls = ipcInvocations.filter(
+      (entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-ready"
+    );
+    assert.equal(readyCalls.length, 1);
+    assert.equal(readyCalls[0].payload.action, action);
+    assert.equal(readyCalls[0].payload.nonce, nonce);
+    assert.equal(readyCalls[0].payload.evidence.button.id, targetId);
+    assert.equal(readyCalls[0].payload.evidence.button.visible, true);
+    assert.equal(readyCalls[0].payload.evidence.viewport.devicePixelRatio, 2.25);
 
-  const readyCalls = ipcInvocations.filter(
-    (entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-ready"
-  );
-  assert.equal(readyCalls.length, 1);
-  assert.equal(readyCalls[0].payload.nonce, nonce);
-  assert.equal(readyCalls[0].payload.evidence.button.id, "presenter-web-wait");
-  assert.equal(readyCalls[0].payload.evidence.button.visible, true);
-  assert.equal(readyCalls[0].payload.evidence.viewport.devicePixelRatio, 2.25);
+    armListener({}, { action: otherAction, nonce: "b".repeat(64) });
+    assert.equal(
+      ipcInvocations.filter((entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-ready").length,
+      1,
+      "A second supported action must not retarget an armed gate"
+    );
+    assert.equal(buttonListeners.has(otherTargetId), false);
 
-  const click = {
-    currentTarget: button,
-    isTrusted: true,
-    button: 0,
-    detail: 1,
-    clientX: 160,
-    clientY: 58
-  };
-  clickListener(click);
-  clickListener(click);
-  const consumeCalls = ipcInvocations.filter(
-    (entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-consume"
-  );
-  assert.equal(consumeCalls.length, 1, "Electron smoke preload must consume at most once");
-  assert.equal(consumeCalls[0].payload.nonce, nonce);
-  assert.equal(consumeCalls[0].payload.click.isTrusted, true);
-  assert.equal(consumeCalls[0].payload.click.userActivationActive, true);
-  assert.equal(consumeCalls[0].payload.click.button, 0);
-  assert.equal(consumeCalls[0].payload.click.detail, 1);
-  assert.equal(consumeCalls[0].payload.click.clientX, 160);
-  assert.equal(consumeCalls[0].payload.click.clientY, 58);
+    const click = {
+      currentTarget: buttons.get(targetId),
+      isTrusted: true,
+      button: 0,
+      detail: 1,
+      clientX: 160,
+      clientY: 58
+    };
+    clickListener({ ...click, currentTarget: buttons.get(otherTargetId) });
+    assert.equal(
+      ipcInvocations.filter((entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-consume").length,
+      0,
+      "A click from the other action button must not consume the gate"
+    );
+    clickListener(click);
+    clickListener(click);
+    const consumeCalls = ipcInvocations.filter(
+      (entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-consume"
+    );
+    assert.equal(consumeCalls.length, 1, "Electron smoke preload must consume at most once");
+    assert.equal(consumeCalls[0].payload.action, action);
+    assert.equal(consumeCalls[0].payload.nonce, nonce);
+    assert.equal(consumeCalls[0].payload.click.isTrusted, true);
+    assert.equal(consumeCalls[0].payload.click.userActivationActive, true);
+    assert.equal(consumeCalls[0].payload.click.button, 0);
+    assert.equal(consumeCalls[0].payload.click.detail, 1);
+    assert.equal(consumeCalls[0].payload.click.clientX, 160);
+    assert.equal(consumeCalls[0].payload.click.clientY, 58);
+  }
 }
 
 function packPackage() {

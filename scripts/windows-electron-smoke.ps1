@@ -121,8 +121,11 @@ if ($RequireMicroTxnCallback -and $Action -ne "presenter-checkout") {
   throw "-RequireMicroTxnCallback requires presenter-checkout so callback proof can be correlated to the current operation."
 }
 
-if ($AutorunUserGestureGate -and $Action -ne "presenter-web-open-and-wait") {
-  throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."
+if ($AutorunUserGestureGate -and $Action -cnotin @(
+    "presenter-web-open-and-wait",
+    "presenter-duplicate-open-guard"
+  )) {
+  throw "-AutorunUserGestureGate requires presenter-web-open-and-wait or presenter-duplicate-open-guard."
 }
 
 if ($AutorunUserGestureGate -and (

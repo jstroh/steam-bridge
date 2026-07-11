@@ -53,6 +53,18 @@ const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2, 3]);
 const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
 const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1";
 const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
+const USER_GESTURE_GATE_EXPECTATIONS = Object.freeze({
+  "11-managed-web-open-and-wait": Object.freeze({
+    action: "presenter-web-open-and-wait",
+    targetId: "presenter-web-wait",
+    evidenceSchemas: Object.freeze([2, 3])
+  }),
+  "11b-managed-duplicate-open-guard": Object.freeze({
+    action: "presenter-duplicate-open-guard",
+    targetId: "presenter-duplicate-guard",
+    evidenceSchemas: Object.freeze([3])
+  })
+});
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
 const PERSISTENT_REUSE_ACTION = "presenter-persistent-reuse-three-cycle";
 const WINDOWS_PERSISTENT_REUSE_CYCLES = 3;
@@ -65,6 +77,16 @@ const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
   "process:uncaught-exception",
   "process:unhandled-rejection"
 ]);
+
+function getUserGestureGateExpectation(caseId) {
+  if (
+    typeof caseId !== "string" ||
+    !Object.prototype.hasOwnProperty.call(USER_GESTURE_GATE_EXPECTATIONS, caseId)
+  ) {
+    return null;
+  }
+  return USER_GESTURE_GATE_EXPECTATIONS[caseId];
+}
 
 main();
 
@@ -541,9 +563,20 @@ function validateManifest(manifest, failures) {
             failures
           );
           if (entry.autorunUserGestureGate) {
-            const caseEvidenceSchema = Number(
-              entry.closeProbeEvidenceSchema || manifest.closeProbeEvidenceSchema || 0
+            const recordedCaseEvidenceSchema = Object.prototype.hasOwnProperty.call(
+              entry,
+              "closeProbeEvidenceSchema"
+            )
+              ? entry.closeProbeEvidenceSchema
+              : manifest.closeProbeEvidenceSchema;
+            expect(
+              Number.isInteger(recordedCaseEvidenceSchema),
+              `matrix manifest case ${entry.id} records an integer close-probe evidence schema`,
+              failures
             );
+            const caseEvidenceSchema = Number.isInteger(recordedCaseEvidenceSchema)
+              ? recordedCaseEvidenceSchema
+              : 0;
             expect(
               caseEvidenceSchema === 2 || caseEvidenceSchema === 3,
               `matrix manifest case ${entry.id} uses close-probe evidence schema 2 or 3`,
@@ -562,9 +595,14 @@ function validateManifest(manifest, failures) {
                 failures
               );
             }
+            const userGestureExpectation = getUserGestureGateExpectation(entry.id);
             expect(
-              entry.action === "presenter-web-open-and-wait",
-              `matrix manifest case ${entry.id} limits the user-gesture gate to presenter-web-open-and-wait`,
+              Boolean(
+                userGestureExpectation &&
+                  entry.action === userGestureExpectation.action &&
+                  userGestureExpectation.evidenceSchemas.includes(caseEvidenceSchema)
+              ),
+              `matrix manifest case ${entry.id} uses its exact supported user-gesture action and evidence schema`,
               failures
             );
             expect(
@@ -1116,9 +1154,15 @@ function validateManifestCoverage(
         expected.closeProbeOnActivation === true ||
         expected.shortcutToggleProbe === true);
     const expectedCloseProbeInput = String(expected.expectedCloseProbeInput || "");
-    const expectedCloseProbeEvidenceSchema = Number(
-      expected.closeProbeEvidenceSchema || manifest.closeProbeEvidenceSchema || 0
-    );
+    const recordedCloseProbeEvidenceSchema = Object.prototype.hasOwnProperty.call(
+      expected,
+      "closeProbeEvidenceSchema"
+    )
+      ? expected.closeProbeEvidenceSchema
+      : manifest.closeProbeEvidenceSchema;
+    const expectedCloseProbeEvidenceSchema = Number.isInteger(recordedCloseProbeEvidenceSchema)
+      ? recordedCloseProbeEvidenceSchema
+      : 0;
     if (auditedCloseProbeExpected) {
       expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
       expect(
@@ -3004,14 +3048,17 @@ function verifyDuplicateOpenGuard(caseName, actionName, events, failures) {
   }
 
   const failuresBefore = failures.length;
-  const event = events.find(
+  const guardEvents = events.filter(
     (entry) => entry && entry.type === "overlay:presenter-duplicate-open-guard"
   );
-  if (!event) {
-    failures.push(`${caseName}: missing overlay:presenter-duplicate-open-guard event`);
+  if (guardEvents.length !== 1) {
+    failures.push(
+      `${caseName}: expected exactly one overlay:presenter-duplicate-open-guard event, found ${guardEvents.length}`
+    );
     return { required: true, ok: false };
   }
 
+  const event = guardEvents[0];
   const payload = objectOrEmpty(event.payload);
   verifyDuplicateOpenBusyStatus(caseName, "status", objectOrEmpty(payload.status), failures);
   verifyDuplicateOpenBusyStatus(
@@ -3198,6 +3245,7 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     path.join(caseDir || path.dirname(resultLog), "diagnostics", "lifecycle.jsonl"),
     failures
   );
+  const userGestureExpectation = getUserGestureGateExpectation(caseName);
   const closeProbe = summarizeCloseProbe(
     closeProbeEvents,
     caseDir || path.dirname(resultLog),
@@ -3206,7 +3254,8 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     userGestureCompletion,
     fullLifecycleEvents,
     externalForegroundReadyMarker,
-    externalForegroundControllerAck
+    externalForegroundControllerAck,
+    userGestureExpectation
   );
   const initTxnRequestShape = summarizeInitTxnRequestShapeEvent(events);
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
@@ -3245,6 +3294,30 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   expect(crashDiagnostics.ok === true, `${caseName}: no crash diagnostics reported`, failures);
   expect(crashDumps.length === 0, `${caseName}: no crash dumps found`, failures);
   expect(fatalLifecycleEvents.length === 0, `${caseName}: no fatal lifecycle events found`, failures);
+  if (userGestureExpectation) {
+    expect(
+      action.action === userGestureExpectation.action,
+      `${caseName}: result action matches its exact case-owned action`,
+      failures
+    );
+  }
+  if (closeProbe.sameProcessUserGestureEvidencePresent) {
+    expect(
+      Boolean(userGestureExpectation),
+      `${caseName}: user-gesture evidence belongs to an exact supported case`,
+      failures
+    );
+    expect(
+      closeProbe.userGestureGate === true,
+      `${caseName}: same-process user-gesture evidence explicitly declares its gate`,
+      failures
+    );
+    expect(
+      closeProbe.sameProcessUserGestureEvidenceValid === true,
+      `${caseName}: user-gesture evidence matches its exact case-owned action and target`,
+      failures
+    );
+  }
   expectInitTxnRequestShape(initTxnRequestShape, `${caseName}: InitTxn request-shape event`, failures);
   expectInitTxnRequestShape(webSessionCheckoutCapture, `${caseName}: web-session InitTxn capture`, failures);
   expectInitTxnRequestShape(clientSessionCheckoutCapture, `${caseName}: client-session InitTxn capture`, failures);
@@ -3745,7 +3818,8 @@ function summarizeCloseProbe(
   userGestureCompletion = null,
   fullLifecycleEvents = [],
   externalForegroundReadyMarker = null,
-  externalForegroundControllerAck = null
+  externalForegroundControllerAck = null,
+  userGestureExpectation = null
 ) {
   const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
   const startEvent = normalizedEvents.find((event) => event.type === "probe:start");
@@ -3795,6 +3869,9 @@ function summarizeCloseProbe(
   const targetEventIndex = normalizedEvents.indexOf(targetEvent);
   const sentEventIndex = normalizedEvents.indexOf(sentEvent);
   const startPayload = objectOrEmpty(startEvent && startEvent.payload);
+  const evidenceSchema = Number.isInteger(startPayload.evidenceSchema)
+    ? startPayload.evidenceSchema
+    : 0;
   const sentPayload = objectOrEmpty(sentEvent && sentEvent.payload);
   const skippedPayload = objectOrEmpty(skippedEvent && skippedEvent.payload);
   const targetPayload = objectOrEmpty(targetEvent && targetEvent.payload);
@@ -3823,7 +3900,8 @@ function summarizeCloseProbe(
     externalForegroundControllerAcknowledgedEvents,
     externalForegroundTransitionObservedEvents,
     externalForegroundTransitionNotRequiredEvents,
-    externalForegroundTransitionRejectedEvents
+    externalForegroundTransitionRejectedEvents,
+    userGestureExpectation
   });
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
@@ -3913,7 +3991,7 @@ function summarizeCloseProbe(
     foregroundProcessNames,
     foregroundStayedOnSmoke,
     nativePresenterFocusEventCount: nativePresenterFocusEvents.length,
-    evidenceSchema: Number(startPayload.evidenceSchema || 0),
+    evidenceSchema,
     foregroundHandoff: String(startPayload.foregroundHandoff || ""),
     externalForegroundTransition: String(startPayload.externalForegroundTransition || ""),
     externalForegroundTransitionEnabled:
@@ -3943,6 +4021,7 @@ function summarizeCloseProbe(
     nativePresenterHandoffAppReason: ownerHandoff.appReason,
     nativePresenterHandoffChecks: ownerHandoff.checks,
     sameProcessUserGestureEvidenceValid: sameProcessUserGesture.valid,
+    sameProcessUserGestureEvidencePresent: sameProcessUserGesture.evidencePresent,
     sameProcessUserGestureChecks: sameProcessUserGesture.checks,
     userGestureCompletionHandshakeValid: sameProcessUserGesture.completionHandshakeValid,
     userGestureGracefulShutdownValid: sameProcessUserGesture.gracefulShutdownValid,
@@ -4037,13 +4116,21 @@ function summarizeSameProcessUserGestureHandoff({
   externalForegroundControllerAcknowledgedEvents,
   externalForegroundTransitionObservedEvents,
   externalForegroundTransitionNotRequiredEvents,
-  externalForegroundTransitionRejectedEvents
+  externalForegroundTransitionRejectedEvents,
+  userGestureExpectation
 }) {
+  const expectedAction = String((userGestureExpectation && userGestureExpectation.action) || "");
+  const expectedTargetId = String((userGestureExpectation && userGestureExpectation.targetId) || "");
+  const expectedEvidenceSchemas = Array.isArray(userGestureExpectation?.evidenceSchemas)
+    ? userGestureExpectation.evidenceSchemas
+    : [];
   const lifecycle = Array.isArray(lifecycleEvents) ? lifecycleEvents.filter(Boolean) : [];
   const startPayload = objectOrEmpty(
     objectOrEmpty(normalizedEvents.find((event) => event.type === "probe:start")).payload
   );
-  const evidenceSchema = Number(startPayload.evidenceSchema || 0);
+  const evidenceSchema = Number.isInteger(startPayload.evidenceSchema)
+    ? startPayload.evidenceSchema
+    : 0;
   const completeLifecycle = Array.isArray(fullLifecycleEvents)
     ? fullLifecycleEvents.filter(Boolean)
     : [];
@@ -4185,6 +4272,31 @@ function summarizeSameProcessUserGestureHandoff({
   const fullLifecycleFatalEvents = completeLifecycle.filter((event) =>
     FATAL_LIFECYCLE_EVENT_TYPES.has(String((event && event.type) || ""))
   );
+  const evidencePresent = Boolean(
+    evidenceSchema === 3 ||
+      startPayload.userGestureGate === true ||
+      startPayload.foregroundHandoff === SAME_PROCESS_USER_GESTURE_HANDOFF ||
+      startPayload.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION ||
+      armedAppEvents.length > 0 ||
+      readyAppEvents.length > 0 ||
+      consumedAppEvents.length > 0 ||
+      rejectedAppEvents.length > 0 ||
+      userGestureReadyEvents.length > 0 ||
+      userGestureActivationEvents.length > 0 ||
+      userGestureConsumedProbeEvents.length > 0 ||
+      userGestureFocusReturnEvents.length > 0 ||
+      externalForegroundSourceReadyEvents.length > 0 ||
+      externalForegroundControllerAcknowledgedEvents.length > 0 ||
+      externalForegroundTransitionObservedEvents.length > 0 ||
+      externalForegroundTransitionNotRequiredEvents.length > 0 ||
+      externalForegroundTransitionRejectedEvents.length > 0 ||
+      focus.mechanism === "same-process-user-gesture" ||
+      focusGate.required === true ||
+      Object.keys(completion).length > 0 ||
+      Object.keys(externalReadyMarker).length > 0 ||
+      Object.keys(externalControllerAck).length > 0 ||
+      completionQuitEvents.length > 0
+  );
 
   const readyGeometry = [
     readyTarget.left,
@@ -4209,15 +4321,19 @@ function summarizeSameProcessUserGestureHandoff({
       readyViewport.devicePixelRatio <= 8
   );
 
+  const expectationValid = Boolean(
+    expectedAction && expectedTargetId && expectedEvidenceSchemas.includes(evidenceSchema)
+  );
   const armedShapeValid = Boolean(
-    armedPayload.action === "presenter-web-open-and-wait" &&
+    expectationValid &&
+      armedPayload.action === expectedAction &&
       !containsRawForegroundHandoffIdentifier(armedPayload)
   );
   const readyShapeValid = Boolean(
     readyPayload.schema === 1 &&
       readyPayload.mechanism === "same-process-user-gesture" &&
-      readyPayload.action === "presenter-web-open-and-wait" &&
-      readyPayload.targetId === "presenter-web-wait" &&
+      readyPayload.action === expectedAction &&
+      readyPayload.targetId === expectedTargetId &&
       readyPayload.ready === true &&
       readyBinding.senderMatches === true &&
       readyBinding.mainFrameMatches === true &&
@@ -4227,8 +4343,8 @@ function summarizeSameProcessUserGestureHandoff({
   const consumedShapeValid = Boolean(
     consumedPayload.schema === 1 &&
       consumedPayload.mechanism === "same-process-user-gesture" &&
-      consumedPayload.action === "presenter-web-open-and-wait" &&
-      consumedPayload.targetId === "presenter-web-wait" &&
+      consumedPayload.action === expectedAction &&
+      consumedPayload.targetId === expectedTargetId &&
       consumedPayload.consumed === true &&
       consumedPayload.consumeCount === 1 &&
       consumedBinding.senderMatches === true &&
@@ -4336,7 +4452,7 @@ function summarizeSameProcessUserGestureHandoff({
     externalForegroundSourceReadyEvents.length === 1 &&
       externalSourceReadyPayload.schema === 1 &&
       externalSourceReadyPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
-      externalSourceReadyPayload.action === "presenter-web-open-and-wait" &&
+      externalSourceReadyPayload.action === expectedAction &&
       externalSourceReadyPayload.requestOrdinal === 1 &&
       externalSourceReadyPayload.sourceBound === true &&
       externalSourceReadyPayload.transitionHookReady === true &&
@@ -4366,7 +4482,7 @@ function summarizeSameProcessUserGestureHandoff({
     externalForegroundTransitionObservedEvents.length === 1 &&
       externalTransitionObservedPayload.schema === 1 &&
       externalTransitionObservedPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
-      externalTransitionObservedPayload.action === "presenter-web-open-and-wait" &&
+      externalTransitionObservedPayload.action === expectedAction &&
       externalTransitionObservedPayload.requestOrdinal === 1 &&
       externalTransitionObservedPayload.transitionObserved === true &&
       externalTransitionObservedPayload.eventCount === 1 &&
@@ -4409,7 +4525,7 @@ function summarizeSameProcessUserGestureHandoff({
         JSON.stringify(externalReadyMarkerKeys) &&
       externalReadyMarker.kind === "steam-bridge-windows-external-foreground-ready" &&
       externalReadyMarker.schema === 1 &&
-      externalReadyMarker.action === "presenter-web-open-and-wait" &&
+      externalReadyMarker.action === expectedAction &&
       externalReadyMarker.requestOrdinal === 1 &&
       externalReadyMarker.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
       typeof externalReadyMarker.challenge === "string" &&
@@ -4435,7 +4551,7 @@ function summarizeSameProcessUserGestureHandoff({
       ]) &&
       externalControllerAck.kind === "steam-bridge-windows-external-foreground-ack" &&
       externalControllerAck.schema === 1 &&
-      externalControllerAck.action === "presenter-web-open-and-wait" &&
+      externalControllerAck.action === expectedAction &&
       externalControllerAck.requestOrdinal === 1 &&
       externalControllerAck.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
       externalControllerAck.challenge === externalReadyMarker.challenge &&
@@ -4459,7 +4575,7 @@ function summarizeSameProcessUserGestureHandoff({
       ]) &&
       externalControllerAcknowledgedPayload.schema === 1 &&
       externalControllerAcknowledgedPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
-      externalControllerAcknowledgedPayload.action === "presenter-web-open-and-wait" &&
+      externalControllerAcknowledgedPayload.action === expectedAction &&
       externalControllerAcknowledgedPayload.requestOrdinal === 1 &&
       externalControllerAcknowledgedPayload.markerWritten === true &&
       externalControllerAcknowledgedPayload.controllerAckValid === true &&
@@ -4472,7 +4588,7 @@ function summarizeSameProcessUserGestureHandoff({
     externalForegroundTransitionNotRequiredEvents.length === 1 &&
       externalTransitionNotRequiredPayload.schema === 1 &&
       externalTransitionNotRequiredPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
-      externalTransitionNotRequiredPayload.action === "presenter-web-open-and-wait" &&
+      externalTransitionNotRequiredPayload.action === expectedAction &&
       externalTransitionNotRequiredPayload.requestOrdinal === 0 &&
       externalTransitionNotRequiredPayload.alreadyForeground === true &&
       externalTransitionNotRequiredPayload.activationInputCount === 0 &&
@@ -4839,14 +4955,14 @@ function summarizeSameProcessUserGestureHandoff({
   );
   const gracefulShutdownValid = Boolean(
     resultWrittenEvents.length === 1 &&
-      resultWrittenPayload.action === "presenter-web-open-and-wait" &&
+      resultWrittenPayload.action === expectedAction &&
       resultWrittenPayload.resultFileWritten === true &&
       keepOpenEvents.length === 1 &&
-      keepOpenPayload.action === "presenter-web-open-and-wait" &&
+      keepOpenPayload.action === expectedAction &&
       keepOpenPayload.resultFileWritten === true &&
       afterCloseStableEvents.length === 1 &&
       completionQuitEvents.length === 1 &&
-      completionQuitPayload.action === "presenter-web-open-and-wait" &&
+      completionQuitPayload.action === expectedAction &&
       completionQuitPayload.resultFileWritten === true &&
       completionQuitPayload.gateConsumed === true &&
       !containsRawForegroundHandoffIdentifier(completionQuitPayload) &&
@@ -5024,6 +5140,7 @@ function summarizeSameProcessUserGestureHandoff({
   );
 
   const checks = {
+    expectationValid,
     armedAppEventCount: armedAppEvents.length === 1,
     readyAppEventCount: readyAppEvents.length === 1,
     consumedAppEventCount: consumedAppEvents.length === 1,
@@ -5061,6 +5178,7 @@ function summarizeSameProcessUserGestureHandoff({
   };
   return {
     valid: Object.values(checks).every(Boolean),
+    evidencePresent,
     externalForegroundTransitionValid,
     externalForegroundReadyMarkerValid,
     externalForegroundControllerAckValid,
@@ -6118,6 +6236,133 @@ function runSelfTest() {
         .externalForegroundControllerAcknowledgedEventCount,
       1
     );
+
+    const duplicateUserGestureOptions = {
+      caseId: "11b-managed-duplicate-open-guard",
+      action: "presenter-duplicate-open-guard",
+      userGestureGate: true
+    };
+    for (const [name, extraOptions] of [
+      ["requested", {}],
+      ["already-foreground", { alreadyForeground: true }],
+      ["without-manifest", { omitManifest: true }]
+    ]) {
+      const root = path.join(tempRoot, `duplicate-open-user-gesture-${name}`);
+      writeManagedWebCloseEvidenceFixture(root, {
+        ...duplicateUserGestureOptions,
+        ...extraOptions
+      });
+      const summary = summarizeWindowsOverlayMatrixArtifacts(root);
+      assert.deepEqual(
+        summary.failures,
+        [],
+        JSON.stringify(summary.caseSummaries[0], null, 2)
+      );
+      assert.equal(summary.caseSummaries[0].closeProbe.sameProcessUserGestureEvidenceValid, true);
+      assert.equal(summary.caseSummaries[0].duplicateOpenGuardProof, true);
+    }
+
+    for (const [name, options, failure] of [
+      [
+        "coherent-web-evidence",
+        {
+          reportedUserGestureAction: "presenter-web-open-and-wait",
+          reportedUserGestureTargetId: "presenter-web-wait"
+        },
+        "user-gesture evidence matches its exact case-owned action and target"
+      ],
+      [
+        "web-target",
+        { reportedUserGestureTargetId: "presenter-web-wait" },
+        "user-gesture evidence matches its exact case-owned action and target"
+      ],
+      [
+        "schema-2",
+        { closeProbeEvidenceSchema: 2, legacyUserGestureSchema2: true },
+        "uses its exact supported user-gesture action and evidence schema"
+      ],
+      [
+        "requested-ordinal-two",
+        { reportedExternalForegroundRequestOrdinal: 2 },
+        "user-gesture evidence matches its exact case-owned action and target"
+      ],
+      [
+        "no-manifest-coherent-web-evidence",
+        {
+          omitManifest: true,
+          reportedUserGestureAction: "presenter-web-open-and-wait",
+          reportedUserGestureTargetId: "presenter-web-wait"
+        },
+        "user-gesture evidence matches its exact case-owned action and target"
+      ],
+      [
+        "no-manifest-result-action-mismatch",
+        {
+          omitManifest: true,
+          reportedResultAction: "presenter-web-open-and-wait"
+        },
+        "result action matches its exact case-owned action"
+      ],
+      [
+        "no-manifest-gate-declaration-false",
+        { omitManifest: true, gestureStartGateFalse: true },
+        "same-process user-gesture evidence explicitly declares its gate"
+      ],
+      [
+        "manifest-case-schema-string",
+        { manifestCaseSchemaString: true },
+        "records an integer close-probe evidence schema"
+      ],
+      [
+        "manifest-case-schema-null",
+        { manifestCaseSchemaNull: true },
+        "records an integer close-probe evidence schema"
+      ],
+      [
+        "start-schema-string",
+        { startSchemaString: true },
+        `close probe uses schema-3 ${SAME_PROCESS_USER_GESTURE_HANDOFF}`
+      ]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `duplicate-open-user-gesture-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        { ...duplicateUserGestureOptions, ...options },
+        failure
+      );
+    }
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-user-gesture-coherent-duplicate-evidence",
+      writeManagedWebCloseEvidenceFixture,
+      {
+        userGestureGate: true,
+        reportedUserGestureAction: "presenter-duplicate-open-guard",
+        reportedUserGestureTargetId: "presenter-duplicate-guard"
+      },
+      "user-gesture evidence matches its exact case-owned action and target"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-schema-3-without-gate-or-manifest",
+      writeManagedWebCloseEvidenceFixture,
+      { closeProbeEvidenceSchema: 3, omitManifest: true },
+      "same-process user-gesture evidence explicitly declares its gate"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-schema-2-focus-claim-without-gate-or-manifest",
+      writeManagedWebCloseEvidenceFixture,
+      {
+        closeProbeEvidenceSchema: 2,
+        legacyUserGestureSchema2: true,
+        userGestureGate: true,
+        stripGestureEvidenceExceptFocus: true,
+        omitManifest: true
+      },
+      "same-process user-gesture evidence explicitly declares its gate"
+    );
     assert.equal(
       userGestureGateSummary.caseSummaries[0].closeProbe.externalForegroundSourceReadyEventCount,
       1
@@ -6635,6 +6880,11 @@ function runSelfTest() {
         "checkout-operation-ran",
         { checkoutOperationRan: true },
         "checkout IfAvailable did not run the transaction operation while busy"
+      ],
+      [
+        "duplicate-guard-event",
+        { duplicateGuardEvent: true },
+        "expected exactly one overlay:presenter-duplicate-open-guard event"
       ],
       [
         "checkout-operation-missing-can-start",
@@ -7918,13 +8168,17 @@ function writeManagedCaseFixture(root, options = {}) {
 }
 
 function writeManagedBackendFixture(root, options = {}) {
-  writeManagedCaseFixture(root);
+  writeManagedCaseFixture(root, options);
   const manifestPath = path.join(root, "matrix-manifest.json");
   const manifest = JSON.parse(readText(manifestPath));
   manifest.expectedNativeHostBackend = "windows-d3d11";
   writeJson(manifestPath, manifest);
 
-  const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
+  const resultPath = path.join(
+    root,
+    options.caseId || "11-managed-web-open-and-wait",
+    "result.log"
+  );
   const result = readSmokeResult(resultPath);
   const resultPresenter = attachedWindowsPresenterFixture({
     rendererBackend: options.wrongResultRenderer ? "windows-opengl" : "windows-d3d11",
@@ -7946,7 +8200,29 @@ function writeManagedBackendFixture(root, options = {}) {
 }
 
 function writeManagedWebCloseEvidenceFixture(root, options = {}) {
-  writeManagedBackendFixture(root, options);
+  const caseId = options.caseId || "11-managed-web-open-and-wait";
+  const userGestureExpectation = getUserGestureGateExpectation(caseId);
+  const action = options.action || userGestureExpectation?.action || "presenter-web-open-and-wait";
+  const reportedUserGestureAction =
+    options.reportedUserGestureAction || action;
+  const reportedUserGestureTargetId =
+    options.reportedUserGestureTargetId ||
+    userGestureExpectation?.targetId ||
+    "presenter-web-wait";
+  const reportedExternalForegroundRequestOrdinal =
+    options.reportedExternalForegroundRequestOrdinal ?? 1;
+  const managedOptions = { ...options, caseId, action };
+  if (caseId === "11b-managed-duplicate-open-guard" && !options.events) {
+    managedOptions.requiredEvents = duplicateOpenGuardRequiredEventsFixture();
+    managedOptions.events = duplicateOpenGuardEventsFixture(options);
+  }
+  writeManagedBackendFixture(root, managedOptions);
+  if (Object.prototype.hasOwnProperty.call(options, "reportedResultAction")) {
+    const resultPath = path.join(root, caseId, "result.log");
+    const result = readSmokeResult(resultPath);
+    result.action.action = options.reportedResultAction;
+    writeResult(resultPath, result);
+  }
   const expectedCloseProbeInput = options.expectedCloseProbeInput || "web-close-click-sendinput";
   const closeProbeEvidenceSchema =
     options.closeProbeEvidenceSchema || (options.userGestureGate ? 3 : 1);
@@ -7979,6 +8255,12 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   if (!legacyUserGestureSchema2) {
     manifest.cases[0].closeProbeEvidenceSchema = closeProbeEvidenceSchema;
   }
+  if (options.manifestCaseSchemaString) {
+    manifest.cases[0].closeProbeEvidenceSchema = String(closeProbeEvidenceSchema);
+  }
+  if (options.manifestCaseSchemaNull) {
+    manifest.cases[0].closeProbeEvidenceSchema = null;
+  }
   if (options.userGestureGate) {
     manifest.cases[0].autorunUserGestureGate = true;
     manifest.cases[0].closeProbeForegroundHandoff = SAME_PROCESS_USER_GESTURE_HANDOFF;
@@ -7993,7 +8275,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   }
   writeJson(manifestPath, manifest);
 
-  const caseDir = path.join(root, "11-managed-web-open-and-wait");
+  const caseDir = path.join(root, caseId);
   const screenshotName = "close-probe-detected.png";
   const screenshotWidth = options.roundingBoundaryScale
     ? 1200
@@ -8268,7 +8550,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     writeResult(resultPath, result);
   }
   if (userGestureGate) {
-    const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
+    const resultPath = path.join(root, caseId, "result.log");
     const result = readSmokeResult(resultPath);
     const gateBinding = {
       senderMatches: !options.gestureSenderMismatch,
@@ -8278,8 +8560,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     const readyPayload = {
       schema: 1,
       mechanism: "same-process-user-gesture",
-      action: "presenter-web-open-and-wait",
-      targetId: "presenter-web-wait",
+      action: reportedUserGestureAction,
+      targetId: reportedUserGestureTargetId,
       ready: true,
       binding: gateBinding,
       target: gestureReadyRendererTarget,
@@ -8288,8 +8570,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     const consumedPayload = {
       schema: 1,
       mechanism: "same-process-user-gesture",
-      action: "presenter-web-open-and-wait",
-      targetId: "presenter-web-wait",
+      action: reportedUserGestureAction,
+      targetId: reportedUserGestureTargetId,
       consumed: true,
       consumeCount: 1,
       binding: gateBinding,
@@ -8308,7 +8590,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     }
     const gateOpeningEvents = [];
     if (!options.missingGestureArmed) {
-      const armedPayload = { action: "presenter-web-open-and-wait" };
+      const armedPayload = { action: reportedUserGestureAction };
       if (options.gestureArmedLeaksPid) {
         armedPayload.pid = 4245;
       }
@@ -8391,14 +8673,18 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         dpiAwareness,
         ...(closeProbeEvidenceSchema >= 2
           ? {
-              evidenceSchema: options.wrongStartSchema ? 1 : closeProbeEvidenceSchema,
+              evidenceSchema: options.startSchemaString
+                ? String(closeProbeEvidenceSchema)
+                : options.wrongStartSchema
+                  ? 1
+                  : closeProbeEvidenceSchema,
               foregroundHandoff: options.wrongStartHandoff
                 ? "wrong-owner-handoff"
                 : userGestureGate
                   ? SAME_PROCESS_USER_GESTURE_HANDOFF
                   : OWNER_PROCESS_FOREGROUND_HANDOFF,
               controlExpected: true,
-              userGestureGate,
+              userGestureGate: options.gestureStartGateFalse ? false : userGestureGate,
               ...(userGestureGate && closeProbeEvidenceSchema === 3
                 ? {
                     externalForegroundTransition: options.wrongExternalForegroundTransition
@@ -8585,7 +8871,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             payload: {
               schema: 1,
               mechanism: EXTERNAL_FOREGROUND_TRANSITION,
-              action: "presenter-web-open-and-wait",
+              action: reportedUserGestureAction,
               requestOrdinal: 0,
               alreadyForeground: true,
               binding: {
@@ -8618,8 +8904,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             mechanism: options.externalSourceReadyWrongMechanism
               ? "wrong-external-foreground-transition"
               : EXTERNAL_FOREGROUND_TRANSITION,
-            action: "presenter-web-open-and-wait",
-            requestOrdinal: 1,
+            action: reportedUserGestureAction,
+            requestOrdinal: reportedExternalForegroundRequestOrdinal,
             sourceBound: true,
             transitionHookReady: true,
             binding: {
@@ -8661,8 +8947,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             mechanism: options.externalAckEventWrongMechanism
               ? "wrong-external-foreground-transition"
               : EXTERNAL_FOREGROUND_TRANSITION,
-            action: "presenter-web-open-and-wait",
-            requestOrdinal: 1,
+            action: reportedUserGestureAction,
+            requestOrdinal: reportedExternalForegroundRequestOrdinal,
             markerWritten: true,
             controllerAckValid: true,
             clickCompleted: true,
@@ -8691,8 +8977,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             mechanism: options.externalObservedWrongMechanism
               ? "wrong-external-foreground-transition"
               : EXTERNAL_FOREGROUND_TRANSITION,
-            action: "presenter-web-open-and-wait",
-            requestOrdinal: 1,
+            action: reportedUserGestureAction,
+            requestOrdinal: reportedExternalForegroundRequestOrdinal,
             transitionObserved: true,
             eventCount: options.externalObservedEventCountWrong ? 2 : 1,
             hookStopped: !options.externalObservedHookNotStopped,
@@ -8724,8 +9010,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             payload: {
               schema: 1,
               mechanism: EXTERNAL_FOREGROUND_TRANSITION,
-              action: "presenter-web-open-and-wait",
-              requestOrdinal: 1,
+              action: reportedUserGestureAction,
+              requestOrdinal: reportedExternalForegroundRequestOrdinal,
               reason: "external-foreground-source-changed",
               hookStarted: true,
               transitionObserved: true,
@@ -8740,8 +9026,10 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
               ? "wrong-external-foreground-ready"
               : "steam-bridge-windows-external-foreground-ready",
             schema: 1,
-            action: "presenter-web-open-and-wait",
-            requestOrdinal: options.externalMarkerOrdinalWrong ? 2 : 1,
+            action: reportedUserGestureAction,
+            requestOrdinal: options.externalMarkerOrdinalWrong
+              ? 2
+              : reportedExternalForegroundRequestOrdinal,
             mechanism: options.externalMarkerWrongMechanism
               ? "wrong-external-foreground-transition"
               : EXTERNAL_FOREGROUND_TRANSITION,
@@ -8759,8 +9047,10 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
               ? "wrong-external-foreground-ack"
               : "steam-bridge-windows-external-foreground-ack",
             schema: options.externalAckFileSchemaTypeWrong ? "1" : 1,
-            action: "presenter-web-open-and-wait",
-            requestOrdinal: options.externalAckFileOrdinalWrong ? 2 : 1,
+            action: reportedUserGestureAction,
+            requestOrdinal: options.externalAckFileOrdinalWrong
+              ? 2
+              : reportedExternalForegroundRequestOrdinal,
             mechanism: options.externalAckFileWrongMechanism
               ? "wrong-external-foreground-transition"
               : EXTERNAL_FOREGROUND_TRANSITION,
@@ -9038,14 +9328,14 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         type: "event:autorun:result-written",
         at: "2026-07-02T00:00:04.200Z",
         payload: {
-          action: "presenter-web-open-and-wait",
+          action: reportedUserGestureAction,
           resultFileWritten: !options.gestureResultWriteFalse
         }
       },
       {
         type: "event:autorun:keep-open-after-result",
         at: "2026-07-02T00:00:04.210Z",
-        payload: { action: "presenter-web-open-and-wait", resultFileWritten: true }
+        payload: { action: reportedUserGestureAction, resultFileWritten: true }
       },
       ...(!options.gestureAfterCloseStableMissing
         ? [
@@ -9064,7 +9354,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
                 ? "2026-07-02T00:00:04.900Z"
                 : "2026-07-02T00:00:05.200Z",
               payload: {
-                action: "presenter-web-open-and-wait",
+                action: reportedUserGestureAction,
                 resultFileWritten: true,
                 gateConsumed: true,
                 ...(options.gestureCompletionQuitLeaksPort ? { port: 43123 } : {})
@@ -9127,10 +9417,38 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       payload: { reason: "unexpected-second-terminal" }
     });
   }
+  if (options.stripGestureEvidenceExceptFocus) {
+    const retainedProbeEvents = closeProbeEvents.filter(
+      (event) =>
+        event.type === "probe:start" ||
+        event.type === "probe:native-presenter-focus" ||
+        (!event.type.includes("user-gesture") && !event.type.includes("external-foreground"))
+    );
+    closeProbeEvents.splice(0, closeProbeEvents.length, ...retainedProbeEvents);
+    const start = closeProbeEvents.find((event) => event.type === "probe:start");
+    start.payload.evidenceSchema = 2;
+    start.payload.foregroundHandoff = OWNER_PROCESS_FOREGROUND_HANDOFF;
+    start.payload.userGestureGate = false;
+    delete start.payload.externalForegroundTransition;
+    delete start.payload.externalForegroundTransitionEnabled;
+    const resultPath = path.join(root, caseId, "result.log");
+    const strippedResult = readSmokeResult(resultPath);
+    strippedResult.snapshot.events = strippedResult.snapshot.events.filter(
+      (event) => !String(event.type || "").includes("user-gesture")
+    );
+    writeResult(resultPath, strippedResult);
+    fs.rmSync(path.join(caseDir, "user-gesture-completion.json"), { force: true });
+    fs.rmSync(path.join(caseDir, "external-foreground-ready.json"), { force: true });
+    fs.rmSync(path.join(caseDir, "external-foreground-ack.json"), { force: true });
+    fs.rmSync(path.join(caseDir, "diagnostics", "lifecycle.jsonl"), { force: true });
+  }
   writeText(
     path.join(caseDir, "close-probe.log"),
     closeProbeEvents.map((entry) => JSON.stringify(entry)).join("\n") + "\n"
   );
+  if (options.omitManifest) {
+    fs.rmSync(manifestPath, { force: true });
+  }
 }
 
 function attachedWindowsPresenterFixture(options = {}) {
@@ -9686,13 +10004,25 @@ function writeStandardPreflight(root) {
 function writeDuplicateOpenGuardCaseFixture(root, options = {}) {
   const caseId = "11b-managed-duplicate-open-guard";
   const action = "presenter-duplicate-open-guard";
-  const requiredEvents = [
+  writeManagedCaseFixture(root, {
+    caseId,
+    action,
+    requiredEvents: duplicateOpenGuardRequiredEventsFixture(),
+    events: duplicateOpenGuardEventsFixture(options)
+  });
+}
+
+function duplicateOpenGuardRequiredEventsFixture() {
+  return [
     "overlay:presenter-open-and-wait-start",
     "overlay:presenter-duplicate-open-guard",
     "overlay:presenter-wait-closed",
     "overlay:presenter-parked",
     "overlay:presenter-open-and-wait-complete"
   ];
+}
+
+function duplicateOpenGuardPayloadFixture(options = {}) {
   const guardPayload = {
     status: duplicateOpenBusyStatusFixture(),
     shortcutStatus: duplicateOpenBusyStatusFixture(),
@@ -9716,22 +10046,30 @@ function writeDuplicateOpenGuardCaseFixture(root, options = {}) {
   if (!options.omitNamedAndWaitIfAvailableNulls) {
     guardPayload.namedAndWaitIfAvailableNulls = duplicateOpenNamedNullsFixture();
   }
+  return guardPayload;
+}
 
-  const events = [
+function duplicateOpenGuardEventsFixture(options = {}) {
+  return [
     { type: "overlay:presenter-open-and-wait-start" },
-    { type: "overlay:presenter-duplicate-open-guard", payload: guardPayload },
+    {
+      type: "overlay:presenter-duplicate-open-guard",
+      payload: duplicateOpenGuardPayloadFixture(options)
+    },
+    ...(options.duplicateGuardEvent
+      ? [
+          {
+            type: "overlay:presenter-duplicate-open-guard",
+            payload: duplicateOpenGuardPayloadFixture(options)
+          }
+        ]
+      : []),
     { type: "callback:overlay-activated", payload: { active: true } },
     { type: "callback:overlay-activated", payload: { active: false } },
     { type: "overlay:presenter-wait-closed" },
     { type: "overlay:presenter-parked" },
     { type: "overlay:presenter-open-and-wait-complete" }
   ];
-  writeManagedCaseFixture(root, {
-    caseId,
-    action,
-    requiredEvents,
-    events
-  });
 }
 
 function duplicateOpenBusyStatusFixture(extra = {}) {

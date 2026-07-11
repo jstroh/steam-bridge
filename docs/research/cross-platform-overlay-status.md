@@ -303,7 +303,7 @@ non-foreground terminal branch with zero input; wrapper cleanup and the
 preserved Steam identity remained green. Do not repeat either observational
 timing or the continuously-exactly-one-Steam-process watcher.
 
-The worktree now moves orchestration onto an explicit schema-3 state boundary.
+Commit `1c0a61f` moves orchestration onto an explicit schema-3 state boundary.
 The probe binds the exact source PID, process-start identity, HWND, control
 process, session, DPI geometry, and renderer target even while the source is not
 foreground. It installs a per-PID/HWND `EVENT_SYSTEM_FOREGROUND` WinEvent hook
@@ -321,12 +321,51 @@ duplicate, and pre-input adversarial fixtures pass; package smoke and native
 Windows full/generated PowerShell parsing, embedded C# compilation, 25 hook
 start/arm/wait/stop cycles, and strict ack valid/wrong-type/challenge/shape/
 timeout checks pass. All 196 tests plus API/platform/native checks, syntax, and
-diff checks also pass, and two final audits found no blocker. Repeat only after
-the exact slice passes commit/CI, signing, and deployment; then wait for the atomic marker, copy its challenge,
-deliver one safe Parsec/local title-bar click, and write the acknowledgment only
-after the click returns success. The conjunction proves one completed controller
-click and one exact foreground event in the armed interval, not strict physical
-causality between them.
+diff checks passed; two final audits found no blocker, and exact CI run
+`29139916561` passed all four jobs.
+
+The exact 128-file `1c0a61f` package then reused the verified native addon and
+passed transfer hashes, signing, transactional activation, independent active-
+package and unchanged-shortcut audits, 12 valid signables, app/addon publisher
+agreement, byte-preserved Valve runtimes, unchanged non-signable sources, zero
+zone streams, four retained rollback generations, and exact Steam continuity
+without a native rebuild or Steam restart. The one focused public run started
+with an armed exact-path controller, but the source window was already
+foreground. Schema 3 therefore emitted its mutually exclusive not-required
+event exactly once and produced no marker or acknowledgment; the controller
+sent zero Parsec clicks and the branch recorded zero activation or close input
+before harness dispatch.
+
+The remaining proof completed: one isolated-preload arm/ready/consume, one
+three-event renderer activation call, one three-event web-close call, exact
+source/control/session/DPI/point and foreground checks, visible Steam web
+content, active then inactive callbacks, close, park, open-and-wait completion,
+after-close-stable, exact source-HWND focus return, authenticated graceful quit,
+and two zero exits. Top-level presenter, native host, and renderer all reported
+`windows-d3d11`; the terminal detached snapshot reported backend `none` as
+expected. Semantic summary, visual, crash/dump, process/task/environment,
+selection, rollback, and exact post-wrapper Steam-continuity gates passed. This
+settles `WIN-FOCUS-001`. The live run does not exercise the nonforeground
+WinEvent/marker/ack branch; that fail-closed fallback remains native/static and
+adversarially verified, and there is no product reason to manufacture a
+nonforeground rerun after the ordinary foreground path passed. Full-desktop
+PNGs remain private local operational evidence and are not commit or publication
+artifacts; the durable conclusions above come from sanitized structured evidence.
+
+The bounded follow-up worktree now extends that same gate to only
+`11b-managed-duplicate-open-guard` through exact case-owned action/button
+mapping. Main and the isolated preload independently map the web and duplicate
+actions, the generated probe binds the selected action and target, and the
+semantic auditor derives its expectation from the case rather than reported
+evidence. Historical schema-2 web and ungated duplicate artifacts remain
+auditable; duplicate schema 2, cross-action/target substitutions, coherent wrong
+ordinals, missing-manifest bad evidence, and duplicate guard events fail. Package
+smoke, all 196 tests, API/platform/native checks, syntax, semantic fixtures,
+diff checks, native PowerShell 5.1 full and generated-script parsing, embedded
+C# compilation, and strict two-action marker/ack tests pass. No live duplicate
+case ran in this implementation slice. Repeat only after commit, exact CI,
+signing, and transactional deployment, then run the single focused public
+duplicate case.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

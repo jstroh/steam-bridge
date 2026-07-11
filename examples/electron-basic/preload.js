@@ -1,16 +1,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-const AUTORUN_USER_GESTURE_GATE_ACTION = "presenter-web-open-and-wait";
-const AUTORUN_USER_GESTURE_GATE_TARGET_ID = "presenter-web-wait";
+const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({
+  "presenter-web-open-and-wait": "presenter-web-wait",
+  "presenter-duplicate-open-guard": "presenter-duplicate-guard"
+});
 let autorunUserGestureGate;
 let autorunUserGestureGateHandler;
 let autorunUserGestureGateActivated = false;
 
 ipcRenderer.on("steam-smoke:autorun-user-gesture-gate-arm", (_event, value) => {
+  const targetId = getAutorunUserGestureGateTargetId(value?.action);
   if (
     autorunUserGestureGate ||
     !value ||
-    value.action !== AUTORUN_USER_GESTURE_GATE_ACTION ||
+    !targetId ||
     typeof value.nonce !== "string" ||
     !/^[0-9a-f]{64}$/.test(value.nonce)
   ) {
@@ -18,6 +21,7 @@ ipcRenderer.on("steam-smoke:autorun-user-gesture-gate-arm", (_event, value) => {
   }
   autorunUserGestureGate = {
     action: value.action,
+    targetId,
     nonce: value.nonce,
     attempted: false,
     button: undefined
@@ -30,7 +34,7 @@ function activateAutorunUserGestureGate() {
     return;
   }
 
-  const button = document.getElementById(AUTORUN_USER_GESTURE_GATE_TARGET_ID);
+  const button = document.getElementById(autorunUserGestureGate.targetId);
   if (!button) {
     return;
   }
@@ -48,6 +52,13 @@ function activateAutorunUserGestureGate() {
       evidence
     })
     .catch(() => undefined);
+}
+
+function getAutorunUserGestureGateTargetId(action) {
+  if (typeof action !== "string" || !Object.prototype.hasOwnProperty.call(AUTORUN_USER_GESTURE_GATE_TARGETS, action)) {
+    return undefined;
+  }
+  return AUTORUN_USER_GESTURE_GATE_TARGETS[action];
 }
 
 function consumeAutorunUserGestureGate(event) {

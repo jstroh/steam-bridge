@@ -2033,6 +2033,16 @@ compatibility evidence. Add a separate `AllowSetForegroundWindow` broker only
 if a focused current-package run disproves this materially different
 same-process path.
 
+Exact commit `1c0a61f` and its signed public focused run now prove that path.
+The source launched already foreground, so schema 3 took its mutually exclusive
+not-required branch with no marker, acknowledgment, or controller click. It then
+completed one isolated-preload arm/ready/consume, one activation and close
+dispatch, active/inactive/park/stable lifecycle, exact source-HWND focus return,
+authenticated quit, three-way `windows-d3d11`, and clean process/task/Steam
+continuity. `WIN-FOCUS-001` is settled and a broker is not justified. The
+nonforeground WinEvent/marker/ack fallback remains fail-closed tested evidence
+infrastructure, not a product mechanism that needs an artificial live rerun.
+
 The same run established the Windows input coordinate invariant more precisely.
 Process and thread per-monitor-v2 awareness plus physical native-host/panel
 bounds produced a physical-resolution screenshot, but the remaining literal
@@ -2043,9 +2053,10 @@ interchangeable. A successful three-event `SendInput` call therefore missed the
 presenter geometry as a checked fallback and requires the schema-1 auditor to
 reject missing, unscaled, mismatched, or nonphysical evidence. Its focused
 follow-up settled the coordinate, screenshot, scale, target, and pointer
-contract. The later natural click settled the product lifecycle but not the
-repeatable exact-host automation tracked under `WIN-FOCUS-001`. Fixed
-coordinates or longer waits are not acceptable substitutes.
+contract. The later natural click settled the product lifecycle, and exact
+`1c0a61f` settled the repeatable exact-host automation tracked under
+`WIN-FOCUS-001`. Fixed coordinates or longer waits are not acceptable
+substitutes.
 
 The Windows product matrix also needs an explicit
 `presenter-duplicate-open-guard` case. The smoke action exists, but the Windows
@@ -2054,7 +2065,16 @@ other-platform proof cannot be projected onto Windows. Commit `c880d51` adds the
 managed case and semantic auditor; the milestone remains open until one
 public focused case proves the intended direct, wait-style,
 shortcut/controller, and checkout suppression without invoking a checkout
-operation, then closes and parks cleanly.
+operation, then closes and parks cleanly. The bounded follow-up worktree now
+implements a closed two-entry action/button mapping that reuses the proved
+isolated-preload gate for this one case while preserving the existing web case,
+historical schema-2 web evidence, and historical ungated duplicate artifacts.
+Positive requested-transition and already-foreground fixtures plus cross-action,
+target, schema, ordinal, missing-manifest, and duplicate-event adversarial
+fixtures pass. Native PowerShell 5.1 parses both full scripts and both generated
+variants, compiles the embedded C#, and accepts marker/ack evidence only for the
+selected exact action and integer ordinal 1. This requires no public API, native
+addon, presenter, or broker change; one signed focused duplicate run remains.
 
 When Windows overlay activation fails while the Steam client window is itself
 blank or white, stop live launch loops and capture Steam client health first.

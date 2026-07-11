@@ -1921,13 +1921,15 @@ function Test-MatrixCloseProbeRequirements {
     $caseIds = (($userGestureCases | ForEach-Object { $_.id }) -join ", ")
     throw "Selected Windows user-gesture gate case(s) require -CloseProbe so the matrix can deliver and audit the one-shot renderer click: $caseIds"
   }
-  $unsupportedUserGestureCases = @(
-    $userGestureCases |
-      Where-Object { $_.action -ne "presenter-web-open-and-wait" }
-  )
+  $unsupportedUserGestureCases = @($userGestureCases | Where-Object {
+    -not (
+      ($_.id -ceq "11-managed-web-open-and-wait" -and $_.action -ceq "presenter-web-open-and-wait") -or
+      ($_.id -ceq "11b-managed-duplicate-open-guard" -and $_.action -ceq "presenter-duplicate-open-guard")
+    )
+  })
   if ($unsupportedUserGestureCases.Count -gt 0) {
     $caseIds = (($unsupportedUserGestureCases | ForEach-Object { $_.id }) -join ", ")
-    throw "The bounded Windows user-gesture gate currently supports only presenter-web-open-and-wait: $caseIds"
+    throw "The bounded Windows user-gesture gate supports only its exact managed-web and duplicate-open case/action pairs: $caseIds"
   }
 }
 
@@ -2821,7 +2823,8 @@ function Get-MatrixCases {
       -RequireOverlayActivated `
       -RequireManagedOverlayComplete `
       -ManagedOverlayResultMode "complete" `
-      -WebModal "true"
+      -WebModal "true" `
+      -AutorunUserGestureGate
     New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
     New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
     New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
@@ -3205,6 +3208,25 @@ function Start-WindowsOverlayCloseProbe {
     $ExternalForegroundTransition
   } else {
     ""
+  }
+  $userGestureAction = ""
+  $userGestureTargetId = ""
+  if ($useUserGestureGate) {
+    if (
+      $Case.id -ceq "11-managed-web-open-and-wait" -and
+      $Case.action -ceq "presenter-web-open-and-wait"
+    ) {
+      $userGestureAction = "presenter-web-open-and-wait"
+      $userGestureTargetId = "presenter-web-wait"
+    } elseif (
+      $Case.id -ceq "11b-managed-duplicate-open-guard" -and
+      $Case.action -ceq "presenter-duplicate-open-guard"
+    ) {
+      $userGestureAction = "presenter-duplicate-open-guard"
+      $userGestureTargetId = "presenter-duplicate-guard"
+    } else {
+      throw "Unsupported Windows user-gesture gate case/action pair: $($Case.id) / $($Case.action)"
+    }
   }
   if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null
@@ -3677,6 +3699,9 @@ public static class SteamBridgeWindowsProbe {
 `$script:ControlHandoffOnlyExpected = [bool]::Parse('$controlHandoffOnlyExpected')
 `$script:PreserveSmokeControlFile = [bool]::Parse('$preserveControlFile')
 `$script:UseUserGestureGate = [bool]::Parse('$useUserGestureGate')
+`$script:UserGestureAction = '$userGestureAction'
+`$script:UserGestureTargetId = '$userGestureTargetId'
+`$script:ExternalForegroundRequestOrdinal = 1
 `$script:ExternalForegroundTransition = '$externalForegroundTransition'
 `$script:ExternalForegroundReadyMarker = [Text.Encoding]::UTF8.GetString(
   [Convert]::FromBase64String('$externalForegroundReadyMarkerBase64')
@@ -3794,9 +3819,9 @@ function Resolve-AutorunUserGestureGateTarget {
   `$readyBinding = `$payload.binding
   if (
     `$payload.schema -ne 1 -or
-    `$payload.mechanism -ne "same-process-user-gesture" -or
-    `$payload.action -ne "presenter-web-open-and-wait" -or
-    `$payload.targetId -ne "presenter-web-wait" -or
+    `$payload.mechanism -cne "same-process-user-gesture" -or
+    `$payload.action -cne `$script:UserGestureAction -or
+    `$payload.targetId -cne `$script:UserGestureTargetId -or
     `$payload.ready -ne `$true -or
     -not `$target -or
     -not `$viewport -or
@@ -4960,8 +4985,8 @@ function Write-ExternalForegroundReadyMarker {
   `$marker = [ordered]@{
     kind = "steam-bridge-windows-external-foreground-ready"
     schema = 1
-    action = "presenter-web-open-and-wait"
-    requestOrdinal = 1
+    action = `$script:UserGestureAction
+    requestOrdinal = `$script:ExternalForegroundRequestOrdinal
     mechanism = `$script:ExternalForegroundTransition
     challenge = `$script:ExternalForegroundChallenge
     sourceBound = `$true
@@ -5040,8 +5065,8 @@ function Read-ExternalForegroundControllerAcknowledgment {
       `$ack.kind -ceq "steam-bridge-windows-external-foreground-ack" -and
       (Test-ExternalForegroundJsonInteger `$ack.schema 1) -and
       `$ack.action -is [string] -and
-      `$ack.action -ceq "presenter-web-open-and-wait" -and
-      (Test-ExternalForegroundJsonInteger `$ack.requestOrdinal 1) -and
+      `$ack.action -ceq `$script:UserGestureAction -and
+      (Test-ExternalForegroundJsonInteger `$ack.requestOrdinal `$script:ExternalForegroundRequestOrdinal) -and
       `$ack.mechanism -is [string] -and
       `$ack.mechanism -ceq `$script:ExternalForegroundTransition -and
       `$ack.challenge -is [string] -and
@@ -5718,8 +5743,8 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
                 Write-ProbeEvent "probe:external-foreground-source-ready" ([PSCustomObject]@{
                   schema = 1
                   mechanism = `$script:ExternalForegroundTransition
-                  action = "presenter-web-open-and-wait"
-                  requestOrdinal = 1
+                  action = `$script:UserGestureAction
+                  requestOrdinal = `$script:ExternalForegroundRequestOrdinal
                   sourceBound = `$true
                   transitionHookReady = `$true
                   binding = `$activationTarget.binding
@@ -5818,8 +5843,8 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
               Write-ProbeEvent "probe:external-foreground-controller-acknowledged" ([PSCustomObject]@{
                 schema = 1
                 mechanism = `$script:ExternalForegroundTransition
-                action = "presenter-web-open-and-wait"
-                requestOrdinal = 1
+                action = `$script:UserGestureAction
+                requestOrdinal = `$script:ExternalForegroundRequestOrdinal
                 markerWritten = `$true
                 controllerAckValid = `$true
                 clickCompleted = `$true
@@ -5829,8 +5854,8 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
               Write-ProbeEvent "probe:external-foreground-transition-observed" ([PSCustomObject]@{
                 schema = 1
                 mechanism = `$script:ExternalForegroundTransition
-                action = "presenter-web-open-and-wait"
-                requestOrdinal = 1
+                action = `$script:UserGestureAction
+                requestOrdinal = `$script:ExternalForegroundRequestOrdinal
                 transitionObserved = `$true
                 eventCount = `$foregroundTransitionEventCount
                 hookStopped = `$foregroundWaiterStopped
@@ -5845,8 +5870,8 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
               Write-ProbeEvent "probe:external-foreground-transition-rejected" ([PSCustomObject]@{
                 schema = 1
                 mechanism = `$script:ExternalForegroundTransition
-                action = "presenter-web-open-and-wait"
-                requestOrdinal = 1
+                action = `$script:UserGestureAction
+                requestOrdinal = `$script:ExternalForegroundRequestOrdinal
                 reason = `$foregroundFailureReason
                 hookStarted = `$foregroundWaiterStarted
                 hookStopped = `$foregroundWaiterStopped
@@ -5877,7 +5902,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
             Write-ProbeEvent "probe:external-foreground-transition-not-required" ([PSCustomObject]@{
               schema = 1
               mechanism = `$script:ExternalForegroundTransition
-              action = "presenter-web-open-and-wait"
+              action = `$script:UserGestureAction
               requestOrdinal = 0
               alreadyForeground = `$true
               binding = `$activationTarget.binding

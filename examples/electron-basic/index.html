@@ -481,14 +481,20 @@
         run("Presenter Web Overlay", () => window.steamSmoke.openPresenterWeb());
       const presenterWebWaitButton = document.getElementById("presenter-web-wait");
       presenterWebWaitButton.onclick = (event) => {
-        if (!autorunUserGestureGate) {
+        if (autorunUserGestureGate?.action !== "presenter-web-open-and-wait") {
           return run("Presenter Web Wait", () => window.steamSmoke.openPresenterWebOpenAndWait());
         }
         event.preventDefault();
         return undefined;
       };
-      document.getElementById("presenter-duplicate-guard").onclick = () =>
-        run("Duplicate Guard", () => window.steamSmoke.openPresenterDuplicateOpenGuard());
+      const presenterDuplicateGuardButton = document.getElementById("presenter-duplicate-guard");
+      presenterDuplicateGuardButton.onclick = (event) => {
+        if (autorunUserGestureGate?.action !== "presenter-duplicate-open-guard") {
+          return run("Duplicate Guard", () => window.steamSmoke.openPresenterDuplicateOpenGuard());
+        }
+        event.preventDefault();
+        return undefined;
+      };
       document.getElementById("presenter-store-wait").onclick = () =>
         run("Presenter Store Wait", () => window.steamSmoke.openPresenterStoreOpenAndWait());
       document.getElementById("presenter-dialog-auto-wait").onclick = () =>
