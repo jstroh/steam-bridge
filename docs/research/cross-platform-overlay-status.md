@@ -446,9 +446,32 @@ to target, focus, the pre-input dispatch boundary, inactive/closed state,
 parking, and cycle completion, with completion before the next shown state.
 Those full-desktop captures are private local operational evidence and must not
 be committed or published; only sanitized structured conclusions belong here.
+
+The exact signed `8323cd4` candidate was then packaged around the retained
+verified static-CRT native trio, signed, transactionally activated at the
+unchanged shortcut-owned path, and passed prelaunch active-package, signature,
+rollback, assumed-shortcut, and Steam-continuity audits. Its first current
+case-40 launch passed readiness, native-load, and render gates and wrote one
+fresh atomic nonforeground marker. The user was unavailable, so no local/Parsec
+click or challenge acknowledgment was synthesized. The bounded hook observed
+zero foreground-transition events and timed out with zero gate consumption,
+activation dispatch, close dispatch, sent input, or completed cycles. It wrote
+one terminal incomplete branch. Task deletion, exact runner/package process
+guards, launch-environment byte restoration, task-file removal, zero remaining
+Smoke processes, zero lifecycle fatal/malformed/dump evidence, and exact Steam
+process/session/start continuity passed. All 128 signed-candidate files remained
+byte-identical; the only extra active-package file was the expected public
+runtime app-ID sidecar. The post-run whole shortcut-database hash differed from
+its captured pre-run value, while the packaged dry-run still returned unchanged
+and existing-match for the executable, start directory, launch options, stable
+game ID, and overlay setting. This proves the current authorization fallback refuses
+input and cleans up safely when its post-marker user action is absent. No
+overlay cycle began, so the run adds no three-cycle presenter-reuse success
+claim.
+
 The next live attempt is meaningful on the exact signed candidate when the
 source naturally launches foreground or a real local/Parsec click and exact
-challenge acknowledgment can follow the atomic marker.
+challenge acknowledgment can follow the fresh atomic marker.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

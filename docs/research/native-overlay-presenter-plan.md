@@ -2102,8 +2102,9 @@ shutdown, and exact source-window focus return. Unknown, missing, downgraded,
 cross-case, extra-input, owner-handoff, native-show, retargeted-HWND, reordered,
 or markerless current evidence fails; marker-absent historical schema-2
 persistent artifacts remain readable. This implementation is statically and
-natively parsed but still needs one exact signed live run before it closes
-`WIN-PERSISTENT-REUSE-001`.
+natively parsed, and its exact signed `8323cd4` package has now exercised the
+fresh-marker fail-closed branch, but it still needs one passing exact signed
+three-cycle run before it closes `WIN-PERSISTENT-REUSE-001`.
 Every cycle also requires a distinct readable physical pre-send full-desktop
 screenshot whose declared bounds match its PNG dimensions and contain the
 cycle's native-host rectangle; its detected panel and click must stay inside
@@ -2114,6 +2115,19 @@ state, target selection, focus confirmation, the pre-input dispatch boundary,
 inactive/closed state, parking, and cycle completion; each completion precedes
 the next cycle's shown event. Full-desktop captures remain private local
 operational evidence and must not be committed or published.
+
+The first current live attempt passed readiness, native-load, and render gates
+and reached one fresh atomic nonforeground marker. With no real post-marker
+click or exact challenge acknowledgment available, the bounded hook observed
+zero foreground-transition events and timed out with zero gate consumption,
+activation dispatch, close dispatch, sent input, or completed cycles. Exact
+task and package cleanup, launch-environment restoration, signed-candidate file
+integrity plus the expected runtime app-ID sidecar, rollback, semantic shortcut
+fields, zero remaining Smoke processes, and exact Steam continuity passed. This
+validates the authorization boundary and cleanup contract only; it does not
+exercise the target, screenshot, close, lifecycle, or stable-identity
+requirements for any reuse cycle. The architecture and three-cycle success
+condition therefore remain unchanged.
 
 The same run established the Windows input coordinate invariant more precisely.
 Process and thread per-monitor-v2 awareness plus physical native-host/panel
