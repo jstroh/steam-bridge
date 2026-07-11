@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { isDeepStrictEqual } = require("node:util");
 const zlib = require("node:zlib");
 const checkoutProofPath = fs.existsSync(path.join(__dirname, "checkout-proof.cjs"))
   ? path.join(__dirname, "checkout-proof.cjs")
@@ -54,6 +55,23 @@ const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
 const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1";
 const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
 const USER_GESTURE_GATE_POLICY = "single-cycle-active-v1";
+const PERSISTENT_REUSE_GATE_POLICY = "initial-user-gesture-verify-only-v1";
+const PERSISTENT_REUSE_EVIDENCE_SCHEMA = 1;
+const PERSISTENT_REUSE_CURRENT_ONLY_FIELDS = Object.freeze([
+  "persistentReuseGate",
+  "persistentReuseGatePolicy",
+  "persistentReuseEvidenceSchema",
+  "initialUserGestureCycle",
+  "verifyOnlyCycles",
+  "closeVerificationOrdinals"
+]);
+const PERSISTENT_REUSE_CLOSE_PROBE_CURRENT_ONLY_KEYS = new Set([
+  ...PERSISTENT_REUSE_CURRENT_ONLY_FIELDS,
+  "persistentReuse",
+  "confirmationMode",
+  "baselineHostBound",
+  "sameHostAsCycleOne"
+]);
 const GENERIC_USER_GESTURE_GATE_TARGET = "autorun-user-gesture-target";
 const USER_GESTURE_SCHEMA_3_ONLY = Object.freeze([3]);
 const SUPPORTED_SHORTCUT_TARGETS = new Set([
@@ -220,7 +238,14 @@ const USER_GESTURE_GATE_EXPECTATIONS = Object.freeze({
 });
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
 const PERSISTENT_REUSE_ACTION = "presenter-persistent-reuse-three-cycle";
+const PERSISTENT_REUSE_CASE_ID = "40-persistent-reuse-three-cycle";
 const WINDOWS_PERSISTENT_REUSE_CYCLES = 3;
+const PERSISTENT_REUSE_GATE_EXPECTATION = Object.freeze({
+  action: PERSISTENT_REUSE_ACTION,
+  targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+  evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+  persistentReuse: true
+});
 const WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS = 30;
 const WINDOWS_FULL_DIAGNOSTICS_MIN_INTERVAL_MS = 250;
 const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
@@ -239,6 +264,32 @@ function getUserGestureGateExpectation(caseId) {
     return null;
   }
   return USER_GESTURE_GATE_EXPECTATIONS[caseId];
+}
+
+function hasOwn(value, key) {
+  return Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function hasPersistentReuseContractSignal(manifest, entry) {
+  return Boolean(
+    hasOwn(manifest, "persistentReuseGatePolicy") ||
+      hasOwn(manifest, "supportedPersistentReuseEvidenceSchemas") ||
+      PERSISTENT_REUSE_CURRENT_ONLY_FIELDS.some((field) => hasOwn(entry, field)) ||
+      entry?.autorunUserGestureGate === true ||
+      entry?.closeProbeEvidenceSchema === 3
+  );
+}
+
+function getPersistentReuseGateExpectation(manifest, entry) {
+  if (
+    !entry ||
+    entry.id !== PERSISTENT_REUSE_CASE_ID ||
+    entry.action !== PERSISTENT_REUSE_ACTION ||
+    !hasPersistentReuseContractSignal(manifest, entry)
+  ) {
+    return null;
+  }
+  return PERSISTENT_REUSE_GATE_EXPECTATION;
 }
 
 main();
@@ -458,7 +509,19 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
       failures
     );
     const closeProbeEvents = readJsonLinesIfPresent(path.join(caseDir, "close-probe.log"), failures);
-    const caseSummary = summarizeCaseResult(caseName, result, resultLog, renderingHealth, closeProbeEvents, caseDir);
+    const manifestCase = Array.isArray(manifest?.cases)
+      ? manifest.cases.find((entry) => entry && entry.id === caseName) || null
+      : null;
+    const caseSummary = summarizeCaseResult(
+      caseName,
+      result,
+      resultLog,
+      renderingHealth,
+      closeProbeEvents,
+      caseDir,
+      manifest,
+      manifestCase
+    );
     caseSummaries.push(caseSummary);
     failures.push(...caseSummary.failures);
   }
@@ -525,6 +588,22 @@ function validateManifest(manifest, failures) {
     expect(
       manifest.autorunUserGestureGatePolicy === USER_GESTURE_GATE_POLICY,
       `matrix manifest autorunUserGestureGatePolicy is ${USER_GESTURE_GATE_POLICY}`,
+      failures
+    );
+  }
+  if (hasOwn(manifest, "persistentReuseGatePolicy")) {
+    expect(
+      manifest.persistentReuseGatePolicy === PERSISTENT_REUSE_GATE_POLICY,
+      `matrix manifest persistentReuseGatePolicy is ${PERSISTENT_REUSE_GATE_POLICY}`,
+      failures
+    );
+  }
+  if (hasOwn(manifest, "supportedPersistentReuseEvidenceSchemas")) {
+    expect(
+      Array.isArray(manifest.supportedPersistentReuseEvidenceSchemas) &&
+        manifest.supportedPersistentReuseEvidenceSchemas.length === 1 &&
+        manifest.supportedPersistentReuseEvidenceSchemas[0] === PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+      `matrix manifest records persistent reuse evidence schema ${PERSISTENT_REUSE_EVIDENCE_SCHEMA}`,
       failures
     );
   }
@@ -683,7 +762,95 @@ function validateManifest(manifest, failures) {
       }
       if (entry && entry.action) {
         const userGestureExpectation = getUserGestureGateExpectation(entry.id);
-        if (enforcesCurrentUserGestureGatePolicy) {
+        const persistentReuseCandidate = Boolean(
+          entry.id === PERSISTENT_REUSE_CASE_ID ||
+            entry.action === PERSISTENT_REUSE_ACTION ||
+            entry.persistentReuseGate === true ||
+            Boolean(entry.persistentReuseGatePolicy) ||
+            Number(entry.persistentReuseEvidenceSchema) > 0
+        );
+        const persistentReuseCurrent = Boolean(
+          persistentReuseCandidate && hasPersistentReuseContractSignal(manifest, entry)
+        );
+        const persistentReuseExpectation = persistentReuseCurrent
+          ? PERSISTENT_REUSE_GATE_EXPECTATION
+          : null;
+        if (hasOwn(entry, "persistentReuseGate")) {
+          expect(
+            typeof entry.persistentReuseGate === "boolean",
+            `matrix manifest case ${entry.id} records a boolean persistent reuse gate flag`,
+            failures
+          );
+        }
+        if (persistentReuseCandidate && persistentReuseCurrent) {
+          expect(
+            entry.id === PERSISTENT_REUSE_CASE_ID &&
+              entry.action === PERSISTENT_REUSE_ACTION &&
+              entry.persistentReuseCycles === WINDOWS_PERSISTENT_REUSE_CYCLES,
+            `matrix manifest current persistent policy binds exact case, action, and ${WINDOWS_PERSISTENT_REUSE_CYCLES} cycles`,
+            failures
+          );
+          expect(
+            manifest.autorunUserGestureGatePolicy === USER_GESTURE_GATE_POLICY &&
+              manifest.persistentReuseGatePolicy === PERSISTENT_REUSE_GATE_POLICY &&
+              Array.isArray(manifest.supportedPersistentReuseEvidenceSchemas) &&
+              manifest.supportedPersistentReuseEvidenceSchemas.length === 1 &&
+              manifest.supportedPersistentReuseEvidenceSchemas[0] === PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+            "matrix manifest current persistent policy records its exact supported policy and schema",
+            failures
+          );
+          expect(
+            entry.persistentReuseGate === true &&
+              entry.persistentReuseGatePolicy === PERSISTENT_REUSE_GATE_POLICY &&
+              entry.persistentReuseEvidenceSchema === PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+            "matrix manifest current persistent case enables its exact policy and evidence schema",
+            failures
+          );
+          expect(
+            entry.autorunUserGestureGate === true &&
+              entry.closeProbeEvidenceSchema === 3 &&
+              entry.closeProbeForegroundHandoff === SAME_PROCESS_USER_GESTURE_HANDOFF &&
+              entry.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION,
+            "matrix manifest current persistent case requires one schema-3 same-process user-gesture gate",
+            failures
+          );
+          expect(
+            entry.initialUserGestureCycle === 1 &&
+              Array.isArray(entry.verifyOnlyCycles) &&
+              entry.verifyOnlyCycles.length === 2 &&
+              entry.verifyOnlyCycles[0] === 2 &&
+              entry.verifyOnlyCycles[1] === 3 &&
+              Array.isArray(entry.closeVerificationOrdinals) &&
+              entry.closeVerificationOrdinals.length === 3 &&
+              entry.closeVerificationOrdinals.every((ordinal, index) => ordinal === index + 1),
+            "matrix manifest current persistent case records one trusted cycle and ordered verify-only cycles",
+            failures
+          );
+          expect(
+            manifest.closeProbe === true,
+            "matrix manifest current persistent policy requires the Windows close probe",
+            failures
+          );
+        } else if (persistentReuseCandidate) {
+          expect(
+            !hasPersistentReuseContractSignal(manifest, entry),
+            "matrix manifest historical persistent evidence omits the current persistent policy marker",
+            failures
+          );
+        } else {
+          expect(
+            entry.persistentReuseGate !== true &&
+              !entry.persistentReuseGatePolicy &&
+              Number(entry.persistentReuseEvidenceSchema || 0) === 0 &&
+              Number(entry.initialUserGestureCycle || 0) === 0 &&
+              (!Array.isArray(entry.verifyOnlyCycles) || entry.verifyOnlyCycles.length === 0) &&
+              (!Array.isArray(entry.closeVerificationOrdinals) ||
+                entry.closeVerificationOrdinals.length === 0),
+            `matrix manifest nonpersistent case ${entry.id} omits persistent reuse policy evidence`,
+            failures
+          );
+        }
+        if (enforcesCurrentUserGestureGatePolicy && !persistentReuseCurrent) {
           expect(
             entry.autorunUserGestureGate === Boolean(userGestureExpectation),
             userGestureExpectation
@@ -808,12 +975,13 @@ function validateManifest(manifest, failures) {
                 failures
               );
             }
-            const userGestureExpectation = getUserGestureGateExpectation(entry.id);
+            const exactUserGestureExpectation =
+              getUserGestureGateExpectation(entry.id) || persistentReuseExpectation;
             expect(
               Boolean(
-                userGestureExpectation &&
-                  entry.action === userGestureExpectation.action &&
-                  userGestureExpectation.evidenceSchemas.includes(caseEvidenceSchema)
+                exactUserGestureExpectation &&
+                  entry.action === exactUserGestureExpectation.action &&
+                  exactUserGestureExpectation.evidenceSchemas.includes(caseEvidenceSchema)
               ),
               `matrix manifest case ${entry.id} uses its exact supported user-gesture action and evidence schema`,
               failures
@@ -3016,6 +3184,10 @@ function verifyPersistentReuseProof(
   events,
   caseDir,
   closeProbeEvents,
+  fullLifecycleEvents,
+  manifest,
+  manifestCase,
+  nativePresenter,
   failures
 ) {
   if (actionName !== PERSISTENT_REUSE_ACTION) {
@@ -3023,6 +3195,9 @@ function verifyPersistentReuseProof(
   }
 
   const failuresBefore = failures.length;
+  const currentPersistentGate = Boolean(
+    getPersistentReuseGateExpectation(manifest, manifestCase)
+  );
   const startEvents = events.filter((event) => event && event.type === "overlay:presenter-persistent-reuse-start");
   const cycleEvents = events.filter((event) => event && event.type === "overlay:presenter-persistent-reuse-cycle");
   const completeEvents = events.filter(
@@ -3052,8 +3227,16 @@ function verifyPersistentReuseProof(
   );
 
   const readiness = readJsonIfPresent(path.join(caseDir, "persistent-control-readiness.json"), failures);
-  expect(Boolean(readiness), `${caseName}: persistent reuse includes control readiness evidence`, failures);
-  if (readiness) {
+  if (currentPersistentGate) {
+    expect(
+      !readiness,
+      `${caseName}: current persistent reuse omits the historical full-control readiness artifact`,
+      failures
+    );
+  } else {
+    expect(Boolean(readiness), `${caseName}: persistent reuse includes control readiness evidence`, failures);
+  }
+  if (readiness && !currentPersistentGate) {
     expect(
       readiness.kind === "steam-bridge-windows-persistent-control-readiness",
       `${caseName}: persistent control readiness artifact kind is valid`,
@@ -3094,13 +3277,51 @@ function verifyPersistentReuseProof(
     `${caseName}: persistent start records readiness and wait reasons`,
     failures
   );
-  expect(
-    Array.isArray(start.foregroundHandoffOrdinals) &&
-      start.foregroundHandoffOrdinals.length === WINDOWS_PERSISTENT_REUSE_CYCLES &&
-      start.foregroundHandoffOrdinals.every((ordinal, index) => ordinal === index + 1),
-    `${caseName}: persistent start binds foreground handoff ordinals 1..3`,
-    failures
-  );
+  if (currentPersistentGate) {
+    expect(
+      [...startEvents, ...cycleEvents, ...completeEvents].every(
+        (event) => !containsRawNativeWindowHandle(objectOrEmpty(event?.payload))
+      ),
+      `${caseName}: current persistent result events omit raw native HWND evidence`,
+      failures
+    );
+    expect(
+      start.persistentReuseGatePolicy === PERSISTENT_REUSE_GATE_POLICY &&
+        start.persistentReuseEvidenceSchema === PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+      `${caseName}: persistent start records its exact gate policy and evidence schema`,
+      failures
+    );
+    expect(
+      start.initialUserGestureCycle === 1 &&
+        Array.isArray(start.verifyOnlyCycles) &&
+        start.verifyOnlyCycles.length === 2 &&
+        start.verifyOnlyCycles[0] === 2 &&
+        start.verifyOnlyCycles[1] === 3 &&
+        Array.isArray(start.closeVerificationOrdinals) &&
+        start.closeVerificationOrdinals.length === WINDOWS_PERSISTENT_REUSE_CYCLES &&
+        start.closeVerificationOrdinals.every((ordinal, index) => ordinal === index + 1),
+      `${caseName}: persistent start binds one trusted cycle and verify-only ordinals 2..3`,
+      failures
+    );
+    expect(
+      !Object.prototype.hasOwnProperty.call(start, "foregroundHandoffOrdinals"),
+      `${caseName}: current persistent start omits legacy foreground handoff ordinals`,
+      failures
+    );
+  } else {
+    expect(
+      PERSISTENT_REUSE_CURRENT_ONLY_FIELDS.every((field) => !hasOwn(start, field)),
+      `${caseName}: historical persistent start omits current-only persistent policy evidence`,
+      failures
+    );
+    expect(
+      Array.isArray(start.foregroundHandoffOrdinals) &&
+        start.foregroundHandoffOrdinals.length === WINDOWS_PERSISTENT_REUSE_CYCLES &&
+        start.foregroundHandoffOrdinals.every((ordinal, index) => ordinal === index + 1),
+      `${caseName}: persistent start binds foreground handoff ordinals 1..3`,
+      failures
+    );
+  }
 
   let baselineInstance = 0;
   let baselineHostToken = "";
@@ -3192,7 +3413,9 @@ function verifyPersistentReuseProof(
   const closeEvents = events.filter((event) => event && event.type === "overlay:presenter-close");
   expect(attachEvents.length === 1, `${caseName}: persistent action used one managed controller`, failures);
   expect(closeEvents.length === 0, `${caseName}: persistent action did not close before final shutdown`, failures);
-  const lifecycle = readJsonLinesIfPresent(path.join(caseDir, "diagnostics", "lifecycle.jsonl"), failures);
+  const lifecycle = Array.isArray(fullLifecycleEvents)
+    ? fullLifecycleEvents.filter(Boolean)
+    : readJsonLinesIfPresent(path.join(caseDir, "diagnostics", "lifecycle.jsonl"), failures);
   const lifecycleCompleteIndex = lifecycle.findIndex(
     (event) => event && event.type === "event:overlay:presenter-persistent-reuse-complete"
   );
@@ -3235,7 +3458,249 @@ function verifyPersistentReuseProof(
       failures
     );
   }
-  verifyPersistentCloseProbe(caseName, closeProbeEvents, failures);
+  if (currentPersistentGate) {
+    const lifecycleCompletionQuitIndexes = lifecycle
+      .map((event, index) =>
+        event?.type === "event:control:user-gesture-completion-quit" ? index : -1
+      )
+      .filter((index) => index >= 0);
+    const lifecycleBeforeQuitIndexes = lifecycle
+      .map((event, index) => (event?.type === "app:before-quit" ? index : -1))
+      .filter((index) => index >= 0);
+    const lifecycleWillQuitIndexes = lifecycle
+      .map((event, index) => (event?.type === "app:will-quit" ? index : -1))
+      .filter((index) => index >= 0);
+    const lifecycleProcessExitIndexes = lifecycle
+      .map((event, index) => (event?.type === "process:exit" ? index : -1))
+      .filter((index) => index >= 0);
+    const lifecycleAppQuitIndexes = lifecycle
+      .map((event, index) => (event?.type === "app:quit" ? index : -1))
+      .filter((index) => index >= 0);
+    expect(
+      lifecycleCloseIndexes.length === 1 &&
+        lifecycleCompletionQuitIndexes.length === 1 &&
+        lifecycleBeforeQuitIndexes.length === 1 &&
+        lifecycleWillQuitIndexes.length === 1 &&
+        lifecycleProcessExitIndexes.length === 1 &&
+        lifecycleAppQuitIndexes.length === 1 &&
+        lifecycleCompleteIndex < lifecycleCompletionQuitIndexes[0] &&
+        lifecycleCompletionQuitIndexes[0] < lifecycleBeforeQuitIndexes[0] &&
+        lifecycleBeforeQuitIndexes[0] < lifecycleWillQuitIndexes[0] &&
+        lifecycleWillQuitIndexes[0] < lifecycleCloseIndexes[0] &&
+        lifecycleCloseIndexes[0] < lifecycleProcessExitIndexes[0] &&
+        lifecycleCloseIndexes[0] < lifecycleAppQuitIndexes[0],
+      `${caseName}: current persistent final detach belongs only to authenticated quit shutdown`,
+      failures
+    );
+    const lifecycleAttachEvents = lifecycle.filter(
+      (event) => event?.type === "event:overlay:presenter-attach"
+    );
+    expect(
+      lifecycleAttachEvents.length === 1 &&
+        attachEvents.length === 1 &&
+        JSON.stringify(objectOrEmpty(lifecycleAttachEvents[0]?.payload)) ===
+          JSON.stringify(objectOrEmpty(attachEvents[0]?.payload)),
+      `${caseName}: current persistent result and lifecycle record one identical controller attach`,
+      failures
+    );
+    const persistentTypes = new Set([
+      "autorun:user-gesture-gate-consumed",
+      "overlay:presenter-attach",
+      "overlay:presenter-wait-start",
+      "overlay:presenter-wait-shown",
+      "callback:overlay-activated",
+      "overlay:presenter-wait-closed",
+      "overlay:presenter-parked",
+      "overlay:presenter-persistent-reuse-start",
+      "overlay:presenter-persistent-reuse-cycle",
+      "overlay:presenter-persistent-reuse-complete",
+      "overlay:presenter-persistent-reuse-error"
+    ]);
+    const resultProjection = events
+      .filter((event) => persistentTypes.has(String(event?.type || "")))
+      .map((event) => ({ type: event.type, payload: objectOrEmpty(event.payload) }));
+    const lifecycleProjection = lifecycle
+      .map((event) => ({
+        type: String(event?.type || "").replace(/^event:/, ""),
+        payload: objectOrEmpty(event?.payload)
+      }))
+      .filter((event) => persistentTypes.has(event.type));
+    expect(
+      JSON.stringify(lifecycleProjection) === JSON.stringify(resultProjection),
+      `${caseName}: persistent result and lifecycle projections agree exactly`,
+      failures
+    );
+
+    const resultGateConsumedIndexes = events
+      .map((event, index) =>
+        event?.type === "autorun:user-gesture-gate-consumed" ? index : -1
+      )
+      .filter((index) => index >= 0);
+    const lifecycleGateConsumedIndexes = lifecycle
+      .map((event, index) =>
+        event?.type === "event:autorun:user-gesture-gate-consumed" ? index : -1
+      )
+      .filter((index) => index >= 0);
+    const lifecycleAttachIndex = lifecycle.findIndex(
+      (event) => event?.type === "event:overlay:presenter-attach"
+    );
+    const lifecycleStartIndex = lifecycle.findIndex(
+      (event) => event?.type === "event:overlay:presenter-persistent-reuse-start"
+    );
+    expect(
+      resultGateConsumedIndexes.length === 1 &&
+        lifecycleGateConsumedIndexes.length === 1 &&
+        resultGateConsumedIndexes[0] < events.indexOf(attachEvents[0]) &&
+        events.indexOf(attachEvents[0]) < startIndex &&
+        lifecycleGateConsumedIndexes[0] < lifecycleAttachIndex &&
+        lifecycleAttachIndex < lifecycleStartIndex,
+      `${caseName}: trusted gate consumption precedes controller attach and persistent start in both logs`,
+      failures
+    );
+
+    let previousCycleIndex = lifecycle.findIndex(
+      (event) => event?.type === "event:overlay:presenter-persistent-reuse-start"
+    );
+    let previousSequence = 0;
+    const activeIndexes = lifecycle
+      .map((event, index) =>
+        event?.type === "event:callback:overlay-activated" &&
+        isOverlayActiveEvent({ ...event, type: "callback:overlay-activated" })
+          ? index
+          : -1
+      )
+      .filter((index) => index >= 0);
+    const inactiveIndexes = lifecycle
+      .map((event, index) =>
+        event?.type === "event:callback:overlay-activated" &&
+        isOverlayInactiveEvent({ ...event, type: "callback:overlay-activated" })
+          ? index
+          : -1
+      )
+      .filter((index) => index >= 0);
+    expect(
+      activeIndexes.length === WINDOWS_PERSISTENT_REUSE_CYCLES &&
+        inactiveIndexes.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+      `${caseName}: persistent lifecycle records exactly three active and inactive callbacks`,
+      failures
+    );
+    expect(
+      lifecycle.filter((event) => event?.type === "event:callback:overlay-activated").length ===
+        WINDOWS_PERSISTENT_REUSE_CYCLES * 2,
+      `${caseName}: persistent lifecycle records exactly six overlay activation callbacks`,
+      failures
+    );
+    for (const type of [
+      "event:overlay:presenter-wait-start",
+      "event:overlay:presenter-wait-shown",
+      "event:overlay:presenter-wait-closed",
+      "event:overlay:presenter-parked"
+    ]) {
+      expect(
+        lifecycle.filter((event) => event?.type === type).length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+        `${caseName}: persistent lifecycle records exactly three ${type}`,
+        failures
+      );
+    }
+    for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
+      const indexes = {};
+      for (const type of [
+        "event:overlay:presenter-wait-start",
+        "event:overlay:presenter-wait-shown",
+        "event:overlay:presenter-wait-closed",
+        "event:overlay:presenter-parked",
+        "event:overlay:presenter-persistent-reuse-cycle"
+      ]) {
+        const matches = lifecycle
+          .map((event, index) =>
+            event?.type === type && Number(objectOrEmpty(event.payload).cycle) === cycle ? index : -1
+          )
+          .filter((index) => index >= 0);
+        expect(matches.length === 1, `${caseName}: persistent cycle ${cycle} records one ${type}`, failures);
+        indexes[type] = matches[0] ?? -1;
+      }
+      const waitStart = indexes["event:overlay:presenter-wait-start"];
+      const shown = indexes["event:overlay:presenter-wait-shown"];
+      const closed = indexes["event:overlay:presenter-wait-closed"];
+      const parked = indexes["event:overlay:presenter-parked"];
+      const cycleComplete = indexes["event:overlay:presenter-persistent-reuse-cycle"];
+      const cycleActiveIndexes = activeIndexes.filter(
+        (eventIndex) => eventIndex > waitStart && eventIndex < cycleComplete
+      );
+      const cycleInactiveIndexes = inactiveIndexes.filter(
+        (eventIndex) => eventIndex > waitStart && eventIndex < cycleComplete
+      );
+      const waitEvents = [waitStart, shown, closed, parked].map((eventIndex) =>
+        objectOrEmpty(lifecycle[eventIndex]?.payload)
+      );
+      const sequence = positiveInteger(waitEvents[0]?.sequence);
+      expect(
+        sequence > previousSequence &&
+          waitEvents.every(
+            (payload) =>
+              payload.api === "persistentReuseThreeCycle" &&
+              payload.cycle === cycle &&
+              positiveInteger(payload.sequence) === sequence
+          ),
+        `${caseName}: persistent cycle ${cycle} binds one increasing persistent API sequence`,
+        failures
+      );
+      expect(
+        previousCycleIndex < waitStart &&
+          waitStart < shown &&
+          shown < closed &&
+          closed < parked &&
+          closed < cycleComplete &&
+          parked < cycleComplete,
+        `${caseName}: persistent cycle ${cycle} follows start, shown, closed, parked, and completion order`,
+        failures
+      );
+      expect(
+        cycleActiveIndexes.length === 1 &&
+          cycleInactiveIndexes.length === 1 &&
+          cycleActiveIndexes[0] < cycleInactiveIndexes[0],
+        `${caseName}: persistent cycle ${cycle} binds one ordered active and inactive callback pair`,
+        failures
+      );
+      previousCycleIndex = cycleComplete;
+      previousSequence = sequence;
+    }
+    expect(
+      previousCycleIndex < lifecycleCompleteIndex,
+      `${caseName}: persistent completion follows the third closed and parked cycle`,
+      failures
+    );
+  }
+  if (currentPersistentGate) {
+    const ownerHandoffTypes = new Set([
+      "overlay:presenter-foreground-handoff",
+      "overlay:presenter-foreground-handoff-rejected"
+    ]);
+    const resultOwnerHandoffEvents = events.filter((event) =>
+      ownerHandoffTypes.has(String(event?.type || ""))
+    );
+    const lifecycleOwnerHandoffEvents = lifecycle.filter((event) =>
+      [
+        "event:overlay:presenter-foreground-handoff",
+        "event:overlay:presenter-foreground-handoff-rejected"
+      ].includes(String(event?.type || ""))
+    );
+    expect(
+      resultOwnerHandoffEvents.length === 0 && lifecycleOwnerHandoffEvents.length === 0,
+      `${caseName}: current persistent reuse records no owner foreground handoff evidence`,
+      failures
+    );
+  }
+  verifyPersistentCloseProbe(
+    caseName,
+    closeProbeEvents,
+    currentPersistentGate,
+    manifestCase,
+    caseDir,
+    nativePresenter,
+    lifecycle,
+    failures
+  );
 
   return {
     required: true,
@@ -3248,8 +3713,22 @@ function verifyPersistentReuseProof(
   };
 }
 
-function verifyPersistentCloseProbe(caseName, events, failures) {
+function verifyPersistentCloseProbe(
+  caseName,
+  events,
+  currentPersistentGate,
+  manifestCase,
+  caseDir,
+  nativePresenter,
+  fullLifecycleEvents,
+  failures
+) {
+  const start = events.filter((event) => event && event.type === "probe:start");
+  const targets = events.filter((event) => event && event.type === "probe:web-close-click-target");
   const focus = events.filter((event) => event && event.type === "probe:native-presenter-focus");
+  const dispatchStarts = events.filter(
+    (event) => event && event.type === "probe:close-input-dispatch-start"
+  );
   const sent = events.filter((event) => event && event.type === "probe:sent");
   const complete = events.filter((event) => event && event.type === "probe:complete");
   const terminalFailures = events.filter(
@@ -3263,14 +3742,232 @@ function verifyPersistentCloseProbe(caseName, events, failures) {
   expect(sent.length === WINDOWS_PERSISTENT_REUSE_CYCLES, `${caseName}: persistent close probe sent three inputs`, failures);
   expect(complete.length === 1, `${caseName}: persistent close probe completed once`, failures);
   expect(terminalFailures.length === 0, `${caseName}: persistent close probe had no terminal failure`, failures);
+
+  if (currentPersistentGate) {
+    const startPayload = objectOrEmpty(start[0] && start[0].payload);
+    expect(start.length === 1, `${caseName}: current persistent close probe recorded one start`, failures);
+    expect(
+      startPayload.evidenceSchema === 3 &&
+        startPayload.foregroundHandoff === SAME_PROCESS_USER_GESTURE_HANDOFF &&
+        startPayload.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION &&
+        startPayload.externalForegroundTransitionEnabled === true &&
+        startPayload.userGestureGate === true,
+      `${caseName}: current persistent close probe records one schema-3 user-gesture gate`,
+      failures
+    );
+    expect(
+      startPayload.controlHandoffOnlyExpected === true &&
+        startPayload.expectedCloseCount === WINDOWS_PERSISTENT_REUSE_CYCLES,
+      `${caseName}: current persistent close probe keeps handoff-only control across three closes`,
+      failures
+    );
+    expect(
+      startPayload.persistentReuseGate === true &&
+        startPayload.persistentReuseGatePolicy === PERSISTENT_REUSE_GATE_POLICY &&
+        startPayload.persistentReuseEvidenceSchema === PERSISTENT_REUSE_EVIDENCE_SCHEMA &&
+        startPayload.initialUserGestureCycle === 1 &&
+        Array.isArray(startPayload.verifyOnlyCycles) &&
+        startPayload.verifyOnlyCycles.length === 2 &&
+        startPayload.verifyOnlyCycles[0] === 2 &&
+        startPayload.verifyOnlyCycles[1] === 3 &&
+        Array.isArray(startPayload.closeVerificationOrdinals) &&
+        startPayload.closeVerificationOrdinals.length === WINDOWS_PERSISTENT_REUSE_CYCLES &&
+        startPayload.closeVerificationOrdinals.every((ordinal, index) => ordinal === index + 1),
+      `${caseName}: current persistent close probe records its exact policy and cycle plan`,
+      failures
+    );
+    expect(
+      manifestCase?.persistentReuseGatePolicy === startPayload.persistentReuseGatePolicy &&
+        manifestCase?.persistentReuseEvidenceSchema === startPayload.persistentReuseEvidenceSchema,
+      `${caseName}: persistent manifest and close probe agree on policy and schema`,
+      failures
+    );
+    const dpiAwareness = String(startPayload.dpiAwareness || "");
+    expect(
+      /(?:^|;)process-per-monitor-v2(?:;|$)/.test(dpiAwareness) &&
+        /(?:^|;)thread-per-monitor-v2(?:;|$)/.test(dpiAwareness),
+      `${caseName}: current persistent close probe uses process and thread per-monitor-v2 awareness`,
+      failures
+    );
+    const resultNativeHostRect = findNativeHostRect(nativePresenter, fullLifecycleEvents);
+    const resultScaleGeometry = findPresenterScaleGeometry(
+      nativePresenter,
+      fullLifecycleEvents
+    );
+    expect(
+      Boolean(resultNativeHostRect) && resultScaleGeometry?.axesAgree === true,
+      `${caseName}: current persistent result and lifecycle expose coherent physical presenter geometry`,
+      failures
+    );
+    expect(
+      targets.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+      `${caseName}: current persistent close probe recorded three close targets`,
+      failures
+    );
+    expect(
+      dispatchStarts.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+      `${caseName}: current persistent close probe recorded three dispatch boundaries`,
+      failures
+    );
+    expect(
+      events.filter((event) => event?.type === "probe:user-gesture-gate-activation-sent").length === 1 &&
+        events.filter((event) => event?.type === "probe:user-gesture-gate-ready").length === 1 &&
+        events.filter((event) => event?.type === "probe:user-gesture-gate-consumed").length === 1,
+      `${caseName}: current persistent close probe consumed exactly one renderer gesture`,
+      failures
+    );
+    expect(
+      events.filter((event) => event?.type === "probe:user-gesture-app-focus-return").length === 1 &&
+        events.filter((event) => event?.type === "probe:foreground-clear").length === 0,
+      `${caseName}: current persistent close probe recorded one source focus return and no foreground clear`,
+      failures
+    );
+    expect(
+      events.every((event) => !containsRawNativeWindowHandle(objectOrEmpty(event?.payload))),
+      `${caseName}: current persistent close probe omits raw native HWND evidence`,
+      failures
+    );
+
+    const orderedCloseTypes = events
+      .filter((event) =>
+        [
+          "probe:web-close-click-target",
+          "probe:native-presenter-focus",
+          "probe:close-input-dispatch-start",
+          "probe:sent"
+        ].includes(String(event?.type || ""))
+      )
+      .map((event) => event.type);
+    const expectedCloseTypes = Array.from({ length: WINDOWS_PERSISTENT_REUSE_CYCLES }, () => [
+      "probe:web-close-click-target",
+      "probe:native-presenter-focus",
+      "probe:close-input-dispatch-start",
+      "probe:sent"
+    ]).flat();
+    expect(
+      JSON.stringify(orderedCloseTypes) === JSON.stringify(expectedCloseTypes),
+      `${caseName}: current persistent close probe records three exact target, confirmation, and send groups`,
+      failures
+    );
+    const finalSentIndex = events.indexOf(sent[WINDOWS_PERSISTENT_REUSE_CYCLES - 1]);
+    const focusReturnIndex = events.findIndex(
+      (event) => event?.type === "probe:user-gesture-app-focus-return"
+    );
+    const completeIndex = events.indexOf(complete[0]);
+    expect(
+      finalSentIndex >= 0 &&
+        focusReturnIndex > finalSentIndex &&
+        completeIndex > focusReturnIndex,
+      `${caseName}: current persistent close probe returns source focus after the final send and before completion`,
+      failures
+    );
+  } else {
+    expect(
+      start.every((event) =>
+        PERSISTENT_REUSE_CURRENT_ONLY_FIELDS.every(
+          (field) => !hasOwn(objectOrEmpty(event?.payload), field)
+        )
+      ),
+      `${caseName}: historical persistent close probe omits current-only persistent policy evidence`,
+      failures
+    );
+    expect(
+      events.every(
+        (event) =>
+          !containsPersistentReuseCurrentOnlyEvidence(objectOrEmpty(event?.payload))
+      ),
+      `${caseName}: historical persistent close probe omits current-only cycle confirmation evidence`,
+      failures
+    );
+  }
+
   focus.forEach((event, index) => {
     const payload = objectOrEmpty(event.payload);
     const ordinal = index + 1;
     expect(payload.cycle === ordinal, `${caseName}: persistent focus cycle ${ordinal} is ordered`, failures);
-    expect(payload.requestCount === 1, `${caseName}: persistent focus cycle ${ordinal} made one request`, failures);
-    expect(payload.requestOrdinal === ordinal, `${caseName}: persistent focus cycle ${ordinal} response matched its ordinal`, failures);
     expect(payload.focused === true, `${caseName}: persistent focus cycle ${ordinal} acquired exact-host foreground`, failures);
+    if (currentPersistentGate) {
+      const binding = objectOrEmpty(payload.binding);
+      const transport = objectOrEmpty(payload.transport);
+      const gate = objectOrEmpty(payload.userGestureGate);
+      const persistent = objectOrEmpty(payload.persistentReuse);
+      const messageDelta = objectOrEmpty(payload.messageDelta);
+      const expectedMode = ordinal === 1 ? "initial-user-gesture" : "verify-only";
+      expect(
+        payload.schema === 2 &&
+          payload.source === "lifecycle-native-host" &&
+          payload.mechanism === "same-process-user-gesture" &&
+          payload.attempted === true &&
+          payload.handlePresent === true &&
+          payload.handleFormatValid === true &&
+          payload.windowValid === true &&
+          payload.wasForeground === true &&
+          payload.setForegroundResult === false,
+        `${caseName}: persistent focus cycle ${ordinal} validates an already-foreground exact native host`,
+        failures
+      );
+      expect(
+        binding.ownerThreadPresent === true &&
+          binding.lifecycleProcessPresent === true &&
+          binding.ownerMatchesLifecycleProcess === true &&
+          binding.ownerMatchesControlProcess === true &&
+          binding.sameInteractiveSession === true,
+        `${caseName}: persistent focus cycle ${ordinal} keeps exact owner, control process, and session binding`,
+        failures
+      );
+      expect(
+        transport.ready === true &&
+          transport.handoffOnly === true &&
+          transport.authenticated === false &&
+          transport.responseReceived === false &&
+          transport.responseSchemaValid === false &&
+          payload.requestCount === 0 &&
+          payload.requestOrdinal === 0 &&
+          payload.nativeShowCallCount === 0 &&
+          payload.nativeShowCompleted === false &&
+          payload.requestedWindowMatches === false,
+        `${caseName}: persistent focus cycle ${ordinal} makes no handoff or native-show request`,
+        failures
+      );
+      expect(
+        payload.sameWindowBeforeAfter === true &&
+          payload.ownerReportsForeground === true &&
+          messageDelta.setFocus === 0 &&
+          messageDelta.activate === 0 &&
+          messageDelta.activateApp === 0 &&
+          payload.appReason === "foreground-confirmed-from-user-gesture" &&
+          payload.reason === "foreground-confirmed" &&
+          gate.required === true &&
+          gate.readyEventCount === 1 &&
+          gate.consumedEventCount === 1 &&
+          gate.rejectedEventCount === 0 &&
+          gate.activationInputCount === 1 &&
+          gate.sourceWindowBound === true,
+        `${caseName}: persistent focus cycle ${ordinal} retains the one trusted source binding`,
+        failures
+      );
+      expect(
+        persistent.required === true &&
+          persistent.policy === PERSISTENT_REUSE_GATE_POLICY &&
+          persistent.evidenceSchema === PERSISTENT_REUSE_EVIDENCE_SCHEMA &&
+          persistent.cycle === ordinal &&
+          persistent.confirmationMode === expectedMode &&
+          persistent.baselineHostBound === true &&
+          persistent.sameHostAsCycleOne === true,
+        `${caseName}: persistent focus cycle ${ordinal} records ${expectedMode} confirmation of the cycle-one host`,
+        failures
+      );
+      expect(
+        !containsRawNativeWindowHandle(payload),
+        `${caseName}: persistent focus cycle ${ordinal} omits raw native HWND evidence`,
+        failures
+      );
+    } else {
+      expect(payload.requestCount === 1, `${caseName}: persistent focus cycle ${ordinal} made one request`, failures);
+      expect(payload.requestOrdinal === ordinal, `${caseName}: persistent focus cycle ${ordinal} response matched its ordinal`, failures);
+    }
   });
+  const persistentScreenshotPathSets = [];
   sent.forEach((event, index) => {
     const payload = objectOrEmpty(event.payload);
     const ordinal = index + 1;
@@ -3278,7 +3975,321 @@ function verifyPersistentCloseProbe(caseName, events, failures) {
     expect(payload.cycle === ordinal, `${caseName}: persistent input cycle ${ordinal} is ordered`, failures);
     expect(preDispatch.cycle === ordinal, `${caseName}: persistent input cycle ${ordinal} rechecked the same ordinal`, failures);
     expect(preDispatch.focused === true, `${caseName}: persistent input cycle ${ordinal} passed pre-dispatch focus`, failures);
+    if (currentPersistentGate) {
+      const targetPayload = objectOrEmpty(targets[index] && targets[index].payload);
+      const target = objectOrEmpty(targetPayload.target);
+      const dispatchStart = dispatchStarts[index];
+      const dispatchPayload = objectOrEmpty(dispatchStart?.payload);
+      const dispatchPreDispatch = objectOrEmpty(
+        dispatchPayload.nativePresenterPreDispatch
+      );
+      const targetForeground = objectOrEmpty(targetPayload.foreground);
+      const targetForegroundRect = normalizeRect(targetForeground.rect);
+      const panel = normalizeRect(target.panel);
+      const targetScale = objectOrEmpty(target.scale);
+      const targetInsets = objectOrEmpty(target.insets);
+      const scale = Number(targetScale.value);
+      const expectedTarget = expectedWebCloseTarget(panel, objectOrEmpty(target.panel), scale);
+      const pointer = objectOrEmpty(payload.nativePointerSent);
+      const expectedMode = ordinal === 1 ? "initial-user-gesture" : "verify-only";
+      const waitStartIndex = fullLifecycleEvents.findIndex(
+        (lifecycleEvent) =>
+          lifecycleEvent?.type === "event:overlay:presenter-wait-start" &&
+          Number(objectOrEmpty(lifecycleEvent.payload).cycle) === ordinal
+      );
+      const cycleCompleteIndex = fullLifecycleEvents.findIndex(
+        (lifecycleEvent) =>
+          lifecycleEvent?.type === "event:overlay:presenter-persistent-reuse-cycle" &&
+          Number(objectOrEmpty(lifecycleEvent.payload).cycle) === ordinal
+      );
+      const cycleLifecycle =
+        waitStartIndex >= 0 && cycleCompleteIndex > waitStartIndex
+          ? fullLifecycleEvents.slice(waitStartIndex, cycleCompleteIndex + 1)
+          : [];
+      const lifecycleShown = cycleLifecycle.find(
+        (lifecycleEvent) => lifecycleEvent?.type === "event:overlay:presenter-wait-shown"
+      );
+      const lifecycleClosed = cycleLifecycle.find(
+        (lifecycleEvent) => lifecycleEvent?.type === "event:overlay:presenter-wait-closed"
+      );
+      const lifecycleParked = cycleLifecycle.find(
+        (lifecycleEvent) => lifecycleEvent?.type === "event:overlay:presenter-parked"
+      );
+      const lifecycleActive = cycleLifecycle.find(
+        (lifecycleEvent) =>
+          lifecycleEvent?.type === "event:callback:overlay-activated" &&
+          objectOrEmpty(lifecycleEvent.payload).active === true
+      );
+      const lifecycleInactive = cycleLifecycle.find(
+        (lifecycleEvent) =>
+          lifecycleEvent?.type === "event:callback:overlay-activated" &&
+          objectOrEmpty(lifecycleEvent.payload).active === false
+      );
+      const lifecycleComplete = fullLifecycleEvents[cycleCompleteIndex];
+      const cyclePresenter = objectOrEmpty(objectOrEmpty(lifecycleShown?.payload).presenter);
+      const cycleNativeHostRect = findNativeHostRect(cyclePresenter, []);
+      const cycleScaleGeometry = findPresenterScaleGeometry(cyclePresenter, []);
+      const cycleLogicalBounds = normalizeRect(cyclePresenter.bounds);
+      const loggedPhysicalRect = normalizeRect(targetScale.physicalRect);
+      const loggedLogicalBounds = normalizeRect(targetScale.logicalBounds);
+      const sameRect = (left, right) =>
+        Boolean(
+          left &&
+            right &&
+            left.left === right.left &&
+            left.top === right.top &&
+            left.right === right.right &&
+            left.bottom === right.bottom
+        );
+      const loggedRatioX = Number(targetScale.ratioX);
+      const loggedRatioY = Number(targetScale.ratioY);
+      const loggedDpi = Number(targetScale.dpi);
+      const independentScaleValid = Boolean(
+        cycleNativeHostRect &&
+          cycleLogicalBounds &&
+          cycleScaleGeometry?.axesAgree === true &&
+          sameRect(loggedPhysicalRect, cycleNativeHostRect) &&
+          sameRect(loggedLogicalBounds, cycleLogicalBounds) &&
+          Number.isFinite(scale) &&
+          Math.abs(scale - cycleScaleGeometry.scale) <= WINDOWS_CLOSE_SCALE_TOLERANCE &&
+          Number.isFinite(loggedRatioX) &&
+          Math.abs(loggedRatioX - cycleScaleGeometry.scaleX) <= WINDOWS_CLOSE_SCALE_TOLERANCE &&
+          Number.isFinite(loggedRatioY) &&
+          Math.abs(loggedRatioY - cycleScaleGeometry.scaleY) <= WINDOWS_CLOSE_SCALE_TOLERANCE &&
+          (targetScale.source !== "native-host-window-dpi" ||
+            (Number.isFinite(loggedDpi) &&
+              loggedDpi >= 48 &&
+              loggedDpi <= 768 &&
+              Math.abs(loggedDpi / 96 - scale) <= WINDOWS_CLOSE_SCALE_TOLERANCE))
+      );
+      const exactHostTargetValid = Boolean(
+        cycleNativeHostRect &&
+          panel &&
+          targetForeground.handlePresent === true &&
+          targetForeground.processName === "SteamBridgeSmoke" &&
+          targetForeground.title === "Steam Bridge Native Overlay Host" &&
+          sameRect(targetForegroundRect, cycleNativeHostRect) &&
+          rectContainsRect(cycleNativeHostRect, panel) &&
+          Number(target.x) >= cycleNativeHostRect.left &&
+          Number(target.x) <= cycleNativeHostRect.right &&
+          Number(target.y) >= cycleNativeHostRect.top &&
+          Number(target.y) <= cycleNativeHostRect.bottom
+      );
+      const cycleScreenshotEvents = events.filter((probeEvent) => {
+        const probePayload = objectOrEmpty(probeEvent?.payload);
+        const screenshot = objectOrEmpty(probePayload.screenshot);
+        return (
+          Number(probePayload.cycle) === ordinal &&
+          events.indexOf(probeEvent) < events.indexOf(targets[index]) &&
+          (screenshot.ok === true || typeof screenshot.path === "string")
+        );
+      });
+      persistentScreenshotPathSets[index] = new Set(
+        cycleScreenshotEvents
+          .map((probeEvent) =>
+            resolveCloseProbeScreenshotPath(
+              String(objectOrEmpty(objectOrEmpty(probeEvent.payload).screenshot).path || ""),
+              caseDir
+            )
+          )
+          .filter(Boolean)
+          .map((screenshotPath) => {
+            try {
+              return fs.realpathSync(screenshotPath);
+            } catch {
+              return "";
+            }
+          })
+          .filter(Boolean)
+      );
+      const cycleScreenshots = summarizePhysicalScreenshotEvidence(
+        cycleScreenshotEvents,
+        caseDir,
+        cycleNativeHostRect
+      );
+      expect(
+        targetPayload.cycle === ordinal &&
+          events.indexOf(targets[index]) < events.indexOf(focus[index]) &&
+          events.indexOf(focus[index]) < events.indexOf(dispatchStart) &&
+          events.indexOf(dispatchStart) < events.indexOf(event),
+        `${caseName}: persistent cycle ${ordinal} orders target, confirmation, dispatch, and close result`,
+        failures
+      );
+      expect(
+        dispatchPayload.cycle === ordinal &&
+          dispatchPayload.input === "web-close-click-sendinput" &&
+          dispatchPreDispatch.cycle === ordinal &&
+          dispatchPreDispatch.focused === true &&
+          dispatchPreDispatch.persistentReuseGate === true &&
+          dispatchPreDispatch.persistentReuseGatePolicy ===
+            PERSISTENT_REUSE_GATE_POLICY &&
+          dispatchPreDispatch.persistentReuseEvidenceSchema ===
+            PERSISTENT_REUSE_EVIDENCE_SCHEMA &&
+          dispatchPreDispatch.confirmationMode === expectedMode &&
+          dispatchPreDispatch.baselineHostBound === true &&
+          dispatchPreDispatch.sameHostAsCycleOne === true,
+        `${caseName}: persistent cycle ${ordinal} records its confirmed pre-input dispatch boundary`,
+        failures
+      );
+      expect(
+        isDeepStrictEqual(dispatchPreDispatch, preDispatch),
+        `${caseName}: persistent cycle ${ordinal} dispatch confirmation matches the post-dispatch success record exactly`,
+        failures
+      );
+      expect(
+        preDispatch.persistentReuseGate === true &&
+          preDispatch.persistentReuseGatePolicy === PERSISTENT_REUSE_GATE_POLICY &&
+          preDispatch.persistentReuseEvidenceSchema === PERSISTENT_REUSE_EVIDENCE_SCHEMA &&
+          preDispatch.confirmationMode === expectedMode &&
+          preDispatch.baselineHostBound === true &&
+          preDispatch.sameHostAsCycleOne === true &&
+          preDispatch.source === "lifecycle-native-host" &&
+          preDispatch.handlePresent === true &&
+          preDispatch.windowValid === true &&
+          preDispatch.ownerMatches === true &&
+          preDispatch.enabled === true &&
+          preDispatch.notIconic === true,
+        `${caseName}: persistent input cycle ${ordinal} immediately reconfirms the cycle-one host`,
+        failures
+      );
+      expect(
+        payload.input === "web-close-click-sendinput" &&
+          pointer.sent === 3 &&
+          pointer.expected === 3 &&
+          pointer.lastError === 0 &&
+          pointer.method === "sendinput" &&
+          Number.isInteger(pointer.x) &&
+          Number.isInteger(pointer.y) &&
+          pointer.x === Number(target.x) &&
+          pointer.y === Number(target.y) &&
+          pointer.coordinateSource === target.source,
+        `${caseName}: persistent input cycle ${ordinal} sends one exact audited close click`,
+        failures
+      );
+      expect(
+        panel &&
+          Number.isFinite(scale) &&
+          scale >= 0.5 &&
+          scale <= 8 &&
+          expectedTarget &&
+          target.source === "screenshot-steam-web-panel" &&
+          Number(target.x) === expectedTarget.x &&
+          Number(target.y) === expectedTarget.y &&
+          Number(target.x) >= panel.left &&
+          Number(target.x) <= panel.right &&
+          Number(target.y) >= panel.top &&
+          Number(target.y) <= panel.bottom,
+        `${caseName}: persistent input cycle ${ordinal} uses one scale-aware target inside the detected panel`,
+        failures
+      );
+      expect(
+        exactHostTargetValid,
+        `${caseName}: persistent input cycle ${ordinal} binds its detected panel and click to the exact lifecycle native host`,
+        failures
+      );
+      expect(
+        expectedTarget &&
+          ["native-host-window-dpi", "presenter-geometry-ratio"].includes(
+            String(targetScale.source || "")
+          ) &&
+          Number(targetInsets.right) === expectedTarget.rightInset &&
+          Number(targetInsets.top) === expectedTarget.topInset &&
+          Number(targetInsets.logicalRight) === 16 &&
+          Number(targetInsets.logicalTop) === 18,
+        `${caseName}: persistent input cycle ${ordinal} records a supported scale source and exact scale-aware insets`,
+        failures
+      );
+      expect(
+        independentScaleValid,
+        `${caseName}: persistent input cycle ${ordinal} scale agrees with independent presenter geometry`,
+        failures
+      );
+      expect(
+        cycleScreenshots.declaredBoundsCount > 0 &&
+          cycleScreenshots.readableCount > 0 &&
+          cycleScreenshots.dimensionsMatchCount > 0 &&
+          cycleScreenshots.containsNativeHostRect === true &&
+          cycleScreenshots.proofCount > 0,
+        `${caseName}: persistent input cycle ${ordinal} has one readable physical screenshot containing its native host`,
+        failures
+      );
+      const eventTime = (timedEvent) => Date.parse(String(timedEvent?.at || ""));
+      const activeAt = eventTime(lifecycleActive);
+      const shownAt = eventTime(lifecycleShown);
+      const targetAt = eventTime(targets[index]);
+      const focusAt = eventTime(focus[index]);
+      const dispatchAt = eventTime(dispatchStart);
+      const sentAt = eventTime(event);
+      const inactiveAt = eventTime(lifecycleInactive);
+      const closedAt = eventTime(lifecycleClosed);
+      const parkedAt = eventTime(lifecycleParked);
+      const cycleCompleteAt = eventTime(lifecycleComplete);
+      expect(
+        [
+          activeAt,
+          shownAt,
+          targetAt,
+          focusAt,
+          dispatchAt,
+          sentAt,
+          inactiveAt,
+          closedAt,
+          parkedAt,
+          cycleCompleteAt
+        ].every(Number.isFinite) &&
+          Math.max(activeAt, shownAt) <= targetAt &&
+          targetAt < focusAt &&
+          focusAt <= dispatchAt &&
+          dispatchAt <= sentAt &&
+          dispatchAt <= Math.min(inactiveAt, closedAt, parkedAt) &&
+          Math.max(inactiveAt, closedAt, parkedAt) <= cycleCompleteAt,
+        `${caseName}: persistent input cycle ${ordinal} causally bridges shown and active to close and inactive`,
+        failures
+      );
+      if (ordinal < WINDOWS_PERSISTENT_REUSE_CYCLES) {
+        const nextShown = fullLifecycleEvents.find(
+          (lifecycleEvent) =>
+            lifecycleEvent?.type === "event:overlay:presenter-wait-shown" &&
+            Number(objectOrEmpty(lifecycleEvent.payload).cycle) === ordinal + 1
+        );
+        expect(
+          Number.isFinite(cycleCompleteAt) &&
+            Number.isFinite(eventTime(nextShown)) &&
+            cycleCompleteAt < eventTime(nextShown),
+          `${caseName}: persistent cycle ${ordinal} completes before cycle ${ordinal + 1} is shown`,
+          failures
+        );
+      }
+      expect(
+        !containsRawNativeWindowHandle(preDispatch) &&
+          !containsRawNativeWindowHandle(dispatchPreDispatch),
+        `${caseName}: persistent pre-dispatch cycle ${ordinal} omits raw native HWND evidence at confirmation and dispatch`,
+        failures
+      );
+    }
   });
+  if (currentPersistentGate) {
+    const seenScreenshotPaths = new Set();
+    let screenshotsDisjoint =
+      persistentScreenshotPathSets.length === WINDOWS_PERSISTENT_REUSE_CYCLES;
+    for (const paths of persistentScreenshotPathSets) {
+      if (!(paths instanceof Set) || paths.size === 0) {
+        screenshotsDisjoint = false;
+        continue;
+      }
+      for (const screenshotPath of paths) {
+        if (seenScreenshotPaths.has(screenshotPath)) {
+          screenshotsDisjoint = false;
+        }
+        seenScreenshotPaths.add(screenshotPath);
+      }
+    }
+    expect(
+      screenshotsDisjoint,
+      `${caseName}: persistent reuse uses distinct pre-send physical screenshot artifacts`,
+      failures
+    );
+  }
   if (complete.length === 1) {
     const payload = objectOrEmpty(complete[0].payload);
     expect(
@@ -3464,7 +4475,16 @@ function summarizePresenterBackendSnapshot(value, source) {
   };
 }
 
-function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null, closeProbeEvents = [], caseDir = "") {
+function summarizeCaseResult(
+  caseName,
+  result,
+  resultLog,
+  renderingHealth = null,
+  closeProbeEvents = [],
+  caseDir = "",
+  manifest = null,
+  manifestCase = null
+) {
   const failures = [];
   const snapshot = objectOrEmpty(result.snapshot);
   const app = objectOrEmpty(snapshot.app);
@@ -3514,7 +4534,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     path.join(caseDir || path.dirname(resultLog), "diagnostics", "lifecycle.jsonl"),
     failures
   );
-  const userGestureExpectation = getUserGestureGateExpectation(caseName);
+  const userGestureExpectation =
+    getUserGestureGateExpectation(caseName) ||
+    getPersistentReuseGateExpectation(manifest, manifestCase);
   const closeProbe = summarizeCloseProbe(
     closeProbeEvents,
     caseDir || path.dirname(resultLog),
@@ -3549,8 +4571,22 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     events,
     caseDir || path.dirname(resultLog),
     closeProbeEvents,
+    fullLifecycleEvents,
+    manifest,
+    manifestCase,
+    nativePresenter,
     failures
   );
+  if (userGestureExpectation?.persistentReuse === true) {
+    expect(
+      closeProbe.sameProcessUserGestureEvidenceValid === true &&
+        closeProbe.userGestureCompletionHandshakeValid === true &&
+        closeProbe.userGestureGracefulShutdownValid === true &&
+        closeProbe.userGestureCompletionOrderValid === true,
+      `${caseName}: current persistent reuse proves one complete same-process user-gesture gate and shutdown handshake`,
+      failures
+    );
+  }
 
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
@@ -3970,6 +5006,7 @@ function summarizeManifest(manifest) {
     expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
     autorunUserGestureGatePolicy: String(manifest.autorunUserGestureGatePolicy || ""),
+    persistentReuseGatePolicy: String(manifest.persistentReuseGatePolicy || ""),
     closeProbeEvidenceSchema: Number(manifest.closeProbeEvidenceSchema || 0),
     closeProbeForegroundHandoff: String(manifest.closeProbeForegroundHandoff || ""),
     requireMicroTxnCallback: manifest.requireMicroTxnCallback === true,
@@ -4406,6 +5443,7 @@ function summarizeSameProcessUserGestureHandoff({
   const expectedEvidenceSchemas = Array.isArray(userGestureExpectation?.evidenceSchemas)
     ? userGestureExpectation.evidenceSchemas
     : [];
+  const persistentReuseUserGesture = userGestureExpectation?.persistentReuse === true;
   const lifecycle = Array.isArray(lifecycleEvents) ? lifecycleEvents.filter(Boolean) : [];
   const startPayload = objectOrEmpty(
     objectOrEmpty(normalizedEvents.find((event) => event.type === "probe:start")).payload
@@ -4540,6 +5578,12 @@ function summarizeSameProcessUserGestureHandoff({
     ["overlay:presenter-after-close-stable", "event:overlay:presenter-after-close-stable"].includes(
       String(event.type || "")
     )
+  );
+  const persistentReuseCompleteEvents = completeLifecycle.filter((event) =>
+    [
+      "overlay:presenter-persistent-reuse-complete",
+      "event:overlay:presenter-persistent-reuse-complete"
+    ].includes(String(event.type || ""))
   );
   const completionQuitEvents = completeLifecycle.filter((event) =>
     ["control:user-gesture-completion-quit", "event:control:user-gesture-completion-quit"].includes(
@@ -5242,7 +6286,9 @@ function summarizeSameProcessUserGestureHandoff({
       keepOpenEvents.length === 1 &&
       keepOpenPayload.action === expectedAction &&
       keepOpenPayload.resultFileWritten === true &&
-      afterCloseStableEvents.length === 1 &&
+      afterCloseStableEvents.length ===
+        (persistentReuseUserGesture ? WINDOWS_PERSISTENT_REUSE_CYCLES : 1) &&
+      persistentReuseCompleteEvents.length === (persistentReuseUserGesture ? 1 : 0) &&
       completionQuitEvents.length === 1 &&
       completionQuitPayload.action === expectedAction &&
       completionQuitPayload.resultFileWritten === true &&
@@ -5286,8 +6332,12 @@ function summarizeSameProcessUserGestureHandoff({
   const focusReturnAt = Date.parse((focusReturnEvent && focusReturnEvent.at) || "");
   const resultWrittenAt = Date.parse((resultWrittenEvents[0] && resultWrittenEvents[0].at) || "");
   const keepOpenAt = Date.parse((keepOpenEvents[0] && keepOpenEvents[0].at) || "");
-  const afterCloseStableAt = Date.parse(
-    (afterCloseStableEvents[0] && afterCloseStableEvents[0].at) || ""
+  const afterCloseStableEvent = persistentReuseUserGesture
+    ? afterCloseStableEvents[afterCloseStableEvents.length - 1]
+    : afterCloseStableEvents[0];
+  const afterCloseStableAt = Date.parse((afterCloseStableEvent && afterCloseStableEvent.at) || "");
+  const persistentReuseCompleteAt = Date.parse(
+    (persistentReuseCompleteEvents[0] && persistentReuseCompleteEvents[0].at) || ""
   );
   const completionQuitAt = Date.parse(
     (completionQuitEvents[0] && completionQuitEvents[0].at) || ""
@@ -5296,49 +6346,110 @@ function summarizeSameProcessUserGestureHandoff({
   const willQuitAt = Date.parse((willQuitEvents[0] && willQuitEvents[0].at) || "");
   const processExitAt = Date.parse((processExitEvents[0] && processExitEvents[0].at) || "");
   const appQuitAt = Date.parse((appQuitEvents[0] && appQuitEvents[0].at) || "");
-  const lifecycleOrderValid = Boolean(
-    [
-      resultWrittenEvents[0],
-      keepOpenEvents[0],
-      afterCloseStableEvents[0],
-      completionQuitEvents[0],
-      beforeQuitEvents[0],
-      willQuitEvents[0],
-      processExitEvents[0],
-      appQuitEvents[0]
-    ].every((event) => completeLifecycle.indexOf(event) >= 0) &&
-      completeLifecycle.indexOf(resultWrittenEvents[0]) < completeLifecycle.indexOf(keepOpenEvents[0]) &&
-      completeLifecycle.indexOf(keepOpenEvents[0]) < completeLifecycle.indexOf(afterCloseStableEvents[0]) &&
-      completeLifecycle.indexOf(afterCloseStableEvents[0]) <
-        completeLifecycle.indexOf(completionQuitEvents[0]) &&
-      completeLifecycle.indexOf(completionQuitEvents[0]) <
-        completeLifecycle.indexOf(beforeQuitEvents[0]) &&
-      completeLifecycle.indexOf(beforeQuitEvents[0]) < completeLifecycle.indexOf(willQuitEvents[0]) &&
-      completeLifecycle.indexOf(willQuitEvents[0]) < completeLifecycle.indexOf(processExitEvents[0]) &&
-      completeLifecycle.indexOf(willQuitEvents[0]) < completeLifecycle.indexOf(appQuitEvents[0])
-  );
-  const completionOrderValid = Boolean(
-    [
-      resultWrittenAt,
-      keepOpenAt,
-      afterCloseStableAt,
-      focusReturnAt,
-      completionQuitAt,
-      beforeQuitAt,
-      willQuitAt,
-      processExitAt,
-      appQuitAt
-    ].every(Number.isFinite) &&
-      lifecycleOrderValid &&
-      resultWrittenAt <= keepOpenAt &&
-      keepOpenAt <= focusReturnAt &&
-      afterCloseStableAt <= focusReturnAt &&
-      focusReturnAt <= completionQuitAt &&
-      completionQuitAt <= beforeQuitAt &&
-      beforeQuitAt <= willQuitAt &&
-      willQuitAt <= processExitAt &&
-      willQuitAt <= appQuitAt
-  );
+  const lifecycleOrderValid = persistentReuseUserGesture
+    ? Boolean(
+        [
+          persistentReuseCompleteEvents[0],
+          resultWrittenEvents[0],
+          keepOpenEvents[0],
+          afterCloseStableEvent,
+          completionQuitEvents[0],
+          beforeQuitEvents[0],
+          willQuitEvents[0],
+          processExitEvents[0],
+          appQuitEvents[0]
+        ].every((event) => completeLifecycle.indexOf(event) >= 0) &&
+          completeLifecycle.indexOf(persistentReuseCompleteEvents[0]) <
+            completeLifecycle.indexOf(resultWrittenEvents[0]) &&
+          completeLifecycle.indexOf(resultWrittenEvents[0]) <
+            completeLifecycle.indexOf(keepOpenEvents[0]) &&
+          completeLifecycle.indexOf(keepOpenEvents[0]) <
+            completeLifecycle.indexOf(completionQuitEvents[0]) &&
+          completeLifecycle.indexOf(afterCloseStableEvent) <
+            completeLifecycle.indexOf(completionQuitEvents[0]) &&
+          completeLifecycle.indexOf(completionQuitEvents[0]) <
+            completeLifecycle.indexOf(beforeQuitEvents[0]) &&
+          completeLifecycle.indexOf(beforeQuitEvents[0]) <
+            completeLifecycle.indexOf(willQuitEvents[0]) &&
+          completeLifecycle.indexOf(willQuitEvents[0]) <
+            completeLifecycle.indexOf(processExitEvents[0]) &&
+          completeLifecycle.indexOf(willQuitEvents[0]) <
+            completeLifecycle.indexOf(appQuitEvents[0])
+      )
+    : Boolean(
+        [
+          resultWrittenEvents[0],
+          keepOpenEvents[0],
+          afterCloseStableEvent,
+          completionQuitEvents[0],
+          beforeQuitEvents[0],
+          willQuitEvents[0],
+          processExitEvents[0],
+          appQuitEvents[0]
+        ].every((event) => completeLifecycle.indexOf(event) >= 0) &&
+          completeLifecycle.indexOf(resultWrittenEvents[0]) <
+            completeLifecycle.indexOf(keepOpenEvents[0]) &&
+          completeLifecycle.indexOf(keepOpenEvents[0]) <
+            completeLifecycle.indexOf(afterCloseStableEvent) &&
+          completeLifecycle.indexOf(afterCloseStableEvent) <
+            completeLifecycle.indexOf(completionQuitEvents[0]) &&
+          completeLifecycle.indexOf(completionQuitEvents[0]) <
+            completeLifecycle.indexOf(beforeQuitEvents[0]) &&
+          completeLifecycle.indexOf(beforeQuitEvents[0]) <
+            completeLifecycle.indexOf(willQuitEvents[0]) &&
+          completeLifecycle.indexOf(willQuitEvents[0]) <
+            completeLifecycle.indexOf(processExitEvents[0]) &&
+          completeLifecycle.indexOf(willQuitEvents[0]) <
+            completeLifecycle.indexOf(appQuitEvents[0])
+      );
+  const completionOrderValid = persistentReuseUserGesture
+    ? Boolean(
+        [
+          persistentReuseCompleteAt,
+          resultWrittenAt,
+          keepOpenAt,
+          afterCloseStableAt,
+          focusReturnAt,
+          completionQuitAt,
+          beforeQuitAt,
+          willQuitAt,
+          processExitAt,
+          appQuitAt
+        ].every(Number.isFinite) &&
+          lifecycleOrderValid &&
+          persistentReuseCompleteAt <= resultWrittenAt &&
+          persistentReuseCompleteAt <= focusReturnAt &&
+          afterCloseStableAt <= focusReturnAt &&
+          resultWrittenAt <= keepOpenAt &&
+          keepOpenAt <= completionQuitAt &&
+          focusReturnAt <= completionQuitAt &&
+          completionQuitAt <= beforeQuitAt &&
+          beforeQuitAt <= willQuitAt &&
+          willQuitAt <= processExitAt &&
+          willQuitAt <= appQuitAt
+      )
+    : Boolean(
+        [
+          resultWrittenAt,
+          keepOpenAt,
+          afterCloseStableAt,
+          focusReturnAt,
+          completionQuitAt,
+          beforeQuitAt,
+          willQuitAt,
+          processExitAt,
+          appQuitAt
+        ].every(Number.isFinite) &&
+          lifecycleOrderValid &&
+          resultWrittenAt <= keepOpenAt &&
+          keepOpenAt <= focusReturnAt &&
+          afterCloseStableAt <= focusReturnAt &&
+          focusReturnAt <= completionQuitAt &&
+          completionQuitAt <= beforeQuitAt &&
+          beforeQuitAt <= willQuitAt &&
+          willQuitAt <= processExitAt &&
+          willQuitAt <= appQuitAt
+      );
   const externalTransitionOrderValid = evidenceSchema === 2
     ? legacyExternalTransitionAbsent
     : requestedExternalTransitionBranchValid
@@ -5612,12 +6723,28 @@ function containsRawNativeWindowHandle(value) {
   return Object.entries(value).some(([key, entry]) => {
     if (
       /(?:hwnd|windowhandle|nativehandle|^handle$)/i.test(key) &&
-      (typeof entry === "string" || typeof entry === "number")
+      entry !== undefined &&
+      entry !== null &&
+      typeof entry !== "boolean"
     ) {
       return true;
     }
     return containsRawNativeWindowHandle(entry);
   });
+}
+
+function containsPersistentReuseCurrentOnlyEvidence(value) {
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsPersistentReuseCurrentOnlyEvidence(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  return Object.entries(value).some(
+    ([key, entry]) =>
+      PERSISTENT_REUSE_CLOSE_PROBE_CURRENT_ONLY_KEYS.has(key) ||
+      containsPersistentReuseCurrentOnlyEvidence(entry)
+  );
 }
 
 function containsRawForegroundHandoffIdentifier(value) {
@@ -6420,7 +7547,7 @@ function runSelfTest() {
     );
 
     const persistentReuseRoot = path.join(tempRoot, "persistent-reuse");
-    writePersistentReuseFixture(persistentReuseRoot);
+    writeCurrentPersistentReuseFixture(persistentReuseRoot);
     const persistentReuseSummary = summarizeWindowsOverlayMatrixArtifacts(persistentReuseRoot);
     assert.deepEqual(persistentReuseSummary.failures, []);
     assert.equal(persistentReuseSummary.caseSummaries[0].persistentReuseProof, true);
@@ -6434,11 +7561,129 @@ function runSelfTest() {
     assert.equal(persistentReuseSummary.cleanup.taskFileGuardOk, true);
     assert.equal(persistentReuseSummary.cleanup.taskFailureStage, "success");
     assert.equal(persistentReuseSummary.cleanup.taskRunnerTerminatedWithoutDone, false);
+    const persistentAlternateCallbackRoot = path.join(
+      tempRoot,
+      "persistent-reuse-alternate-callback-order"
+    );
+    writeCurrentPersistentReuseFixture(persistentAlternateCallbackRoot, {
+      alternateCallbackOrder: true
+    });
+    assert.deepEqual(
+      summarizeWindowsOverlayMatrixArtifacts(persistentAlternateCallbackRoot).failures,
+      []
+    );
+    const persistentFastCloseRoot = path.join(
+      tempRoot,
+      "persistent-reuse-fast-close-before-sent-record"
+    );
+    writeCurrentPersistentReuseFixture(persistentFastCloseRoot, {
+      fastCloseBeforeSentRecordCycle: 2
+    });
+    assert.deepEqual(
+      summarizeWindowsOverlayMatrixArtifacts(persistentFastCloseRoot).failures,
+      []
+    );
+    const legacyPersistentReuseRoot = path.join(tempRoot, "persistent-reuse-legacy-schema-2");
+    writePersistentReuseFixture(legacyPersistentReuseRoot);
+    const legacyPersistentReuseSummary = summarizeWindowsOverlayMatrixArtifacts(
+      legacyPersistentReuseRoot
+    );
+    assert.deepEqual(legacyPersistentReuseSummary.failures, []);
+    assert.equal(legacyPersistentReuseSummary.caseSummaries[0].persistentReuseProof, true);
+    for (const [name, options, failure] of [
+      [
+        "legacy-current-start-marker",
+        { legacyCurrentStartMarker: true },
+        "historical persistent start omits current-only persistent policy evidence"
+      ],
+      [
+        "legacy-current-probe-marker",
+        { legacyCurrentProbeMarker: true },
+        "historical persistent close probe omits current-only persistent policy evidence"
+      ],
+      [
+        "legacy-current-focus-marker",
+        { legacyCurrentFocusMarker: true },
+        "historical persistent close probe omits current-only cycle confirmation evidence"
+      ],
+      [
+        "legacy-current-predispatch-marker",
+        { legacyCurrentPreDispatchMarker: true },
+        "historical persistent close probe omits current-only cycle confirmation evidence"
+      ]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `persistent-reuse-${name}`,
+        writePersistentReuseFixture,
+        options,
+        failure
+      );
+    }
     for (const [name, options, failure] of [
       ["changed-hwnd", { changedHostToken: true }, "reuses one native HWND"],
       ["second-attach", { secondAttach: true }, "has exactly one controller attach"],
       ["out-of-order-cycle", { outOfOrderCycle: true }, "persistent cycle 1 is ordered"],
-      ["wrong-close-ordinal", { wrongCloseOrdinal: true }, "response matched its ordinal"],
+      ["wrong-exact-case", { wrongPersistentCase: true }, "binds exact case, action, and 3 cycles"],
+      ["wrong-exact-action", { wrongPersistentAction: true }, "binds exact case, action, and 3 cycles"],
+      ["missing-policy-marker", { omitPersistentPolicyMarker: true }, "current persistent policy records its exact supported policy"],
+      ["markerless-schema-3", { stripPersistentContractFields: true }, "current persistent policy records its exact supported policy"],
+      ["falsy-current-fields", { falsyPersistentContractFields: true }, "current persistent policy records its exact supported policy"],
+      ["wrong-policy", { wrongPersistentPolicy: true }, "persistentReuseGatePolicy is"],
+      ["wrong-case-policy", { wrongCasePersistentPolicy: true }, "enables its exact policy and evidence schema"],
+      ["wrong-persistent-schema", { wrongPersistentSchema: true }, "enables its exact policy and evidence schema"],
+      ["close-schema-downgrade", { downgradeCloseProbeSchema: true }, "requires one schema-3 same-process user-gesture gate"],
+      ["gate-disabled", { disablePersistentGate: true }, "requires one schema-3 same-process user-gesture gate"],
+      ["wrong-verify-only-plan", { wrongVerifyOnlyCycles: true }, "records one trusted cycle and ordered verify-only cycles"],
+      ["owner-request-cycle-2", { ownerRequestCycle: 2 }, "makes no handoff or native-show request"],
+      ["native-show-cycle-3", { nativeShowCycle: 3 }, "makes no handoff or native-show request"],
+      ["wrong-confirmation-mode", { wrongConfirmationModeCycle: 2 }, "records verify-only confirmation"],
+      ["changed-probe-host", { changedProbeHostCycle: 3 }, "confirmation of the cycle-one host"],
+      ["wrong-start-policy", { wrongStartPersistentPolicy: true }, "persistent start records its exact gate policy"],
+      ["wrong-start-schema", { wrongStartPersistentSchema: true }, "persistent start records its exact gate policy"],
+      ["wrong-probe-policy", { wrongProbePersistentPolicy: true }, "records its exact policy and cycle plan"],
+      ["wrong-probe-schema", { wrongProbePersistentSchema: true }, "records its exact policy and cycle plan"],
+      ["missing-persistent-dpi-awareness", { missingPersistentDpiAwareness: true }, "uses process and thread per-monitor-v2 awareness"],
+      ["legacy-readiness", { legacyReadinessArtifact: true }, "omits the historical full-control readiness artifact"],
+      ["missing-inactive-callback", { missingInactiveCallback: true }, "records exactly three active and inactive callbacks"],
+      ["extra-wait-cycle-zero", { extraWaitCycleZero: true }, "records exactly three event:overlay:presenter-wait-start"],
+      ["extra-malformed-callback", { extraMalformedCallback: true }, "records exactly six overlay activation callbacks"],
+      ["wrong-wait-api", { wrongWaitApi: true }, "binds one increasing persistent API sequence"],
+      ["wrong-wait-sequence", { wrongWaitSequence: true }, "binds one increasing persistent API sequence"],
+      ["parked-before-closed", { parkedBeforeClosedCycle: 2 }, "follows start, shown, closed, parked, and completion order"],
+      ["start-before-gate-consumed", { startBeforeGateConsumed: true }, "trusted gate consumption precedes controller attach and persistent start"],
+      ["attach-after-start", { attachAfterStart: true }, "trusted gate consumption precedes controller attach and persistent start"],
+      ["lifecycle-projection-mismatch", { lifecycleProjectionMismatch: true }, "persistent result and lifecycle projections agree exactly"],
+      ["lifecycle-extra-attach", { lifecycleExtraAttach: true }, "record one identical controller attach"],
+      ["result-owner-handoff", { resultOwnerHandoff: true }, "records no owner foreground handoff evidence"],
+      ["lifecycle-owner-handoff", { lifecycleOwnerHandoff: true }, "records no owner foreground handoff evidence"],
+      ["wrong-close-target", { wrongCloseTargetCycle: 2 }, "scale-aware target inside the detected panel"],
+      ["outside-host-panel", { outsideHostPanelCycle: 2 }, "binds its detected panel and click to the exact lifecycle native host"],
+      ["wrong-close-scale-source", { wrongScaleSourceCycle: 2 }, "supported scale source and exact scale-aware insets"],
+      ["wrong-close-insets", { wrongTargetInsetsCycle: 3 }, "supported scale source and exact scale-aware insets"],
+      ["wrong-independent-scale", { wrongDerivedScaleCycle: 2 }, "scale agrees with independent presenter geometry"],
+      ["missing-cycle-screenshot", { missingCycleScreenshot: 2 }, "has one readable physical screenshot containing its native host"],
+      ["post-send-cycle-screenshot", { onlyPostSendScreenshot: 2 }, "has one readable physical screenshot containing its native host"],
+      ["repeated-cycle-screenshot", { repeatedCycleScreenshotPath: 2 }, "uses distinct pre-send physical screenshot artifacts"],
+      ["misplaced-cycle-dispatch", { misplacedDispatchCycle: 2 }, "causally bridges shown and active to close and inactive"],
+      ["parked-before-dispatch", { parkedBeforeDispatchCycle: 2 }, "causally bridges shown and active to close and inactive"],
+      ["dispatch-evidence-mismatch", { dispatchEvidenceMismatchCycle: 2 }, "dispatch confirmation matches the post-dispatch success record exactly"],
+      ["pointer-mismatch", { pointerMismatchCycle: 3 }, "sends one exact audited close click"],
+      ["raw-hwnd", { rawHwndCycle: 2 }, "omits raw native HWND evidence"],
+      ["wrapped-raw-hwnd", { wrappedRawHwndCycle: 2 }, "omits raw native HWND evidence"],
+      ["raw-result-start", { rawResultStart: true }, "current persistent result events omit raw native HWND evidence"],
+      ["raw-result-cycle", { rawResultCycle: true }, "current persistent result events omit raw native HWND evidence"],
+      ["raw-result-complete", { rawResultComplete: true }, "current persistent result events omit raw native HWND evidence"],
+      ["raw-probe-start", { rawProbeStart: true }, "current persistent close probe omits raw native HWND evidence"],
+      ["raw-probe-target", { rawProbeTarget: true }, "current persistent close probe omits raw native HWND evidence"],
+      ["raw-probe-sent", { rawProbeSent: true }, "current persistent close probe omits raw native HWND evidence"],
+      ["raw-probe-complete", { rawProbeComplete: true }, "current persistent close probe omits raw native HWND evidence"],
+      ["extra-activation", { extraGestureActivation: true }, "consumed exactly one renderer gesture"],
+      ["missing-close-send", { missingCloseSend: true }, "persistent close probe sent three inputs"],
+      ["extra-close-send", { extraCloseSend: true }, "persistent close probe sent three inputs"],
+      ["interleaved-close-groups", { interleaveCloseGroups: true }, "records three exact target, confirmation, and send groups"],
+      ["complete-before-focus-return", { completeBeforeFocusReturn: true }, "returns source focus after the final send and before completion"],
+      ["close-before-completion-quit", { closeBeforeCompletionQuit: true }, "final detach belongs only to authenticated quit shutdown"],
       ["terminal-close-live", { terminalCloseStillAttached: true }, "final shutdown detached the presenter"],
       ["missing-after-cleanup", { omitAfterCleanup: true }, "after-cases package-process cleanup evidence"],
       ["cleanup-missing-creation-identity", { processCleanupMissingIdentity: true }, "captured each process creation identity"],
@@ -6460,7 +7705,13 @@ function runSelfTest() {
       ["task-process-leftover", { taskProcessLeftover: true }, "task wrapper package-process guard completed successfully"],
       ["task-files-left", { taskFilesLeft: true }, "task wrapper handoff-file cleanup completed successfully"]
     ]) {
-      assertFixtureSummaryFailure(tempRoot, `persistent-reuse-${name}`, writePersistentReuseFixture, options, failure);
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `persistent-reuse-${name}`,
+        writeCurrentPersistentReuseFixture,
+        options,
+        failure
+      );
     }
 
     const webCloseEvidenceRoot = path.join(tempRoot, "managed-web-close-evidence");
@@ -6839,7 +8090,7 @@ function runSelfTest() {
           action: PERSISTENT_REUSE_ACTION,
           userGestureGate: true
         },
-        "user-gesture evidence belongs to an exact supported case"
+        "current persistent policy records its exact supported policy"
       ]
     ]) {
       assertFixtureSummaryFailure(
@@ -8962,9 +10213,15 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
 
   const panel = options.unscaledLargeTarget
     ? { left: 834, top: 390, right: 2622, bottom: 1672, width: 1788, height: 1282 }
-    : { left: 20, top: 20, right: 220, bottom: 170, width: 200, height: 150 };
+    : { left: 20, top: 20, right: 170, bottom: 130, width: 150, height: 110 };
   const loggedScaleValue = options.roundingBoundaryScale ? 1.25 : 2.25;
   const geometryScale = options.roundingBoundaryScale ? 1.2515 : 2.25;
+  const presenterPhysicalRect = options.roundingBoundaryScale
+    ? { left: 10, top: 10, width: 1001, height: 751 }
+    : { left: 10, top: 10, width: 180, height: 135 };
+  const presenterLogicalBounds = options.roundingBoundaryScale
+    ? { x: 4, y: 4, width: 800, height: 600 }
+    : { x: 4, y: 4, width: 80, height: 60 };
   const expectedTarget = expectedWebCloseTarget(normalizeRect(panel), panel, loggedScaleValue);
   const target = {
     x: options.unscaledLargeTarget ? panel.right - 16 : options.targetOutsidePanel ? panel.right + 5 : expectedTarget.x,
@@ -8981,7 +10238,9 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             value: options.scaleMismatch ? 2 : loggedScaleValue,
             dpi: options.scaleMismatch ? 192 : Math.round(loggedScaleValue * 96),
             ratioX: geometryScale,
-            ratioY: geometryScale
+            ratioY: geometryScale,
+            physicalRect: presenterPhysicalRect,
+            logicalBounds: presenterLogicalBounds
           }
         }
       : {})
@@ -9006,7 +10265,16 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   const foreground = {
     processName: "SteamBridgeSmoke",
     title: "Steam Bridge Native Overlay Host",
-    pid: 4245
+    pid: 4245,
+    rect: {
+      left: presenterPhysicalRect.left,
+      top: presenterPhysicalRect.top,
+      right: presenterPhysicalRect.left + presenterPhysicalRect.width,
+      bottom: presenterPhysicalRect.top + presenterPhysicalRect.height,
+      width: presenterPhysicalRect.width,
+      height: presenterPhysicalRect.height
+    },
+    handlePresent: true
   };
   const dpiAwareness = options.missingProcessPerMonitorV2
     ? "process-unchanged:5;thread-per-monitor-v2"
@@ -10286,6 +11554,12 @@ function writePersistentReuseFixture(root, options = {}) {
       }
     }
   ];
+  if (options.legacyCurrentStartMarker) {
+    Object.assign(events[1].payload, {
+      persistentReuseGatePolicy: PERSISTENT_REUSE_GATE_POLICY,
+      persistentReuseEvidenceSchema: PERSISTENT_REUSE_EVIDENCE_SCHEMA
+    });
+  }
   for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
     const shown = persistentReuseEvidenceFixture({
       cycle,
@@ -10437,6 +11711,12 @@ function writePersistentReuseFixture(root, options = {}) {
     `${lifecycle.map((entry) => JSON.stringify(entry)).join("\n")}\n`
   );
   const closeProbeEvents = [];
+  if (options.legacyCurrentProbeMarker) {
+    closeProbeEvents.push({
+      type: "probe:start",
+      payload: { persistentReuseGatePolicy: PERSISTENT_REUSE_GATE_POLICY }
+    });
+  }
   for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
     closeProbeEvents.push(
       {
@@ -10449,6 +11729,16 @@ function writePersistentReuseFixture(root, options = {}) {
       }
     );
   }
+  if (options.legacyCurrentFocusMarker) {
+    closeProbeEvents.find(
+      (event) => event.type === "probe:native-presenter-focus"
+    ).payload.persistentReuse = { required: true };
+  }
+  if (options.legacyCurrentPreDispatchMarker) {
+    closeProbeEvents.find(
+      (event) => event.type === "probe:sent"
+    ).payload.nativePresenterPreDispatch.confirmationMode = "verify-only";
+  }
   if (options.wrongCloseOrdinal) {
     closeProbeEvents[2].payload.requestOrdinal = 1;
   }
@@ -10460,6 +11750,729 @@ function writePersistentReuseFixture(root, options = {}) {
     path.join(root, caseId, "close-probe.log"),
     `${closeProbeEvents.map((entry) => JSON.stringify(entry)).join("\n")}\n`
   );
+  writeCleanupFixture(root, options);
+}
+
+function writeCurrentPersistentReuseFixture(root, options = {}) {
+  const caseId = PERSISTENT_REUSE_CASE_ID;
+  const controllerGeneration = 7;
+  const leaseGeneration = 11;
+  const instanceGeneration = 13;
+  const hostToken = "a".repeat(64);
+  writeManagedWebCloseEvidenceFixture(root, {
+    caseId,
+    action: PERSISTENT_REUSE_ACTION,
+    reportedUserGestureTargetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    userGestureGate: true,
+    alreadyForeground: true
+  });
+
+  const manifestPath = path.join(root, "matrix-manifest.json");
+  const manifest = JSON.parse(readText(manifestPath));
+  manifest.suite = "persistent-reuse";
+  manifest.onlyCase = caseId;
+  manifest.persistentReuseGatePolicy = options.wrongPersistentPolicy
+    ? "wrong-persistent-policy"
+    : PERSISTENT_REUSE_GATE_POLICY;
+  manifest.supportedPersistentReuseEvidenceSchemas = [PERSISTENT_REUSE_EVIDENCE_SCHEMA];
+  manifest.cleanupContract = {
+    processCleanupRequired: true,
+    launchEnvRollbackRequired: true,
+    taskCleanupExpected: true
+  };
+  manifest.cases[0] = {
+    id: options.wrongPersistentCase ? "40-persistent-reuse-wrong" : caseId,
+    action: options.wrongPersistentAction ? "presenter-web-open-and-wait" : PERSISTENT_REUSE_ACTION,
+    requireEvent: [
+      "overlay:presenter-persistent-reuse-start",
+      "overlay:presenter-persistent-reuse-cycle",
+      "overlay:presenter-persistent-reuse-complete"
+    ],
+    requireOverlayActivated: true,
+    requireNoOverlayActivation: false,
+    allowOverlayNotReady: false,
+    requireManagedOverlayComplete: false,
+    closeProbeOnActivation: false,
+    shortcutToggleProbe: false,
+    autorunUserGestureGate: options.disablePersistentGate ? false : true,
+    persistentReuseGate: true,
+    persistentReuseGatePolicy: options.wrongCasePersistentPolicy
+      ? "wrong-persistent-policy"
+      : PERSISTENT_REUSE_GATE_POLICY,
+    persistentReuseEvidenceSchema: options.wrongPersistentSchema
+      ? 2
+      : PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+    initialUserGestureCycle: 1,
+    verifyOnlyCycles: options.wrongVerifyOnlyCycles ? [1, 3] : [2, 3],
+    closeVerificationOrdinals: [1, 2, 3],
+    closeProbeEvidenceSchema: options.downgradeCloseProbeSchema ? 2 : 3,
+    closeProbeForegroundHandoff: SAME_PROCESS_USER_GESTURE_HANDOFF,
+    externalForegroundTransition: EXTERNAL_FOREGROUND_TRANSITION,
+    expectedCloseProbeInput: "web-close-click-sendinput",
+    managedOverlayResultMode: "",
+    webModal: "true",
+    storeRoute: "",
+    dialog: "",
+    userDialog: "",
+    shortcutTarget: "",
+    hasCheckoutTransactionId: false,
+    hasCheckoutJsonFile: false,
+    hasInitTxnRequestFile: false,
+    persistentReuseCycles: WINDOWS_PERSISTENT_REUSE_CYCLES,
+    resultDelayMs: 180000
+  };
+  if (options.omitPersistentPolicyMarker) {
+    delete manifest.persistentReuseGatePolicy;
+    delete manifest.supportedPersistentReuseEvidenceSchemas;
+    delete manifest.cases[0].persistentReuseGatePolicy;
+  }
+  if (options.stripPersistentContractFields) {
+    delete manifest.persistentReuseGatePolicy;
+    delete manifest.supportedPersistentReuseEvidenceSchemas;
+    for (const field of PERSISTENT_REUSE_CURRENT_ONLY_FIELDS) {
+      delete manifest.cases[0][field];
+    }
+  }
+  if (options.falsyPersistentContractFields) {
+    delete manifest.persistentReuseGatePolicy;
+    delete manifest.supportedPersistentReuseEvidenceSchemas;
+    Object.assign(manifest.cases[0], {
+      autorunUserGestureGate: false,
+      closeProbeEvidenceSchema: 2,
+      persistentReuseGate: false,
+      persistentReuseGatePolicy: "",
+      persistentReuseEvidenceSchema: 0,
+      initialUserGestureCycle: 0,
+      verifyOnlyCycles: [],
+      closeVerificationOrdinals: []
+    });
+  }
+  writeJson(manifestPath, manifest);
+
+  const resultPath = path.join(root, caseId, "result.log");
+  const result = readSmokeResult(resultPath);
+  const gateEvents = result.snapshot.events.filter((event) =>
+    String(event?.type || "").startsWith("autorun:user-gesture-gate-")
+  );
+  const at = (seconds) => `2026-07-02T00:00:${String(seconds).padStart(2, "0")}.000Z`;
+  const events = [
+    ...gateEvents,
+    {
+      type: "overlay:presenter-attach",
+      at: at(2),
+      payload: { presenter: attachedWindowsPresenterFixture() }
+    },
+    {
+      type: "overlay:presenter-persistent-reuse-start",
+      at: at(3),
+      payload: {
+        cycles: WINDOWS_PERSISTENT_REUSE_CYCLES,
+        controllerGeneration,
+        nativeSurfaceLeaseGeneration: leaseGeneration,
+        presenterMode: "persistent",
+        readiness: { canWait: true, reason: "ready", waitReason: "ready" },
+        persistentReuseGatePolicy: options.wrongStartPersistentPolicy
+          ? "wrong-persistent-policy"
+          : PERSISTENT_REUSE_GATE_POLICY,
+        persistentReuseEvidenceSchema: options.wrongStartPersistentSchema
+          ? 2
+          : PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+        initialUserGestureCycle: 1,
+        verifyOnlyCycles: [2, 3],
+        closeVerificationOrdinals: [1, 2, 3]
+      }
+    }
+  ];
+  if (options.startBeforeGateConsumed) {
+    const consumedIndex = events.findIndex(
+      (event) => event.type === "autorun:user-gesture-gate-consumed"
+    );
+    const startIndex = events.findIndex(
+      (event) => event.type === "overlay:presenter-persistent-reuse-start"
+    );
+    [events[consumedIndex], events[startIndex]] = [events[startIndex], events[consumedIndex]];
+  }
+  if (options.attachAfterStart) {
+    const attachIndex = events.findIndex((event) => event.type === "overlay:presenter-attach");
+    const startIndex = events.findIndex(
+      (event) => event.type === "overlay:presenter-persistent-reuse-start"
+    );
+    [events[attachIndex], events[startIndex]] = [events[startIndex], events[attachIndex]];
+  }
+  if (options.rawResultStart) {
+    events[events.length - 1].payload.hwnd = "0x1234";
+  }
+  for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
+    const baseSecond = 4 + (cycle - 1) * 10;
+    const shown = persistentReuseEvidenceFixture({
+      cycle,
+      controllerGeneration,
+      leaseGeneration,
+      instanceGeneration,
+      hostToken: options.changedHostToken && cycle === 2 ? "b".repeat(64) : hostToken,
+      phase: "shown",
+      attachCount: options.secondAttach && cycle === 2 ? 2 : 1
+    });
+    const parked = persistentReuseEvidenceFixture({
+      cycle,
+      controllerGeneration,
+      leaseGeneration,
+      instanceGeneration,
+      hostToken,
+      phase: "parked",
+      attachCount: 1
+    });
+    const shownLifecyclePresenter = {
+      ...attachedWindowsPresenterFixture(),
+      ...shown
+    };
+    const parkedLifecyclePresenter = {
+      ...attachedWindowsPresenterFixture(),
+      ...parked
+    };
+    events.push(
+      {
+        type: "overlay:presenter-wait-start",
+        at: at(baseSecond),
+        payload: {
+          api: "persistentReuseThreeCycle",
+          cycle,
+          sequence: cycle,
+          presenter: shownLifecyclePresenter
+        }
+      },
+      {
+        type: "overlay:presenter-wait-shown",
+        at: at(baseSecond + 1),
+        payload: {
+          api: "persistentReuseThreeCycle",
+          cycle,
+          sequence: cycle,
+          presenter: shownLifecyclePresenter
+        }
+      },
+      { type: "callback:overlay-activated", at: at(baseSecond + 1), payload: { active: true } },
+      { type: "callback:overlay-activated", at: at(baseSecond + 5), payload: { active: false } },
+      {
+        type: "overlay:presenter-wait-closed",
+        at: at(baseSecond + 5),
+        payload: {
+          api: "persistentReuseThreeCycle",
+          cycle,
+          sequence: cycle,
+          presenter: parkedLifecyclePresenter
+        }
+      },
+      {
+        type: "overlay:presenter-parked",
+        at: at(
+          options.parkedBeforeDispatchCycle === cycle
+            ? baseSecond + 3
+            : baseSecond + 5
+        ),
+        payload: {
+          api: "persistentReuseThreeCycle",
+          cycle,
+          sequence: cycle,
+          presenter: parkedLifecyclePresenter
+        }
+      },
+      {
+        type: "overlay:presenter-after-close-stable",
+        at: at(baseSecond + 6),
+        payload: { source: "state-change", sample: 2, presenter: parked }
+      },
+      {
+        type: "overlay:presenter-persistent-reuse-cycle",
+        at: at(baseSecond + 7),
+        payload: { cycle, shown, parked }
+      }
+    );
+  }
+  if (options.parkedBeforeClosedCycle) {
+    const closedIndex = events.findIndex(
+      (event) =>
+        event.type === "overlay:presenter-wait-closed" &&
+        event.payload.cycle === options.parkedBeforeClosedCycle
+    );
+    const parkedIndex = events.findIndex(
+      (event) =>
+        event.type === "overlay:presenter-parked" &&
+        event.payload.cycle === options.parkedBeforeClosedCycle
+    );
+    [events[closedIndex], events[parkedIndex]] = [
+      events[parkedIndex],
+      events[closedIndex]
+    ];
+  }
+  if (options.alternateCallbackOrder) {
+    for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
+      const segmentStart = events.findIndex(
+        (event) => event.type === "overlay:presenter-wait-start" && event.payload.cycle === cycle
+      );
+      const segmentEnd = events.findIndex(
+        (event) =>
+          event.type === "overlay:presenter-persistent-reuse-cycle" && event.payload.cycle === cycle
+      );
+      const segment = events.slice(segmentStart, segmentEnd + 1);
+      const take = (type, active) =>
+        segment.find(
+          (event) =>
+            event.type === type &&
+            (active === undefined || objectOrEmpty(event.payload).active === active)
+        );
+      events.splice(
+        segmentStart,
+        segment.length,
+        take("overlay:presenter-wait-start"),
+        take("callback:overlay-activated", true),
+        take("overlay:presenter-wait-shown"),
+        take("overlay:presenter-wait-closed"),
+        take("overlay:presenter-parked"),
+        take("callback:overlay-activated", false),
+        take("overlay:presenter-after-close-stable"),
+        take("overlay:presenter-persistent-reuse-cycle")
+      );
+    }
+  }
+  if (options.rawResultCycle) {
+    const cycle = events.find(
+      (event) =>
+        event.type === "overlay:presenter-persistent-reuse-cycle" && event.payload.cycle === 2
+    );
+    cycle.payload.windowHandle = "0x1234";
+  }
+  if (options.wrongWaitApi) {
+    const wait = events.find(
+      (event) => event.type === "overlay:presenter-wait-closed" && event.payload.cycle === 2
+    );
+    wait.payload.api = "anotherApi";
+  }
+  if (options.wrongWaitSequence) {
+    const wait = events.find(
+      (event) => event.type === "overlay:presenter-parked" && event.payload.cycle === 3
+    );
+    wait.payload.sequence = 2;
+  }
+  if (options.extraWaitCycleZero) {
+    events.push({
+      type: "overlay:presenter-wait-start",
+      at: at(24),
+      payload: { api: "persistentReuseThreeCycle", cycle: 0, sequence: 0 }
+    });
+  }
+  if (options.extraMalformedCallback) {
+    events.push({
+      type: "callback:overlay-activated",
+      at: at(24),
+      payload: { active: "false" }
+    });
+  }
+  if (options.resultOwnerHandoff) {
+    events.push({
+      type: "overlay:presenter-foreground-handoff",
+      at: at(24),
+      payload: { cycle: 2 }
+    });
+  }
+  if (options.outOfOrderCycle) {
+    const cycleIndexes = events
+      .map((event, index) =>
+        event.type === "overlay:presenter-persistent-reuse-cycle" ? index : -1
+      )
+      .filter((index) => index >= 0);
+    [events[cycleIndexes[0]], events[cycleIndexes[1]]] = [
+      events[cycleIndexes[1]],
+      events[cycleIndexes[0]]
+    ];
+  }
+  events.push({
+    type: "overlay:presenter-persistent-reuse-complete",
+    at: at(32),
+    payload: {
+      cyclesCompleted: WINDOWS_PERSISTENT_REUSE_CYCLES,
+      controllerGeneration,
+      nativeSurfaceLeaseGeneration: leaseGeneration,
+      surfaceInstanceGeneration: instanceGeneration,
+      nativeHostIdentityToken: hostToken,
+      nativeHostIdentityPresent: true,
+      attachCount: 1,
+      detachCount: 0,
+      backend: "windows-d3d11",
+      hostBackend: "windows-d3d11",
+      rendererBackend: "windows-d3d11"
+    }
+  });
+  if (options.rawResultComplete) {
+    events[events.length - 1].payload.nativeHandle = "0x1234";
+  }
+  const resultGeometry = attachedWindowsPresenterFixture();
+  result.action = { ok: true, action: PERSISTENT_REUSE_ACTION };
+  result.snapshot.events = events;
+  result.snapshot.overlay = {
+    nativePresenter: {
+      ok: true,
+      value: {
+        bounds: resultGeometry.bounds,
+        ...passiveWindowsPresenterFixture({ lightweightPollCount: 30, fullDiagnosticsPollCount: 3 }),
+        nativeSurfaceLeaseGeneration: leaseGeneration,
+        nativeHostDiagnostics: {
+          ...resultGeometry.nativeHostDiagnostics,
+          backend: "windows-d3d11",
+          surfaceInstanceGeneration: instanceGeneration,
+          hwnd: "0x1234",
+          renderer: { backend: "windows-d3d11" }
+        },
+        electronOverlay: { presenterMode: "persistent", controllerGeneration }
+      }
+    }
+  };
+  writeResult(resultPath, result);
+
+  const lifecycle = events
+    .filter(
+      (event) =>
+        !options.resultOwnerHandoff || event.type !== "overlay:presenter-foreground-handoff"
+    )
+    .map((event) => ({
+    type: `event:${event.type}`,
+    at: event.at,
+    pid: 4245,
+    payload: event.payload || {}
+    }));
+  if (options.missingInactiveCallback) {
+    const inactiveIndex = lifecycle.findIndex(
+      (event) =>
+        event.type === "event:callback:overlay-activated" &&
+        objectOrEmpty(event.payload).active === false
+    );
+    lifecycle.splice(inactiveIndex, 1);
+  }
+  if (options.lifecycleProjectionMismatch) {
+    const projectedCycle = lifecycle.find(
+      (event) => event.type === "event:overlay:presenter-persistent-reuse-cycle"
+    );
+    projectedCycle.payload = { ...projectedCycle.payload, cycle: 2 };
+  }
+  if (options.lifecycleExtraAttach) {
+    const attachIndex = lifecycle.findIndex(
+      (event) => event.type === "event:overlay:presenter-attach"
+    );
+    lifecycle.splice(attachIndex + 1, 0, structuredClone(lifecycle[attachIndex]));
+  }
+  if (options.lifecycleOwnerHandoff) {
+    lifecycle.push({
+      type: "event:overlay:presenter-foreground-handoff-rejected",
+      at: at(24),
+      pid: 4245,
+      payload: { cycle: 3 }
+    });
+  }
+  lifecycle.push(
+    {
+      type: "event:autorun:result-written",
+      at: at(33),
+      pid: 4245,
+      payload: { action: PERSISTENT_REUSE_ACTION, resultFileWritten: true }
+    },
+    {
+      type: "event:autorun:keep-open-after-result",
+      at: at(34),
+      pid: 4245,
+      payload: { action: PERSISTENT_REUSE_ACTION, resultFileWritten: true }
+    },
+    {
+      type: "event:control:user-gesture-completion-quit",
+      at: at(37),
+      pid: 4245,
+      payload: { action: PERSISTENT_REUSE_ACTION, resultFileWritten: true, gateConsumed: true }
+    },
+    { type: "app:before-quit", at: at(38), pid: 4245, payload: {} },
+    { type: "app:will-quit", at: at(39), pid: 4245, payload: {} },
+    {
+      type: "event:overlay:presenter-close",
+      at: at(40),
+      pid: 4245,
+      payload: {
+        presenter: {
+          closed: true,
+          closeReason: "closed",
+          nativeSurfaceOwner: false,
+          nativeHostOpen: false,
+          attached: options.terminalCloseStillAttached ? true : false,
+          backend: "none",
+          nativeSurfaceAttachCount: 1,
+          nativeSurfaceDetachCount: 1,
+          lastError: null
+        }
+      }
+    },
+    { type: "process:exit", at: at(41), pid: 4245, payload: { exitCode: 0 } },
+    { type: "app:quit", at: at(42), pid: 4245, payload: { exitCode: 0 } }
+  );
+  if (options.closeBeforeCompletionQuit) {
+    const closeIndex = lifecycle.findIndex(
+      (event) => event.type === "event:overlay:presenter-close"
+    );
+    const completionQuitIndex = lifecycle.findIndex(
+      (event) => event.type === "event:control:user-gesture-completion-quit"
+    );
+    const [closeEvent] = lifecycle.splice(closeIndex, 1);
+    lifecycle.splice(completionQuitIndex, 0, closeEvent);
+  }
+  writeText(
+    path.join(root, caseId, "diagnostics", "lifecycle.jsonl"),
+    `${lifecycle.map((entry) => JSON.stringify(entry)).join("\n")}\n`
+  );
+
+  const closeProbePath = path.join(root, caseId, "close-probe.log");
+  const baseProbe = readJsonLinesIfPresent(closeProbePath, []);
+  const firstTarget = baseProbe.find((event) => event.type === "probe:web-close-click-target");
+  const firstFocus = baseProbe.find((event) => event.type === "probe:native-presenter-focus");
+  const firstSent = baseProbe.find((event) => event.type === "probe:sent");
+  const firstScreenshot = baseProbe.find(
+    (event) => objectOrEmpty(objectOrEmpty(event?.payload).screenshot).ok === true
+  );
+  const focusReturn = baseProbe.find((event) => event.type === "probe:user-gesture-app-focus-return");
+  const firstTargetIndex = baseProbe.indexOf(firstTarget);
+  const closeProbe = baseProbe
+    .slice(0, firstTargetIndex)
+    .filter(
+      (event) =>
+        objectOrEmpty(objectOrEmpty(event?.payload).screenshot).ok !== true &&
+        typeof objectOrEmpty(objectOrEmpty(event?.payload).screenshot).path !== "string"
+    );
+  const probeStart = closeProbe.find((event) => event.type === "probe:start");
+  Object.assign(probeStart.payload, {
+    evidenceSchema: 3,
+    foregroundHandoff: SAME_PROCESS_USER_GESTURE_HANDOFF,
+    externalForegroundTransition: EXTERNAL_FOREGROUND_TRANSITION,
+    externalForegroundTransitionEnabled: true,
+    userGestureGate: true,
+    controlHandoffOnlyExpected: true,
+    expectedCloseCount: WINDOWS_PERSISTENT_REUSE_CYCLES,
+    persistentReuseGate: true,
+    persistentReuseGatePolicy: options.wrongProbePersistentPolicy
+      ? "wrong-persistent-policy"
+      : PERSISTENT_REUSE_GATE_POLICY,
+    persistentReuseEvidenceSchema: options.wrongProbePersistentSchema
+      ? 2
+      : PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+    initialUserGestureCycle: 1,
+    verifyOnlyCycles: [2, 3],
+    closeVerificationOrdinals: [1, 2, 3]
+  });
+  if (options.rawProbeStart) {
+    probeStart.payload.hwnd = "0x1234";
+  }
+  if (options.missingPersistentDpiAwareness) {
+    probeStart.payload.dpiAwareness = "process-unchanged:5;thread-unchanged:5";
+  }
+  for (let cycle = 1; cycle <= WINDOWS_PERSISTENT_REUSE_CYCLES; cycle += 1) {
+    const baseSecond = 4 + (cycle - 1) * 10;
+    const confirmationMode = cycle === 1 ? "initial-user-gesture" : "verify-only";
+    let cycleScreenshotEvent = null;
+    if (options.missingCycleScreenshot !== cycle) {
+      const screenshotEvent = structuredClone(firstScreenshot);
+      const screenshot = objectOrEmpty(screenshotEvent.payload.screenshot);
+      const screenshotCycle =
+        options.repeatedCycleScreenshotPath === cycle ? 1 : cycle;
+      const screenshotName = `cycle-${String(screenshotCycle).padStart(2, "0")}-detected.png`;
+      fs.copyFileSync(
+        path.join(root, caseId, String(screenshot.path)),
+        path.join(root, caseId, screenshotName)
+      );
+      screenshotEvent.type = "probe:detected";
+      screenshotEvent.at = at(baseSecond + 1);
+      screenshotEvent.payload = {
+        cycle,
+        foreground: objectOrEmpty(screenshotEvent.payload.foreground),
+        screenshot: { ...screenshot, path: screenshotName }
+      };
+      cycleScreenshotEvent = screenshotEvent;
+      if (options.onlyPostSendScreenshot !== cycle) {
+        closeProbe.push(screenshotEvent);
+      }
+    }
+    const target = structuredClone(firstTarget);
+    target.at = at(baseSecond + 2);
+    target.payload.cycle = cycle;
+    if (options.wrongCloseTargetCycle === cycle) {
+      target.payload.target.x += 1;
+    }
+    if (options.outsideHostPanelCycle === cycle) {
+      const outsidePanel = {
+        left: 210,
+        top: 20,
+        right: 290,
+        bottom: 120,
+        width: 80,
+        height: 100
+      };
+      const outsideTarget = expectedWebCloseTarget(
+        normalizeRect(outsidePanel),
+        outsidePanel,
+        Number(target.payload.target.scale.value)
+      );
+      target.payload.target.panel = outsidePanel;
+      Object.assign(target.payload.target, {
+        x: outsideTarget.x,
+        y: outsideTarget.y,
+        insets: {
+          right: outsideTarget.rightInset,
+          top: outsideTarget.topInset,
+          logicalRight: 16,
+          logicalTop: 18
+        }
+      });
+    }
+    if (options.wrongScaleSourceCycle === cycle) {
+      target.payload.target.scale.source = "fixed-scale";
+    }
+    if (options.wrongTargetInsetsCycle === cycle) {
+      target.payload.target.insets.right += 1;
+    }
+    if (options.wrongDerivedScaleCycle === cycle) {
+      target.payload.target.scale.value = 2;
+      target.payload.target.scale.dpi = 192;
+      const fabricatedTarget = expectedWebCloseTarget(
+        normalizeRect(target.payload.target.panel),
+        target.payload.target.panel,
+        2
+      );
+      Object.assign(target.payload.target, {
+        x: fabricatedTarget.x,
+        y: fabricatedTarget.y,
+        insets: {
+          right: fabricatedTarget.rightInset,
+          top: fabricatedTarget.topInset,
+          logicalRight: 16,
+          logicalTop: 18
+        }
+      });
+    }
+    if (options.rawProbeTarget && cycle === 2) {
+      target.payload.foreground = {
+        ...objectOrEmpty(target.payload.foreground),
+        hwnd: "0x1234"
+      };
+    }
+    const focus = structuredClone(firstFocus);
+    focus.at = at(baseSecond + 3);
+    focus.payload.cycle = cycle;
+    focus.payload.requestCount = options.ownerRequestCycle === cycle ? 1 : 0;
+    focus.payload.requestOrdinal = 0;
+    focus.payload.nativeShowCallCount = options.nativeShowCycle === cycle ? 1 : 0;
+    focus.payload.persistentReuse = {
+      required: true,
+      policy: PERSISTENT_REUSE_GATE_POLICY,
+      evidenceSchema: PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+      cycle,
+      confirmationMode:
+        options.wrongConfirmationModeCycle === cycle ? "initial-user-gesture" : confirmationMode,
+      baselineHostBound: true,
+      sameHostAsCycleOne: options.changedProbeHostCycle === cycle ? false : true
+    };
+    if (options.rawHwndCycle === cycle) {
+      focus.payload.hwnd = "0x1234";
+    }
+    if (options.wrappedRawHwndCycle === cycle) {
+      focus.payload.hwnd = { value: 4660 };
+    }
+    const sent = structuredClone(firstSent);
+    sent.at = at(
+      options.fastCloseBeforeSentRecordCycle === cycle ? baseSecond + 6 : baseSecond + 4
+    );
+    sent.payload.cycle = cycle;
+    sent.payload.nativePresenterPreDispatch.cycle = cycle;
+    Object.assign(sent.payload.nativePresenterPreDispatch, {
+      persistentReuseGate: true,
+      persistentReuseGatePolicy: PERSISTENT_REUSE_GATE_POLICY,
+      persistentReuseEvidenceSchema: PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+      confirmationMode,
+      baselineHostBound: true,
+      sameHostAsCycleOne: true
+    });
+    sent.payload.nativePointerSent.x = target.payload.target.x;
+    sent.payload.nativePointerSent.y = target.payload.target.y;
+    if (options.pointerMismatchCycle === cycle) {
+      sent.payload.nativePointerSent.x += 1;
+    }
+    if (options.rawProbeSent && cycle === 3) {
+      sent.payload.nativePresenterPreDispatch.hwnd = "0x1234";
+    }
+    const dispatchStart = {
+      type: "probe:close-input-dispatch-start",
+      at: at(options.misplacedDispatchCycle === cycle ? baseSecond + 6 : baseSecond + 4),
+      payload: {
+        cycle,
+        input: "web-close-click-sendinput",
+        nativePresenterPreDispatch: structuredClone(
+          sent.payload.nativePresenterPreDispatch
+        )
+      }
+    };
+    if (options.dispatchEvidenceMismatchCycle === cycle) {
+      dispatchStart.payload.nativePresenterPreDispatch.enabled = false;
+    }
+    closeProbe.push(target, focus, dispatchStart, sent);
+    if (cycleScreenshotEvent && options.onlyPostSendScreenshot === cycle) {
+      cycleScreenshotEvent.at = at(baseSecond + 5);
+      closeProbe.push(cycleScreenshotEvent);
+    }
+  }
+  if (options.extraGestureActivation) {
+    const activation = closeProbe.find(
+      (event) => event.type === "probe:user-gesture-gate-activation-sent"
+    );
+    closeProbe.push(structuredClone(activation));
+  }
+  if (options.extraCloseSend) {
+    closeProbe.push(structuredClone(closeProbe.find((event) => event.type === "probe:sent")));
+  }
+  if (options.missingCloseSend) {
+    const missingIndex = closeProbe.findIndex(
+      (event) => event.type === "probe:sent" && event.payload.cycle === 2
+    );
+    closeProbe.splice(missingIndex, 1);
+  }
+  if (options.interleaveCloseGroups) {
+    const firstSentIndex = closeProbe.findIndex(
+      (event) => event.type === "probe:sent" && event.payload.cycle === 1
+    );
+    const secondTargetIndex = closeProbe.findIndex(
+      (event) => event.type === "probe:web-close-click-target" && event.payload.cycle === 2
+    );
+    [closeProbe[firstSentIndex], closeProbe[secondTargetIndex]] = [
+      closeProbe[secondTargetIndex],
+      closeProbe[firstSentIndex]
+    ];
+  }
+  focusReturn.at = at(35);
+  const probeComplete = {
+    type: "probe:complete",
+    at: at(36),
+    payload: {
+      sentCount: WINDOWS_PERSISTENT_REUSE_CYCLES,
+      expectedCloseCount: WINDOWS_PERSISTENT_REUSE_CYCLES
+    }
+  };
+  if (options.rawProbeComplete) {
+    probeComplete.payload.nativeWindowHandle = "0x1234";
+  }
+  if (options.completeBeforeFocusReturn) {
+    closeProbe.push(probeComplete, focusReturn);
+  } else {
+    closeProbe.push(focusReturn, probeComplete);
+  }
+  writeText(closeProbePath, `${closeProbe.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+  fs.rmSync(path.join(root, caseId, "persistent-control-readiness.json"), { force: true });
+  if (options.legacyReadinessArtifact) {
+    writeJson(path.join(root, caseId, "persistent-control-readiness.json"), {
+      kind: "steam-bridge-windows-persistent-control-readiness",
+      ok: true
+    });
+  }
   writeCleanupFixture(root, options);
 }
 

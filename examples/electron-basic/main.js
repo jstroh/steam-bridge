@@ -128,6 +128,7 @@ const AUTORUN_USER_GESTURE_GATE = readBoolean(
 const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({
   "presenter-web-open-and-wait": "presenter-web-wait",
   "presenter-duplicate-open-guard": "presenter-duplicate-guard",
+  "presenter-persistent-reuse-three-cycle": "autorun-user-gesture-target",
   "presenter-store-open-and-wait": "autorun-user-gesture-target",
   "presenter-dialog-auto-open-and-wait": "autorun-user-gesture-target",
   "presenter-friends-open-and-wait": "autorun-user-gesture-target",
@@ -141,6 +142,8 @@ const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({
   "presenter-shortcut": "autorun-user-gesture-target",
   "presenter-shortcut-open-and-wait": "autorun-user-gesture-target"
 });
+const PERSISTENT_REUSE_GATE_POLICY = "initial-user-gesture-verify-only-v1";
+const PERSISTENT_REUSE_EVIDENCE_SCHEMA = 1;
 const AUTORUN_USER_GESTURE_GATE_REJECTION_REASONS = new Set([
   "gate-disabled",
   "unsupported-action",
@@ -2234,7 +2237,9 @@ function openPresenterPersistentReuseThreeCycleOverlay() {
       return { ok: true, ...result, complete };
     })
     .catch((error) => {
-      failNativePresenterForegroundHandoffReuse();
+      if (!AUTORUN_USER_GESTURE_GATE) {
+        failNativePresenterForegroundHandoffReuse();
+      }
       const serialized = serializeError(error);
       let presenter = safeOverlaySnapshot(overlay);
       try {
@@ -2298,6 +2303,7 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
   const readinessStatus = overlay.getWebOpenStatus(WEB_URL, { modal: WEB_MODAL });
   const controllerGeneration = Number(initialSnapshot.electronOverlay?.controllerGeneration) || 0;
   const nativeSurfaceLeaseGeneration = Number(initialSnapshot.nativeSurfaceLeaseGeneration) || 0;
+  const userGesturePersistentReuse = AUTORUN_USER_GESTURE_GATE;
   recordEvent("overlay:presenter-persistent-reuse-start", {
     cycles: 3,
     controllerGeneration,
@@ -2308,7 +2314,15 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
       reason: readinessStatus.reason || null,
       waitReason: readinessStatus.waitReason || null
     },
-    foregroundHandoffOrdinals: [1, 2, 3]
+    ...(userGesturePersistentReuse
+      ? {
+          persistentReuseGatePolicy: PERSISTENT_REUSE_GATE_POLICY,
+          persistentReuseEvidenceSchema: PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+          initialUserGestureCycle: 1,
+          verifyOnlyCycles: [2, 3],
+          closeVerificationOrdinals: [1, 2, 3]
+        }
+      : { foregroundHandoffOrdinals: [1, 2, 3] })
   });
 
   if (process.platform !== "win32") {
@@ -2329,7 +2343,9 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
   let finalClosed;
   let finalParked;
   for (let cycle = 1; cycle <= 3; cycle += 1) {
-    beginNativePresenterForegroundHandoffReuseCycle(cycle);
+    if (!userGesturePersistentReuse) {
+      beginNativePresenterForegroundHandoffReuseCycle(cycle);
+    }
     const context = {
       target: "web",
       url: WEB_URL,
@@ -2364,7 +2380,9 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
       throw new Error(`Persistent presenter reuse cycle ${cycle} did not reach shown state.`);
     }
 
-    await waitForNativePresenterForegroundHandoffReuseCycle(cycle);
+    if (!userGesturePersistentReuse) {
+      await waitForNativePresenterForegroundHandoffReuseCycle(cycle);
+    }
     const [closedResult, parkedResult, openResult] = await Promise.all([
       lifecycle.closed,
       lifecycle.parked,
@@ -2376,7 +2394,9 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
     if (openResult.ok !== true) {
       throw openResult.error;
     }
-    finishNativePresenterForegroundHandoffReuseCycle(cycle);
+    if (!userGesturePersistentReuse) {
+      finishNativePresenterForegroundHandoffReuseCycle(cycle);
+    }
 
     const shown = persistentReusePresenterEvidence(openResult.result.shown);
     const parked = persistentReusePresenterEvidence(openResult.result.parked);

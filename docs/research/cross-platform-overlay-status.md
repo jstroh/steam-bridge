@@ -367,7 +367,8 @@ actions and 27 exact managed, public shortcut-route, and synthetic-checkout
 case/action pairs. Web and duplicate retain their historical dedicated buttons;
 new actions share one hidden inert button revealed only by the isolated preload
 after a valid arm. Readiness, checkout prepare, raw observe, passive
-notifications, and persistent reuse remain excluded. The matrix emits
+notifications, and persistent reuse remain excluded from that single-cycle
+contract. The matrix emits
 `single-cycle-active-v1`; the independent auditor requires schema 3 and complete
 gate evidence for every mapped case under that marker, validates both configured
 and actually resolved shortcut target types, and rejects downgraded, malformed,
@@ -407,6 +408,47 @@ already-disproved macOS synthetic click, or continue to later broad batches
 after this stop condition. Repeat the public checkout batch once when a real
 local/Parsec click and its exact challenge acknowledgment can occur strictly
 after the ready marker or the source naturally launches foreground.
+
+The next implementation slice closes the separate persistent-reuse design gap
+without changing that settled single-cycle boundary. Exact case `40` now uses
+one ordinary autorun renderer gate, then three ordered local close
+confirmations under `initial-user-gesture-verify-only-v1` and persistent
+evidence schema `1`. The first trusted click starts cycle one; cycles two and
+three run only after the preceding close, park, and cycle record. The close
+probe retains the raw cycle-one HWND as a local comparison baseline, requires
+the same window, owner, control process, session, enabled/non-iconic state, and
+foreground before every close and immediate pre-dispatch check. Current
+persistent start/cycle/complete and close-probe proof records emit no raw HWND;
+established local result/lifecycle diagnostics remain the raw input. Every cycle
+makes zero foreground requests and zero
+native-show calls; the renderer activation count remains exactly one for the
+whole run. The control server stays handoff-only and has no current `/action`
+or `/foreground-handoff` role; it permits only the final authenticated quit.
+
+The manifest, probe start, app start, result snapshot, full lifecycle, and
+auditor cross-check the policy and schema independently. Current evidence must
+contain exactly three scale-aware targets, focus confirmations, successful
+three-event `SendInput` close calls, active/inactive callbacks, shown/closed/
+parked records, stable controller/lease/native-instance/opaque-HWND identities,
+one attach before completion, one detach at shutdown, and exact source focus
+return. Marker-absent historical schema-2 artifacts remain auditable, while a
+markerless or downgraded schema-3 persistent artifact fails. Package smoke,
+semantic positive/legacy/adversarial fixtures, full Windows PowerShell parsing,
+generated-probe parsing, and embedded-C# startup pass locally. This is an
+implementation claim only; no signed live three-cycle success has been run yet.
+For each cycle the auditor additionally requires a distinct readable physical
+pre-send full-desktop screenshot whose declared bounds match its PNG dimensions
+and contain that cycle's native-host rectangle; the detected panel and click
+must remain inside that exact host. The supported per-monitor-DPI
+or geometry-ratio scale plus physical/logical bounds must agree with independent
+lifecycle presenter geometry. Ordered timestamps bind active plus shown state
+to target, focus, the pre-input dispatch boundary, inactive/closed state,
+parking, and cycle completion, with completion before the next shown state.
+Those full-desktop captures are private local operational evidence and must not
+be committed or published; only sanitized structured conclusions belong here.
+The next live attempt is meaningful on the exact signed candidate when the
+source naturally launches foreground or a real local/Parsec click and exact
+challenge acknowledgment can follow the atomic marker.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

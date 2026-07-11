@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({
   "presenter-web-open-and-wait": "presenter-web-wait",
   "presenter-duplicate-open-guard": "presenter-duplicate-guard",
+  "presenter-persistent-reuse-three-cycle": "autorun-user-gesture-target",
   "presenter-store-open-and-wait": "autorun-user-gesture-target",
   "presenter-dialog-auto-open-and-wait": "autorun-user-gesture-target",
   "presenter-friends-open-and-wait": "autorun-user-gesture-target",

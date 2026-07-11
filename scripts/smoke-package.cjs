@@ -29,6 +29,13 @@ const USER_GESTURE_ACTION_TARGETS = Object.freeze({
   "presenter-shortcut": GENERIC_USER_GESTURE_GATE_TARGET,
   "presenter-shortcut-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET
 });
+const PERSISTENT_USER_GESTURE_ACTION_TARGETS = Object.freeze({
+  "presenter-persistent-reuse-three-cycle": GENERIC_USER_GESTURE_GATE_TARGET
+});
+const ALL_USER_GESTURE_ACTION_TARGETS = Object.freeze({
+  ...USER_GESTURE_ACTION_TARGETS,
+  ...PERSISTENT_USER_GESTURE_ACTION_TARGETS
+});
 const WINDOWS_USER_GESTURE_CASE_ACTIONS = Object.freeze({
   "11-managed-web-open-and-wait": "presenter-web-open-and-wait",
   "11b-managed-duplicate-open-guard": "presenter-duplicate-open-guard",
@@ -1055,12 +1062,23 @@ function runWindowsSmokeHelperStaticChecks() {
     /if \(\$AutorunUserGestureGate\) \{\s*\$envMap\.STEAM_BRIDGE_SMOKE_AUTORUN_USER_GESTURE_GATE = "1"\s*\}/,
     "Windows smoke helper must add the user-gesture launch-env flag only when explicitly enabled"
   );
+  const directSmokeStart = helper.indexOf("function Invoke-DirectSmoke");
+  const directSmokeEnd = helper.indexOf("\nfunction Invoke-SteamLaunchSmoke", directSmokeStart);
+  const directSmokeSource = helper.slice(directSmokeStart, directSmokeEnd);
+  assert.ok(
+    directSmokeStart >= 0 &&
+      directSmokeEnd > directSmokeStart &&
+      /} catch \{\s*if \(\$process\) \{/.test(directSmokeSource) &&
+      !directSmokeSource.includes("$process -and -not $KeepOpenAfterResult"),
+    "Windows direct smoke must terminate its launched process after every failed keep-open run"
+  );
   assert.ok(
     helper.includes('[switch]$AutorunUserGestureGate') &&
       helper.includes('if ($AutorunUserGestureGate -and $Action -cnotin @(') &&
       helper.includes('"presenter-web-open-and-wait",') &&
       helper.includes('"presenter-duplicate-open-guard"') &&
-      helper.includes('throw "-AutorunUserGestureGate requires one supported single-cycle active action."') &&
+      helper.includes('"presenter-persistent-reuse-three-cycle"') &&
+      helper.includes('throw "-AutorunUserGestureGate requires one supported gated action."') &&
       helper.includes("-not $KeepOpenAfterResult") &&
       helper.includes("-not $ControlServer") &&
       helper.includes("-not $ControlHandoffOnly") &&
@@ -1068,7 +1086,7 @@ function runWindowsSmokeHelperStaticChecks() {
       helper.includes('throw "-AutorunUserGestureGate requires keep-open, handoff-only control, and one control file."') &&
       helper.includes("$app.autorunKeepOpenAfterResult -isnot [bool]") &&
       helper.includes("$app.autorunKeepOpenAfterResult -ne [bool]$KeepOpenAfterResult"),
-    "Windows smoke helper must restrict the user-gesture gate to supported single-cycle active actions in one keep-open handoff-only completion scope"
+    "Windows smoke helper must restrict the user-gesture gate to the closed single-cycle and persistent action union in one keep-open handoff-only completion scope"
   );
   const userGestureTargetStart = matrixHelper.indexOf("function Resolve-AutorunUserGestureGateTarget");
   const userGestureTargetEnd = matrixHelper.indexOf(
@@ -1460,6 +1478,10 @@ function runWindowsSmokeHelperStaticChecks() {
     '$SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"',
     '$AutorunUserGestureGatePolicy = "single-cycle-active-v1"',
     "autorunUserGestureGatePolicy = $AutorunUserGestureGatePolicy",
+    '$PersistentReuseGatePolicy = "initial-user-gesture-verify-only-v1"',
+    "$PersistentReuseEvidenceSchema = 1",
+    "persistentReuseGatePolicy = $PersistentReuseGatePolicy",
+    "supportedPersistentReuseEvidenceSchemas = @($PersistentReuseEvidenceSchema)",
     "$SameProcessUserGestureEvidenceSchema",
     "supportedCloseProbeEvidenceSchemas = @(",
     "supportedExternalForegroundTransitions = @($ExternalForegroundTransition)",
@@ -1471,11 +1493,107 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows close-probe schema union missing ${expected}`);
   }
+  for (const expected of [
+    "$controlHandoffOnlyExpected = ($useUserGestureGate -or $expectedCloseCount -eq 1)",
+    "$script:PersistentReuseNativeHostHandle = [IntPtr]::Zero",
+    "$script:PersistentReuseNativeHostOwnerPid = [uint32]0",
+    '"initial-user-gesture"',
+    '"verify-only"',
+    "persistentReuseGate = `$script:UsePersistentReuseGate",
+    "sameHostAsCycleOne",
+    "Get-PersistentReuseCompletedCycles",
+    "persistent-cycle-readiness-order-invalid",
+    "activeCallbackCount",
+    "inactiveCallbackCount",
+    '"cycle-{0:D2}-detected"',
+    '"cycle-{0:D2}-before-send"',
+    '"cycle-{0:D2}-after-send"',
+    '"cycle-{0:D2}-web-close-ready-{1:D2}"',
+    "Resolve-MatrixCaseTimeoutSeconds",
+    "Invoke-MatrixCase -Case $Case"
+  ]) {
+    assert.ok(
+      matrixHelper.includes(expected),
+      `Windows persistent verify-only gate missing ${expected}`
+    );
+  }
+  const foregroundSnapshotStart = matrixHelper.indexOf(
+    "function Get-ForegroundProbeSnapshot"
+  );
+  const foregroundSnapshotEnd = matrixHelper.indexOf(
+    "\nfunction Test-WebCloseForegroundCandidate",
+    foregroundSnapshotStart
+  );
+  const foregroundSnapshotBlock = matrixHelper.slice(
+    foregroundSnapshotStart,
+    foregroundSnapshotEnd
+  );
+  assert.ok(
+    foregroundSnapshotStart >= 0 &&
+      foregroundSnapshotEnd > foregroundSnapshotStart &&
+      foregroundSnapshotBlock.includes("if (`$script:UsePersistentReuseGate) {") &&
+      foregroundSnapshotBlock.includes("`$snapshot.handlePresent =") &&
+      foregroundSnapshotBlock.includes("`$snapshot.hwnd =") &&
+      /if \(`\$script:UsePersistentReuseGate\) \{\s*`\$snapshot\.handlePresent =[\s\S]*?\} else \{\s*`\$snapshot\.hwnd =/.test(
+        foregroundSnapshotBlock
+      ),
+    "Windows current persistent foreground proof must omit raw HWND snapshots"
+  );
+  const persistentFocusStart = presenterFocusBlock.indexOf(
+    "  if (`$script:UsePersistentReuseGate) {"
+  );
+  const persistentFocusEnd = presenterFocusBlock.indexOf(
+    "\n  if (`$script:UseUserGestureGate) {",
+    persistentFocusStart
+  );
+  const persistentFocusBlock = presenterFocusBlock.slice(
+    persistentFocusStart,
+    persistentFocusEnd
+  );
+  for (const expected of [
+    "if (`$script:CloseCycleOrdinal -eq 1)",
+    "`$script:PersistentReuseNativeHostHandle = `$handle",
+    "`$script:PersistentReuseNativeHostOwnerPid = `$ownerPid",
+    "`$handle -eq `$script:PersistentReuseNativeHostHandle",
+    "`$ownerPid -eq `$script:PersistentReuseNativeHostOwnerPid",
+    '"persistent-native-host-baseline-already-bound"',
+    '"persistent-native-host-changed"'
+  ]) {
+    assert.ok(
+      persistentFocusStart >= 0 &&
+        persistentFocusEnd > persistentFocusStart &&
+        persistentFocusBlock.includes(expected),
+      `Windows persistent presenter confirmation missing ${expected}`
+    );
+  }
+  const persistentPreDispatchStart = matrixHelper.indexOf(
+    "function Confirm-LifecycleNativePresenterForegroundForCloseInput"
+  );
+  const persistentPreDispatchEnd = matrixHelper.indexOf(
+    "\nfunction Get-LifecyclePresenterBounds",
+    persistentPreDispatchStart
+  );
+  const persistentPreDispatchBlock = matrixHelper.slice(
+    persistentPreDispatchStart,
+    persistentPreDispatchEnd
+  );
+  for (const expected of [
+    "`$handle -eq `$script:PersistentReuseNativeHostHandle",
+    "`$ownerPid -eq `$script:PersistentReuseNativeHostOwnerPid",
+    '"persistent-native-host-changed-before-dispatch"'
+  ]) {
+    assert.ok(
+      persistentPreDispatchStart >= 0 &&
+        persistentPreDispatchEnd > persistentPreDispatchStart &&
+        persistentPreDispatchBlock.includes(expected),
+      `Windows persistent pre-dispatch confirmation missing ${expected}`
+    );
+  }
   const userGestureResolverStart = matrixHelper.indexOf(
     "function Resolve-AutorunUserGestureGateCase"
   );
   const userGestureResolverEnd = matrixHelper.indexOf(
-    "\nfunction Test-MatrixCloseProbeRequirements",
+    "\nfunction Resolve-PersistentReuseGateCase",
     userGestureResolverStart
   );
   assert.ok(
@@ -1545,6 +1663,31 @@ function runWindowsSmokeHelperStaticChecks() {
       userGestureResolver.includes("[string]$Case.action -cne $expectedAction"),
     "Windows user-gesture resolver must preserve historical targets and fail closed before selecting the generic target"
   );
+  const persistentGateResolverStart = matrixHelper.indexOf(
+    "function Resolve-PersistentReuseGateCase"
+  );
+  const persistentGateResolverEnd = matrixHelper.indexOf(
+    "\nfunction Test-MatrixCloseProbeRequirements",
+    persistentGateResolverStart
+  );
+  const persistentGateResolver = matrixHelper.slice(
+    persistentGateResolverStart,
+    persistentGateResolverEnd
+  );
+  assert.ok(
+    persistentGateResolverStart >= 0 &&
+      persistentGateResolverEnd > persistentGateResolverStart &&
+      persistentGateResolver.includes('[string]$Case.id -cne "40-persistent-reuse-three-cycle"') &&
+      persistentGateResolver.includes(
+        '[string]$Case.action -cne "presenter-persistent-reuse-three-cycle"'
+      ) &&
+      persistentGateResolver.includes("[int]$Case.persistentReuseCycles -ne 3") &&
+      persistentGateResolver.includes("$Case.persistentReuseGate -ne $true") &&
+      persistentGateResolver.includes("$PersistentReuseGatePolicy") &&
+      persistentGateResolver.includes("$PersistentReuseEvidenceSchema") &&
+      persistentGateResolver.includes('targetId = "autorun-user-gesture-target"'),
+    "Windows matrix must isolate persistent reuse behind one exact case/action/policy resolver"
+  );
 
   const allowedGateActionStart = helper.indexOf("if ($AutorunUserGestureGate -and $Action -cnotin @(");
   const allowedGateActionEnd = helper.indexOf(
@@ -1561,8 +1704,8 @@ function runWindowsSmokeHelperStaticChecks() {
     .sort();
   assert.deepEqual(
     allowedGateActions,
-    Object.keys(USER_GESTURE_ACTION_TARGETS).sort(),
-    "Windows smoke gate allowlist must contain exactly the 14 supported single-cycle active actions"
+    Object.keys(ALL_USER_GESTURE_ACTION_TARGETS).sort(),
+    "Windows smoke gate allowlist must contain exactly the 14 single-cycle actions plus persistent reuse"
   );
 
   const matrixLines = matrixHelper.split(/\r?\n/);
@@ -1610,14 +1753,36 @@ function runWindowsSmokeHelperStaticChecks() {
     "23-raw-native-dialog-open-observe",
     "24-raw-native-user-open-observe",
     "25-managed-achievement-progress",
-    "26-managed-achievement-unlock",
-    "40-persistent-reuse-three-cycle"
+    "26-managed-achievement-unlock"
   ]) {
     assert.ok(
       !getExplicitCaseDeclaration(caseId).includes("-AutorunUserGestureGate"),
       `Windows matrix non-single-cycle case must remain outside the user-gesture gate: ${caseId}`
     );
   }
+  const persistentReuseCase = getExplicitCaseDeclaration("40-persistent-reuse-three-cycle");
+  for (const expected of [
+    '-Action "presenter-persistent-reuse-three-cycle"',
+    "-AutorunUserGestureGate",
+    "-PersistentReuseGate",
+    "-PersistentReuseCycles 3"
+  ]) {
+    assert.ok(
+      persistentReuseCase.includes(expected),
+      `Windows persistent reuse case missing ${expected}`
+    );
+  }
+  const persistentRunnerStart = matrixHelper.indexOf("function Invoke-PersistentReuseCase");
+  const persistentRunnerEnd = matrixHelper.indexOf("\nfunction Invoke-MatrixCase", persistentRunnerStart);
+  const persistentRunner = matrixHelper.slice(persistentRunnerStart, persistentRunnerEnd);
+  assert.ok(
+    /if \(\$Case\.persistentReuseGate -eq \$true\) \{\s*Invoke-MatrixCase -Case \$Case\s*return\s*\}/.test(
+      persistentRunner
+    ) &&
+      persistentRunner.indexOf("Invoke-MatrixCase -Case $Case") <
+        persistentRunner.indexOf('"persistent-control-readiness.json"'),
+    "Windows current persistent reuse must delegate and return before the historical full-control path"
+  );
   const publicShortcutCasesStart = matrixHelper.indexOf("function New-PublicShortcutRouteCases");
   const publicShortcutCasesEnd = matrixHelper.indexOf(
     "\nfunction Get-MatrixCases",
@@ -1764,7 +1929,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "completion.quitAttempted === true",
     "completion.quitResponseOk === true",
     "completion.sourceProcessExited === true",
-    "afterCloseStableEvents.length === 1",
+    "persistentReuseUserGesture ? WINDOWS_PERSISTENT_REUSE_CYCLES : 1",
+    "persistentReuseCompleteEvents.length === (persistentReuseUserGesture ? 1 : 0)",
     "completionQuitEvents.length === 1",
     "resultWrittenPayload.resultFileWritten === true",
     "keepOpenPayload.resultFileWritten === true",
@@ -1869,6 +2035,19 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     matrixHelper.includes("nativePresenterPreDispatch = `$nativePresenterPreDispatch"),
     "Windows close probe must record sanitized pre-dispatch focus confirmation with sent input"
+  );
+  const closeInputDispatchStartIndex = matrixHelper.indexOf(
+    'Write-ProbeEvent "probe:close-input-dispatch-start"',
+    presenterPreDispatchCallIndex
+  );
+  const closeInputSendIndex = matrixHelper.indexOf(
+    "`$nativePointerSent = Send-NativeMouseClick",
+    closeInputDispatchStartIndex
+  );
+  assert.ok(
+    closeInputDispatchStartIndex > presenterPreDispatchCallIndex &&
+      closeInputSendIndex > closeInputDispatchStartIndex,
+    "Windows close probe must timestamp the confirmed dispatch boundary before SendInput"
   );
   assert.ok(
     matrixHelper.includes("SetProcessDpiAwarenessContext") &&
@@ -2329,6 +2508,18 @@ function runWindowsSmokeHelperStaticChecks() {
     "verifyDuplicateOpenGuard",
     "verifyPersistentReuseProof",
     "verifyPersistentCloseProbe",
+    'const PERSISTENT_REUSE_GATE_POLICY = "initial-user-gesture-verify-only-v1"',
+    "const PERSISTENT_REUSE_EVIDENCE_SCHEMA = 1",
+    "current persistent reuse omits the historical full-control readiness artifact",
+    "current persistent close probe keeps handoff-only control across three closes",
+    "persistent result and lifecycle projections agree exactly",
+    "uses process and thread per-monitor-v2 awareness",
+    "scale agrees with independent presenter geometry",
+    "has one readable physical screenshot containing its native host",
+    "uses distinct pre-send physical screenshot artifacts",
+    "causally bridges shown and active to close and inactive",
+    "makes no handoff or native-show request",
+    "confirmation of the cycle-one host",
     "verifyPassiveNotificationProof",
     "false-to-true needs-present",
     "no hot full-diagnostics loop",
@@ -2991,8 +3182,18 @@ function runElectronSmokeActionStaticChecks() {
     );
     assert.deepEqual(
       actualMappings,
-      USER_GESTURE_ACTION_TARGETS,
-      `Electron smoke ${label} must retain exactly the 14 closed action-to-target mappings`
+      ALL_USER_GESTURE_ACTION_TARGETS,
+      `Electron smoke ${label} must retain exactly the 14 single-cycle mappings plus persistent reuse`
+    );
+    assert.equal(
+      Object.keys(USER_GESTURE_ACTION_TARGETS).length,
+      14,
+      "Electron smoke single-cycle action boundary must remain exactly 14"
+    );
+    assert.deepEqual(
+      PERSISTENT_USER_GESTURE_ACTION_TARGETS,
+      { "presenter-persistent-reuse-three-cycle": GENERIC_USER_GESTURE_GATE_TARGET },
+      "Electron smoke persistent gate boundary must contain one exact action"
     );
     for (const expected of [
       'typeof action !== "string"',
@@ -3001,6 +3202,67 @@ function runElectronSmokeActionStaticChecks() {
       assert.ok(source.includes(expected), `Electron smoke ${label} closed gate resolver missing ${expected}`);
     }
   }
+  const persistentReuseStart = main.indexOf(
+    "async function runPresenterPersistentReuseThreeCycle"
+  );
+  const persistentReuseEnd = main.indexOf(
+    "\nfunction persistentReusePresenterEvidence",
+    persistentReuseStart
+  );
+  const persistentReuseBlock = main.slice(persistentReuseStart, persistentReuseEnd);
+  for (const expected of [
+    "const userGesturePersistentReuse = AUTORUN_USER_GESTURE_GATE",
+    "persistentReuseGatePolicy: PERSISTENT_REUSE_GATE_POLICY",
+    "persistentReuseEvidenceSchema: PERSISTENT_REUSE_EVIDENCE_SCHEMA",
+    "initialUserGestureCycle: 1",
+    "verifyOnlyCycles: [2, 3]",
+    "closeVerificationOrdinals: [1, 2, 3]",
+    "if (!userGesturePersistentReuse) {\n      beginNativePresenterForegroundHandoffReuseCycle(cycle);",
+    "if (!userGesturePersistentReuse) {\n      await waitForNativePresenterForegroundHandoffReuseCycle(cycle);",
+    "if (!userGesturePersistentReuse) {\n      finishNativePresenterForegroundHandoffReuseCycle(cycle);"
+  ]) {
+    assert.ok(
+      persistentReuseBlock.includes(expected),
+      `Electron smoke persistent verify-only state machine missing ${expected}`
+    );
+  }
+  for (const [call, label] of [
+    ["beginNativePresenterForegroundHandoffReuseCycle(cycle)", "begin"],
+    ["await waitForNativePresenterForegroundHandoffReuseCycle(cycle)", "wait"],
+    ["finishNativePresenterForegroundHandoffReuseCycle(cycle)", "finish"]
+  ]) {
+    assert.equal(
+      persistentReuseBlock.split(call).length - 1,
+      1,
+      `Electron smoke persistent legacy ${label} handoff must remain one guarded call`
+    );
+  }
+  const persistentEvidenceStart = persistentReuseEnd + 1;
+  const persistentEvidenceEnd = main.indexOf(
+    "\nfunction validatePersistentReuseCycleEvidence",
+    persistentEvidenceStart
+  );
+  const persistentEvidenceBlock = main.slice(persistentEvidenceStart, persistentEvidenceEnd);
+  assert.ok(
+    main.includes(
+      'const PERSISTENT_REUSE_GATE_POLICY = "initial-user-gesture-verify-only-v1";'
+    ) &&
+      main.includes("const PERSISTENT_REUSE_EVIDENCE_SCHEMA = 1;") &&
+    main.includes("const NATIVE_HOST_IDENTITY_SALT = crypto.randomBytes(32);") &&
+      persistentEvidenceStart > 0 &&
+      persistentEvidenceEnd > persistentEvidenceStart &&
+      persistentEvidenceBlock.includes('.createHash("sha256")') &&
+      persistentEvidenceBlock.includes(".update(NATIVE_HOST_IDENTITY_SALT)") &&
+      persistentEvidenceBlock.includes('.update("\\0")') &&
+      persistentEvidenceBlock.includes(".update(rawNativeHostIdentity)") &&
+      persistentEvidenceBlock.includes('.digest("hex")'),
+    "Electron smoke persistent HWND identity must remain process-salted SHA-256 evidence"
+  );
+  assert.doesNotMatch(
+    persistentEvidenceBlock,
+    /nativeHostIdentityToken:\s*rawNativeHostIdentity\s*[,}]/,
+    "Electron smoke persistent evidence must never expose the raw native HWND identity"
+  );
   const genericGateButton = html.match(
     /<button id="autorun-user-gesture-target"[^>]*>Run Gated Action<\/button>/
   )?.[0];
@@ -3408,7 +3670,7 @@ function runElectronPreloadUserGestureGateSelfTest() {
       otherAction: "presenter-web-open-and-wait",
       otherTargetId: "presenter-web-wait"
     },
-    ...Object.entries(USER_GESTURE_ACTION_TARGETS)
+    ...Object.entries(ALL_USER_GESTURE_ACTION_TARGETS)
       .filter(([, targetId]) => targetId === GENERIC_USER_GESTURE_GATE_TARGET)
       .map(([action, targetId]) => ({
         action,

@@ -32,6 +32,7 @@ param(
     "presenter-web",
     "presenter-web-open-and-wait",
     "presenter-duplicate-open-guard",
+    "presenter-persistent-reuse-three-cycle",
     "presenter-friends",
     "presenter-friends-open-and-wait",
     "presenter-profile",
@@ -124,6 +125,7 @@ if ($RequireMicroTxnCallback -and $Action -ne "presenter-checkout") {
 if ($AutorunUserGestureGate -and $Action -cnotin @(
     "presenter-web-open-and-wait",
     "presenter-duplicate-open-guard",
+    "presenter-persistent-reuse-three-cycle",
     "presenter-store-open-and-wait",
     "presenter-dialog-auto-open-and-wait",
     "presenter-friends-open-and-wait",
@@ -137,7 +139,7 @@ if ($AutorunUserGestureGate -and $Action -cnotin @(
     "presenter-shortcut",
     "presenter-shortcut-open-and-wait"
   )) {
-  throw "-AutorunUserGestureGate requires one supported single-cycle active action."
+  throw "-AutorunUserGestureGate requires one supported gated action."
 }
 
 if ($AutorunUserGestureGate -and (
@@ -2139,7 +2141,7 @@ function Invoke-DirectSmoke {
     Assert-SmokeResult $result
     Wait-ForSmokeProcessExit -Result $result
   } catch {
-    if ($process -and -not $KeepOpenAfterResult) {
+    if ($process) {
       try {
         $process.Refresh()
         if (-not $process.HasExited) {

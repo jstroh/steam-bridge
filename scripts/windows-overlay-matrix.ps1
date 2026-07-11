@@ -253,6 +253,8 @@ $CloseProbeForegroundHandoff = "owner-process-native-show-v1"
 $SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"
 $ExternalForegroundTransition = "external-foreground-event-v1"
 $AutorunUserGestureGatePolicy = "single-cycle-active-v1"
+$PersistentReuseGatePolicy = "initial-user-gesture-verify-only-v1"
+$PersistentReuseEvidenceSchema = 1
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -1959,6 +1961,28 @@ function Resolve-AutorunUserGestureGateCase {
   }
 }
 
+function Resolve-PersistentReuseGateCase {
+  param($Case)
+
+  if (
+    [string]$Case.id -cne "40-persistent-reuse-three-cycle" -or
+    [string]$Case.action -cne "presenter-persistent-reuse-three-cycle" -or
+    [int]$Case.persistentReuseCycles -ne 3 -or
+    $Case.persistentReuseGate -ne $true -or
+    [string]$Case.persistentReuseGatePolicy -cne $PersistentReuseGatePolicy -or
+    [int]$Case.persistentReuseEvidenceSchema -ne $PersistentReuseEvidenceSchema
+  ) {
+    return $null
+  }
+
+  return [PSCustomObject]@{
+    action = "presenter-persistent-reuse-three-cycle"
+    targetId = "autorun-user-gesture-target"
+    policy = $PersistentReuseGatePolicy
+    evidenceSchema = $PersistentReuseEvidenceSchema
+  }
+}
+
 function Test-MatrixCloseProbeRequirements {
   param([object[]]$Cases)
 
@@ -1980,7 +2004,8 @@ function Test-MatrixCloseProbeRequirements {
     throw "Selected Windows user-gesture gate case(s) require -CloseProbe so the matrix can deliver and audit the one-shot renderer click: $caseIds"
   }
   $unsupportedUserGestureCases = @($userGestureCases | Where-Object {
-    $null -eq (Resolve-AutorunUserGestureGateCase -Case $_)
+    $null -eq (Resolve-AutorunUserGestureGateCase -Case $_) -and
+    $null -eq (Resolve-PersistentReuseGateCase -Case $_)
   })
   if ($unsupportedUserGestureCases.Count -gt 0) {
     $caseIds = (($unsupportedUserGestureCases | ForEach-Object { $_.id }) -join ", ")
@@ -2724,6 +2749,7 @@ function New-Case {
     [switch]$CloseProbeOnActivation,
     [switch]$ShortcutToggleProbe,
     [switch]$AutorunUserGestureGate,
+    [switch]$PersistentReuseGate,
     [string]$ManagedOverlayResultMode = "",
     [string]$WebModal = "",
     [string]$StoreRouteOverride = "",
@@ -2750,6 +2776,12 @@ function New-Case {
     closeProbeOnActivation = [bool]$CloseProbeOnActivation
     shortcutToggleProbe = [bool]$ShortcutToggleProbe
     autorunUserGestureGate = [bool]$AutorunUserGestureGate
+    persistentReuseGate = [bool]$PersistentReuseGate
+    persistentReuseGatePolicy = if ($PersistentReuseGate) { $PersistentReuseGatePolicy } else { "" }
+    persistentReuseEvidenceSchema = if ($PersistentReuseGate) { $PersistentReuseEvidenceSchema } else { 0 }
+    initialUserGestureCycle = if ($PersistentReuseGate) { 1 } else { 0 }
+    verifyOnlyCycles = if ($PersistentReuseGate) { @(2, 3) } else { @() }
+    closeVerificationOrdinals = if ($PersistentReuseGate) { @(1, 2, 3) } else { @() }
     managedOverlayResultMode = $ManagedOverlayResultMode
     webModal = $WebModal
     storeRoute = $StoreRouteOverride
@@ -2862,6 +2894,10 @@ function Get-MatrixCases {
   $shortcutCheckoutTransactionIdForCase = if ($ShortcutTarget -eq "checkout" -and -not $CheckoutJsonFile -and -not $InitTxnRequestFile) { $CheckoutTransactionId } else { "" }
   $shortcutCheckoutJsonFileForCase = if ($ShortcutTarget -eq "checkout" -and $CheckoutJsonFile) { $CheckoutJsonFile } else { "" }
   $shortcutCheckoutInitTxnRequestFileForCase = if ($ShortcutTarget -eq "checkout" -and $InitTxnRequestFile) { $InitTxnRequestFile } else { "" }
+  $persistentReuseResultDelayMs = [Math]::Max(
+    180000,
+    (($CloseProbeTimeoutSeconds * 3) + 30) * 1000
+  )
   $baseline = @(
     New-Case -Id "01-web" -Action "web" -RequireEvent @("overlay:web") -RequireOverlayActivated -WebModal "true"
     New-Case -Id "02-store" -Action "store" -RequireEvent @("overlay:store") -RequireOverlayActivated
@@ -2924,8 +2960,10 @@ function Get-MatrixCases {
       -RequireEvent @("overlay:presenter-persistent-reuse-start", "overlay:presenter-persistent-reuse-cycle", "overlay:presenter-persistent-reuse-complete") `
       -RequireOverlayActivated `
       -WebModal "true" `
+      -AutorunUserGestureGate `
+      -PersistentReuseGate `
       -PersistentReuseCycles 3 `
-      -ResultDelayMs 180000
+      -ResultDelayMs $persistentReuseResultDelayMs
   )
 
   $checkout = @(
@@ -3045,6 +3083,12 @@ function Write-MatrixManifest {
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           shortcutToggleProbe = [bool]$_.shortcutToggleProbe
           autorunUserGestureGate = [bool]$_.autorunUserGestureGate
+          persistentReuseGate = [bool]$_.persistentReuseGate
+          persistentReuseGatePolicy = [string]$_.persistentReuseGatePolicy
+          persistentReuseEvidenceSchema = [int]$_.persistentReuseEvidenceSchema
+          initialUserGestureCycle = [int]$_.initialUserGestureCycle
+          verifyOnlyCycles = @($_.verifyOnlyCycles)
+          closeVerificationOrdinals = @($_.closeVerificationOrdinals)
           closeProbeEvidenceSchema = if ($_.autorunUserGestureGate) {
             $SameProcessUserGestureEvidenceSchema
           } else {
@@ -3104,6 +3148,8 @@ function Write-MatrixManifest {
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
     autorunUserGestureGatePolicy = $AutorunUserGestureGatePolicy
+    persistentReuseGatePolicy = $PersistentReuseGatePolicy
+    supportedPersistentReuseEvidenceSchemas = @($PersistentReuseEvidenceSchema)
     closeProbeEvidenceSchema = $CloseProbeEvidenceSchema
     supportedCloseProbeEvidenceSchemas = @(
       $CloseProbeEvidenceSchema,
@@ -3262,6 +3308,7 @@ function Start-WindowsOverlayCloseProbe {
 
   $shortcutToggleProbe = [bool]$Case.shortcutToggleProbe
   $useUserGestureGate = [bool]$Case.autorunUserGestureGate
+  $usePersistentReuseGate = [bool]$Case.persistentReuseGate
   $evidenceSchema = if ($useUserGestureGate) {
     $SameProcessUserGestureEvidenceSchema
   } else {
@@ -3276,6 +3323,9 @@ function Start-WindowsOverlayCloseProbe {
   $userGestureTargetId = ""
   if ($useUserGestureGate) {
     $userGestureCase = Resolve-AutorunUserGestureGateCase -Case $Case
+    if ($null -eq $userGestureCase) {
+      $userGestureCase = Resolve-PersistentReuseGateCase -Case $Case
+    }
     if ($null -eq $userGestureCase) {
       throw "Unsupported Windows user-gesture gate case/action pair: $($Case.id) / $($Case.action)"
     }
@@ -3295,7 +3345,7 @@ function Start-WindowsOverlayCloseProbe {
   $settleMs = [Math]::Max(0, $CloseProbeSettleMs)
   $expectedCloseCount = [Math]::Max(1, [int]$Case.persistentReuseCycles)
   $timeoutSeconds = [Math]::Max(1, ($CloseProbeTimeoutSeconds * $expectedCloseCount))
-  $controlHandoffOnlyExpected = ($expectedCloseCount -eq 1)
+  $controlHandoffOnlyExpected = ($useUserGestureGate -or $expectedCloseCount -eq 1)
   $foregroundHandoff = if ($useUserGestureGate) {
     $SameProcessUserGestureForegroundHandoff
   } else {
@@ -3753,6 +3803,9 @@ public static class SteamBridgeWindowsProbe {
 `$script:ControlHandoffOnlyExpected = [bool]::Parse('$controlHandoffOnlyExpected')
 `$script:PreserveSmokeControlFile = [bool]::Parse('$preserveControlFile')
 `$script:UseUserGestureGate = [bool]::Parse('$useUserGestureGate')
+`$script:UsePersistentReuseGate = [bool]::Parse('$usePersistentReuseGate')
+`$script:PersistentReuseGatePolicy = '$PersistentReuseGatePolicy'
+`$script:PersistentReuseEvidenceSchema = $PersistentReuseEvidenceSchema
 `$script:UserGestureAction = '$userGestureAction'
 `$script:UserGestureTargetId = '$userGestureTargetId'
 `$script:ExternalForegroundRequestOrdinal = 1
@@ -3771,6 +3824,8 @@ public static class SteamBridgeWindowsProbe {
 `$script:UserGestureSourceWindowOwnerPid = [uint32]0
 `$script:UserGestureSourceProcessStartTicks = [int64]0
 `$script:UserGestureRendererGeometry = `$null
+`$script:PersistentReuseNativeHostHandle = [IntPtr]::Zero
+`$script:PersistentReuseNativeHostOwnerPid = [uint32]0
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -4297,12 +4352,16 @@ function Wait-AutorunUserGestureSourceFocusReturn {
     } else {
       ""
     }
-    `$evidence.lifecycleComplete = (
+    `$evidence.lifecycleComplete = if (`$script:UsePersistentReuseGate) {
+      ([regex]::Matches(`$text, 'overlay:presenter-persistent-reuse-cycle')).Count -eq 3 -and
+      ([regex]::Matches(`$text, 'overlay:presenter-after-close-stable')).Count -ge 3 -and
+      `$text -match 'overlay:presenter-persistent-reuse-complete'
+    } else {
       `$text -match 'callback:overlay-activated' -and
       `$text -match '"active":false' -and
       `$text -match 'overlay:presenter-open-and-wait-complete' -and
       `$text -match 'overlay:presenter-after-close-stable'
-    )
+    }
     if (-not `$evidence.lifecycleComplete) {
       Start-Sleep -Milliseconds 100
       continue
@@ -4356,8 +4415,7 @@ function Get-ForegroundProbeSnapshot {
   `$rect = New-Object -TypeName 'SteamBridgeWindowsProbe+RECT'
   `$hasRect = [SteamBridgeWindowsProbe]::GetWindowRect(`$handle, [ref]`$rect)
 
-  [PSCustomObject]@{
-    hwnd = ("0x{0:X}" -f `$handle.ToInt64())
+  `$snapshot = [ordered]@{
     pid = [int]`$processId
     processName = if (`$process) { `$process.ProcessName } else { "" }
     title = `$titleBuilder.ToString()
@@ -4374,6 +4432,12 @@ function Get-ForegroundProbeSnapshot {
       `$null
     }
   }
+  if (`$script:UsePersistentReuseGate) {
+    `$snapshot.handlePresent = (`$handle -and `$handle -ne [IntPtr]::Zero)
+  } else {
+    `$snapshot.hwnd = ("0x{0:X}" -f `$handle.ToInt64())
+  }
+  return [PSCustomObject]`$snapshot
 }
 
 function Test-WebCloseForegroundCandidate {
@@ -4955,7 +5019,10 @@ function Test-WebClosePanelScreenshot {
 }
 
 function Wait-WebClosePanelReady {
-  param([datetime]`$Deadline)
+  param(
+    [datetime]`$Deadline,
+    [int]`$Cycle = 1
+  )
 
   `$readyDeadline = (Get-Date).AddSeconds([Math]::Min(8, [Math]::Max(1, (`$Deadline - (Get-Date)).TotalSeconds)))
   `$attempt = 0
@@ -4963,7 +5030,7 @@ function Wait-WebClosePanelReady {
   while ((Get-Date) -lt `$readyDeadline) {
     `$attempt += 1
     `$foreground = Get-ForegroundProbeSnapshot
-    `$screenshot = Capture-ProbeScreen ("web-close-ready-{0:D2}" -f `$attempt)
+    `$screenshot = Capture-ProbeScreen ("cycle-{0:D2}-web-close-ready-{1:D2}" -f `$Cycle, `$attempt)
     `$target = Get-WebCloseClickTarget -Foreground `$foreground -Screenshot `$screenshot
     if (`$target) {
       `$lastTarget = `$target
@@ -4971,6 +5038,7 @@ function Wait-WebClosePanelReady {
     `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
     if (`$analysis.ready) {
       Write-ProbeEvent "probe:web-close-ready" ([PSCustomObject]@{
+        cycle = `$Cycle
         attempt = `$attempt
         foreground = `$foreground
         screenshot = `$screenshot
@@ -4987,6 +5055,7 @@ function Wait-WebClosePanelReady {
         screenshot = `$screenshot
       }
       Write-ProbeEvent "probe:web-close-target-ready" ([PSCustomObject]@{
+        cycle = `$Cycle
         attempt = `$attempt
         foreground = `$foreground
         screenshot = `$screenshot
@@ -4999,12 +5068,13 @@ function Wait-WebClosePanelReady {
   }
 
   `$foreground = Get-ForegroundProbeSnapshot
-  `$screenshot = Capture-ProbeScreen "web-close-ready-timeout"
+  `$screenshot = Capture-ProbeScreen ("cycle-{0:D2}-web-close-ready-timeout" -f `$Cycle)
   `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
   if (-not `$analysis.target -and `$lastTarget) {
     `$analysis | Add-Member -NotePropertyName target -NotePropertyValue `$lastTarget -Force
   }
   Write-ProbeEvent "probe:web-close-ready-timeout" ([PSCustomObject]@{
+    cycle = `$Cycle
     attempts = `$attempt
     foreground = `$foreground
     screenshot = `$screenshot
@@ -5245,6 +5315,27 @@ function Get-PersistentReuseShownCycles {
   return @(`$cycles)
 }
 
+function Get-PersistentReuseCompletedCycles {
+  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
+    return @()
+  }
+  `$cycles = @()
+  foreach (`$line in @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)) {
+    try {
+      `$event = `$line | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+      continue
+    }
+    if (
+      `$event.type -eq "event:overlay:presenter-persistent-reuse-cycle" -and
+      [int]`$event.payload.cycle -ge 1
+    ) {
+      `$cycles += [int]`$event.payload.cycle
+    }
+  }
+  return @(`$cycles)
+}
+
 function Read-SmokeControlDescriptor {
   `$descriptor = [ordered]@{
     valid = `$false
@@ -5339,6 +5430,21 @@ function Focus-LifecycleNativePresenterForCloseInput {
       activationInputCount = if (`$script:UserGestureActivationSent) { 1 } else { 0 }
       sourceWindowBound = `$false
     }
+    persistentReuse = [ordered]@{
+      required = `$script:UsePersistentReuseGate
+      policy = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseGatePolicy } else { "" }
+      evidenceSchema = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseEvidenceSchema } else { 0 }
+      cycle = if (`$script:UsePersistentReuseGate) { `$script:CloseCycleOrdinal } else { 0 }
+      confirmationMode = if (`$script:UsePersistentReuseGate -and `$script:CloseCycleOrdinal -eq 1) {
+        "initial-user-gesture"
+      } elseif (`$script:UsePersistentReuseGate) {
+        "verify-only"
+      } else {
+        ""
+      }
+      baselineHostBound = `$false
+      sameHostAsCycleOne = `$false
+    }
     focused = `$false
     appReason = "not-requested"
     reason = "missing-lifecycle-native-host"
@@ -5408,6 +5514,30 @@ function Focus-LifecycleNativePresenterForCloseInput {
   if (-not `$evidence.binding.ownerMatchesControlProcess) {
     `$evidence.reason = "control-process-owner-mismatch"
     return [PSCustomObject]`$evidence
+  }
+
+  if (`$script:UsePersistentReuseGate) {
+    if (`$script:CloseCycleOrdinal -eq 1) {
+      if (`$script:PersistentReuseNativeHostHandle -ne [IntPtr]::Zero) {
+        `$evidence.reason = "persistent-native-host-baseline-already-bound"
+        return [PSCustomObject]`$evidence
+      }
+      `$script:PersistentReuseNativeHostHandle = `$handle
+      `$script:PersistentReuseNativeHostOwnerPid = `$ownerPid
+    }
+    `$evidence.persistentReuse.baselineHostBound = (
+      `$script:PersistentReuseNativeHostHandle -ne [IntPtr]::Zero -and
+      `$script:PersistentReuseNativeHostOwnerPid -gt 0
+    )
+    `$evidence.persistentReuse.sameHostAsCycleOne = (
+      `$evidence.persistentReuse.baselineHostBound -and
+      `$handle -eq `$script:PersistentReuseNativeHostHandle -and
+      `$ownerPid -eq `$script:PersistentReuseNativeHostOwnerPid
+    )
+    if (-not `$evidence.persistentReuse.sameHostAsCycleOne) {
+      `$evidence.reason = "persistent-native-host-changed"
+      return [PSCustomObject]`$evidence
+    }
   }
 
   if (`$script:UseUserGestureGate) {
@@ -5536,6 +5666,18 @@ function Confirm-LifecycleNativePresenterForegroundForCloseInput {
     ownerMatches = `$false
     enabled = `$false
     notIconic = `$false
+    persistentReuseGate = `$script:UsePersistentReuseGate
+    persistentReuseGatePolicy = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseGatePolicy } else { "" }
+    persistentReuseEvidenceSchema = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseEvidenceSchema } else { 0 }
+    confirmationMode = if (`$script:UsePersistentReuseGate -and `$script:CloseCycleOrdinal -eq 1) {
+      "initial-user-gesture"
+    } elseif (`$script:UsePersistentReuseGate) {
+      "verify-only"
+    } else {
+      ""
+    }
+    baselineHostBound = `$false
+    sameHostAsCycleOne = `$false
     focused = `$false
     reason = "missing-lifecycle-native-host"
   }
@@ -5558,6 +5700,21 @@ function Confirm-LifecycleNativePresenterForegroundForCloseInput {
   if (-not `$evidence.ownerMatches) {
     `$evidence.reason = "lifecycle-native-host-owner-changed"
     return [PSCustomObject]`$evidence
+  }
+  if (`$script:UsePersistentReuseGate) {
+    `$evidence.baselineHostBound = (
+      `$script:PersistentReuseNativeHostHandle -ne [IntPtr]::Zero -and
+      `$script:PersistentReuseNativeHostOwnerPid -gt 0
+    )
+    `$evidence.sameHostAsCycleOne = (
+      `$evidence.baselineHostBound -and
+      `$handle -eq `$script:PersistentReuseNativeHostHandle -and
+      `$ownerPid -eq `$script:PersistentReuseNativeHostOwnerPid
+    )
+    if (-not `$evidence.sameHostAsCycleOne) {
+      `$evidence.reason = "persistent-native-host-changed-before-dispatch"
+      return [PSCustomObject]`$evidence
+    }
   }
   `$evidence.enabled = [SteamBridgeWindowsProbe]::IsWindowEnabled(`$handle)
   `$evidence.notIconic = -not [SteamBridgeWindowsProbe]::IsIconic(`$handle)
@@ -5664,6 +5821,12 @@ Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   externalForegroundTransition = '$externalForegroundTransition'
   externalForegroundTransitionEnabled = `$script:UseUserGestureGate
   userGestureGate = `$script:UseUserGestureGate
+  persistentReuseGate = `$script:UsePersistentReuseGate
+  persistentReuseGatePolicy = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseGatePolicy } else { "" }
+  persistentReuseEvidenceSchema = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseEvidenceSchema } else { 0 }
+  initialUserGestureCycle = if (`$script:UsePersistentReuseGate) { 1 } else { 0 }
+  verifyOnlyCycles = if (`$script:UsePersistentReuseGate) { @(2, 3) } else { @() }
+  closeVerificationOrdinals = if (`$script:UsePersistentReuseGate) { @(1, 2, 3) } else { @() }
   controlExpected = `$true
   controlHandoffOnlyExpected = `$script:ControlHandoffOnlyExpected
   expectedCloseCount = $expectedCloseCount
@@ -6091,20 +6254,51 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
     `$shownEventCount = ([regex]::Matches(`$text, 'overlay:presenter-wait-shown')).Count
     `$cycleReady = if ($expectedCloseCount -gt 1) {
       `$shownCycles = @(Get-PersistentReuseShownCycles)
+      `$completedCycles = @(Get-PersistentReuseCompletedCycles)
       `$expectedCycle = `$sentCount + 1
       `$expectedCycleCount = @(`$shownCycles | Where-Object { `$_ -eq `$expectedCycle }).Count
       `$outOfOrderCycleCount = @(`$shownCycles | Where-Object { `$_ -gt `$expectedCycle }).Count
-      if (`$expectedCycleCount -gt 1 -or `$outOfOrderCycleCount -gt 0) {
+      `$completedBefore = @(`$completedCycles | Where-Object { `$_ -lt `$expectedCycle })
+      `$completedAtOrAfter = @(`$completedCycles | Where-Object { `$_ -ge `$expectedCycle })
+      `$completedBeforeOrdered = (`$completedBefore.Count -eq (`$expectedCycle - 1))
+      `$completedBeforeInvalid = (`$completedBefore.Count -gt (`$expectedCycle - 1))
+      `$activeCallbackCount = ([regex]::Matches(`$text, '"active"\s*:\s*true')).Count
+      `$inactiveCallbackCount = ([regex]::Matches(`$text, '"active"\s*:\s*false')).Count
+      `$callbackOrderInvalid = (
+        `$activeCallbackCount -gt `$expectedCycle -or
+        `$inactiveCallbackCount -gt (`$expectedCycle - 1)
+      )
+      for (`$completedIndex = 0; `$completedIndex -lt `$completedBefore.Count; `$completedIndex += 1) {
+        if (`$completedBefore[`$completedIndex] -ne (`$completedIndex + 1)) {
+          `$completedBeforeInvalid = `$true
+          `$completedBeforeOrdered = `$false
+          break
+        }
+      }
+      if (
+        `$expectedCycleCount -gt 1 -or
+        `$outOfOrderCycleCount -gt 0 -or
+        `$completedBeforeInvalid -or
+        `$completedAtOrAfter.Count -gt 0 -or
+        `$callbackOrderInvalid
+      ) {
         Write-ProbeEvent "probe:incomplete" ([PSCustomObject]@{
           cycle = `$expectedCycle
           reason = "persistent-cycle-readiness-order-invalid"
           expectedCycleCount = `$expectedCycleCount
           outOfOrderCycleCount = `$outOfOrderCycleCount
+          completedBeforeCount = `$completedBefore.Count
+          completedAtOrAfterCount = `$completedAtOrAfter.Count
+          activeCallbackCount = `$activeCallbackCount
+          inactiveCallbackCount = `$inactiveCallbackCount
         })
         `$terminalFailure = `$true
         `$false
       } else {
-        `$expectedCycleCount -eq 1
+        `$expectedCycleCount -eq 1 -and
+        `$completedBeforeOrdered -and
+        `$activeCallbackCount -eq `$expectedCycle -and
+        `$inactiveCallbackCount -eq (`$expectedCycle - 1)
       }
     } else {
       `$shownEventCount -gt `$sentCount -or (`$text -match 'callback:overlay-activated' -and `$text -match '"active":true')
@@ -6116,7 +6310,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
       Write-ProbeEvent "probe:detected" ([PSCustomObject]@{
         cycle = `$cycle
         foreground = `$detectedForeground
-        screenshot = Capture-ProbeScreen "detected"
+        screenshot = Capture-ProbeScreen ("cycle-{0:D2}-detected" -f `$cycle)
         processes = Get-ProbeProcessSnapshot
       })
       if (-not `$script:UseUserGestureGate) {
@@ -6130,12 +6324,12 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
       }
       `$webCloseReadiness = `$null
       if ('$input' -eq 'web-close-click-sendinput') {
-        `$webCloseReadiness = Wait-WebClosePanelReady -Deadline `$deadline
+        `$webCloseReadiness = Wait-WebClosePanelReady -Deadline `$deadline -Cycle `$cycle
       }
       Write-ProbeEvent "probe:before-send" ([PSCustomObject]@{
         cycle = `$cycle
         foreground = Get-ForegroundProbeSnapshot
-        screenshot = Capture-ProbeScreen "before-send"
+        screenshot = Capture-ProbeScreen ("cycle-{0:D2}-before-send" -f `$cycle)
         webCloseReadiness = `$webCloseReadiness
         processes = Get-ProbeProcessSnapshot
       })
@@ -6192,6 +6386,11 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         `$terminalFailure = `$true
         continue
       }
+      Write-ProbeEvent "probe:close-input-dispatch-start" ([PSCustomObject]@{
+        cycle = `$cycle
+        input = '$input'
+        nativePresenterPreDispatch = `$nativePresenterPreDispatch
+      })
       if ('$input' -eq 'escape') {
         `$shell.SendKeys('{ESC}')
       } elseif ('$input' -eq 'close-tab') {
@@ -6243,7 +6442,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         cycle = `$cycle
         input = '$input'
         foreground = Get-ForegroundProbeSnapshot
-        screenshot = Capture-ProbeScreen "after-send"
+        screenshot = Capture-ProbeScreen ("cycle-{0:D2}-after-send" -f `$cycle)
         processes = Get-ProbeProcessSnapshot
       })
       `$inputSucceeded = if (`$nativePointerSent) {
@@ -6459,6 +6658,21 @@ function Invoke-Preflight {
   }
 }
 
+function Resolve-MatrixCaseTimeoutSeconds {
+  param($Case)
+
+  if ($Case.persistentReuseGate -eq $true) {
+    return [int][Math]::Max(
+      [Math]::Max(
+        $TimeoutSeconds,
+        [Math]::Ceiling(([int]$Case.resultDelayMs) / 1000) + 30
+      ),
+      ($CloseProbeTimeoutSeconds * [Math]::Max(1, [int]$Case.persistentReuseCycles)) + 60
+    )
+  }
+  return $TimeoutSeconds
+}
+
 function Write-CaseLaunchEnv {
   param(
     $Case,
@@ -6481,7 +6695,7 @@ function Write-CaseLaunchEnv {
     "-WindowMode", $WindowMode,
     "-WebUrl", $WebUrl,
     "-ResultDelayMs", "$($Case.resultDelayMs)",
-    "-TimeoutSeconds", "$TimeoutSeconds"
+    "-TimeoutSeconds", "$(Resolve-MatrixCaseTimeoutSeconds -Case $Case)"
   )
   if ($OverlayInProcessGpu) {
     $args += @("-OverlayInProcessGpu", $OverlayInProcessGpu)
@@ -6705,6 +6919,11 @@ function Invoke-MatrixSmokeControlRequest {
 function Invoke-PersistentReuseCase {
   param($Case)
 
+  if ($Case.persistentReuseGate -eq $true) {
+    Invoke-MatrixCase -Case $Case
+    return
+  }
+
   $caseDir = Join-Path $ArtifactRoot $Case.id
   $resultFile = Join-Path $caseDir "result.log"
   $launchResultFile = Join-Path $caseDir "launch-result.log"
@@ -6896,6 +7115,7 @@ function Invoke-MatrixCase {
   $useCloseProbe = Test-CaseUsesCloseProbe -Case $Case
   $keepOpenForUserGestureCompletion = [bool]$Case.autorunUserGestureGate
   $controlFile = if ($useCloseProbe) { Join-Path $caseDir "smoke-control.json" } else { "" }
+  $caseTimeoutSeconds = Resolve-MatrixCaseTimeoutSeconds -Case $Case
   New-Item -ItemType Directory -Force -Path $caseDir | Out-Null
   if ($controlFile) {
     Remove-Item -LiteralPath $controlFile -Force -ErrorAction SilentlyContinue
@@ -6919,7 +7139,7 @@ function Invoke-MatrixCase {
     "-WindowMode", $WindowMode,
     "-WebUrl", $WebUrl,
     "-ResultDelayMs", "$($Case.resultDelayMs)",
-    "-TimeoutSeconds", "$TimeoutSeconds",
+    "-TimeoutSeconds", "$caseTimeoutSeconds",
     "-RequireNoCrashes"
   )
   if ($OverlayInProcessGpu) {

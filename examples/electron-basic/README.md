@@ -216,12 +216,15 @@ authenticated graceful quit only when the gate was consumed and the configured
 result file was written. It rejects the legacy foreground-handoff route for
 this case. The branch never runs the blocker-clear key input. The standalone
 helper exposes `-AutorunUserGestureGate` only for the 14 closed single-cycle
-active actions and requires keep-open plus one handoff-only control file. The
+active actions plus the separately marked persistent-reuse action, and requires
+keep-open plus one handoff-only control file. The
 matrix independently binds 27 exact case/action pairs: managed `11`, `11b`, and
 `12` through `22` including both `15` variants; all ten public
 `30-shortcut-*-open-and-wait` routes; and checkout `02`, `03`, and `04`.
-Readiness `10`, checkout prepare `01`, raw observe `23`/`24`, passive
-notification `25`/`26`, and persistent reuse `40` remain outside this gate.
+Readiness `10`, checkout prepare `01`, raw observe `23`/`24`, and passive
+notification `25`/`26` remain outside this gate. Persistent reuse `40` remains
+outside the `single-cycle-active-v1` mapping and uses its own
+`initial-user-gesture-verify-only-v1` contract.
 Current manifests record `single-cycle-active-v1`; the auditor then requires
 schema 3 and complete gate evidence for every selected mapped case while
 rejecting a gated excluded case. Marker-absent historical artifacts remain
@@ -321,17 +324,47 @@ open/close/park cycles:
   -CloseProbeInput auto
 ```
 
-The case readiness-checks the already-running process before starting cycle
-one, binds the three foreground handoffs to exact ordinals, and stops on the
-first stale handoff, identity change, detach, renderer disagreement, or
-lifecycle failure. Its summary requires positive and stable controller, lease,
+Case `40` now runs through the ordinary autorun path and records
+`persistentReuseEvidenceSchema=1` under
+`initial-user-gesture-verify-only-v1`. One isolated-preload nonce and trusted
+renderer click starts cycle one. The probe then closes cycles `1`, `2`, and `3`
+only after their exact ordered shown state, retaining the raw cycle-one HWND as
+a probe-local comparison baseline and requiring that same HWND, owner, control
+process, and interactive session before every close and immediate pre-dispatch
+recheck. Established local result/lifecycle diagnostics remain the raw input;
+current persistent start/cycle/complete and close-probe proof records emit no
+raw HWND.
+Cycles two and three are verify-only: they make zero foreground requests, zero
+native-show calls, and no additional renderer activation clicks. The control
+descriptor remains handoff-only and binds the control process and session on
+every cycle; the authenticated HTTP control route is invoked only for the final
+quit after the result and three-cycle proof exist.
+
+The summary requires one schema-3-strength initial gate, three scale-aware
+close targets and successful `SendInput` dispatches, exact active/inactive and
+shown/closed/parked ordering, positive and stable controller, lease,
 native-instance, and opaque HWND-identity values in every shown and parked
-snapshot, exactly one attach and no detach before final shutdown, and three
-single close inputs with exact-host foreground rechecks. The current live run
-stopped fail-closed during cycle 1 because this suite still uses the historical
-owner-process handoff. Do not rerun it until a separate ordered verify-only
-three-cycle confirmation protocol exists; do not weaken the single-cycle
-handoff-only gate to make persistent reuse fit.
+snapshot, exactly one attach and no detach before final shutdown, one final
+detach, and exact source-window focus return. Historical marker-absent schema-2
+artifacts remain auditable, but a current schema-3 persistent artifact without
+the persistent policy marker fails. The prior signed live run still stopped
+fail-closed during cycle one on the historical owner-process handoff; the new
+contract has static and native PowerShell proof but no live success claim yet.
+Each cycle also needs its own readable physical pre-send full-desktop screenshot:
+the declared bounds must match the PNG dimensions, contain that cycle's
+native-host rectangle, and resolve to a path not reused by another cycle. Its
+detected panel and click point must both remain inside that exact host. Its
+per-monitor DPI or geometry-ratio scale and physical/logical bounds must agree
+with the independent lifecycle presenter geometry. Ordered timestamps bind
+active plus shown state to target selection, focus confirmation, the pre-input
+dispatch boundary, inactive/closed state, parking, and cycle completion; each
+completion must precede the next shown state. Full-desktop captures are private
+local operational evidence: never commit or publish them, and record only
+sanitized structured conclusions in documentation.
+Run it once on an exact signed package when the source launches foreground or a
+real local/Parsec title-bar click can follow the atomic marker and exact
+challenge acknowledgment. Do not synthesize that click, retry the handoff, or
+weaken the single-cycle policy.
 
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic

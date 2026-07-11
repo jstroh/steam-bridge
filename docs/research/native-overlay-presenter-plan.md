@@ -2053,8 +2053,8 @@ identify this contract as `single-cycle-active-v1`, requiring schema-3 gate
 evidence and exact configured/resolved shortcut targets while preserving
 marker-absent historical audits. Readiness, prepare-only checkout, raw observe,
 passive notifications, and persistent reuse stay outside the contract.
-Persistent reuse still needs its separate ordered three-cycle confirmation
-design; weakening the one-cycle handoff-only rule would be an architecture
+Persistent reuse uses a separate ordered three-cycle confirmation contract;
+weakening or enlarging the one-cycle mapping would be an architecture
 regression, not route parity.
 
 Commits `313d217` and `04687d3` now record that grouped boundary, and exact CI
@@ -2071,6 +2071,49 @@ green. This settles the fallback's live fail-closed behavior but adds no grouped
 route success claim. Resume the broad suites only with a post-marker real click
 and its exact challenge acknowledgment or a naturally foreground source; do not
 weaken or simulate that precondition.
+
+The separate persistent design is now implemented as
+`initial-user-gesture-verify-only-v1`, with close-probe schema `3` retained for
+the one initial renderer/foreground gate and orthogonal persistent evidence
+schema `1` for cycle cardinality and reuse. Exact case `40` runs through normal
+autorun and handoff-only completion instead of the historical full-control
+`presenter-ready` plus `/action` path. Its trusted click starts the first open;
+the main state machine then advances only after each callback-driven close,
+park, and cycle record. It issues no per-cycle foreground handoff. The probe
+retains the first raw native-host HWND as a local comparison baseline and
+requires exact HWND/owner/control-process/session continuity, enabled/non-
+iconic state, and existing foreground at every focus and immediate pre-dispatch
+check. Established local result/lifecycle diagnostics remain the raw input;
+current persistent start/cycle/complete and close-probe proof records emit no
+raw HWND. Cycles two
+and three are verify-only and the entire run retains one renderer activation,
+zero foreground requests, and zero native-show calls. Its handoff-only control
+descriptor binds control identity on every cycle; the authenticated HTTP
+control route is used solely for final quit.
+
+The evidence boundary is deliberately independent from the 27 exact
+`single-cycle-active-v1` pairs. Manifest case, probe start, and app start must
+agree on the persistent policy, schema, initial cycle, verify-only cycles, and
+close ordinals. The auditor separately requires three scale-aware targets,
+three successful close dispatches, exact callback/lifecycle order, matching
+result and full-lifecycle projections, stable controller/surface lease/native
+instance/opaque HWND token, one attach before completion, one detach at final
+shutdown, and exact source-window focus return. Unknown, missing, downgraded,
+cross-case, extra-input, owner-handoff, native-show, retargeted-HWND, reordered,
+or markerless current evidence fails; marker-absent historical schema-2
+persistent artifacts remain readable. This implementation is statically and
+natively parsed but still needs one exact signed live run before it closes
+`WIN-PERSISTENT-REUSE-001`.
+Every cycle also requires a distinct readable physical pre-send full-desktop
+screenshot whose declared bounds match its PNG dimensions and contain the
+cycle's native-host rectangle; its detected panel and click must stay inside
+that exact host. The supported per-monitor-DPI or geometry-ratio
+scale and physical/logical bounds must independently match that cycle's
+lifecycle presenter geometry. Ordered timestamps connect active plus shown
+state, target selection, focus confirmation, the pre-input dispatch boundary,
+inactive/closed state, parking, and cycle completion; each completion precedes
+the next cycle's shown event. Full-desktop captures remain private local
+operational evidence and must not be committed or published.
 
 The same run established the Windows input coordinate invariant more precisely.
 Process and thread per-monitor-v2 awareness plus physical native-host/panel
