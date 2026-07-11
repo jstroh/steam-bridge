@@ -11,8 +11,22 @@ const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-package-smo
 const packDir = path.join(tempRoot, "pack");
 const consumerDir = path.join(tempRoot, "consumer");
 const keepTemp = process.env.STEAM_BRIDGE_KEEP_PACKAGE_SMOKE === "1";
+const windowsCleanupSelfTestOnly = process.argv.includes("--windows-cleanup-self-test");
 
-try {
+if (windowsCleanupSelfTestOnly) {
+  try {
+    assert.equal(process.platform, "win32", "Windows cleanup native self-test requires Windows");
+    runWindowsExactProcessStopSelfTest();
+    runWindowsTaskTreeAncestrySelfTest();
+    console.log("Windows overlay cleanup native self-test passed.");
+  } finally {
+    if (keepTemp) {
+      console.log(`Keeping Windows cleanup self-test temp directory: ${tempRoot}`);
+    } else {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+} else try {
   fs.mkdirSync(packDir);
   fs.mkdirSync(consumerDir);
 
