@@ -248,8 +248,10 @@ function Get-ExactProcessNativeStartTicks {
   return [int64][SteamBridgeExactProcessStop]::CaptureExactStartTicks($ProcessId, $CimStartTicks)
 }
 $CloseProbeEvidenceSchema = 2
+$SameProcessUserGestureEvidenceSchema = 3
 $CloseProbeForegroundHandoff = "owner-process-native-show-v1"
 $SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"
+$ExternalForegroundTransition = "external-foreground-event-v1"
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -2978,10 +2980,20 @@ function Write-MatrixManifest {
           closeProbeOnActivation = [bool]$_.closeProbeOnActivation
           shortcutToggleProbe = [bool]$_.shortcutToggleProbe
           autorunUserGestureGate = [bool]$_.autorunUserGestureGate
+          closeProbeEvidenceSchema = if ($_.autorunUserGestureGate) {
+            $SameProcessUserGestureEvidenceSchema
+          } else {
+            $CloseProbeEvidenceSchema
+          }
           closeProbeForegroundHandoff = if ($_.autorunUserGestureGate) {
             $SameProcessUserGestureForegroundHandoff
           } else {
             $CloseProbeForegroundHandoff
+          }
+          externalForegroundTransition = if ($_.autorunUserGestureGate) {
+            $ExternalForegroundTransition
+          } else {
+            ""
           }
           expectedCloseProbeInput = Resolve-CloseProbeInputForCase -Case $_
           managedOverlayResultMode = $_.managedOverlayResultMode
@@ -3027,11 +3039,16 @@ function Write-MatrixManifest {
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
     closeProbeEvidenceSchema = $CloseProbeEvidenceSchema
+    supportedCloseProbeEvidenceSchemas = @(
+      $CloseProbeEvidenceSchema,
+      $SameProcessUserGestureEvidenceSchema
+    )
     closeProbeForegroundHandoff = $CloseProbeForegroundHandoff
     supportedCloseProbeForegroundHandoffs = @(
       $CloseProbeForegroundHandoff,
       $SameProcessUserGestureForegroundHandoff
     )
+    supportedExternalForegroundTransitions = @($ExternalForegroundTransition)
     skipNativeLoadGate = [bool]$SkipNativeLoadGate
     skipRenderHealthGate = [bool]$SkipRenderHealthGate
     allowUnhealthyDefaultRender = [bool]$AllowUnhealthyDefaultRender
@@ -3179,12 +3196,25 @@ function Start-WindowsOverlayCloseProbe {
 
   $shortcutToggleProbe = [bool]$Case.shortcutToggleProbe
   $useUserGestureGate = [bool]$Case.autorunUserGestureGate
+  $evidenceSchema = if ($useUserGestureGate) {
+    $SameProcessUserGestureEvidenceSchema
+  } else {
+    $CloseProbeEvidenceSchema
+  }
+  $externalForegroundTransition = if ($useUserGestureGate) {
+    $ExternalForegroundTransition
+  } else {
+    ""
+  }
   if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null
   }
 
   $lifecycleLog = Join-Path $DiagnosticDir "lifecycle.jsonl"
   $probeLog = Join-Path $CaseDir "close-probe.log"
+  $externalForegroundReadyMarker = Join-Path $CaseDir "external-foreground-ready.json"
+  $externalForegroundControllerAck = Join-Path $CaseDir "external-foreground-ack.json"
+  $externalForegroundChallenge = [Guid]::NewGuid().ToString("N")
   $input = Resolve-CloseProbeInputForCase -Case $Case
   $settleMs = [Math]::Max(0, $CloseProbeSettleMs)
   $expectedCloseCount = [Math]::Max(1, [int]$Case.persistentReuseCycles)
@@ -3197,8 +3227,17 @@ function Start-WindowsOverlayCloseProbe {
   }
   $preserveControlFile = ($expectedCloseCount -gt 1)
   $controlFileBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ControlFile))
+  $externalForegroundReadyMarkerBase64 = [Convert]::ToBase64String(
+    [Text.Encoding]::UTF8.GetBytes($externalForegroundReadyMarker)
+  )
+  $externalForegroundControllerAckBase64 = [Convert]::ToBase64String(
+    [Text.Encoding]::UTF8.GetBytes($externalForegroundControllerAck)
+  )
   New-Item -ItemType Directory -Force -Path $CaseDir | Out-Null
   Remove-Item -LiteralPath $probeLog -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $externalForegroundReadyMarker -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $externalForegroundControllerAck -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath ($externalForegroundControllerAck + ".tmp") -Force -ErrorAction SilentlyContinue
 
   $probeScript = @"
 `$ErrorActionPreference = "Continue"
@@ -3206,6 +3245,7 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public static class SteamBridgeWindowsProbe {
   const uint INPUT_MOUSE = 0;
@@ -3220,6 +3260,11 @@ public static class SteamBridgeWindowsProbe {
   const int SM_YVIRTUALSCREEN = 77;
   const int SM_CXVIRTUALSCREEN = 78;
   const int SM_CYVIRTUALSCREEN = 79;
+  const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+  const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+  const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+  const uint WM_QUIT = 0x0012;
+  const uint PM_NOREMOVE = 0x0000;
 
   [StructLayout(LayoutKind.Sequential)]
   public struct INPUT {
@@ -3277,6 +3322,64 @@ public static class SteamBridgeWindowsProbe {
     public int Y;
   }
 
+  [StructLayout(LayoutKind.Sequential)]
+  struct MSG {
+    public IntPtr hwnd;
+    public uint message;
+    public UIntPtr wParam;
+    public IntPtr lParam;
+    public uint time;
+    public POINT pt;
+    public uint lPrivate;
+  }
+
+  [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+  delegate void WinEventDelegate(
+    IntPtr hook,
+    uint eventType,
+    IntPtr hwnd,
+    int objectId,
+    int childId,
+    uint eventThread,
+    uint eventTime
+  );
+
+  [DllImport("user32.dll", SetLastError = true)]
+  static extern IntPtr SetWinEventHook(
+    uint eventMin,
+    uint eventMax,
+    IntPtr module,
+    WinEventDelegate callback,
+    uint processId,
+    uint threadId,
+    uint flags
+  );
+
+  [DllImport("user32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  static extern bool UnhookWinEvent(IntPtr hook);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  static extern int GetMessage(out MSG message, IntPtr hwnd, uint filterMin, uint filterMax);
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  static extern bool TranslateMessage(ref MSG message);
+
+  [DllImport("user32.dll")]
+  static extern IntPtr DispatchMessage(ref MSG message);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  static extern bool PeekMessage(out MSG message, IntPtr hwnd, uint filterMin, uint filterMax, uint remove);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  static extern bool PostThreadMessage(uint threadId, uint message, UIntPtr wParam, IntPtr lParam);
+
+  [DllImport("kernel32.dll")]
+  static extern uint GetCurrentThreadId();
+
   [DllImport("user32.dll")]
   public static extern IntPtr GetForegroundWindow();
 
@@ -3333,6 +3436,152 @@ public static class SteamBridgeWindowsProbe {
 
   [DllImport("user32.dll", SetLastError = true)]
   public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+  public sealed class ForegroundTransitionWaiter : IDisposable {
+    readonly IntPtr expectedWindow;
+    readonly uint expectedProcessId;
+    readonly ManualResetEvent ready = new ManualResetEvent(false);
+    readonly ManualResetEvent matched = new ManualResetEvent(false);
+    Thread thread;
+    WinEventDelegate callback;
+    GCHandle callbackHandle;
+    IntPtr hook = IntPtr.Zero;
+    uint nativeThreadId;
+    int armed;
+    int eventCount;
+    int disposed;
+    int lastError;
+
+    internal ForegroundTransitionWaiter(IntPtr expectedWindow, uint expectedProcessId) {
+      this.expectedWindow = expectedWindow;
+      this.expectedProcessId = expectedProcessId;
+    }
+
+    public bool Start(int readyTimeoutMilliseconds) {
+      if (readyTimeoutMilliseconds < 1 || thread != null) {
+        return false;
+      }
+      thread = new Thread(Run);
+      thread.IsBackground = true;
+      thread.Name = "SteamBridgeForegroundTransitionWaiter";
+      thread.Start();
+      return ready.WaitOne(readyTimeoutMilliseconds) && hook != IntPtr.Zero;
+    }
+
+    void Run() {
+      nativeThreadId = GetCurrentThreadId();
+      MSG queuedMessage;
+      PeekMessage(out queuedMessage, IntPtr.Zero, 0, 0, PM_NOREMOVE);
+      callback = OnWinEvent;
+      callbackHandle = GCHandle.Alloc(callback);
+      hook = SetWinEventHook(
+        EVENT_SYSTEM_FOREGROUND,
+        EVENT_SYSTEM_FOREGROUND,
+        IntPtr.Zero,
+        callback,
+        expectedProcessId,
+        0,
+        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+      );
+      if (hook == IntPtr.Zero) {
+        lastError = Marshal.GetLastWin32Error();
+      }
+      ready.Set();
+      if (hook == IntPtr.Zero) {
+        callbackHandle.Free();
+        return;
+      }
+
+      try {
+        MSG message;
+        int result;
+        while ((result = GetMessage(out message, IntPtr.Zero, 0, 0)) > 0) {
+          TranslateMessage(ref message);
+          DispatchMessage(ref message);
+        }
+        if (result < 0) {
+          lastError = Marshal.GetLastWin32Error();
+        }
+      } finally {
+        if (!UnhookWinEvent(hook) && lastError == 0) {
+          lastError = Marshal.GetLastWin32Error();
+        }
+        hook = IntPtr.Zero;
+        if (callbackHandle.IsAllocated) {
+          callbackHandle.Free();
+        }
+      }
+    }
+
+    void OnWinEvent(
+      IntPtr eventHook,
+      uint eventType,
+      IntPtr hwnd,
+      int objectId,
+      int childId,
+      uint eventThread,
+      uint eventTime
+    ) {
+      if (
+        eventType == EVENT_SYSTEM_FOREGROUND &&
+        Volatile.Read(ref armed) == 1 &&
+        hwnd == expectedWindow
+      ) {
+        Interlocked.Increment(ref eventCount);
+        matched.Set();
+      }
+    }
+
+    public void Arm() {
+      Interlocked.Exchange(ref armed, 1);
+    }
+
+    public bool Wait(int timeoutMilliseconds) {
+      return timeoutMilliseconds >= 0 && matched.WaitOne(timeoutMilliseconds);
+    }
+
+    public int LastError {
+      get { return lastError; }
+    }
+
+    public int EventCount {
+      get { return Volatile.Read(ref eventCount); }
+    }
+
+    public bool Stop(int timeoutMilliseconds) {
+      if (timeoutMilliseconds < 0) {
+        return false;
+      }
+      if (Interlocked.Exchange(ref disposed, 1) != 0) {
+        return thread == null || !thread.IsAlive;
+      }
+      if (
+        thread != null &&
+        thread.IsAlive &&
+        nativeThreadId != 0 &&
+        !PostThreadMessage(nativeThreadId, WM_QUIT, UIntPtr.Zero, IntPtr.Zero)
+      ) {
+        lastError = Marshal.GetLastWin32Error();
+      }
+      bool stopped = thread == null || thread.Join(timeoutMilliseconds);
+      if (stopped) {
+        ready.Dispose();
+        matched.Dispose();
+      }
+      return stopped;
+    }
+
+    public void Dispose() {
+      Stop(5000);
+    }
+  }
+
+  public static ForegroundTransitionWaiter CreateForegroundTransitionWaiter(
+    IntPtr expectedWindow,
+    uint expectedProcessId
+  ) {
+    return new ForegroundTransitionWaiter(expectedWindow, expectedProcessId);
+  }
 
   public static string ConfigureDpiAwareness() {
     int contextError = 0;
@@ -3428,11 +3677,20 @@ public static class SteamBridgeWindowsProbe {
 `$script:ControlHandoffOnlyExpected = [bool]::Parse('$controlHandoffOnlyExpected')
 `$script:PreserveSmokeControlFile = [bool]::Parse('$preserveControlFile')
 `$script:UseUserGestureGate = [bool]::Parse('$useUserGestureGate')
+`$script:ExternalForegroundTransition = '$externalForegroundTransition'
+`$script:ExternalForegroundReadyMarker = [Text.Encoding]::UTF8.GetString(
+  [Convert]::FromBase64String('$externalForegroundReadyMarkerBase64')
+)
+`$script:ExternalForegroundControllerAck = [Text.Encoding]::UTF8.GetString(
+  [Convert]::FromBase64String('$externalForegroundControllerAckBase64')
+)
+`$script:ExternalForegroundChallenge = '$externalForegroundChallenge'
 `$script:CloseCycleOrdinal = 1
 `$script:UserGestureActivationSent = `$false
 `$script:UserGestureGateConsumed = `$false
 `$script:UserGestureSourceWindowHandle = [IntPtr]::Zero
 `$script:UserGestureSourceWindowOwnerPid = [uint32]0
+`$script:UserGestureSourceProcessStartTicks = [int64]0
 `$script:UserGestureRendererGeometry = `$null
 
 `$script:ProbeScreenshotAssemblyError = `$null
@@ -3507,9 +3765,12 @@ function Resolve-AutorunUserGestureGateTarget {
     reason = "gate-ready-event-missing"
     binding = [ordered]@{
       sourceProcessPresent = `$false
+      sourceProcessIdentityPresent = `$false
       sourceWindowPresent = `$false
       ownerMatchesLifecycleProcess = `$false
       sourceMatchesControlProcess = `$false
+      sourceMatchesBoundWindow = `$false
+      sourceMatchesBoundProcessIdentity = `$false
       sameInteractiveSession = `$false
       sourceWindowEnabled = `$false
       sourceWindowNotIconic = `$false
@@ -3602,6 +3863,17 @@ function Resolve-AutorunUserGestureGateTarget {
     `$evidence.reason = "gate-source-process-missing"
     return [PSCustomObject]`$evidence
   }
+  `$sourceProcessStartTicks = [int64]0
+  try {
+    `$sourceProcessStartTicks = [int64]`$sourceProcess.StartTime.ToUniversalTime().Ticks
+  } catch {
+    `$sourceProcessStartTicks = [int64]0
+  }
+  `$evidence.binding.sourceProcessIdentityPresent = `$sourceProcessStartTicks -gt 0
+  if (-not `$evidence.binding.sourceProcessIdentityPresent) {
+    `$evidence.reason = "gate-source-process-identity-missing"
+    return [PSCustomObject]`$evidence
+  }
   `$control = Read-SmokeControlDescriptor
   `$evidence.binding.sourceMatchesControlProcess = (
     `$control.valid -and
@@ -3622,6 +3894,14 @@ function Resolve-AutorunUserGestureGateTarget {
     `$evidence.reason = "gate-source-window-missing"
     return [PSCustomObject]`$evidence
   }
+  `$evidence.binding.sourceMatchesBoundWindow = (
+    `$script:UserGestureSourceWindowHandle -eq [IntPtr]::Zero -or
+    `$sourceHandle -eq `$script:UserGestureSourceWindowHandle
+  )
+  `$evidence.binding.sourceMatchesBoundProcessIdentity = (
+    `$script:UserGestureSourceProcessStartTicks -le 0 -or
+    `$sourceProcessStartTicks -eq `$script:UserGestureSourceProcessStartTicks
+  )
 
   `$ownerPid = [uint32]0
   `$ownerThread = [SteamBridgeWindowsProbe]::GetWindowThreadProcessId(`$sourceHandle, [ref]`$ownerPid)
@@ -3637,10 +3917,11 @@ function Resolve-AutorunUserGestureGateTarget {
   if (
     -not `$evidence.binding.ownerMatchesLifecycleProcess -or
     -not `$evidence.binding.sourceMatchesControlProcess -or
+    -not `$evidence.binding.sourceMatchesBoundWindow -or
+    -not `$evidence.binding.sourceMatchesBoundProcessIdentity -or
     -not `$evidence.binding.sameInteractiveSession -or
     -not `$evidence.binding.sourceWindowEnabled -or
-    -not `$evidence.binding.sourceWindowNotIconic -or
-    -not `$evidence.binding.sourceWindowForeground
+    -not `$evidence.binding.sourceWindowNotIconic
   ) {
     `$evidence.reason = "gate-source-window-not-eligible"
     return [PSCustomObject]`$evidence
@@ -3697,6 +3978,7 @@ function Resolve-AutorunUserGestureGateTarget {
 
   `$script:UserGestureSourceWindowHandle = `$sourceHandle
   `$script:UserGestureSourceWindowOwnerPid = [uint32]`$sourcePid
+  `$script:UserGestureSourceProcessStartTicks = `$sourceProcessStartTicks
   `$script:UserGestureRendererGeometry = [PSCustomObject]@{
     target = [PSCustomObject]@{
       left = `$left
@@ -3716,6 +3998,10 @@ function Resolve-AutorunUserGestureGateTarget {
     source = "renderer-button-physical-dpi"
     insideSourceClient = `$true
   }
+  if (-not `$evidence.binding.sourceWindowForeground) {
+    `$evidence.reason = "gate-source-window-awaiting-external-foreground"
+    return [PSCustomObject]`$evidence
+  }
   `$evidence.ready = `$true
   `$evidence.reason = "gate-target-ready"
   return [PSCustomObject]`$evidence
@@ -3729,6 +4015,7 @@ function Confirm-AutorunUserGestureActivationTarget {
       sourceWindowValid = `$false
       sourceOwnerPresent = `$false
       sourceMatchesBoundProcess = `$false
+      sourceMatchesBoundProcessIdentity = `$false
       sourceMatchesBoundWindow = `$false
       sourceMatchesControlProcess = `$false
       sameInteractiveSession = `$false
@@ -3792,6 +4079,11 @@ function Confirm-AutorunUserGestureActivationTarget {
   )
   try {
     `$sourceProcess = Get-Process -Id ([int]`$sourceOwnerPid) -ErrorAction Stop
+    `$sourceProcessStartTicks = [int64]`$sourceProcess.StartTime.ToUniversalTime().Ticks
+    `$evidence.binding.sourceMatchesBoundProcessIdentity = (
+      `$script:UserGestureSourceProcessStartTicks -gt 0 -and
+      `$sourceProcessStartTicks -eq `$script:UserGestureSourceProcessStartTicks
+    )
     `$evidence.binding.sourceMatchesBoundWindow = (`$sourceProcess.MainWindowHandle -eq `$handle)
     `$evidence.binding.sameInteractiveSession = (
       `$sourceProcess.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId
@@ -3888,6 +4180,7 @@ function Confirm-AutorunUserGestureActivationTarget {
   `$evidence.eligible = (
     `$evidence.binding.sourceOwnerPresent -and
     `$evidence.binding.sourceMatchesBoundProcess -and
+    `$evidence.binding.sourceMatchesBoundProcessIdentity -and
     `$evidence.binding.sourceMatchesBoundWindow -and
     `$evidence.binding.sourceMatchesControlProcess -and
     `$evidence.binding.sameInteractiveSession -and
@@ -4663,6 +4956,151 @@ function Write-ProbeEvent {
   } | ConvertTo-Json -Compress -Depth 6 | Add-Content -LiteralPath '$probeLog'
 }
 
+function Write-ExternalForegroundReadyMarker {
+  `$marker = [ordered]@{
+    kind = "steam-bridge-windows-external-foreground-ready"
+    schema = 1
+    action = "presenter-web-open-and-wait"
+    requestOrdinal = 1
+    mechanism = `$script:ExternalForegroundTransition
+    challenge = `$script:ExternalForegroundChallenge
+    sourceBound = `$true
+    transitionHookReady = `$true
+    activationInputCount = 0
+    closeInputCount = 0
+  }
+  `$temporaryPath = `$script:ExternalForegroundReadyMarker + ".tmp"
+  try {
+    Remove-Item -LiteralPath `$temporaryPath -Force -ErrorAction SilentlyContinue
+    [IO.File]::WriteAllText(
+      `$temporaryPath,
+      (`$marker | ConvertTo-Json -Compress),
+      (New-Object Text.UTF8Encoding(`$false))
+    )
+    [IO.File]::Move(`$temporaryPath, `$script:ExternalForegroundReadyMarker)
+    return [PSCustomObject]@{
+      written = `$true
+      errorPresent = `$false
+      marker = [PSCustomObject]`$marker
+    }
+  } catch {
+    Remove-Item -LiteralPath `$temporaryPath -Force -ErrorAction SilentlyContinue
+    return [PSCustomObject]@{
+      written = `$false
+      errorPresent = `$true
+      marker = [PSCustomObject]`$marker
+    }
+  }
+}
+
+function Test-ExternalForegroundJsonInteger {
+  param([object]`$Value, [int64]`$Expected)
+
+  return (
+    (`$Value -is [int] -or `$Value -is [long]) -and
+    [int64]`$Value -eq `$Expected
+  )
+}
+
+function Read-ExternalForegroundControllerAcknowledgment {
+  `$evidence = [ordered]@{
+    present = `$false
+    valid = `$false
+    errorPresent = `$false
+    timedOut = `$false
+  }
+  if (-not (Test-Path -LiteralPath `$script:ExternalForegroundControllerAck)) {
+    return [PSCustomObject]`$evidence
+  }
+  `$evidence.present = `$true
+  try {
+    `$raw = Get-Content -LiteralPath `$script:ExternalForegroundControllerAck -Raw -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace(`$raw)) {
+      throw "external-foreground-ack-empty"
+    }
+    `$ack = `$raw | ConvertFrom-Json -ErrorAction Stop
+    `$expectedProperties = @(
+      "action",
+      "activationInputCount",
+      "clickCompleted",
+      "closeInputCount",
+      "challenge",
+      "kind",
+      "mechanism",
+      "requestOrdinal",
+      "schema"
+    )
+    `$actualProperties = @(`$ack.PSObject.Properties.Name | Sort-Object)
+    `$shapeValid = @(
+      Compare-Object -ReferenceObject `$expectedProperties -DifferenceObject `$actualProperties
+    ).Count -eq 0
+    `$evidence.valid = (
+      `$shapeValid -and
+      `$ack.kind -is [string] -and
+      `$ack.kind -ceq "steam-bridge-windows-external-foreground-ack" -and
+      (Test-ExternalForegroundJsonInteger `$ack.schema 1) -and
+      `$ack.action -is [string] -and
+      `$ack.action -ceq "presenter-web-open-and-wait" -and
+      (Test-ExternalForegroundJsonInteger `$ack.requestOrdinal 1) -and
+      `$ack.mechanism -is [string] -and
+      `$ack.mechanism -ceq `$script:ExternalForegroundTransition -and
+      `$ack.challenge -is [string] -and
+      `$ack.challenge -ceq `$script:ExternalForegroundChallenge -and
+      `$ack.clickCompleted -is [bool] -and
+      `$ack.clickCompleted -eq `$true -and
+      (Test-ExternalForegroundJsonInteger `$ack.activationInputCount 0) -and
+      (Test-ExternalForegroundJsonInteger `$ack.closeInputCount 0)
+    )
+    `$evidence.errorPresent = -not `$evidence.valid
+  } catch {
+    `$evidence.errorPresent = `$true
+  }
+  return [PSCustomObject]`$evidence
+}
+
+function Wait-ExternalForegroundControllerAcknowledgment {
+  param([int]`$TimeoutMilliseconds)
+
+  `$initial = Read-ExternalForegroundControllerAcknowledgment
+  if (`$initial.present -or `$TimeoutMilliseconds -le 0) {
+    if (-not `$initial.present -and `$TimeoutMilliseconds -le 0) {
+      `$initial.timedOut = `$true
+    }
+    return `$initial
+  }
+
+  `$directory = Split-Path -Parent `$script:ExternalForegroundControllerAck
+  `$leaf = Split-Path -Leaf `$script:ExternalForegroundControllerAck
+  `$watcher = New-Object IO.FileSystemWatcher -ArgumentList `$directory, `$leaf
+  `$watcher.NotifyFilter = [IO.NotifyFilters]::FileName -bor [IO.NotifyFilters]::LastWrite
+  try {
+    `$watcher.EnableRaisingEvents = `$true
+    `$afterEnable = Read-ExternalForegroundControllerAcknowledgment
+    if (`$afterEnable.present) {
+      return `$afterEnable
+    }
+    `$change = `$watcher.WaitForChanged([IO.WatcherChangeTypes]::All, `$TimeoutMilliseconds)
+    if (`$change.TimedOut) {
+      return [PSCustomObject]@{
+        present = `$false
+        valid = `$false
+        errorPresent = `$false
+        timedOut = `$true
+      }
+    }
+    return Read-ExternalForegroundControllerAcknowledgment
+  } catch {
+    return [PSCustomObject]@{
+      present = `$false
+      valid = `$false
+      errorPresent = `$true
+      timedOut = `$false
+    }
+  } finally {
+    `$watcher.Dispose()
+  }
+}
+
 function Get-LifecyclePresenterGeometry {
   if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
     return `$null
@@ -5142,8 +5580,10 @@ function Get-WebCloseDpiScale {
 Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   lifecycleLog = '$lifecycleLog'
   input = '$input'
-  evidenceSchema = $CloseProbeEvidenceSchema
+  evidenceSchema = $evidenceSchema
   foregroundHandoff = '$foregroundHandoff'
+  externalForegroundTransition = '$externalForegroundTransition'
+  externalForegroundTransitionEnabled = `$script:UseUserGestureGate
   userGestureGate = `$script:UseUserGestureGate
   controlExpected = `$true
   controlHandoffOnlyExpected = `$script:ControlHandoffOnlyExpected
@@ -5238,7 +5678,213 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
             Start-Sleep -Milliseconds 50
             continue
           }
+          `$externalForegroundTransitionCompleted = `$false
           `$activationTarget = Resolve-AutorunUserGestureGateTarget `$gateState.readyEvents[0]
+          if (
+            -not `$activationTarget.ready -and
+            `$activationTarget.reason -eq "gate-source-window-awaiting-external-foreground"
+          ) {
+            `$foregroundWaiter = [SteamBridgeWindowsProbe]::CreateForegroundTransitionWaiter(
+              `$script:UserGestureSourceWindowHandle,
+              `$script:UserGestureSourceWindowOwnerPid
+            )
+            `$foregroundWaiterStarted = `$false
+            `$foregroundTransitionObserved = `$false
+            `$foregroundTransitionEventCount = 0
+            `$foregroundWaiterStopped = `$false
+            `$foregroundHookErrorPresent = `$false
+            `$foregroundMarkerWritten = `$false
+            `$foregroundWaitBudgetExhausted = `$false
+            `$foregroundControllerAck = [PSCustomObject]@{
+              present = `$false
+              valid = `$false
+              errorPresent = `$false
+              timedOut = `$false
+            }
+            `$foregroundConfirmation = `$null
+            `$foregroundFailureReason = "external-foreground-hook-start-failed"
+            try {
+              `$remainingBeforeHookStart = [int][Math]::Floor((`$deadline - (Get-Date)).TotalMilliseconds)
+              `$hookStartTimeout = [int][Math]::Min(
+                5000,
+                [Math]::Max(0, `$remainingBeforeHookStart - 1000)
+              )
+              if (`$hookStartTimeout -gt 0) {
+                `$foregroundWaiterStarted = `$foregroundWaiter.Start(`$hookStartTimeout)
+              } else {
+                `$foregroundFailureReason = "external-foreground-deadline-exhausted"
+              }
+              if (`$foregroundWaiterStarted) {
+                Write-ProbeEvent "probe:external-foreground-source-ready" ([PSCustomObject]@{
+                  schema = 1
+                  mechanism = `$script:ExternalForegroundTransition
+                  action = "presenter-web-open-and-wait"
+                  requestOrdinal = 1
+                  sourceBound = `$true
+                  transitionHookReady = `$true
+                  binding = `$activationTarget.binding
+                  dpi = `$activationTarget.dpi
+                  targetReady = `$null -ne `$activationTarget.target
+                  activationInputCount = 0
+                  closeInputCount = 0
+                })
+                `$foregroundWaiter.Arm()
+                `$markerResult = Write-ExternalForegroundReadyMarker
+                `$foregroundMarkerWritten = `$markerResult.written
+                if (`$markerResult.written) {
+                  `$remainingBeforeTransitionWait = [int][Math]::Floor(
+                    (`$deadline - (Get-Date)).TotalMilliseconds
+                  )
+                  `$transitionWaitTimeout = [int][Math]::Min(
+                    30000,
+                    [Math]::Max(0, `$remainingBeforeTransitionWait - 1000)
+                  )
+                  if (`$transitionWaitTimeout -gt 0) {
+                    `$foregroundTransitionObserved = `$foregroundWaiter.Wait(`$transitionWaitTimeout)
+                    if (`$foregroundTransitionObserved) {
+                      `$remainingBeforeControllerAck = [int][Math]::Floor(
+                        (`$deadline - (Get-Date)).TotalMilliseconds
+                      )
+                      `$controllerAckTimeout = [int][Math]::Max(
+                        0,
+                        `$remainingBeforeControllerAck - 1000
+                      )
+                      `$foregroundControllerAck = Wait-ExternalForegroundControllerAcknowledgment ([int]`$controllerAckTimeout)
+                    }
+                  } else {
+                    `$foregroundWaitBudgetExhausted = `$true
+                    `$foregroundFailureReason = "external-foreground-deadline-exhausted"
+                  }
+                } else {
+                  `$foregroundFailureReason = "external-foreground-marker-write-failed"
+                }
+              }
+            } finally {
+              `$remainingForHookTeardown = [int][Math]::Floor(
+                (`$deadline - (Get-Date)).TotalMilliseconds
+              )
+              `$hookTeardownTimeout = [int][Math]::Min(
+                5000,
+                [Math]::Max(0, `$remainingForHookTeardown)
+              )
+              `$foregroundWaiterStopped = `$foregroundWaiter.Stop(`$hookTeardownTimeout)
+              `$foregroundTransitionEventCount = `$foregroundWaiter.EventCount
+              `$foregroundHookErrorPresent = `$foregroundWaiter.LastError -ne 0
+            }
+            if (`$foregroundWaiterStarted) {
+              if (-not `$foregroundMarkerWritten) {
+                `$foregroundFailureReason = "external-foreground-marker-write-failed"
+              } elseif (-not `$foregroundWaiterStopped) {
+                `$foregroundFailureReason = "external-foreground-hook-teardown-timeout"
+              } elseif (`$foregroundHookErrorPresent) {
+                `$foregroundFailureReason = "external-foreground-hook-error"
+              } elseif (-not `$foregroundTransitionObserved) {
+                `$foregroundFailureReason = if (`$foregroundWaitBudgetExhausted) {
+                  "external-foreground-deadline-exhausted"
+                } else {
+                  "external-foreground-transition-timeout"
+                }
+              } elseif (`$foregroundTransitionEventCount -ne 1) {
+                `$foregroundFailureReason = "external-foreground-transition-count-invalid"
+              } elseif (-not `$foregroundControllerAck.present) {
+                `$foregroundFailureReason = if (`$foregroundControllerAck.timedOut) {
+                  "external-foreground-controller-ack-timeout"
+                } else {
+                  "external-foreground-controller-ack-missing"
+                }
+              } elseif (-not `$foregroundControllerAck.valid) {
+                `$foregroundFailureReason = "external-foreground-controller-ack-invalid"
+              } else {
+                `$foregroundFailureReason = "external-foreground-source-changed"
+              }
+            }
+            if (
+              `$foregroundTransitionObserved -and
+              `$foregroundWaiterStopped -and
+              -not `$foregroundHookErrorPresent -and
+              `$foregroundTransitionEventCount -eq 1 -and
+              `$foregroundControllerAck.valid
+            ) {
+              `$foregroundConfirmation = Confirm-AutorunUserGestureActivationTarget
+            }
+            if (
+              `$foregroundTransitionObserved -and
+              `$foregroundWaiterStopped -and
+              -not `$foregroundHookErrorPresent -and
+              `$foregroundTransitionEventCount -eq 1 -and
+              `$foregroundControllerAck.valid -and
+              `$foregroundConfirmation.eligible
+            ) {
+              Write-ProbeEvent "probe:external-foreground-controller-acknowledged" ([PSCustomObject]@{
+                schema = 1
+                mechanism = `$script:ExternalForegroundTransition
+                action = "presenter-web-open-and-wait"
+                requestOrdinal = 1
+                markerWritten = `$true
+                controllerAckValid = `$true
+                clickCompleted = `$true
+                activationInputCount = 0
+                closeInputCount = 0
+              })
+              Write-ProbeEvent "probe:external-foreground-transition-observed" ([PSCustomObject]@{
+                schema = 1
+                mechanism = `$script:ExternalForegroundTransition
+                action = "presenter-web-open-and-wait"
+                requestOrdinal = 1
+                transitionObserved = `$true
+                eventCount = `$foregroundTransitionEventCount
+                hookStopped = `$foregroundWaiterStopped
+                hookErrorPresent = `$foregroundHookErrorPresent
+                binding = `$foregroundConfirmation.binding
+                activationInputCount = 0
+                closeInputCount = 0
+              })
+              `$externalForegroundTransitionCompleted = `$true
+              `$activationTarget = Resolve-AutorunUserGestureGateTarget `$gateState.readyEvents[0]
+            } else {
+              Write-ProbeEvent "probe:external-foreground-transition-rejected" ([PSCustomObject]@{
+                schema = 1
+                mechanism = `$script:ExternalForegroundTransition
+                action = "presenter-web-open-and-wait"
+                requestOrdinal = 1
+                reason = `$foregroundFailureReason
+                hookStarted = `$foregroundWaiterStarted
+                hookStopped = `$foregroundWaiterStopped
+                hookErrorPresent = `$foregroundHookErrorPresent
+                transitionObserved = `$foregroundTransitionObserved
+                eventCount = `$foregroundTransitionEventCount
+                controllerAckPresent = `$foregroundControllerAck.present
+                controllerAckValid = `$foregroundControllerAck.valid
+                controllerAckTimedOut = `$foregroundControllerAck.timedOut
+                binding = if (`$foregroundConfirmation) { `$foregroundConfirmation.binding } else { `$activationTarget.binding }
+                activationInputCount = 0
+                closeInputCount = 0
+              })
+              Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{
+                reason = `$foregroundFailureReason
+                binding = if (`$foregroundConfirmation) { `$foregroundConfirmation.binding } else { `$activationTarget.binding }
+                dpi = `$activationTarget.dpi
+              })
+              Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+                cycle = 1
+                reason = "external-foreground-transition-not-observed"
+              })
+              `$terminalFailure = `$true
+              continue
+            }
+          }
+          if (`$activationTarget.ready -and -not `$externalForegroundTransitionCompleted) {
+            Write-ProbeEvent "probe:external-foreground-transition-not-required" ([PSCustomObject]@{
+              schema = 1
+              mechanism = `$script:ExternalForegroundTransition
+              action = "presenter-web-open-and-wait"
+              requestOrdinal = 0
+              alreadyForeground = `$true
+              binding = `$activationTarget.binding
+              activationInputCount = 0
+              closeInputCount = 0
+            })
+          }
           Write-ProbeEvent "probe:user-gesture-gate-ready" `$activationTarget
           if (-not `$activationTarget.ready) {
             Write-ProbeEvent "probe:user-gesture-gate-activation-skipped" ([PSCustomObject]@{

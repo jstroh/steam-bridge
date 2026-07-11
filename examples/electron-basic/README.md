@@ -138,31 +138,77 @@ close target first, binds the exact lifecycle native-host window to the Smoke
 process and interactive session, then makes one authenticated loopback request
 for that owning process to run its existing native-host activation path.
 
-The managed web-wait case instead uses
+The managed web-wait case instead uses schema-3
 `same-process-user-gesture-v1`. Its context-isolated preload privately arms
 the exact **Presenter Web Wait** button and records one actual DOM click; main
 world receives neither the nonce nor a generic consume API. Before one renderer
 activation `SendInput`, the probe binds the source window to the lifecycle and
-authenticated control process, reconciles renderer DPR with window DPI and
-physical client geometry, verifies the physical point's owner/root and exact
-foreground, confirms the gate is still unconsumed, and repeats the point/window
-check immediately before dispatch. It then requires the exact lifecycle native
-host to already own foreground without a focus/native-show request, sends one
-close input, and requires exact source-window focus return after inactive,
-close, park, completion, and stable-idle evidence. For that proof only, autorun
-holds the result-written app open until the probe records one complete terminal
-state. The handoff-only loopback server then accepts one authenticated graceful
-quit only when the gate was consumed and the configured result file was
-written. It rejects the legacy foreground-handoff route for this case. The new
-branch never runs the blocker-clear key input. The standalone helper exposes
-`-AutorunUserGestureGate` only for `presenter-web-open-and-wait` and requires
-keep-open plus one handoff-only control file; the matrix configures that scope
-automatically for case `11-managed-web-open-and-wait`.
+authenticated control process, exact HWND and process-start identity, and
+interactive session. It reconciles renderer DPR with window DPI and physical
+client geometry before requiring foreground. If that exact source is not yet
+foreground, the probe installs a
+[`SetWinEventHook`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook)
+listener for
+[`EVENT_SYSTEM_FOREGROUND`](https://learn.microsoft.com/en-us/windows/win32/winauto/event-constants#event_system_foreground)
+and its exact PID and HWND, records one sanitized source-ready event, arms the
+listener, and atomically writes the actionable
+`11-managed-web-open-and-wait\external-foreground-ready.json`. The marker
+contains a fresh non-secret challenge. An external interactive-desktop
+coordinator may then perform exactly one safe title-bar click in that Smoke
+window. Only after that click call succeeds, it must copy the challenge into an
+atomic `external-foreground-ack.json` with this closed shape:
 
-The source Smoke window must already be foreground through genuine user
-interaction before this focused proof begins. A non-foreground source stops
-before DPI or input dispatch; it is not a reason to add programmatic focus,
-retries, longer waits, extra input, or a foreground broker.
+```json
+{
+  "kind": "steam-bridge-windows-external-foreground-ack",
+  "schema": 1,
+  "action": "presenter-web-open-and-wait",
+  "requestOrdinal": 1,
+  "mechanism": "external-foreground-event-v1",
+  "challenge": "<copy from the ready marker>",
+  "clickCompleted": true,
+  "activationInputCount": 0,
+  "closeInputCount": 0
+}
+```
+
+Write a temporary sibling and rename it to the acknowledgment path; do not
+write the final file incrementally. The probe removes stale acknowledgment and
+temporary files before readiness. It proceeds only after one event for the
+bound HWND, one exact challenge-bound acknowledgment, clean same-thread hook
+teardown, and revalidation of process identity, control process, session,
+window state, DPI geometry, and physical target. If the source is already
+foreground, a mutually exclusive not-required event replaces both marker and
+acknowledgment branches.
+
+The WinEvent proves the exact foreground state transition; it does not by
+itself identify the physical input that caused it. Together, the artifacts
+prove that one controller click completed and one exact-window foreground event
+occurred during the armed interval; they do not prove strict causality between
+those facts. Live proof must retain the operational record that the coordinator
+sent one Parsec/local title-bar click only after the atomic marker appeared and
+wrote the acknowledgment only after the click returned success. All waits are
+bounded by the case deadline as failure guardrails, not focus retries. A missing
+or replayed acknowledgment, wrong challenge, missing or duplicate event, wrong
+window, stale process identity, hook teardown error, marker-write failure, or
+lost foreground stops with zero activation and close input.
+
+After the transition, the probe verifies the physical point's owner/root and
+exact foreground, confirms the gate is still unconsumed, and repeats the
+point/window check immediately before dispatch. It then requires the exact
+lifecycle native host to already own foreground without a focus/native-show
+request, sends one close input, and requires exact source-window focus return
+after inactive, close, park, completion, and stable-idle evidence. For that
+proof only, autorun holds the result-written app open until the probe records
+one complete terminal state. The handoff-only loopback server then accepts one
+authenticated graceful quit only when the gate was consumed and the configured
+result file was written. It rejects the legacy foreground-handoff route for
+this case. The branch never runs the blocker-clear key input. The standalone
+helper exposes `-AutorunUserGestureGate` only for
+`presenter-web-open-and-wait` and requires keep-open plus one handoff-only
+control file; the matrix configures that scope automatically for case
+`11-managed-web-open-and-wait`. Historical schema-2 artifacts remain auditable,
+but they do not contain the external foreground-transition contract.
 
 Both branches record only sanitized relationship booleans and counts—never
 handles, process/session IDs, ports, tokens, or the private nonce—while the

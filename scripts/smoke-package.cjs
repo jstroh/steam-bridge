@@ -774,7 +774,13 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(exampleReadme.includes(expected), `Electron example README missing KeepTask cleanup warning: ${expected}`);
   }
   for (const expected of [
-    "must already be foreground through genuine user interaction",
+    "atomically writes the actionable",
+    "`11-managed-web-open-and-wait\\external-foreground-ready.json`",
+    "arms the listener",
+    "exactly one safe title-bar click",
+    "external-foreground-ack.json",
+    "acknowledgment only after the click returned success",
+    "does not by itself identify the physical input that caused it",
     "stale parent-PID matches are rejected and counted",
     "requires that stored exact identity",
     "never uses recursive `taskkill /T` or a PID-only stop",
@@ -982,6 +988,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "STEAM_BRIDGE_SMOKE_CONTROL_FILE",
     'closeProbeEvidenceSchema = $CloseProbeEvidenceSchema',
     '$CloseProbeEvidenceSchema = 2',
+    '$SameProcessUserGestureEvidenceSchema = 3',
+    '$ExternalForegroundTransition = "external-foreground-event-v1"',
     '$CloseProbeForegroundHandoff = "owner-process-native-show-v1"'
   ]) {
     assert.ok(
@@ -1029,6 +1037,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "GetWindowThreadProcessId(`$sourceHandle",
     "ownerMatchesLifecycleProcess",
     "sourceMatchesControlProcess",
+    "sourceMatchesBoundWindow",
+    "sourceMatchesBoundProcessIdentity",
+    "sourceProcessIdentityPresent",
     "sameInteractiveSession",
     "IsWindowEnabled(`$sourceHandle)",
     "IsIconic(`$sourceHandle)",
@@ -1042,7 +1053,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "ClientToScreen(`$sourceHandle",
     "UserGestureRendererGeometry",
     'source = "renderer-button-physical-dpi"',
-    "insideSourceClient = `$true"
+    "insideSourceClient = `$true",
+    '"gate-source-window-awaiting-external-foreground"'
   ]) {
     assert.ok(userGestureTargetBlock.includes(expected), `Windows user-gesture target resolver missing ${expected}`);
   }
@@ -1069,6 +1081,7 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     "sourceMatchesBoundProcess",
+    "sourceMatchesBoundProcessIdentity",
     "sourceMatchesBoundWindow",
     "sourceMatchesControlProcess",
     "sameInteractiveSession",
@@ -1133,6 +1146,125 @@ function runWindowsSmokeHelperStaticChecks() {
     userGestureActivationStart,
     userGestureActivationEnd
   );
+  const externalForegroundWaitStart = userGestureActivationBlock.indexOf(
+    "`$foregroundWaiter = [SteamBridgeWindowsProbe]::CreateForegroundTransitionWaiter"
+  );
+  const externalForegroundWaitEnd = userGestureActivationBlock.indexOf(
+    "          if (`$activationTarget.ready -and -not `$externalForegroundTransitionCompleted)",
+    externalForegroundWaitStart
+  );
+  assert.ok(
+    externalForegroundWaitStart >= 0 && externalForegroundWaitEnd > externalForegroundWaitStart,
+    "Windows user-gesture branch must contain one bounded external foreground transition wait"
+  );
+  const externalForegroundWaitBlock = userGestureActivationBlock.slice(
+    externalForegroundWaitStart,
+    externalForegroundWaitEnd
+  );
+  for (const expected of [
+    "`$foregroundWaiter.Start(`$hookStartTimeout)",
+    'Write-ProbeEvent "probe:external-foreground-source-ready"',
+    "`$foregroundWaiter.Arm()",
+    "Write-ExternalForegroundReadyMarker",
+    "`$foregroundWaiter.Wait(`$transitionWaitTimeout)",
+    "Wait-ExternalForegroundControllerAcknowledgment ([int]`$controllerAckTimeout)",
+    "`$foregroundWaiter.Stop(`$hookTeardownTimeout)",
+    "`$foregroundWaiter.EventCount",
+    "`$foregroundWaiter.LastError -ne 0",
+    "`$foregroundTransitionEventCount -eq 1",
+    "`$foregroundControllerAck.valid",
+    "(`$deadline - (Get-Date)).TotalMilliseconds",
+    "Confirm-AutorunUserGestureActivationTarget",
+    'Write-ProbeEvent "probe:external-foreground-controller-acknowledged"',
+    'Write-ProbeEvent "probe:external-foreground-transition-observed"',
+    'Write-ProbeEvent "probe:external-foreground-transition-rejected"'
+  ]) {
+    assert.ok(
+      externalForegroundWaitBlock.includes(expected),
+      `Windows external foreground transition wait missing ${expected}`
+    );
+  }
+  const hookStartIndex = externalForegroundWaitBlock.indexOf(
+    "`$foregroundWaiter.Start(`$hookStartTimeout)"
+  );
+  const sourceReadyIndex = externalForegroundWaitBlock.indexOf(
+    'Write-ProbeEvent "probe:external-foreground-source-ready"'
+  );
+  const hookArmIndex = externalForegroundWaitBlock.indexOf("`$foregroundWaiter.Arm()");
+  const markerWriteIndex = externalForegroundWaitBlock.indexOf(
+    "Write-ExternalForegroundReadyMarker"
+  );
+  const transitionWaitIndex = externalForegroundWaitBlock.indexOf(
+    "`$foregroundWaiter.Wait(`$transitionWaitTimeout)"
+  );
+  const controllerAckWaitIndex = externalForegroundWaitBlock.indexOf(
+    "Wait-ExternalForegroundControllerAcknowledgment ([int]`$controllerAckTimeout)"
+  );
+  const hookStopIndex = externalForegroundWaitBlock.indexOf(
+    "`$foregroundWaiter.Stop(`$hookTeardownTimeout)"
+  );
+  const controllerAckEventIndex = externalForegroundWaitBlock.indexOf(
+    'Write-ProbeEvent "probe:external-foreground-controller-acknowledged"'
+  );
+  const transitionObservedEventIndex = externalForegroundWaitBlock.indexOf(
+    'Write-ProbeEvent "probe:external-foreground-transition-observed"'
+  );
+  assert.ok(
+    hookStartIndex >= 0 &&
+      hookStartIndex < sourceReadyIndex &&
+      sourceReadyIndex < hookArmIndex &&
+      hookArmIndex < markerWriteIndex &&
+      markerWriteIndex < transitionWaitIndex &&
+      transitionWaitIndex < controllerAckWaitIndex &&
+      controllerAckWaitIndex < hookStopIndex &&
+      hookStopIndex < controllerAckEventIndex &&
+      controllerAckEventIndex < transitionObservedEventIndex,
+    "Windows external foreground marker must be actionable and acknowledgment-gated before observed evidence"
+  );
+  assert.doesNotMatch(
+    externalForegroundWaitBlock,
+    /SetForegroundWindow|ShowWindowAsync|Invoke-RestMethod|\/foreground-handoff|showNativeOverlayHostView|Send-NativeMouseClick|Send-NativeKeyChord|Start-Sleep/,
+    "Windows external foreground wait must not send input, request focus, or poll with sleeps"
+  );
+  for (const expected of [
+    "EVENT_SYSTEM_FOREGROUND",
+    "SetWinEventHook(",
+    "GetMessage(out message",
+    "expectedProcessId",
+    "GCHandle.Alloc(callback)",
+    "Volatile.Read(ref armed) == 1",
+    "Interlocked.Increment(ref eventCount)",
+    "public int EventCount",
+    "public bool Stop(int timeoutMilliseconds)",
+    "hwnd == expectedWindow",
+    "PostThreadMessage(nativeThreadId, WM_QUIT",
+    "UnhookWinEvent(hook)"
+  ]) {
+    assert.ok(matrixHelper.includes(expected), `Windows foreground WinEvent waiter missing ${expected}`);
+  }
+  const externalMarkerStart = matrixHelper.indexOf("function Write-ExternalForegroundReadyMarker");
+  const externalMarkerEnd = matrixHelper.indexOf("\nfunction Get-LifecyclePresenterGeometry", externalMarkerStart);
+  const externalMarkerBlock = matrixHelper.slice(externalMarkerStart, externalMarkerEnd);
+  assert.ok(
+    externalMarkerStart >= 0 &&
+      externalMarkerEnd > externalMarkerStart &&
+      externalMarkerBlock.includes('kind = "steam-bridge-windows-external-foreground-ready"') &&
+      externalMarkerBlock.includes("challenge = `$script:ExternalForegroundChallenge") &&
+      externalMarkerBlock.includes("activationInputCount = 0") &&
+      externalMarkerBlock.includes("closeInputCount = 0") &&
+      externalMarkerBlock.includes("[IO.File]::Move(`$temporaryPath, `$script:ExternalForegroundReadyMarker)"),
+    "Windows external foreground readiness marker must be atomic and contain only sanitized state"
+  );
+  for (const expected of [
+    'kind -ceq "steam-bridge-windows-external-foreground-ack"',
+    "Test-ExternalForegroundJsonInteger `$ack.schema 1",
+    "`$ack.clickCompleted -is [bool]",
+    "`$ack.challenge -ceq `$script:ExternalForegroundChallenge",
+    "WaitForChanged([IO.WatcherChangeTypes]::All, `$TimeoutMilliseconds)",
+    'Remove-Item -LiteralPath ($externalForegroundControllerAck + ".tmp")'
+  ]) {
+    assert.ok(matrixHelper.includes(expected), `Windows controller acknowledgment gate missing ${expected}`);
+  }
   assert.ok(
       userGestureActivationBlock.includes("if (-not `$script:UserGestureActivationSent)") &&
       userGestureActivationBlock.includes("gate-consumed-before-probe-activation") &&
@@ -1166,8 +1298,8 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   assert.equal(
     (userGestureActivationBlock.match(/Confirm-AutorunUserGestureActivationTarget/g) || []).length,
-    2,
-    "Windows user-gesture branch must recheck the exact source once more immediately before activation"
+    3,
+    "Windows user-gesture branch must confirm the transition and retain two exact activation rechecks"
   );
   assert.ok(
     userGestureActivationBlock.lastIndexOf("Confirm-AutorunUserGestureActivationTarget") <
@@ -1261,12 +1393,16 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     '$SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"',
+    "$SameProcessUserGestureEvidenceSchema",
+    "supportedCloseProbeEvidenceSchemas = @(",
+    "supportedExternalForegroundTransitions = @($ExternalForegroundTransition)",
+    "externalForegroundTransition = if ($_.autorunUserGestureGate)",
     "supportedCloseProbeForegroundHandoffs = @(",
     "$CloseProbeForegroundHandoff,",
     "$SameProcessUserGestureForegroundHandoff",
     'mechanism = if (`$script:UseUserGestureGate) { "same-process-user-gesture" } else { "owner-process-native-show" }'
   ]) {
-    assert.ok(matrixHelper.includes(expected), `Windows schema-2 foreground mechanism union missing ${expected}`);
+    assert.ok(matrixHelper.includes(expected), `Windows close-probe schema union missing ${expected}`);
   }
   const matrixCaseStart = matrixHelper.indexOf("function Invoke-MatrixCase");
   const matrixCaseEnd = matrixHelper.indexOf("\nResolve-SmokeExe", matrixCaseStart);
@@ -1320,6 +1456,8 @@ function runWindowsSmokeHelperStaticChecks() {
   for (const expected of [
     'const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1"',
     'const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1"',
+    'const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1"',
+    "SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2, 3])",
     "manifest.supportedCloseProbeForegroundHandoffs.includes(OWNER_PROCESS_FOREGROUND_HANDOFF)",
     "manifest.supportedCloseProbeForegroundHandoffs.includes(SAME_PROCESS_USER_GESTURE_HANDOFF)",
     'focus.mechanism === "same-process-user-gesture"',
@@ -1331,6 +1469,25 @@ function runWindowsSmokeHelperStaticChecks() {
     "activationDispatchStartEvents.length === 1",
     "userGestureActivationEvents.length === 1",
     "foregroundClearEvents.length === 0",
+    "externalForegroundSourceReadyEvents.length === 1",
+    "externalForegroundTransitionObservedEvents.length === 1",
+    "externalForegroundControllerAcknowledgedEvents.length === 1",
+    "externalForegroundTransitionRejectedEvents.length === 0",
+    "externalForegroundReadyMarkerValid",
+    "externalForegroundControllerAckValid",
+    'externalControllerAck.kind === "steam-bridge-windows-external-foreground-ack"',
+    "externalControllerAck.challenge === externalReadyMarker.challenge",
+    "externalControllerAcknowledgedPayload.clickCompleted === true",
+    "externalTransitionOrderValid",
+    "probeRecordOrderValid",
+    "externalSourceReadyPayload.activationInputCount === 0",
+    "externalSourceReadyPayload.closeInputCount === 0",
+    "externalTransitionObservedPayload.activationInputCount === 0",
+    "externalTransitionObservedPayload.closeInputCount === 0",
+    "externalTransitionObservedPayload.hookStopped === true",
+    "externalTransitionObservedPayload.hookErrorPresent === false",
+    "externalTransitionNotRequiredPayload.closeInputCount === 0",
+    "externalReadyMarker.closeInputCount === 0",
     "Number.isInteger(activationTarget.x)",
     "activationDpi.rendererScale === readyViewport.devicePixelRatio",
     "completion.schema === 1",

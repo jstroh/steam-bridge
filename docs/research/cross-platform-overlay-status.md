@@ -260,20 +260,73 @@ than definitive attribution. Microsoft documents that `ParentProcessId` can
 refer to a process that reused the original parent's PID and directs callers to
 compare creation time ([`Win32_Process`](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process)).
 
-The bounded worktree fix now captures each process as CIM PID/creation time plus
-the exact native creation time from one kernel handle, accepts a child only
-when it is not older than its exact active parent, and counts rejected stale
+Commits `61e688c` and `02bb14d` capture each process as CIM PID/creation time
+plus the exact native creation time from one kernel handle, accept a child only
+when it is not older than its exact active parent, and count rejected stale
 ancestry. Termination opens one handle, requires exact native creation-time
 identity, terminates and waits on that same handle, records every sanitized
 outcome, and uses neither recursive `taskkill /T` nor PID-only `Stop-Process`.
 Task-wrapper and matrix package/helper cleanup share the same tested runtime.
 Native Windows PowerShell 5.1 parser, wrong-identity/no-kill, exact-identity
-termination, already-exited, unrelated-sentinel, outcome-accounting, and stale-
-ancestry tests pass locally. Do not rerun `414d914` unchanged. Repeat only after
-the slice passes full checks and exact CI, is signed and deployed, Steam is
-started once interactively with a new continuity identity, and the genuine
-source window is foreground; require exact Steam continuity after all wrapper
-cleanup.
+termination, already-exited, unrelated-sentinel, outcome-accounting, stale-
+ancestry, invalid-root, full repository, and exact CI gates passed.
+
+The exact 128-file `02bb14d` candidate then passed signing, transactional
+deployment, independent active-package and unchanged-shortcut audits, 12 valid
+signables, unchanged non-signable and vendor-runtime bytes, and four retained
+rollback generations. Steam was started once in interactive Session 1 with a
+new continuity identity. In the focused run the task wrapper captured 32 tree
+processes, required zero root or fallback stops after its completion marker,
+produced two empty verification scans, and passed task deletion, package,
+launch-environment, and task-file guards. The exact Steam PID/session/start
+identity survived all wrapper cleanup. Matrix package cleanup also reached an
+empty final set while safely rejecting raced identities. This settles
+`WIN-TASK-CLEANUP-001`; do not repeat a standalone cleanup experiment.
+
+The product case still stopped before activation. The final source rendered,
+armed its isolated-preload gate, and exposed a valid target. About 260 ms later
+the probe found source process/window, owner, control process, interactive
+session, enabled state, and non-iconic state all valid, but
+`sourceWindowForeground=false`. It emitted
+`gate-source-window-not-eligible`, evaluated no DPI target, sent zero activation
+and close input, and produced no result, completion hold, focus return, or
+shutdown evidence. An interactive remote-desktop title-bar click landed only
+several seconds after that terminal check. The run therefore did not satisfy or
+disprove the foreground precondition.
+
+A second attempt prearmed an external watcher before launching the same focused
+case, but its premise was also wrong: it required exactly one `steam.exe`
+continuously. The shortcut launch briefly exposed an additional Steam launcher
+process, so the watcher rejected continuity before the final Smoke window
+appeared and sent no remote-desktop click. The probe later reached the same
+non-foreground terminal branch with zero input; wrapper cleanup and the
+preserved Steam identity remained green. Do not repeat either observational
+timing or the continuously-exactly-one-Steam-process watcher.
+
+The worktree now moves orchestration onto an explicit schema-3 state boundary.
+The probe binds the exact source PID, process-start identity, HWND, control
+process, session, DPI geometry, and renderer target even while the source is not
+foreground. It installs a per-PID/HWND `EVENT_SYSTEM_FOREGROUND` WinEvent hook
+on a dedicated message-pump thread, emits source-ready, arms the hook, and
+publishes one sanitized atomic ready marker containing a fresh non-secret
+challenge. After one external title-bar click succeeds, the controller must
+atomically echo the challenge in a closed acknowledgment. The probe requires
+that ack and exactly one event for the exact HWND,
+transition, revalidates identity, session, window state, DPI, point ownership,
+and foreground, and then enters the existing single activation/close path.
+Missing, stale, mismatched, timed-out, or marker-write states remain zero-input
+failures. Historical schema-2 artifacts remain auditable. Semantic positive,
+already-foreground, legacy, ordering, privacy, identity-drift, missing,
+duplicate, and pre-input adversarial fixtures pass; package smoke and native
+Windows full/generated PowerShell parsing, embedded C# compilation, 25 hook
+start/arm/wait/stop cycles, and strict ack valid/wrong-type/challenge/shape/
+timeout checks pass. All 196 tests plus API/platform/native checks, syntax, and
+diff checks also pass, and two final audits found no blocker. Repeat only after
+the exact slice passes commit/CI, signing, and deployment; then wait for the atomic marker, copy its challenge,
+deliver one safe Parsec/local title-bar click, and write the acknowledgment only
+after the click returns success. The conjunction proves one completed controller
+click and one exact foreground event in the armed interval, not strict physical
+causality between them.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

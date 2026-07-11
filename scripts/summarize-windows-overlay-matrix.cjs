@@ -49,9 +49,10 @@ const SUPPORTED_CLOSE_PROBE_INPUTS = new Set([
   "close-tab-sendinput",
   "web-close-click-sendinput"
 ]);
-const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2]);
+const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2, 3]);
 const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
 const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1";
+const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
 const PERSISTENT_REUSE_ACTION = "presenter-persistent-reuse-three-cycle";
 const WINDOWS_PERSISTENT_REUSE_CYCLES = 3;
@@ -422,7 +423,7 @@ function validateManifest(manifest, failures) {
   if (manifest.closeProbeEvidenceSchema !== undefined) {
     expect(
       SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS.has(manifest.closeProbeEvidenceSchema),
-      "matrix manifest closeProbeEvidenceSchema uses supported version 1 or 2",
+      "matrix manifest closeProbeEvidenceSchema uses supported version 1, 2, or 3",
       failures
     );
     if (manifest.closeProbeEvidenceSchema === 2) {
@@ -442,6 +443,25 @@ function validateManifest(manifest, failures) {
         );
       }
     }
+  }
+  if (manifest.supportedCloseProbeEvidenceSchemas !== undefined) {
+    expect(
+      Array.isArray(manifest.supportedCloseProbeEvidenceSchemas) &&
+        manifest.supportedCloseProbeEvidenceSchemas.length === 2 &&
+        manifest.supportedCloseProbeEvidenceSchemas.includes(2) &&
+        manifest.supportedCloseProbeEvidenceSchemas.includes(3),
+      "matrix manifest records close-probe evidence schemas 2 and 3",
+      failures
+    );
+  }
+  if (manifest.supportedExternalForegroundTransitions !== undefined) {
+    expect(
+      Array.isArray(manifest.supportedExternalForegroundTransitions) &&
+        manifest.supportedExternalForegroundTransitions.length === 1 &&
+        manifest.supportedExternalForegroundTransitions[0] === EXTERNAL_FOREGROUND_TRANSITION,
+      `matrix manifest records external foreground transition ${EXTERNAL_FOREGROUND_TRANSITION}`,
+      failures
+    );
   }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
@@ -521,6 +541,27 @@ function validateManifest(manifest, failures) {
             failures
           );
           if (entry.autorunUserGestureGate) {
+            const caseEvidenceSchema = Number(
+              entry.closeProbeEvidenceSchema || manifest.closeProbeEvidenceSchema || 0
+            );
+            expect(
+              caseEvidenceSchema === 2 || caseEvidenceSchema === 3,
+              `matrix manifest case ${entry.id} uses close-probe evidence schema 2 or 3`,
+              failures
+            );
+            if (caseEvidenceSchema === 3) {
+              expect(
+                entry.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION,
+                `matrix manifest case ${entry.id} records external foreground transition ${EXTERNAL_FOREGROUND_TRANSITION}`,
+                failures
+              );
+            } else {
+              expect(
+                !entry.externalForegroundTransition,
+                `matrix manifest case ${entry.id} omits the schema-3 external foreground transition`,
+                failures
+              );
+            }
             expect(
               entry.action === "presenter-web-open-and-wait",
               `matrix manifest case ${entry.id} limits the user-gesture gate to presenter-web-open-and-wait`,
@@ -534,8 +575,26 @@ function validateManifest(manifest, failures) {
                 ) &&
                 manifest.supportedCloseProbeForegroundHandoffs.includes(
                   SAME_PROCESS_USER_GESTURE_HANDOFF
-                ),
+                ) &&
+                (caseEvidenceSchema === 2 ||
+                  (Array.isArray(manifest.supportedCloseProbeEvidenceSchemas) &&
+                    manifest.supportedCloseProbeEvidenceSchemas.includes(3) &&
+                    Array.isArray(manifest.supportedExternalForegroundTransitions) &&
+                    manifest.supportedExternalForegroundTransitions.includes(
+                      EXTERNAL_FOREGROUND_TRANSITION
+                    ))),
               `matrix manifest case ${entry.id} records the bounded foreground-handoff union`,
+              failures
+            );
+          } else if (Object.prototype.hasOwnProperty.call(entry, "closeProbeEvidenceSchema")) {
+            expect(
+              entry.closeProbeEvidenceSchema === manifest.closeProbeEvidenceSchema,
+              `matrix manifest case ${entry.id} uses the default close-probe evidence schema`,
+              failures
+            );
+            expect(
+              entry.externalForegroundTransition === "",
+              `matrix manifest case ${entry.id} does not request an external foreground transition`,
               failures
             );
           }
@@ -1057,6 +1116,9 @@ function validateManifestCoverage(
         expected.closeProbeOnActivation === true ||
         expected.shortcutToggleProbe === true);
     const expectedCloseProbeInput = String(expected.expectedCloseProbeInput || "");
+    const expectedCloseProbeEvidenceSchema = Number(
+      expected.closeProbeEvidenceSchema || manifest.closeProbeEvidenceSchema || 0
+    );
     if (auditedCloseProbeExpected) {
       expect(row.closeProbeSent === true, `matrix manifest case ${expected.id} sent Windows close probe input`, failures);
       expect(
@@ -1096,7 +1158,7 @@ function validateManifestCoverage(
         row.closeProbe.nativePresenterPreDispatchSource === "lifecycle-native-host" &&
           row.closeProbe.nativePresenterPreDispatchHandlePresent === true &&
           row.closeProbe.nativePresenterPreDispatchWindowValid === true &&
-          (manifest.closeProbeEvidenceSchema === 1 ||
+          (expectedCloseProbeEvidenceSchema === 1 ||
             (row.closeProbe.nativePresenterPreDispatchOwnerMatches === true &&
               row.closeProbe.nativePresenterPreDispatchEnabled === true &&
               row.closeProbe.nativePresenterPreDispatchNotIconic === true)) &&
@@ -1109,7 +1171,7 @@ function validateManifestCoverage(
         `matrix manifest case ${expected.id} pre-dispatch focus evidence omits raw native HWND`,
         failures
       );
-      if (manifest.closeProbeEvidenceSchema === 2) {
+      if (expectedCloseProbeEvidenceSchema >= 2) {
         const usesUserGestureGate = expected.autorunUserGestureGate === true;
         const expectedHandoff = usesUserGestureGate
           ? SAME_PROCESS_USER_GESTURE_HANDOFF
@@ -1118,10 +1180,10 @@ function validateManifestCoverage(
           ? "same-process-user-gesture"
           : "owner-process-native-show";
         expect(
-          row.closeProbe.evidenceSchema === 2 &&
+          row.closeProbe.evidenceSchema === expectedCloseProbeEvidenceSchema &&
             row.closeProbe.foregroundHandoff === expectedHandoff,
           usesUserGestureGate
-            ? `matrix manifest case ${expected.id} close probe uses schema-2 ${expectedHandoff}`
+            ? `matrix manifest case ${expected.id} close probe uses schema-${expectedCloseProbeEvidenceSchema} ${expectedHandoff}`
             : `matrix manifest case ${expected.id} close probe uses schema-2 owner-process handoff`,
           failures
         );
@@ -1132,6 +1194,28 @@ function validateManifestCoverage(
           failures
         );
         if (usesUserGestureGate) {
+          if (expectedCloseProbeEvidenceSchema === 3) {
+            expect(
+              expected.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION &&
+                row.closeProbe.externalForegroundTransitionEnabled === true &&
+                row.closeProbe.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION,
+              `matrix manifest case ${expected.id} enables schema-3 external foreground transition ${EXTERNAL_FOREGROUND_TRANSITION}`,
+              failures
+            );
+            expect(
+              row.closeProbe.externalForegroundTransitionEvidenceValid === true,
+              `matrix manifest case ${expected.id} recorded one coherent external foreground transition branch`,
+              failures
+            );
+          } else {
+            expect(
+              expectedCloseProbeEvidenceSchema === 2 &&
+                row.closeProbe.externalForegroundTransitionEnabled === false &&
+                row.closeProbe.externalForegroundTransition === "",
+              `matrix manifest case ${expected.id} retains legacy schema-2 user-gesture evidence`,
+              failures
+            );
+          }
           expect(
             row.closeProbe.userGestureGate === true,
             `matrix manifest case ${expected.id} explicitly armed the one-shot user-gesture probe`,
@@ -3102,6 +3186,14 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     path.join(caseDir || path.dirname(resultLog), "user-gesture-completion.json"),
     failures
   );
+  const externalForegroundReadyMarker = readJsonIfPresent(
+    path.join(caseDir || path.dirname(resultLog), "external-foreground-ready.json"),
+    failures
+  );
+  const externalForegroundControllerAck = readJsonIfPresent(
+    path.join(caseDir || path.dirname(resultLog), "external-foreground-ack.json"),
+    failures
+  );
   const fullLifecycleEvents = readJsonLinesIfPresent(
     path.join(caseDir || path.dirname(resultLog), "diagnostics", "lifecycle.jsonl"),
     failures
@@ -3112,7 +3204,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     nativePresenter,
     events,
     userGestureCompletion,
-    fullLifecycleEvents
+    fullLifecycleEvents,
+    externalForegroundReadyMarker,
+    externalForegroundControllerAck
   );
   const initTxnRequestShape = summarizeInitTxnRequestShapeEvent(events);
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
@@ -3649,7 +3743,9 @@ function summarizeCloseProbe(
   nativePresenter = null,
   lifecycleEvents = [],
   userGestureCompletion = null,
-  fullLifecycleEvents = []
+  fullLifecycleEvents = [],
+  externalForegroundReadyMarker = null,
+  externalForegroundControllerAck = null
 ) {
   const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
   const startEvent = normalizedEvents.find((event) => event.type === "probe:start");
@@ -3673,6 +3769,21 @@ function summarizeCloseProbe(
   );
   const userGestureFocusReturnEvents = normalizedEvents.filter(
     (event) => event.type === "probe:user-gesture-app-focus-return"
+  );
+  const externalForegroundSourceReadyEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:external-foreground-source-ready"
+  );
+  const externalForegroundTransitionObservedEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:external-foreground-transition-observed"
+  );
+  const externalForegroundControllerAcknowledgedEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:external-foreground-controller-acknowledged"
+  );
+  const externalForegroundTransitionNotRequiredEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:external-foreground-transition-not-required"
+  );
+  const externalForegroundTransitionRejectedEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:external-foreground-transition-rejected"
   );
   const ownerHandoffEvents = (Array.isArray(lifecycleEvents) ? lifecycleEvents : []).filter((event) =>
     ["overlay:presenter-foreground-handoff", "event:overlay:presenter-foreground-handoff"].includes(
@@ -3705,7 +3816,14 @@ function summarizeCloseProbe(
     userGestureConsumedProbeEvents,
     userGestureFocusReturnEvents,
     userGestureCompletion,
-    fullLifecycleEvents
+    fullLifecycleEvents,
+    externalForegroundReadyMarker,
+    externalForegroundControllerAck,
+    externalForegroundSourceReadyEvents,
+    externalForegroundControllerAcknowledgedEvents,
+    externalForegroundTransitionObservedEvents,
+    externalForegroundTransitionNotRequiredEvents,
+    externalForegroundTransitionRejectedEvents
   });
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
@@ -3797,6 +3915,9 @@ function summarizeCloseProbe(
     nativePresenterFocusEventCount: nativePresenterFocusEvents.length,
     evidenceSchema: Number(startPayload.evidenceSchema || 0),
     foregroundHandoff: String(startPayload.foregroundHandoff || ""),
+    externalForegroundTransition: String(startPayload.externalForegroundTransition || ""),
+    externalForegroundTransitionEnabled:
+      startPayload.externalForegroundTransitionEnabled === true,
     userGestureGate: startPayload.userGestureGate === true,
     nativePresenterFocusSource: String(nativePresenterFocusPayload.source || ""),
     nativePresenterFocusSchema: Number(nativePresenterFocusPayload.schema || 0),
@@ -3839,6 +3960,17 @@ function summarizeCloseProbe(
     ).length,
     userGestureConsumedProbeEventCount: userGestureConsumedProbeEvents.length,
     userGestureAppFocusReturnEventCount: userGestureFocusReturnEvents.length,
+    externalForegroundSourceReadyEventCount: externalForegroundSourceReadyEvents.length,
+    externalForegroundTransitionObservedEventCount: externalForegroundTransitionObservedEvents.length,
+    externalForegroundTransitionNotRequiredEventCount:
+      externalForegroundTransitionNotRequiredEvents.length,
+    externalForegroundTransitionRejectedEventCount: externalForegroundTransitionRejectedEvents.length,
+    externalForegroundTransitionEvidenceValid: sameProcessUserGesture.externalForegroundTransitionValid,
+    externalForegroundReadyMarkerValid: sameProcessUserGesture.externalForegroundReadyMarkerValid,
+    externalForegroundControllerAckValid: sameProcessUserGesture.externalForegroundControllerAckValid,
+    externalForegroundControllerAcknowledgedEventCount:
+      externalForegroundControllerAcknowledgedEvents.length,
+    userGestureProbeRecordOrderValid: sameProcessUserGesture.probeRecordOrderValid,
     userGestureActivationPointerSucceeded: sameProcessUserGesture.activationPointerSucceeded,
     userGestureAppFocusReturnObserved: sameProcessUserGesture.focusReturnObserved,
     nativePresenterFocusBeforeInput:
@@ -3898,9 +4030,20 @@ function summarizeSameProcessUserGestureHandoff({
   userGestureConsumedProbeEvents,
   userGestureFocusReturnEvents,
   userGestureCompletion,
-  fullLifecycleEvents
+  fullLifecycleEvents,
+  externalForegroundReadyMarker,
+  externalForegroundControllerAck,
+  externalForegroundSourceReadyEvents,
+  externalForegroundControllerAcknowledgedEvents,
+  externalForegroundTransitionObservedEvents,
+  externalForegroundTransitionNotRequiredEvents,
+  externalForegroundTransitionRejectedEvents
 }) {
   const lifecycle = Array.isArray(lifecycleEvents) ? lifecycleEvents.filter(Boolean) : [];
+  const startPayload = objectOrEmpty(
+    objectOrEmpty(normalizedEvents.find((event) => event.type === "probe:start")).payload
+  );
+  const evidenceSchema = Number(startPayload.evidenceSchema || 0);
   const completeLifecycle = Array.isArray(fullLifecycleEvents)
     ? fullLifecycleEvents.filter(Boolean)
     : [];
@@ -3954,6 +4097,32 @@ function summarizeSameProcessUserGestureHandoff({
   const focusReturn = objectOrEmpty(focusReturnEvent && focusReturnEvent.payload);
   const consumedProbeEvent = userGestureConsumedProbeEvents[0];
   const consumedProbePayload = objectOrEmpty(consumedProbeEvent && consumedProbeEvent.payload);
+  const externalSourceReadyEvent = externalForegroundSourceReadyEvents[0];
+  const externalSourceReadyPayload = objectOrEmpty(
+    externalSourceReadyEvent && externalSourceReadyEvent.payload
+  );
+  const externalSourceReadyBinding = objectOrEmpty(externalSourceReadyPayload.binding);
+  const externalSourceReadyDpi = objectOrEmpty(externalSourceReadyPayload.dpi);
+  const externalTransitionObservedEvent = externalForegroundTransitionObservedEvents[0];
+  const externalTransitionObservedPayload = objectOrEmpty(
+    externalTransitionObservedEvent && externalTransitionObservedEvent.payload
+  );
+  const externalTransitionObservedBinding = objectOrEmpty(
+    externalTransitionObservedPayload.binding
+  );
+  const externalTransitionNotRequiredEvent = externalForegroundTransitionNotRequiredEvents[0];
+  const externalTransitionNotRequiredPayload = objectOrEmpty(
+    externalTransitionNotRequiredEvent && externalTransitionNotRequiredEvent.payload
+  );
+  const externalTransitionNotRequiredBinding = objectOrEmpty(
+    externalTransitionNotRequiredPayload.binding
+  );
+  const externalReadyMarker = objectOrEmpty(externalForegroundReadyMarker);
+  const externalControllerAck = objectOrEmpty(externalForegroundControllerAck);
+  const externalControllerAcknowledgedEvent = externalForegroundControllerAcknowledgedEvents[0];
+  const externalControllerAcknowledgedPayload = objectOrEmpty(
+    externalControllerAcknowledgedEvent && externalControllerAcknowledgedEvent.payload
+  );
   const preDispatchEvents = normalizedEvents.filter(
     (event) => event.type === "probe:user-gesture-gate-pre-dispatch"
   );
@@ -4078,6 +4247,282 @@ function summarizeSameProcessUserGestureHandoff({
       !containsRawForegroundHandoffIdentifier(readyPayload) &&
       !containsRawForegroundHandoffIdentifier(consumedPayload)
   );
+  const hasExactKeys = (value, expectedKeys) =>
+    JSON.stringify(Object.keys(objectOrEmpty(value)).sort()) ===
+    JSON.stringify([...expectedKeys].sort());
+  const sourceResolverBindingKeys = [
+    "ownerMatchesLifecycleProcess",
+    "sameInteractiveSession",
+    "sourceMatchesBoundProcessIdentity",
+    "sourceMatchesBoundWindow",
+    "sourceMatchesControlProcess",
+    "sourceProcessIdentityPresent",
+    "sourceProcessPresent",
+    "sourceWindowEnabled",
+    "sourceWindowForeground",
+    "sourceWindowNotIconic",
+    "sourceWindowPresent"
+  ];
+  const sourceDpiKeys = [
+    "clientGeometryAgrees",
+    "rendererScale",
+    "rendererScalePresent",
+    "scaleAgrees",
+    "windowDpiPresent",
+    "windowScale"
+  ];
+  const confirmedSourceBindingKeys = [
+    "pointOwnerMatchesBoundProcess",
+    "pointRootMatchesSourceWindow",
+    "pointWindowPresent",
+    "sameInteractiveSession",
+    "sourceMatchesBoundProcess",
+    "sourceMatchesBoundProcessIdentity",
+    "sourceMatchesBoundWindow",
+    "sourceMatchesControlProcess",
+    "sourceOwnerPresent",
+    "sourceWindowEnabled",
+    "sourceWindowForeground",
+    "sourceWindowNotIconic",
+    "sourceWindowValid",
+    "targetInsideSourceClient"
+  ];
+  const sourceResolverBindingValid = (binding, expectedForeground) =>
+    Boolean(
+      binding.sourceProcessPresent === true &&
+        binding.sourceProcessIdentityPresent === true &&
+        binding.sourceWindowPresent === true &&
+        binding.ownerMatchesLifecycleProcess === true &&
+        binding.sourceMatchesControlProcess === true &&
+        binding.sourceMatchesBoundWindow === true &&
+        binding.sourceMatchesBoundProcessIdentity === true &&
+        binding.sameInteractiveSession === true &&
+        binding.sourceWindowEnabled === true &&
+        binding.sourceWindowNotIconic === true &&
+        binding.sourceWindowForeground === expectedForeground
+    );
+  const sourceDpiValid = (dpi) =>
+    Boolean(
+      dpi.rendererScalePresent === true &&
+        dpi.windowDpiPresent === true &&
+        dpi.scaleAgrees === true &&
+        dpi.clientGeometryAgrees === true &&
+        Number.isFinite(dpi.rendererScale) &&
+        Number.isFinite(dpi.windowScale) &&
+        dpi.rendererScale >= 0.5 &&
+        dpi.rendererScale <= 8 &&
+        dpi.windowScale >= 0.5 &&
+        dpi.windowScale <= 8 &&
+        dpi.rendererScale === readyViewport.devicePixelRatio &&
+        Math.abs(dpi.rendererScale - dpi.windowScale) <= WINDOWS_CLOSE_SCALE_TOLERANCE
+    );
+  const observedBindingValid = Boolean(
+    externalTransitionObservedBinding.sourceWindowValid === true &&
+      externalTransitionObservedBinding.sourceOwnerPresent === true &&
+      externalTransitionObservedBinding.sourceMatchesBoundProcess === true &&
+      externalTransitionObservedBinding.sourceMatchesBoundProcessIdentity === true &&
+      externalTransitionObservedBinding.sourceMatchesBoundWindow === true &&
+      externalTransitionObservedBinding.sourceMatchesControlProcess === true &&
+      externalTransitionObservedBinding.sameInteractiveSession === true &&
+      externalTransitionObservedBinding.sourceWindowEnabled === true &&
+      externalTransitionObservedBinding.sourceWindowNotIconic === true &&
+      externalTransitionObservedBinding.targetInsideSourceClient === true &&
+      externalTransitionObservedBinding.pointWindowPresent === true &&
+      externalTransitionObservedBinding.pointOwnerMatchesBoundProcess === true &&
+      externalTransitionObservedBinding.pointRootMatchesSourceWindow === true &&
+      externalTransitionObservedBinding.sourceWindowForeground === true
+  );
+  const externalSourceReadyValid = Boolean(
+    externalForegroundSourceReadyEvents.length === 1 &&
+      externalSourceReadyPayload.schema === 1 &&
+      externalSourceReadyPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
+      externalSourceReadyPayload.action === "presenter-web-open-and-wait" &&
+      externalSourceReadyPayload.requestOrdinal === 1 &&
+      externalSourceReadyPayload.sourceBound === true &&
+      externalSourceReadyPayload.transitionHookReady === true &&
+      externalSourceReadyPayload.targetReady === true &&
+      externalSourceReadyPayload.activationInputCount === 0 &&
+      externalSourceReadyPayload.closeInputCount === 0 &&
+      hasExactKeys(externalSourceReadyPayload, [
+        "action",
+        "activationInputCount",
+        "binding",
+        "closeInputCount",
+        "dpi",
+        "mechanism",
+        "requestOrdinal",
+        "schema",
+        "sourceBound",
+        "targetReady",
+        "transitionHookReady"
+      ]) &&
+      hasExactKeys(externalSourceReadyBinding, sourceResolverBindingKeys) &&
+      hasExactKeys(externalSourceReadyDpi, sourceDpiKeys) &&
+      sourceResolverBindingValid(externalSourceReadyBinding, false) &&
+      sourceDpiValid(externalSourceReadyDpi) &&
+      !containsRawForegroundHandoffIdentifier(externalSourceReadyPayload)
+  );
+  const externalTransitionObservedValid = Boolean(
+    externalForegroundTransitionObservedEvents.length === 1 &&
+      externalTransitionObservedPayload.schema === 1 &&
+      externalTransitionObservedPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
+      externalTransitionObservedPayload.action === "presenter-web-open-and-wait" &&
+      externalTransitionObservedPayload.requestOrdinal === 1 &&
+      externalTransitionObservedPayload.transitionObserved === true &&
+      externalTransitionObservedPayload.eventCount === 1 &&
+      externalTransitionObservedPayload.hookStopped === true &&
+      externalTransitionObservedPayload.hookErrorPresent === false &&
+      externalTransitionObservedPayload.activationInputCount === 0 &&
+      externalTransitionObservedPayload.closeInputCount === 0 &&
+      hasExactKeys(externalTransitionObservedPayload, [
+        "action",
+        "activationInputCount",
+        "binding",
+        "closeInputCount",
+        "eventCount",
+        "hookErrorPresent",
+        "hookStopped",
+        "mechanism",
+        "requestOrdinal",
+        "schema",
+        "transitionObserved"
+      ]) &&
+      hasExactKeys(externalTransitionObservedBinding, confirmedSourceBindingKeys) &&
+      observedBindingValid &&
+      !containsRawForegroundHandoffIdentifier(externalTransitionObservedPayload)
+  );
+  const externalReadyMarkerKeys = [
+    "action",
+    "activationInputCount",
+    "challenge",
+    "closeInputCount",
+    "kind",
+    "mechanism",
+    "requestOrdinal",
+    "schema",
+    "sourceBound",
+    "transitionHookReady"
+  ];
+  const externalForegroundReadyMarkerValid = Boolean(
+    externalForegroundReadyMarker &&
+      JSON.stringify(Object.keys(externalReadyMarker).sort()) ===
+        JSON.stringify(externalReadyMarkerKeys) &&
+      externalReadyMarker.kind === "steam-bridge-windows-external-foreground-ready" &&
+      externalReadyMarker.schema === 1 &&
+      externalReadyMarker.action === "presenter-web-open-and-wait" &&
+      externalReadyMarker.requestOrdinal === 1 &&
+      externalReadyMarker.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
+      typeof externalReadyMarker.challenge === "string" &&
+      /^[0-9a-f]{32}$/.test(externalReadyMarker.challenge) &&
+      externalReadyMarker.sourceBound === true &&
+      externalReadyMarker.transitionHookReady === true &&
+      externalReadyMarker.activationInputCount === 0 &&
+      externalReadyMarker.closeInputCount === 0 &&
+      !containsRawForegroundHandoffIdentifier(externalReadyMarker)
+  );
+  const externalForegroundControllerAckValid = Boolean(
+    externalForegroundControllerAck &&
+      hasExactKeys(externalControllerAck, [
+        "action",
+        "activationInputCount",
+        "challenge",
+        "clickCompleted",
+        "closeInputCount",
+        "kind",
+        "mechanism",
+        "requestOrdinal",
+        "schema"
+      ]) &&
+      externalControllerAck.kind === "steam-bridge-windows-external-foreground-ack" &&
+      externalControllerAck.schema === 1 &&
+      externalControllerAck.action === "presenter-web-open-and-wait" &&
+      externalControllerAck.requestOrdinal === 1 &&
+      externalControllerAck.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
+      externalControllerAck.challenge === externalReadyMarker.challenge &&
+      externalControllerAck.clickCompleted === true &&
+      externalControllerAck.activationInputCount === 0 &&
+      externalControllerAck.closeInputCount === 0 &&
+      !containsRawForegroundHandoffIdentifier(externalControllerAck)
+  );
+  const externalForegroundControllerAcknowledgedValid = Boolean(
+    externalForegroundControllerAcknowledgedEvents.length === 1 &&
+      hasExactKeys(externalControllerAcknowledgedPayload, [
+        "action",
+        "activationInputCount",
+        "clickCompleted",
+        "closeInputCount",
+        "controllerAckValid",
+        "markerWritten",
+        "mechanism",
+        "requestOrdinal",
+        "schema"
+      ]) &&
+      externalControllerAcknowledgedPayload.schema === 1 &&
+      externalControllerAcknowledgedPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
+      externalControllerAcknowledgedPayload.action === "presenter-web-open-and-wait" &&
+      externalControllerAcknowledgedPayload.requestOrdinal === 1 &&
+      externalControllerAcknowledgedPayload.markerWritten === true &&
+      externalControllerAcknowledgedPayload.controllerAckValid === true &&
+      externalControllerAcknowledgedPayload.clickCompleted === true &&
+      externalControllerAcknowledgedPayload.activationInputCount === 0 &&
+      externalControllerAcknowledgedPayload.closeInputCount === 0 &&
+      !containsRawForegroundHandoffIdentifier(externalControllerAcknowledgedPayload)
+  );
+  const externalTransitionNotRequiredValid = Boolean(
+    externalForegroundTransitionNotRequiredEvents.length === 1 &&
+      externalTransitionNotRequiredPayload.schema === 1 &&
+      externalTransitionNotRequiredPayload.mechanism === EXTERNAL_FOREGROUND_TRANSITION &&
+      externalTransitionNotRequiredPayload.action === "presenter-web-open-and-wait" &&
+      externalTransitionNotRequiredPayload.requestOrdinal === 0 &&
+      externalTransitionNotRequiredPayload.alreadyForeground === true &&
+      externalTransitionNotRequiredPayload.activationInputCount === 0 &&
+      externalTransitionNotRequiredPayload.closeInputCount === 0 &&
+      hasExactKeys(externalTransitionNotRequiredPayload, [
+        "action",
+        "activationInputCount",
+        "alreadyForeground",
+        "binding",
+        "closeInputCount",
+        "mechanism",
+        "requestOrdinal",
+        "schema"
+      ]) &&
+      hasExactKeys(externalTransitionNotRequiredBinding, sourceResolverBindingKeys) &&
+      sourceResolverBindingValid(externalTransitionNotRequiredBinding, true) &&
+      !containsRawForegroundHandoffIdentifier(externalTransitionNotRequiredPayload)
+  );
+  const requestedExternalTransitionBranchValid = Boolean(
+    externalSourceReadyValid &&
+      externalForegroundControllerAckValid &&
+      externalForegroundControllerAcknowledgedValid &&
+      externalTransitionObservedValid &&
+      externalForegroundReadyMarkerValid &&
+      externalForegroundTransitionNotRequiredEvents.length === 0 &&
+      externalForegroundTransitionRejectedEvents.length === 0
+  );
+  const alreadyForegroundBranchValid = Boolean(
+    externalForegroundSourceReadyEvents.length === 0 &&
+      externalForegroundControllerAcknowledgedEvents.length === 0 &&
+      externalForegroundTransitionObservedEvents.length === 0 &&
+      externalForegroundTransitionRejectedEvents.length === 0 &&
+      !externalForegroundReadyMarker &&
+      !externalForegroundControllerAck &&
+      externalTransitionNotRequiredValid
+  );
+  const legacyExternalTransitionAbsent = Boolean(
+    evidenceSchema === 2 &&
+      externalForegroundSourceReadyEvents.length === 0 &&
+      externalForegroundTransitionObservedEvents.length === 0 &&
+      externalForegroundTransitionNotRequiredEvents.length === 0 &&
+      externalForegroundTransitionRejectedEvents.length === 0 &&
+      externalForegroundControllerAcknowledgedEvents.length === 0 &&
+      !externalForegroundReadyMarker &&
+      !externalForegroundControllerAck
+  );
+  const externalForegroundTransitionValid =
+    evidenceSchema === 3
+      ? requestedExternalTransitionBranchValid !== alreadyForegroundBranchValid
+      : legacyExternalTransitionAbsent;
   const readyProbeValid = Boolean(
     userGestureReadyEvents.length === 1 &&
       readyProbePayload.ready === true &&
@@ -4086,6 +4531,10 @@ function summarizeSameProcessUserGestureHandoff({
       readyProbeBinding.sourceWindowPresent === true &&
       readyProbeBinding.ownerMatchesLifecycleProcess === true &&
       readyProbeBinding.sourceMatchesControlProcess === true &&
+      (evidenceSchema === 2 ||
+        (readyProbeBinding.sourceProcessIdentityPresent === true &&
+          readyProbeBinding.sourceMatchesBoundWindow === true &&
+          readyProbeBinding.sourceMatchesBoundProcessIdentity === true)) &&
       readyProbeBinding.sameInteractiveSession === true &&
       readyProbeBinding.sourceWindowEnabled === true &&
       readyProbeBinding.sourceWindowNotIconic === true &&
@@ -4164,6 +4613,7 @@ function summarizeSameProcessUserGestureHandoff({
         binding.sourceWindowValid === true &&
         binding.sourceOwnerPresent === true &&
         binding.sourceMatchesBoundProcess === true &&
+        (evidenceSchema === 2 || binding.sourceMatchesBoundProcessIdentity === true) &&
         binding.sourceMatchesBoundWindow === true &&
         binding.sourceMatchesControlProcess === true &&
         binding.sameInteractiveSession === true &&
@@ -4253,6 +4703,10 @@ function summarizeSameProcessUserGestureHandoff({
       activationBinding.sourceWindowPresent === true &&
       activationBinding.ownerMatchesLifecycleProcess === true &&
       activationBinding.sourceMatchesControlProcess === true &&
+      (evidenceSchema === 2 ||
+        (activationBinding.sourceProcessIdentityPresent === true &&
+          activationBinding.sourceMatchesBoundWindow === true &&
+          activationBinding.sourceMatchesBoundProcessIdentity === true)) &&
       activationBinding.sameInteractiveSession === true &&
       activationBinding.sourceWindowEnabled === true &&
       activationBinding.sourceWindowNotIconic === true &&
@@ -4409,6 +4863,18 @@ function summarizeSameProcessUserGestureHandoff({
   const armedAt = Date.parse((armedAppEvent && armedAppEvent.at) || "");
   const readyAt = Date.parse((readyAppEvent && readyAppEvent.at) || "");
   const readyProbeAt = Date.parse((readyProbeEvent && readyProbeEvent.at) || "");
+  const externalSourceReadyAt = Date.parse(
+    (externalSourceReadyEvent && externalSourceReadyEvent.at) || ""
+  );
+  const externalTransitionObservedAt = Date.parse(
+    (externalTransitionObservedEvent && externalTransitionObservedEvent.at) || ""
+  );
+  const externalControllerAcknowledgedAt = Date.parse(
+    (externalControllerAcknowledgedEvent && externalControllerAcknowledgedEvent.at) || ""
+  );
+  const externalTransitionNotRequiredAt = Date.parse(
+    (externalTransitionNotRequiredEvent && externalTransitionNotRequiredEvent.at) || ""
+  );
   const preDispatchAt = Date.parse((preDispatchEvent && preDispatchEvent.at) || "");
   const activationDispatchStartAt = Date.parse(
     (activationDispatchStartEvent && activationDispatchStartEvent.at) || ""
@@ -4475,6 +4941,58 @@ function summarizeSameProcessUserGestureHandoff({
       willQuitAt <= processExitAt &&
       willQuitAt <= appQuitAt
   );
+  const externalTransitionOrderValid = evidenceSchema === 2
+    ? legacyExternalTransitionAbsent
+    : requestedExternalTransitionBranchValid
+      ? Boolean(
+        [
+          readyAt,
+          externalSourceReadyAt,
+          externalControllerAcknowledgedAt,
+          externalTransitionObservedAt,
+          readyProbeAt
+        ].every(Number.isFinite) &&
+          readyAt <= externalSourceReadyAt &&
+          externalSourceReadyAt <= externalControllerAcknowledgedAt &&
+          externalControllerAcknowledgedAt <= externalTransitionObservedAt &&
+          externalTransitionObservedAt <= readyProbeAt
+        )
+      : alreadyForegroundBranchValid
+        ? Boolean(
+          [readyAt, externalTransitionNotRequiredAt, readyProbeAt].every(Number.isFinite) &&
+            readyAt <= externalTransitionNotRequiredAt &&
+            externalTransitionNotRequiredAt <= readyProbeAt
+          )
+        : false;
+  const externalProbeRecordPrefix = evidenceSchema === 2
+    ? []
+    : requestedExternalTransitionBranchValid
+      ? [
+          externalSourceReadyEvent,
+          externalControllerAcknowledgedEvent,
+          externalTransitionObservedEvent
+        ]
+      : alreadyForegroundBranchValid
+        ? [externalTransitionNotRequiredEvent]
+        : [null];
+  const probeRecordOrderEvents = [
+    ...externalProbeRecordPrefix,
+    readyProbeEvent,
+    preDispatchEvent,
+    activationDispatchStartEvent,
+    activationEvent,
+    consumedProbeEvent,
+    nativePresenterFocusEvent,
+    sentEvent,
+    focusReturnEvent
+  ];
+  const probeRecordOrderValid = probeRecordOrderEvents.every((event, index) => {
+    const eventIndex = normalizedEvents.indexOf(event);
+    if (eventIndex < 0) {
+      return false;
+    }
+    return index === 0 || normalizedEvents.indexOf(probeRecordOrderEvents[index - 1]) < eventIndex;
+  });
   const orderValid = Boolean(
     [
       armedAt,
@@ -4490,6 +5008,8 @@ function summarizeSameProcessUserGestureHandoff({
       focusReturnAt
     ].every(Number.isFinite) &&
       armedAt <= readyAt &&
+      externalTransitionOrderValid &&
+      probeRecordOrderValid &&
       readyAt <= readyProbeAt &&
       readyProbeAt <= preDispatchAt &&
       preDispatchAt <= activationDispatchStartAt &&
@@ -4508,6 +5028,9 @@ function summarizeSameProcessUserGestureHandoff({
     readyAppEventCount: readyAppEvents.length === 1,
     consumedAppEventCount: consumedAppEvents.length === 1,
     rejectedAppEventCount: rejectedAppEvents.length === 0,
+    externalForegroundTransitionValid,
+    externalTransitionOrderValid,
+    probeRecordOrderValid,
     readyProbeEventCount: userGestureReadyEvents.length === 1,
     preDispatchEventCount: preDispatchEvents.length === 1,
     activationDispatchStartEventCount: activationDispatchStartEvents.length === 1,
@@ -4538,11 +5061,15 @@ function summarizeSameProcessUserGestureHandoff({
   };
   return {
     valid: Object.values(checks).every(Boolean),
+    externalForegroundTransitionValid,
+    externalForegroundReadyMarkerValid,
+    externalForegroundControllerAckValid,
     activationPointerSucceeded,
     focusReturnObserved,
     completionHandshakeValid,
     gracefulShutdownValid,
     completionOrderValid,
+    probeRecordOrderValid,
     checks
   };
 }
@@ -4707,6 +5234,9 @@ function containsRawForegroundHandoffIdentifier(value) {
     const normalizedKey = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
     const identifierKey =
       /(?:hwnd|handle|windowid|processid|threadid|sessionid|controlfile|filepath)$/.test(normalizedKey) ||
+      /(?:processidentity|process(?:start|creation)(?:time|date|ticks|identity)|creation(?:time|date|ticks)|startticks)$/.test(
+        normalizedKey
+      ) ||
       ["pid", "port", "token", "nonce", "targetwindow", "requestedwindow", "path"].includes(normalizedKey);
     if (identifierKey && entry !== null && typeof entry !== "boolean") {
       return true;
@@ -5525,7 +6055,6 @@ function runSelfTest() {
 
     const userGestureGateRoot = path.join(tempRoot, "managed-web-user-gesture-gate");
     writeManagedWebCloseEvidenceFixture(userGestureGateRoot, {
-      closeProbeEvidenceSchema: 2,
       userGestureGate: true
     });
     const userGestureGateSummary = summarizeWindowsOverlayMatrixArtifacts(userGestureGateRoot);
@@ -5534,7 +6063,7 @@ function runSelfTest() {
       [],
       JSON.stringify(userGestureGateSummary.caseSummaries[0].closeProbe, null, 2)
     );
-    assert.equal(userGestureGateSummary.caseSummaries[0].closeProbe.evidenceSchema, 2);
+    assert.equal(userGestureGateSummary.caseSummaries[0].closeProbe.evidenceSchema, 3);
     assert.equal(userGestureGateSummary.caseSummaries[0].closeProbe.userGestureGate, true);
     assert.equal(
       userGestureGateSummary.caseSummaries[0].closeProbe.foregroundHandoff,
@@ -5572,6 +6101,31 @@ function runSelfTest() {
       userGestureGateSummary.caseSummaries[0].closeProbe.nativePresenterHandoffNativeShowCallCount,
       0
     );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.externalForegroundTransitionEvidenceValid,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.externalForegroundReadyMarkerValid,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.externalForegroundControllerAckValid,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe
+        .externalForegroundControllerAcknowledgedEventCount,
+      1
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.externalForegroundSourceReadyEventCount,
+      1
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.externalForegroundTransitionObservedEventCount,
+      1
+    );
     const userGestureMovementFixtureFailures = [];
     const userGestureMovementEvents = readJsonLinesIfPresent(
       path.join(userGestureGateRoot, "11-managed-web-open-and-wait", "close-probe.log"),
@@ -5595,6 +6149,95 @@ function runSelfTest() {
     assert.deepEqual(userGestureMovementFixtureFailures, []);
     assert.notEqual(userGestureReadyPoint.x, userGesturePreDispatchPoint.x);
     assert.notEqual(userGesturePreDispatchPoint.x, userGestureFinalPoint.x);
+
+    const legacyUserGestureRoot = path.join(tempRoot, "managed-web-user-gesture-schema-2");
+    writeManagedWebCloseEvidenceFixture(legacyUserGestureRoot, {
+      closeProbeEvidenceSchema: 2,
+      userGestureGate: true,
+      legacyUserGestureSchema2: true
+    });
+    const legacyUserGestureSummary = summarizeWindowsOverlayMatrixArtifacts(
+      legacyUserGestureRoot
+    );
+    assert.deepEqual(
+      legacyUserGestureSummary.failures,
+      [],
+      JSON.stringify(legacyUserGestureSummary.caseSummaries[0].closeProbe, null, 2)
+    );
+    assert.equal(legacyUserGestureSummary.caseSummaries[0].closeProbe.evidenceSchema, 2);
+    assert.equal(
+      legacyUserGestureSummary.caseSummaries[0].closeProbe.externalForegroundTransitionEvidenceValid,
+      true
+    );
+    assert.equal(
+      legacyUserGestureSummary.caseSummaries[0].closeProbe.externalForegroundSourceReadyEventCount,
+      0
+    );
+    const legacyUserGestureEvents = readJsonLinesIfPresent(
+      path.join(legacyUserGestureRoot, "11-managed-web-open-and-wait", "close-probe.log"),
+      []
+    );
+    for (const binding of [
+      objectOrEmpty(
+        objectOrEmpty(
+          legacyUserGestureEvents.find(
+            (event) => event.type === "probe:user-gesture-gate-ready"
+          )
+        ).payload
+      ).binding,
+      objectOrEmpty(
+        objectOrEmpty(
+          legacyUserGestureEvents.find(
+            (event) => event.type === "probe:user-gesture-gate-activation-sent"
+          )
+        ).payload
+      ).binding
+    ]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(binding, "sourceProcessIdentityPresent"), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(binding, "sourceMatchesBoundWindow"), false);
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(binding, "sourceMatchesBoundProcessIdentity"),
+        false
+      );
+    }
+    const legacyPreDispatchBinding = objectOrEmpty(
+      objectOrEmpty(
+        objectOrEmpty(
+          legacyUserGestureEvents.find(
+            (event) => event.type === "probe:user-gesture-gate-pre-dispatch"
+          )
+        ).payload
+      ).binding
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        legacyPreDispatchBinding,
+        "sourceMatchesBoundProcessIdentity"
+      ),
+      false
+    );
+
+    const alreadyForegroundGestureRoot = path.join(
+      tempRoot,
+      "managed-web-user-gesture-already-foreground"
+    );
+    writeManagedWebCloseEvidenceFixture(alreadyForegroundGestureRoot, {
+      userGestureGate: true,
+      alreadyForeground: true
+    });
+    const alreadyForegroundGestureSummary = summarizeWindowsOverlayMatrixArtifacts(
+      alreadyForegroundGestureRoot
+    );
+    assert.deepEqual(alreadyForegroundGestureSummary.failures, []);
+    assert.equal(
+      alreadyForegroundGestureSummary.caseSummaries[0].closeProbe
+        .externalForegroundTransitionNotRequiredEventCount,
+      1
+    );
+    assert.equal(
+      alreadyForegroundGestureSummary.caseSummaries[0].closeProbe.externalForegroundReadyMarkerValid,
+      false
+    );
 
     const alreadyForegroundRoot = path.join(tempRoot, "managed-web-already-foreground");
     writeManagedWebCloseEvidenceFixture(alreadyForegroundRoot, {
@@ -5743,8 +6386,8 @@ function runSelfTest() {
       tempRoot,
       "managed-web-close-unknown-schema",
       writeManagedWebCloseEvidenceFixture,
-      { closeProbeEvidenceSchema: 3 },
-      "closeProbeEvidenceSchema uses supported version 1 or 2"
+      { closeProbeEvidenceSchema: 4 },
+      "closeProbeEvidenceSchema uses supported version 1, 2, or 3"
     );
 
     for (const [name, options, failure] of [
@@ -5866,16 +6509,107 @@ function runSelfTest() {
         tempRoot,
         `managed-web-user-gesture-${name}`,
         writeManagedWebCloseEvidenceFixture,
-        { closeProbeEvidenceSchema: 2, userGestureGate: true, ...options },
+        { userGestureGate: true, ...options },
+        "recorded one coherent same-process user-gesture handoff"
+      );
+    }
+    for (const [name, options] of [
+      ["external-source-ready-missing", { externalSourceReadyMissing: true }],
+      ["external-source-ready-duplicate", { externalSourceReadyDuplicate: true }],
+      ["external-source-ready-after-observed", { externalSourceReadyAfterObserved: true }],
+      ["external-source-ready-wrong-mechanism", { externalSourceReadyWrongMechanism: true }],
+      ["external-source-ready-identity-mismatch", { externalSourceReadyIdentityMismatch: true }],
+      ["external-source-ready-foreground", { externalSourceReadyForegroundTrue: true }],
+      ["external-source-ready-input-before-transition", { externalSourceReadyInputCountWrong: true }],
+      ["external-source-ready-close-before-transition", { externalSourceReadyCloseInputCountWrong: true }],
+      ["external-source-ready-leaks-pid", { externalSourceReadyLeaksPid: true }],
+      ["external-source-ready-leaks-process-start", { externalSourceReadyLeaksProcessStart: true }],
+      ["external-source-ready-leaks-process-start-utc", { externalSourceReadyLeaksProcessStartUtc: true }],
+      ["external-ack-event-missing", { externalAckEventMissing: true }],
+      ["external-ack-event-duplicate", { externalAckEventDuplicate: true }],
+      ["external-ack-event-after-observed", { externalAckEventAfterObserved: true }],
+      ["external-ack-record-order-wrong", { externalAckRecordOrderWrong: true }],
+      ["external-ack-event-wrong-mechanism", { externalAckEventWrongMechanism: true }],
+      ["external-ack-event-activation-input", { externalAckEventActivationInputCountWrong: true }],
+      ["external-ack-event-close-input", { externalAckEventCloseInputCountWrong: true }],
+      ["external-ack-event-leaks-pid", { externalAckEventLeaksPid: true }],
+      ["external-ack-file-missing", { externalAckFileMissing: true }],
+      ["external-ack-file-wrong-kind", { externalAckFileWrongKind: true }],
+      ["external-ack-file-wrong-ordinal", { externalAckFileOrdinalWrong: true }],
+      ["external-ack-file-wrong-mechanism", { externalAckFileWrongMechanism: true }],
+      ["external-ack-file-challenge-mismatch", { externalAckFileChallengeMismatch: true }],
+      ["external-ack-file-click-incomplete", { externalAckFileClickIncomplete: true }],
+      ["external-ack-file-activation-input", { externalAckFileActivationInputCountWrong: true }],
+      ["external-ack-file-close-input", { externalAckFileCloseInputCountWrong: true }],
+      ["external-ack-file-leaks-pid", { externalAckFileLeaksPid: true }],
+      ["external-ack-file-schema-type", { externalAckFileSchemaTypeWrong: true }],
+      ["external-ack-file-click-type", { externalAckFileClickTypeWrong: true }],
+      ["external-ack-file-activation-type", { externalAckFileActivationInputTypeWrong: true }],
+      ["external-ack-file-close-type", { externalAckFileCloseInputTypeWrong: true }],
+      ["external-observed-missing", { externalObservedMissing: true }],
+      ["external-observed-duplicate", { externalObservedDuplicate: true }],
+      ["external-record-order-wrong", { externalRecordOrderWrong: true }],
+      ["external-observed-before-source-ready", { externalObservedBeforeSourceReady: true }],
+      ["external-observed-wrong-mechanism", { externalObservedWrongMechanism: true }],
+      ["external-observed-identity-mismatch", { externalObservedIdentityMismatch: true }],
+      ["external-observed-not-foreground", { externalObservedNotForeground: true }],
+      ["external-observed-count-wrong", { externalObservedEventCountWrong: true }],
+      ["external-observed-hook-not-stopped", { externalObservedHookNotStopped: true }],
+      ["external-observed-input-before-transition", { externalObservedInputCountWrong: true }],
+      ["external-observed-close-before-transition", { externalObservedCloseInputCountWrong: true }],
+      ["external-observed-leaks-hwnd", { externalObservedLeaksHwnd: true }],
+      ["external-rejected-with-observed", { externalRejected: true }],
+      ["external-marker-missing", { externalMarkerMissing: true }],
+      ["external-marker-wrong-kind", { externalMarkerWrongKind: true }],
+      ["external-marker-wrong-ordinal", { externalMarkerOrdinalWrong: true }],
+      ["external-marker-wrong-mechanism", { externalMarkerWrongMechanism: true }],
+      ["external-marker-challenge-invalid", { externalMarkerChallengeInvalid: true }],
+      ["external-marker-input-before-transition", { externalMarkerInputCountWrong: true }],
+      ["external-marker-close-before-transition", { externalMarkerCloseInputCountWrong: true }],
+      ["external-marker-leaks-pid", { externalMarkerLeaksPid: true }]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `managed-web-user-gesture-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        { userGestureGate: true, ...options },
+        "recorded one coherent same-process user-gesture handoff"
+      );
+    }
+    for (const [name, options] of [
+      ["external-not-required-missing", { externalNotRequiredMissing: true }],
+      ["external-not-required-duplicate", { externalNotRequiredDuplicate: true }],
+      ["external-not-required-close-input", { externalNotRequiredCloseInputCountWrong: true }],
+      ["external-not-required-leaks-process-start", { externalNotRequiredLeaksProcessStart: true }]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `managed-web-user-gesture-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        { userGestureGate: true, alreadyForeground: true, ...options },
         "recorded one coherent same-process user-gesture handoff"
       );
     }
     assertFixtureSummaryFailure(
       tempRoot,
+      "managed-web-user-gesture-wrong-external-transition",
+      writeManagedWebCloseEvidenceFixture,
+      { userGestureGate: true, wrongExternalForegroundTransition: true },
+      `enables schema-3 external foreground transition ${EXTERNAL_FOREGROUND_TRANSITION}`
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-user-gesture-wrong-manifest-external-transition",
+      writeManagedWebCloseEvidenceFixture,
+      { userGestureGate: true, wrongManifestExternalForegroundTransition: true },
+      `records external foreground transition ${EXTERNAL_FOREGROUND_TRANSITION}`
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
       "managed-web-user-gesture-wrong-start-handoff",
       writeManagedWebCloseEvidenceFixture,
-      { closeProbeEvidenceSchema: 2, userGestureGate: true, wrongStartHandoff: true },
-      `close probe uses schema-2 ${SAME_PROCESS_USER_GESTURE_HANDOFF}`
+      { userGestureGate: true, wrongStartHandoff: true },
+      `close probe uses schema-3 ${SAME_PROCESS_USER_GESTURE_HANDOFF}`
     );
 
     const duplicateOpenGuardRoot = path.join(tempRoot, "duplicate-open-guard");
@@ -7214,13 +7948,19 @@ function writeManagedBackendFixture(root, options = {}) {
 function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   writeManagedBackendFixture(root, options);
   const expectedCloseProbeInput = options.expectedCloseProbeInput || "web-close-click-sendinput";
-  const closeProbeEvidenceSchema = options.closeProbeEvidenceSchema || 1;
+  const closeProbeEvidenceSchema =
+    options.closeProbeEvidenceSchema || (options.userGestureGate ? 3 : 1);
+  const legacyUserGestureSchema2 = Boolean(
+    options.userGestureGate &&
+      options.legacyUserGestureSchema2 &&
+      closeProbeEvidenceSchema === 2
+  );
   const manifestPath = path.join(root, "matrix-manifest.json");
   const manifest = JSON.parse(readText(manifestPath));
   manifest.closeProbe = true;
   manifest.closeProbeInput = "auto";
-  manifest.closeProbeEvidenceSchema = closeProbeEvidenceSchema;
-  if (closeProbeEvidenceSchema === 2) {
+  manifest.closeProbeEvidenceSchema = options.userGestureGate ? 2 : closeProbeEvidenceSchema;
+  if (closeProbeEvidenceSchema >= 2) {
     manifest.closeProbeForegroundHandoff = options.wrongManifestHandoff
       ? "wrong-owner-handoff"
       : OWNER_PROCESS_FOREGROUND_HANDOFF;
@@ -7229,12 +7969,27 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         OWNER_PROCESS_FOREGROUND_HANDOFF,
         SAME_PROCESS_USER_GESTURE_HANDOFF
       ];
+      if (!legacyUserGestureSchema2) {
+        manifest.supportedCloseProbeEvidenceSchemas = [2, 3];
+        manifest.supportedExternalForegroundTransitions = [EXTERNAL_FOREGROUND_TRANSITION];
+      }
     }
   }
   manifest.cases[0].expectedCloseProbeInput = expectedCloseProbeInput;
+  if (!legacyUserGestureSchema2) {
+    manifest.cases[0].closeProbeEvidenceSchema = closeProbeEvidenceSchema;
+  }
   if (options.userGestureGate) {
     manifest.cases[0].autorunUserGestureGate = true;
     manifest.cases[0].closeProbeForegroundHandoff = SAME_PROCESS_USER_GESTURE_HANDOFF;
+    if (!legacyUserGestureSchema2) {
+      manifest.cases[0].externalForegroundTransition =
+        options.wrongManifestExternalForegroundTransition
+          ? "wrong-external-foreground-transition"
+          : EXTERNAL_FOREGROUND_TRANSITION;
+    }
+  } else {
+    manifest.cases[0].externalForegroundTransition = "";
   }
   writeJson(manifestPath, manifest);
 
@@ -7307,7 +8062,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     : options.missingThreadPerMonitorV2
       ? "process-per-monitor-v2;thread-unchanged:5"
       : "process-per-monitor-v2;thread-per-monitor-v2";
-  const userGestureGate = Boolean(closeProbeEvidenceSchema === 2 && options.userGestureGate);
+  const userGestureGate = Boolean(closeProbeEvidenceSchema >= 2 && options.userGestureGate);
   const gestureReadyRendererTarget = {
     left: 700,
     top: 20,
@@ -7323,7 +8078,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         ? 1.5
         : 2.25
   };
-  const alreadyForeground = Boolean(closeProbeEvidenceSchema === 2 && (options.alreadyForeground || userGestureGate));
+  const alreadyForeground = Boolean(closeProbeEvidenceSchema >= 2 && options.alreadyForeground);
   const focusSucceeded = !options.presenterFocusFailed;
   const nativeShowCallCount = alreadyForeground ? 0 : options.secondNativeShowCall ? 2 : 1;
   const appReason = alreadyForeground
@@ -7383,7 +8138,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
           : "user-gesture-foreground-not-observed",
         reason: focusSucceeded ? "foreground-confirmed" : "user-gesture-foreground-not-observed"
       }
-    : closeProbeEvidenceSchema === 2
+    : closeProbeEvidenceSchema >= 2
       ? {
         schema: 2,
         source: "lifecycle-native-host",
@@ -7461,7 +8216,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   if (options.presenterFocusLeaksRawHwnd) {
     nativePresenterFocus.hwnd = "0x1234";
   }
-  if (closeProbeEvidenceSchema === 2 && !userGestureGate) {
+  if (closeProbeEvidenceSchema >= 2 && !userGestureGate) {
     const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
     const result = readSmokeResult(resultPath);
     if (!options.missingAppHandoff) {
@@ -7609,7 +8364,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     source: "lifecycle-native-host",
     handlePresent: true,
     windowValid: true,
-    ...(closeProbeEvidenceSchema === 2
+    ...(closeProbeEvidenceSchema >= 2
       ? {
           ownerMatches: !options.presenterPreDispatchOwnerMismatch,
           enabled: !options.presenterPreDispatchDisabled,
@@ -7634,16 +8389,24 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       payload: {
         input: expectedCloseProbeInput,
         dpiAwareness,
-        ...(closeProbeEvidenceSchema === 2
+        ...(closeProbeEvidenceSchema >= 2
           ? {
-              evidenceSchema: options.wrongStartSchema ? 1 : 2,
+              evidenceSchema: options.wrongStartSchema ? 1 : closeProbeEvidenceSchema,
               foregroundHandoff: options.wrongStartHandoff
                 ? "wrong-owner-handoff"
                 : userGestureGate
                   ? SAME_PROCESS_USER_GESTURE_HANDOFF
                   : OWNER_PROCESS_FOREGROUND_HANDOFF,
               controlExpected: true,
-              userGestureGate
+              userGestureGate,
+              ...(userGestureGate && closeProbeEvidenceSchema === 3
+                ? {
+                    externalForegroundTransition: options.wrongExternalForegroundTransition
+                      ? "wrong-external-foreground-transition"
+                      : EXTERNAL_FOREGROUND_TRANSITION,
+                    externalForegroundTransitionEnabled: true
+                  }
+                : {})
             }
           : {})
       }
@@ -7673,6 +8436,13 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       sourceWindowPresent: true,
       ownerMatchesLifecycleProcess: !options.gestureSourceOwnerMismatch,
       sourceMatchesControlProcess: !options.gestureSourceControlMismatch,
+      ...(closeProbeEvidenceSchema === 3
+        ? {
+            sourceProcessIdentityPresent: true,
+            sourceMatchesBoundWindow: true,
+            sourceMatchesBoundProcessIdentity: true
+          }
+        : {}),
       sameInteractiveSession: !options.gestureSourceSessionMismatch,
       sourceWindowEnabled: true,
       sourceWindowNotIconic: true,
@@ -7728,6 +8498,11 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         sourceWindowValid: true,
         sourceOwnerPresent: true,
         sourceMatchesBoundProcess: !options.gesturePreDispatchSourceMismatch,
+        ...(closeProbeEvidenceSchema === 3
+          ? {
+              sourceMatchesBoundProcessIdentity: !options.gesturePreDispatchSourceMismatch
+            }
+          : {}),
         sourceMatchesBoundWindow: !options.gesturePreDispatchBoundWindowMismatch,
         sourceMatchesControlProcess: !options.gesturePreDispatchControlMismatch,
         sameInteractiveSession: true,
@@ -7800,9 +8575,220 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
           ? activationPreDispatch.target.y
           : activationTarget.y
     };
+    const externalForegroundEvents = [];
+    if (closeProbeEvidenceSchema === 3) {
+      if (alreadyForeground) {
+        if (!options.externalNotRequiredMissing) {
+          const notRequiredEvent = {
+            type: "probe:external-foreground-transition-not-required",
+            at: "2026-07-02T00:00:01.140Z",
+            payload: {
+              schema: 1,
+              mechanism: EXTERNAL_FOREGROUND_TRANSITION,
+              action: "presenter-web-open-and-wait",
+              requestOrdinal: 0,
+              alreadyForeground: true,
+              binding: {
+                ...activationBinding,
+                sourceWindowForeground: true,
+                ...(options.externalNotRequiredLeaksProcessStart
+                  ? { sourceProcessStartTicks: 638870000000000000 }
+                  : {})
+              },
+              activationInputCount: 0,
+              closeInputCount: options.externalNotRequiredCloseInputCountWrong ? 1 : 0
+            }
+          };
+          externalForegroundEvents.push(notRequiredEvent);
+          if (options.externalNotRequiredDuplicate) {
+            externalForegroundEvents.push({
+              ...notRequiredEvent,
+              at: "2026-07-02T00:00:01.141Z"
+            });
+          }
+        }
+      } else {
+        const sourceReadyEvent = {
+          type: "probe:external-foreground-source-ready",
+          at: options.externalSourceReadyAfterObserved
+            ? "2026-07-02T00:00:01.145Z"
+            : "2026-07-02T00:00:01.115Z",
+          payload: {
+            schema: 1,
+            mechanism: options.externalSourceReadyWrongMechanism
+              ? "wrong-external-foreground-transition"
+              : EXTERNAL_FOREGROUND_TRANSITION,
+            action: "presenter-web-open-and-wait",
+            requestOrdinal: 1,
+            sourceBound: true,
+            transitionHookReady: true,
+            binding: {
+              ...activationBinding,
+              sourceMatchesBoundProcessIdentity:
+                !options.externalSourceReadyIdentityMismatch,
+              sourceWindowForeground: options.externalSourceReadyForegroundTrue === true,
+              ...(options.externalSourceReadyLeaksProcessStart
+                ? { sourceProcessStartTicks: 638870000000000000 }
+                : {}),
+              ...(options.externalSourceReadyLeaksProcessStartUtc
+                ? { sourceProcessStartTimeUtc: "2026-07-10T00:00:00.000Z" }
+                : {})
+            },
+            dpi: activationDpi,
+            targetReady: true,
+            activationInputCount: options.externalSourceReadyInputCountWrong ? 1 : 0,
+            closeInputCount: options.externalSourceReadyCloseInputCountWrong ? 1 : 0,
+            ...(options.externalSourceReadyLeaksPid ? { pid: 4245 } : {})
+          }
+        };
+        if (!options.externalSourceReadyMissing) {
+          externalForegroundEvents.push(sourceReadyEvent);
+          if (options.externalSourceReadyDuplicate) {
+            externalForegroundEvents.push({
+              ...sourceReadyEvent,
+              at: "2026-07-02T00:00:01.116Z"
+            });
+          }
+        }
+
+        const controllerAckEvent = {
+          type: "probe:external-foreground-controller-acknowledged",
+          at: options.externalAckEventAfterObserved
+            ? "2026-07-02T00:00:01.145Z"
+            : "2026-07-02T00:00:01.135Z",
+          payload: {
+            schema: 1,
+            mechanism: options.externalAckEventWrongMechanism
+              ? "wrong-external-foreground-transition"
+              : EXTERNAL_FOREGROUND_TRANSITION,
+            action: "presenter-web-open-and-wait",
+            requestOrdinal: 1,
+            markerWritten: true,
+            controllerAckValid: true,
+            clickCompleted: true,
+            activationInputCount: options.externalAckEventActivationInputCountWrong ? 1 : 0,
+            closeInputCount: options.externalAckEventCloseInputCountWrong ? 1 : 0,
+            ...(options.externalAckEventLeaksPid ? { pid: 4245 } : {})
+          }
+        };
+        if (!options.externalAckEventMissing) {
+          externalForegroundEvents.push(controllerAckEvent);
+          if (options.externalAckEventDuplicate) {
+            externalForegroundEvents.push({
+              ...controllerAckEvent,
+              at: "2026-07-02T00:00:01.136Z"
+            });
+          }
+        }
+
+        const observedEvent = {
+          type: "probe:external-foreground-transition-observed",
+          at: options.externalObservedBeforeSourceReady
+            ? "2026-07-02T00:00:01.105Z"
+            : "2026-07-02T00:00:01.140Z",
+          payload: {
+            schema: 1,
+            mechanism: options.externalObservedWrongMechanism
+              ? "wrong-external-foreground-transition"
+              : EXTERNAL_FOREGROUND_TRANSITION,
+            action: "presenter-web-open-and-wait",
+            requestOrdinal: 1,
+            transitionObserved: true,
+            eventCount: options.externalObservedEventCountWrong ? 2 : 1,
+            hookStopped: !options.externalObservedHookNotStopped,
+            hookErrorPresent: options.externalObservedHookErrorPresent === true,
+            binding: {
+              ...activationPreDispatch.binding,
+              sourceMatchesBoundProcessIdentity:
+                !options.externalObservedIdentityMismatch,
+              sourceWindowForeground: !options.externalObservedNotForeground
+            },
+            activationInputCount: options.externalObservedInputCountWrong ? 1 : 0,
+            closeInputCount: options.externalObservedCloseInputCountWrong ? 1 : 0,
+            ...(options.externalObservedLeaksHwnd ? { hwnd: "0x1234" } : {})
+          }
+        };
+        if (!options.externalObservedMissing) {
+          externalForegroundEvents.push(observedEvent);
+          if (options.externalObservedDuplicate) {
+            externalForegroundEvents.push({
+              ...observedEvent,
+              at: "2026-07-02T00:00:01.141Z"
+            });
+          }
+        }
+        if (options.externalRejected) {
+          externalForegroundEvents.push({
+            type: "probe:external-foreground-transition-rejected",
+            at: "2026-07-02T00:00:01.142Z",
+            payload: {
+              schema: 1,
+              mechanism: EXTERNAL_FOREGROUND_TRANSITION,
+              action: "presenter-web-open-and-wait",
+              requestOrdinal: 1,
+              reason: "external-foreground-source-changed",
+              hookStarted: true,
+              transitionObserved: true,
+              activationInputCount: 0,
+              closeInputCount: 0
+            }
+          });
+        }
+        if (!options.externalMarkerMissing) {
+          writeJson(path.join(caseDir, "external-foreground-ready.json"), {
+            kind: options.externalMarkerWrongKind
+              ? "wrong-external-foreground-ready"
+              : "steam-bridge-windows-external-foreground-ready",
+            schema: 1,
+            action: "presenter-web-open-and-wait",
+            requestOrdinal: options.externalMarkerOrdinalWrong ? 2 : 1,
+            mechanism: options.externalMarkerWrongMechanism
+              ? "wrong-external-foreground-transition"
+              : EXTERNAL_FOREGROUND_TRANSITION,
+            challenge: options.externalMarkerChallengeInvalid ? "short" : "a".repeat(32),
+            sourceBound: true,
+            transitionHookReady: true,
+            activationInputCount: options.externalMarkerInputCountWrong ? 1 : 0,
+            closeInputCount: options.externalMarkerCloseInputCountWrong ? 1 : 0,
+            ...(options.externalMarkerLeaksPid ? { pid: 4245 } : {})
+          });
+        }
+        if (!options.externalAckFileMissing) {
+          writeJson(path.join(caseDir, "external-foreground-ack.json"), {
+            kind: options.externalAckFileWrongKind
+              ? "wrong-external-foreground-ack"
+              : "steam-bridge-windows-external-foreground-ack",
+            schema: options.externalAckFileSchemaTypeWrong ? "1" : 1,
+            action: "presenter-web-open-and-wait",
+            requestOrdinal: options.externalAckFileOrdinalWrong ? 2 : 1,
+            mechanism: options.externalAckFileWrongMechanism
+              ? "wrong-external-foreground-transition"
+              : EXTERNAL_FOREGROUND_TRANSITION,
+            challenge: options.externalAckFileChallengeMismatch
+              ? "b".repeat(32)
+              : "a".repeat(32),
+            clickCompleted: options.externalAckFileClickTypeWrong
+              ? 1
+              : !options.externalAckFileClickIncomplete,
+            activationInputCount: options.externalAckFileActivationInputTypeWrong
+              ? "0"
+              : options.externalAckFileActivationInputCountWrong
+                ? 1
+                : 0,
+            closeInputCount: options.externalAckFileCloseInputTypeWrong
+              ? "0"
+              : options.externalAckFileCloseInputCountWrong
+                ? 1
+                : 0,
+            ...(options.externalAckFileLeaksPid ? { pid: 4245 } : {})
+          });
+        }
+      }
+    }
     closeProbeEvents.splice(
       1,
       0,
+      ...externalForegroundEvents,
       {
         type: "probe:user-gesture-gate-ready",
         at: "2026-07-02T00:00:01.150Z",
@@ -7871,6 +8857,32 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         }
       }
     );
+    if (options.externalRecordOrderWrong) {
+      const sourceReadyIndex = closeProbeEvents.findIndex(
+        (event) => event.type === "probe:external-foreground-source-ready"
+      );
+      const observedIndex = closeProbeEvents.findIndex(
+        (event) => event.type === "probe:external-foreground-transition-observed"
+      );
+      if (sourceReadyIndex >= 0 && observedIndex >= 0) {
+        const sourceReadyRecord = closeProbeEvents[sourceReadyIndex];
+        closeProbeEvents[sourceReadyIndex] = closeProbeEvents[observedIndex];
+        closeProbeEvents[observedIndex] = sourceReadyRecord;
+      }
+    }
+    if (options.externalAckRecordOrderWrong) {
+      const acknowledgedIndex = closeProbeEvents.findIndex(
+        (event) => event.type === "probe:external-foreground-controller-acknowledged"
+      );
+      const observedIndex = closeProbeEvents.findIndex(
+        (event) => event.type === "probe:external-foreground-transition-observed"
+      );
+      if (acknowledgedIndex >= 0 && observedIndex >= 0) {
+        const acknowledgedRecord = closeProbeEvents[acknowledgedIndex];
+        closeProbeEvents[acknowledgedIndex] = closeProbeEvents[observedIndex];
+        closeProbeEvents[observedIndex] = acknowledgedRecord;
+      }
+    }
     if (options.duplicateGestureActivation) {
       const activationIndex = closeProbeEvents.findIndex(
         (event) => event.type === "probe:user-gesture-gate-activation-sent"
@@ -7894,7 +8906,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     at: "2026-07-02T00:00:02.400Z",
     payload: { target, foreground }
   };
-  if (closeProbeEvidenceSchema === 2 && !options.targetAfterHandoff) {
+  if (closeProbeEvidenceSchema >= 2 && !options.targetAfterHandoff) {
     closeProbeEvents.push(targetProbeEvent);
   }
   if (!options.missingPresenterFocus && !options.presenterFocusAfterInput) {
@@ -7904,7 +8916,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       payload: nativePresenterFocus
     });
   }
-  if (closeProbeEvidenceSchema !== 2 || options.targetAfterHandoff) {
+  if (closeProbeEvidenceSchema < 2 || options.targetAfterHandoff) {
     closeProbeEvents.push(targetProbeEvent);
   }
   closeProbeEvents.push(
