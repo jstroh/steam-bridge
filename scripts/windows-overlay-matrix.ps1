@@ -64,6 +64,189 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not ("SteamBridgeExactProcessStop" -as [type])) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+public static class SteamBridgeExactProcessStop {
+  public const int Terminated = 0;
+  public const int OpenNotFound = 1;
+  public const int IdentityMismatch = 2;
+  public const int InvalidIdentity = 3;
+  public const int OpenDenied = 4;
+  public const int OpenFailed = 5;
+  public const int CreationQueryFailed = 6;
+  public const int AlreadyExited = 7;
+  public const int TerminateFailed = 8;
+  public const int WaitFailed = 9;
+  public const int WaitTimedOut = 10;
+
+  private const uint ProcessTerminate = 0x0001;
+  private const uint ProcessQueryLimitedInformation = 0x1000;
+  private const uint Synchronize = 0x00100000;
+  private const uint WaitObject0 = 0x00000000;
+  private const uint WaitTimeout = 0x00000102;
+  private const uint WaitFailedResult = 0xFFFFFFFF;
+  private const int ErrorInvalidParameter = 87;
+  private const int ErrorNotFound = 1168;
+  private const int ErrorAccessDenied = 5;
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct FileTime {
+    public uint Low;
+    public uint High;
+  }
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern SafeProcessHandle OpenProcess(
+    uint desiredAccess,
+    [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
+    uint processId
+  );
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool GetProcessTimes(
+    SafeProcessHandle process,
+    out FileTime creation,
+    out FileTime exit,
+    out FileTime kernel,
+    out FileTime user
+  );
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
+
+  private static int ClassifyOpenError(int error) {
+    if (error == ErrorInvalidParameter || error == ErrorNotFound) {
+      return OpenNotFound;
+    }
+    return error == ErrorAccessDenied ? OpenDenied : OpenFailed;
+  }
+
+  private static long ReadCreationTicks(SafeProcessHandle process) {
+    FileTime creation;
+    FileTime exit;
+    FileTime kernel;
+    FileTime user;
+    if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) {
+      return 0;
+    }
+    long creationFileTime = ((long)creation.High << 32) | creation.Low;
+    try {
+      return DateTime.FromFileTimeUtc(creationFileTime).Ticks;
+    } catch {
+      return 0;
+    }
+  }
+
+  public static long CaptureExactStartTicks(int processId, long expectedCimCreationTicks) {
+    if (processId <= 0 || expectedCimCreationTicks <= 0) {
+      return 0;
+    }
+    uint access = ProcessQueryLimitedInformation | Synchronize;
+    using (SafeProcessHandle process = OpenProcess(access, false, unchecked((uint)processId))) {
+      if (process == null || process.IsInvalid) {
+        return 0;
+      }
+      long actualCreationTicks = ReadCreationTicks(process);
+      if (actualCreationTicks <= 0 ||
+          (actualCreationTicks / 10L) != (expectedCimCreationTicks / 10L) ||
+          WaitForSingleObject(process, 0) != WaitTimeout) {
+        return 0;
+      }
+      return actualCreationTicks;
+    }
+  }
+
+  public static int TerminateExact(int processId, long expectedNativeCreationTicks, int waitMilliseconds) {
+    if (processId <= 0 || expectedNativeCreationTicks <= 0 || waitMilliseconds < 0) {
+      return InvalidIdentity;
+    }
+
+    uint access = ProcessTerminate | ProcessQueryLimitedInformation | Synchronize;
+    using (SafeProcessHandle process = OpenProcess(access, false, unchecked((uint)processId))) {
+      if (process == null || process.IsInvalid) {
+        return ClassifyOpenError(Marshal.GetLastWin32Error());
+      }
+
+      long actualCreationTicks = ReadCreationTicks(process);
+      if (actualCreationTicks <= 0) {
+        return CreationQueryFailed;
+      }
+      if (actualCreationTicks != expectedNativeCreationTicks) {
+        return IdentityMismatch;
+      }
+
+      uint before = WaitForSingleObject(process, 0);
+      if (before == WaitObject0) {
+        return AlreadyExited;
+      }
+      if (before == WaitFailedResult) {
+        return WaitFailed;
+      }
+      if (before != WaitTimeout) {
+        return WaitFailed;
+      }
+
+      if (!TerminateProcess(process, 1)) {
+        return WaitForSingleObject(process, 0) == WaitObject0 ? AlreadyExited : TerminateFailed;
+      }
+
+      uint after = WaitForSingleObject(process, unchecked((uint)waitMilliseconds));
+      if (after == WaitObject0) {
+        return Terminated;
+      }
+      if (after == WaitTimeout) {
+        return WaitTimedOut;
+      }
+      return WaitFailed;
+    }
+  }
+}
+"@
+}
+
+function Invoke-ExactProcessStop {
+  param([int]$ProcessId, [int64]$ExpectedStartTicks, [int]$WaitMilliseconds = 5000)
+
+  $resultCode = [SteamBridgeExactProcessStop]::TerminateExact(
+    $ProcessId,
+    $ExpectedStartTicks,
+    $WaitMilliseconds
+  )
+  $status = switch ($resultCode) {
+    ([SteamBridgeExactProcessStop]::Terminated) { "terminated"; break }
+    ([SteamBridgeExactProcessStop]::OpenNotFound) { "open-not-found"; break }
+    ([SteamBridgeExactProcessStop]::IdentityMismatch) { "identity-mismatch"; break }
+    ([SteamBridgeExactProcessStop]::InvalidIdentity) { "invalid-identity"; break }
+    ([SteamBridgeExactProcessStop]::OpenDenied) { "open-denied"; break }
+    ([SteamBridgeExactProcessStop]::OpenFailed) { "open-failed"; break }
+    ([SteamBridgeExactProcessStop]::CreationQueryFailed) { "creation-query-failed"; break }
+    ([SteamBridgeExactProcessStop]::AlreadyExited) { "already-exited"; break }
+    ([SteamBridgeExactProcessStop]::TerminateFailed) { "terminate-failed"; break }
+    ([SteamBridgeExactProcessStop]::WaitFailed) { "wait-failed"; break }
+    ([SteamBridgeExactProcessStop]::WaitTimedOut) { "wait-timeout"; break }
+    default { "unknown-failed" }
+  }
+  return [PSCustomObject]@{
+    status = $status
+    ok = ($status -in @("terminated", "open-not-found", "identity-mismatch", "already-exited"))
+  }
+}
+
+function Get-ExactProcessNativeStartTicks {
+  param([int]$ProcessId, [int64]$CimStartTicks)
+
+  return [int64][SteamBridgeExactProcessStop]::CaptureExactStartTicks($ProcessId, $CimStartTicks)
+}
 $CloseProbeEvidenceSchema = 2
 $CloseProbeForegroundHandoff = "owner-process-native-show-v1"
 $SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"
@@ -697,22 +880,23 @@ function Stop-StaleSteamOverlayHelpers {
   $staleHelpers = @($helpers | Where-Object { $_.orphaned })
   $results = @()
   foreach ($helper in $staleHelpers) {
-    try {
-      Stop-Process -Id $helper.processId -Force -ErrorAction Stop
-      $results += [PSCustomObject]@{
-        processId = $helper.processId
-        targetPid = $helper.targetPid
-        steamPid = $helper.steamPid
-        status = "stopped"
-      }
-    } catch {
-      $results += [PSCustomObject]@{
-        processId = $helper.processId
-        targetPid = $helper.targetPid
-        steamPid = $helper.steamPid
-        status = "failed"
-        error = $_.Exception.Message
-      }
+    $cimStartTicks = if ($helper.createdAt) {
+      ([DateTime]$helper.createdAt).ToUniversalTime().Ticks
+    } else {
+      [int64]0
+    }
+    $nativeStartTicks = Get-ExactProcessNativeStartTicks `
+      -ProcessId ([int]$helper.processId) `
+      -CimStartTicks $cimStartTicks
+    $stopResult = Invoke-ExactProcessStop `
+      -ProcessId ([int]$helper.processId) `
+      -ExpectedStartTicks $nativeStartTicks
+    $results += [PSCustomObject]@{
+      processId = $helper.processId
+      targetPid = $helper.targetPid
+      steamPid = $helper.steamPid
+      status = $stopResult.status
+      error = if ($stopResult.ok) { $null } else { "exact-process-stop-failed" }
     }
   }
 
@@ -723,7 +907,7 @@ function Stop-StaleSteamOverlayHelpers {
     cleanupResults = @($results)
     overlayHelpersAfterCleanup = @(Get-OverlayHelperDiagnostics)
   }) -Depth 8
-  Write-Host ("Stale Steam overlay helper cleanup checked {0} helper(s), stopped {1}. Details: {2}" -f $helpers.Count, ($results | Where-Object { $_.status -eq "stopped" }).Count, $DestinationFile)
+  Write-Host ("Stale Steam overlay helper cleanup checked {0} helper(s), terminated {1}. Details: {2}" -f $helpers.Count, ($results | Where-Object { $_.status -eq "terminated" }).Count, $DestinationFile)
 }
 
 function Get-SmokePackageProcesses {
@@ -765,18 +949,21 @@ function Stop-SmokePackageProcesses {
   $before = @(Get-SmokePackageProcesses)
   $results = @()
   foreach ($process in $before) {
-    try {
-      Stop-Process -Id $process.processId -Force -ErrorAction Stop
-      $results += [PSCustomObject]@{
-        processId = $process.processId
-        status = "stopped"
-      }
-    } catch {
-      $results += [PSCustomObject]@{
-        processId = $process.processId
-        status = "failed"
-        error = "stop-process-failed"
-      }
+    $cimStartTicks = if ($process.creationDate) {
+      ([DateTime]$process.creationDate).ToUniversalTime().Ticks
+    } else {
+      [int64]0
+    }
+    $nativeStartTicks = Get-ExactProcessNativeStartTicks `
+      -ProcessId ([int]$process.processId) `
+      -CimStartTicks $cimStartTicks
+    $stopResult = Invoke-ExactProcessStop `
+      -ProcessId ([int]$process.processId) `
+      -ExpectedStartTicks $nativeStartTicks
+    $results += [PSCustomObject]@{
+      processId = $process.processId
+      status = $stopResult.status
+      error = if ($stopResult.ok) { $null } else { "exact-process-stop-failed" }
     }
   }
 
@@ -796,6 +983,7 @@ function Stop-SmokePackageProcesses {
         processId = $_.processId
         parentProcessId = $_.parentProcessId
         sessionId = $_.sessionId
+        creationDatePresent = ($null -ne $_.creationDate)
         executablePathPresent = -not [string]::IsNullOrWhiteSpace([string]$_.executablePath)
         commandLinePresent = -not [string]::IsNullOrWhiteSpace([string]$_.commandLine)
         packagePathMatched = $true
@@ -807,6 +995,7 @@ function Stop-SmokePackageProcesses {
         processId = $_.processId
         parentProcessId = $_.parentProcessId
         sessionId = $_.sessionId
+        creationDatePresent = ($null -ne $_.creationDate)
         executablePathPresent = -not [string]::IsNullOrWhiteSpace([string]$_.executablePath)
         commandLinePresent = -not [string]::IsNullOrWhiteSpace([string]$_.commandLine)
         packagePathMatched = $true
@@ -816,7 +1005,7 @@ function Stop-SmokePackageProcesses {
   Write-MatrixJsonFile -Path $DestinationFile -Value $cleanup -Depth 8
 
   if ($before.Count -gt 0) {
-    Write-Host ("Stopped {0} leftover SteamBridgeSmoke package process(es) for {1}. Details: {2}" -f $before.Count, $Phase, $DestinationFile)
+    Write-Host ("Processed {0} leftover SteamBridgeSmoke package process(es) for {1}. Details: {2}" -f $before.Count, $Phase, $DestinationFile)
   }
   if ($after.Count -gt 0) {
     throw "Found $($after.Count) leftover SteamBridgeSmoke package process(es) after cleanup. See $DestinationFile."
@@ -5425,7 +5614,8 @@ function Stop-WindowsOverlayCloseProbe {
       $Process.Refresh()
     }
     if (-not $Process.HasExited) {
-      Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+      $Process.Kill()
+      [void]$Process.WaitForExit(5000)
     }
   } catch {
     Write-Host ("Windows close probe cleanup warning: {0}" -f $_.Exception.Message)

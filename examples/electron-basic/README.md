@@ -159,6 +159,11 @@ branch never runs the blocker-clear key input. The standalone helper exposes
 keep-open plus one handoff-only control file; the matrix configures that scope
 automatically for case `11-managed-web-open-and-wait`.
 
+The source Smoke window must already be foreground through genuine user
+interaction before this focused proof begins. A non-foreground source stops
+before DPI or input dispatch; it is not a reason to add programmatic focus,
+retries, longer waits, extra input, or a foreground broker.
+
 Both branches record only sanitized relationship booleans and counts—never
 handles, process/session IDs, ports, tokens, or the private nonce—while the
 broader diagnostic artifact retains its established process and foreground
@@ -1047,16 +1052,28 @@ proof.
 logged-in desktop token as Steam. Use `-TaskRunLevel Highest` only as a focused
 diagnostic on machines whose task policy requires elevation.
 On timeout, the wrapper explicitly ends the task before deleting it, verifies
-that deletion, and writes `task-cleanup.json`. Live matrix suites also write
-before/after package-process cleanup evidence and restore the prior launch-env
-file through a byte-preserving transaction in `launch-env-rollback.json`, even
-when a preflight or case fails. The summary rejects missing or unsuccessful
-cleanup evidence when the manifest says the corresponding wrapper was used.
-By default the wrapper also removes its temporary task config, runner, done
-marker, and transcript after the exact runner tree is gone. `-KeepTask` is an
-explicit local-debug escape hatch that retains the task and those raw handoff
-files; they can contain private paths or arguments, so do not share or archive
-them as test evidence.
+that deletion, and writes `task-cleanup.json`. It pins each captured runner
+identity by both PID and creation time. A descendant is accepted only when its
+numeric parent is an exact active identity and its creation time is not earlier
+than that parent's; stale parent-PID matches are rejected and counted. At
+identity admission, cleanup captures the exact native creation time. Timeout
+cleanup reopens one kernel process handle, requires that stored exact identity,
+and terminates and waits on the same handle. It never uses recursive
+`taskkill /T` or a PID-only stop, then applies
+the same filtered identity guard to remaining descendants and requires two
+empty scans.
+
+Live matrix suites also write before/after package-process cleanup evidence and
+restore the prior launch-env file through a byte-preserving transaction in
+`launch-env-rollback.json`, even when a preflight or case fails. The summary
+rejects missing or unsuccessful cleanup evidence when the manifest says the
+corresponding wrapper was used. Any proof claiming Steam continuity must compare
+Steam's exact identity after wrapper cleanup, not only at matrix postflight. By
+default the wrapper also removes its temporary task config, runner, done marker,
+and transcript after the exact runner tree is gone. `-KeepTask` is an explicit
+local-debug escape hatch that retains the task and those raw handoff files; they
+can contain private paths or arguments, so do not share or archive them as test
+evidence.
 For a retained `-KeepTask` run, copy the printed `taskName` and `taskFiles`
 values, replace the placeholders below, and clean up that one task and run
 directory explicitly:

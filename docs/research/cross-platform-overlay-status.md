@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-09
+Last updated: 2026-07-11
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -187,7 +187,7 @@ consumed during expansion, so the emitted activation command had zero arguments
 and its two `[int]` parameters defaulted to zero. The old success predicate
 checked only input count and error. This is a settled negative for that generated
 call shape, not evidence against same-process activation or D3D11. The same run
-settles the task-wrapper fix with its original green cleanup artifact: captured
+settles the earlier task-deletion-query fix with its original green cleanup artifact: captured
 delete `0`, captured missing-task query `1`, zero phase errors, empty process
 guards, byte-matched launch-env restoration, task-file cleanup, and unchanged
 Steam process/session. The bounded worktree fix emits the activation call on
@@ -231,6 +231,49 @@ after durable evidence recording. Repeat only after the consumed gate keeps the
 app alive through one state-driven focus-return acknowledgment and then performs
 one authenticated graceful quit; do not rerun `1619c52`, add input, lengthen
 waits, restart Steam, or add a broker.
+
+Commit `414d914` implemented that completion handshake, passed exact CI run
+`29134306757`, and was assembled as the same 128-file candidate around the
+unchanged verified addon. Its signed transactional deployment passed source,
+signature, signer, Valve-runtime, selection, stable-shortcut, and active-package
+audits with 12 valid signables and three rollback generations retained.
+
+The one focused public run passed preflight, interactive readiness, native
+load, and default render health, but stopped before activation because the
+exact source window was not foreground. Source process/window presence,
+owner/control/session binding, enabled state, and non-iconic state otherwise
+matched. The fail-closed gate emitted `gate-source-window-not-eligible`, sent
+zero activation and close input, and produced no product result, completion
+hold, exact-HWND focus return, graceful quit, or shutdown sequence. The early
+branch did not reach DPI validation, so its unset DPI fields are not evidence
+of a coordinate mismatch. This run neither exercises nor disproves the
+`414d914` completion handshake and does not justify a broker, focus retry,
+extra input, or longer wait.
+
+Steam retained the same healthy process/session through matrix postflight,
+then disappeared during wrapper cleanup without a recent crash or WER signal.
+The runner guard had accepted descendants from numeric `ParentProcessId` alone,
+reported eight remaining identities after the completion marker, and issued
+twelve fallback stops. Because the artifact did not retain the killed identity
+list, wrapper termination of Steam is a strong evidence-backed inference rather
+than definitive attribution. Microsoft documents that `ParentProcessId` can
+refer to a process that reused the original parent's PID and directs callers to
+compare creation time ([`Win32_Process`](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process)).
+
+The bounded worktree fix now captures each process as CIM PID/creation time plus
+the exact native creation time from one kernel handle, accepts a child only
+when it is not older than its exact active parent, and counts rejected stale
+ancestry. Termination opens one handle, requires exact native creation-time
+identity, terminates and waits on that same handle, records every sanitized
+outcome, and uses neither recursive `taskkill /T` nor PID-only `Stop-Process`.
+Task-wrapper and matrix package/helper cleanup share the same tested runtime.
+Native Windows PowerShell 5.1 parser, wrong-identity/no-kill, exact-identity
+termination, already-exited, unrelated-sentinel, outcome-accounting, and stale-
+ancestry tests pass locally. Do not rerun `414d914` unchanged. Repeat only after
+the slice passes full checks and exact CI, is signed and deployed, Steam is
+started once interactively with a new continuity identity, and the genuine
+source window is foreground; require exact Steam continuity after all wrapper
+cleanup.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

@@ -14,6 +14,221 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if (-not ("SteamBridgeExactProcessStop" -as [type])) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+public static class SteamBridgeExactProcessStop {
+  public const int Terminated = 0;
+  public const int OpenNotFound = 1;
+  public const int IdentityMismatch = 2;
+  public const int InvalidIdentity = 3;
+  public const int OpenDenied = 4;
+  public const int OpenFailed = 5;
+  public const int CreationQueryFailed = 6;
+  public const int AlreadyExited = 7;
+  public const int TerminateFailed = 8;
+  public const int WaitFailed = 9;
+  public const int WaitTimedOut = 10;
+
+  private const uint ProcessTerminate = 0x0001;
+  private const uint ProcessQueryLimitedInformation = 0x1000;
+  private const uint Synchronize = 0x00100000;
+  private const uint WaitObject0 = 0x00000000;
+  private const uint WaitTimeout = 0x00000102;
+  private const uint WaitFailedResult = 0xFFFFFFFF;
+  private const int ErrorInvalidParameter = 87;
+  private const int ErrorNotFound = 1168;
+  private const int ErrorAccessDenied = 5;
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct FileTime {
+    public uint Low;
+    public uint High;
+  }
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern SafeProcessHandle OpenProcess(
+    uint desiredAccess,
+    [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
+    uint processId
+  );
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool GetProcessTimes(
+    SafeProcessHandle process,
+    out FileTime creation,
+    out FileTime exit,
+    out FileTime kernel,
+    out FileTime user
+  );
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
+
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
+
+  private static int ClassifyOpenError(int error) {
+    if (error == ErrorInvalidParameter || error == ErrorNotFound) {
+      return OpenNotFound;
+    }
+    return error == ErrorAccessDenied ? OpenDenied : OpenFailed;
+  }
+
+  private static long ReadCreationTicks(SafeProcessHandle process) {
+    FileTime creation;
+    FileTime exit;
+    FileTime kernel;
+    FileTime user;
+    if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) {
+      return 0;
+    }
+    long creationFileTime = ((long)creation.High << 32) | creation.Low;
+    try {
+      return DateTime.FromFileTimeUtc(creationFileTime).Ticks;
+    } catch {
+      return 0;
+    }
+  }
+
+  public static long CaptureExactStartTicks(int processId, long expectedCimCreationTicks) {
+    if (processId <= 0 || expectedCimCreationTicks <= 0) {
+      return 0;
+    }
+    uint access = ProcessQueryLimitedInformation | Synchronize;
+    using (SafeProcessHandle process = OpenProcess(access, false, unchecked((uint)processId))) {
+      if (process == null || process.IsInvalid) {
+        return 0;
+      }
+      long actualCreationTicks = ReadCreationTicks(process);
+      if (actualCreationTicks <= 0 ||
+          (actualCreationTicks / 10L) != (expectedCimCreationTicks / 10L) ||
+          WaitForSingleObject(process, 0) != WaitTimeout) {
+        return 0;
+      }
+      return actualCreationTicks;
+    }
+  }
+
+  public static int TerminateExact(int processId, long expectedNativeCreationTicks, int waitMilliseconds) {
+    if (processId <= 0 || expectedNativeCreationTicks <= 0 || waitMilliseconds < 0) {
+      return InvalidIdentity;
+    }
+
+    uint access = ProcessTerminate | ProcessQueryLimitedInformation | Synchronize;
+    using (SafeProcessHandle process = OpenProcess(access, false, unchecked((uint)processId))) {
+      if (process == null || process.IsInvalid) {
+        return ClassifyOpenError(Marshal.GetLastWin32Error());
+      }
+
+      long actualCreationTicks = ReadCreationTicks(process);
+      if (actualCreationTicks <= 0) {
+        return CreationQueryFailed;
+      }
+      if (actualCreationTicks != expectedNativeCreationTicks) {
+        return IdentityMismatch;
+      }
+
+      uint before = WaitForSingleObject(process, 0);
+      if (before == WaitObject0) {
+        return AlreadyExited;
+      }
+      if (before == WaitFailedResult) {
+        return WaitFailed;
+      }
+      if (before != WaitTimeout) {
+        return WaitFailed;
+      }
+
+      if (!TerminateProcess(process, 1)) {
+        return WaitForSingleObject(process, 0) == WaitObject0 ? AlreadyExited : TerminateFailed;
+      }
+
+      uint after = WaitForSingleObject(process, unchecked((uint)waitMilliseconds));
+      if (after == WaitObject0) {
+        return Terminated;
+      }
+      if (after == WaitTimeout) {
+        return WaitTimedOut;
+      }
+      return WaitFailed;
+    }
+  }
+}
+"@
+}
+
+function Invoke-ExactProcessStop {
+  param([int]$ProcessId, [int64]$ExpectedStartTicks, [int]$WaitMilliseconds = 5000)
+
+  $resultCode = [SteamBridgeExactProcessStop]::TerminateExact(
+    $ProcessId,
+    $ExpectedStartTicks,
+    $WaitMilliseconds
+  )
+  $status = switch ($resultCode) {
+    ([SteamBridgeExactProcessStop]::Terminated) { "terminated"; break }
+    ([SteamBridgeExactProcessStop]::OpenNotFound) { "open-not-found"; break }
+    ([SteamBridgeExactProcessStop]::IdentityMismatch) { "identity-mismatch"; break }
+    ([SteamBridgeExactProcessStop]::InvalidIdentity) { "invalid-identity"; break }
+    ([SteamBridgeExactProcessStop]::OpenDenied) { "open-denied"; break }
+    ([SteamBridgeExactProcessStop]::OpenFailed) { "open-failed"; break }
+    ([SteamBridgeExactProcessStop]::CreationQueryFailed) { "creation-query-failed"; break }
+    ([SteamBridgeExactProcessStop]::AlreadyExited) { "already-exited"; break }
+    ([SteamBridgeExactProcessStop]::TerminateFailed) { "terminate-failed"; break }
+    ([SteamBridgeExactProcessStop]::WaitFailed) { "wait-failed"; break }
+    ([SteamBridgeExactProcessStop]::WaitTimedOut) { "wait-timeout"; break }
+    default { "unknown-failed" }
+  }
+  return [PSCustomObject]@{
+    status = $status
+    ok = ($status -in @("terminated", "open-not-found", "identity-mismatch", "already-exited"))
+  }
+}
+
+function Get-ExactProcessNativeStartTicks {
+  param([int]$ProcessId, [int64]$CimStartTicks)
+
+  return [int64][SteamBridgeExactProcessStop]::CaptureExactStartTicks($ProcessId, $CimStartTicks)
+}
+
+function Add-ExactProcessStopEvidence {
+  param($Evidence, [string]$Prefix, $Result)
+
+  Add-ExactProcessStopCounter -Evidence $Evidence -Name ($Prefix + "AttemptCount")
+  $suffix = switch ($Result.status) {
+    "terminated" { "TerminatedCount"; break }
+    "open-not-found" { "NotFoundCount"; break }
+    "already-exited" { "AlreadyExitedCount"; break }
+    "identity-mismatch" { "IdentityMismatchCount"; break }
+    "wait-timeout" { "WaitTimeoutCount"; break }
+    default { "FailureCount" }
+  }
+  Add-ExactProcessStopCounter -Evidence $Evidence -Name ($Prefix + $suffix)
+}
+
+function Add-ExactProcessStopCounter {
+  param($Evidence, [string]$Name)
+
+  if ($Evidence -is [System.Collections.IDictionary]) {
+    if (-not $Evidence.Contains($Name)) {
+      throw "Exact process stop evidence counter is missing."
+    }
+    $Evidence[$Name] = [int]$Evidence[$Name] + 1
+    return
+  }
+  $counter = $Evidence.PSObject.Properties[$Name]
+  if ($null -eq $counter) {
+    throw "Exact process stop evidence counter is missing."
+  }
+  $counter.Value = [int]$counter.Value + 1
+}
+
 function Resolve-FullPath {
   param([string]$Path)
 
@@ -353,6 +568,18 @@ function Get-TaskProcessStartTicks {
   return ([DateTime]$Process.CreationDate).ToUniversalTime().Ticks
 }
 
+function Get-TaskProcessNativeStartTicks {
+  param($Process)
+
+  $cimStartTicks = Get-TaskProcessStartTicks -Process $Process
+  if ($null -eq $Process -or $cimStartTicks -le 0) {
+    return [int64]0
+  }
+  return Get-ExactProcessNativeStartTicks `
+    -ProcessId ([int]$Process.ProcessId) `
+    -CimStartTicks $cimStartTicks
+}
+
 function New-TaskRunnerTreeState {
   param([string]$RunnerPath)
 
@@ -365,6 +592,7 @@ function New-TaskRunnerTreeState {
     observedIdentities = @{}
     trackingAttemptCount = 0
     trackingFailureCount = 0
+    ancestryRejectionCount = 0
     observedTreeProcessCount = 0
   }
 }
@@ -373,14 +601,17 @@ function Add-TaskRunnerTreeIdentity {
   param($State, $Process, [bool]$Root)
 
   $processId = [int]$Process.ProcessId
-  if ($processId -le 0) {
-    return
+  $startTicks = Get-TaskProcessStartTicks -Process $Process
+  $nativeStartTicks = Get-TaskProcessNativeStartTicks -Process $Process
+  if ($processId -le 0 -or $startTicks -le 0 -or $nativeStartTicks -le 0) {
+    return $false
   }
   $key = [string]$processId
   $identity = [PSCustomObject]@{
     processId = $processId
     parentProcessId = [int]$Process.ParentProcessId
-    startTicks = Get-TaskProcessStartTicks -Process $Process
+    startTicks = $startTicks
+    nativeStartTicks = $nativeStartTicks
   }
   $State.observedIdentities[$key] = $identity
   if ($Root) {
@@ -390,6 +621,7 @@ function Add-TaskRunnerTreeIdentity {
     [int]$State.observedTreeProcessCount,
     [int]$State.observedIdentities.Count
   )
+  return $true
 }
 
 function Test-TaskRunnerTreeIdentity {
@@ -397,8 +629,27 @@ function Test-TaskRunnerTreeIdentity {
 
   return (
     $null -ne $Process -and
+    $null -ne $Identity -and
+    [int64]$Identity.startTicks -gt 0 -and
     [int]$Process.ProcessId -eq [int]$Identity.processId -and
     (Get-TaskProcessStartTicks -Process $Process) -eq [int64]$Identity.startTicks
+  )
+}
+
+function Test-TaskRunnerTreeParentChild {
+  param($Process, $ParentProcess)
+
+  $childStartTicks = Get-TaskProcessStartTicks -Process $Process
+  $parentStartTicks = Get-TaskProcessStartTicks -Process $ParentProcess
+  return (
+    $null -ne $Process -and
+    $null -ne $ParentProcess -and
+    [int]$Process.ProcessId -gt 0 -and
+    [int]$ParentProcess.ProcessId -gt 0 -and
+    [int]$Process.ParentProcessId -eq [int]$ParentProcess.ProcessId -and
+    $childStartTicks -gt 0 -and
+    $parentStartTicks -gt 0 -and
+    $childStartTicks -ge $parentStartTicks
   )
 }
 
@@ -429,9 +680,15 @@ function Update-TaskRunnerTreeState {
         $key = [string][int]$process.ProcessId
         $parentKey = [string][int]$process.ParentProcessId
         if (-not $activeTree.ContainsKey($key) -and $activeTree.ContainsKey($parentKey)) {
-          Add-TaskRunnerTreeIdentity -State $State -Process $process -Root $false
-          $activeTree[$key] = $process
-          $changed = $true
+          $parentProcess = $activeTree[$parentKey]
+          if (-not (Test-TaskRunnerTreeParentChild -Process $process -ParentProcess $parentProcess)) {
+            $State.ancestryRejectionCount += 1
+            continue
+          }
+          if (Add-TaskRunnerTreeIdentity -State $State -Process $process -Root $false) {
+            $activeTree[$key] = $process
+            $changed = $true
+          }
         }
       }
     }
@@ -452,8 +709,15 @@ function Wait-TaskRunnerTreeCapture {
     try {
       $matches = @(Get-ExactTaskRunnerProcesses -RunnerPath $State.runnerPath)
       if ($matches.Count -gt 0) {
+        $capturedRoot = $false
         foreach ($process in $matches) {
-          Add-TaskRunnerTreeIdentity -State $State -Process $process -Root $true
+          if (Add-TaskRunnerTreeIdentity -State $State -Process $process -Root $true) {
+            $capturedRoot = $true
+          }
+        }
+        if (-not $capturedRoot) {
+          Start-Sleep -Milliseconds 100
+          continue
         }
         $State.captureSucceeded = $true
         [void](Update-TaskRunnerTreeState -State $State)
@@ -482,12 +746,23 @@ function Start-TaskRunnerTreeGuard {
     capturedTreeProcessCount = [int]$State.observedTreeProcessCount
     trackingAttemptCount = [int]$State.trackingAttemptCount
     trackingFailureCount = [int]$State.trackingFailureCount
+    ancestryRejectionCount = [int]$State.ancestryRejectionCount
     treeTerminationRequired = $TerminateTree
     enumerationSucceeded = $null
     processesBeforeCount = $null
-    taskkillAttemptCount = 0
-    taskkillFailureCount = 0
+    rootStopAttemptCount = 0
+    rootStopTerminatedCount = 0
+    rootStopNotFoundCount = 0
+    rootStopAlreadyExitedCount = 0
+    rootStopIdentityMismatchCount = 0
+    rootStopWaitTimeoutCount = 0
+    rootStopFailureCount = 0
     fallbackStopAttemptCount = 0
+    fallbackStopTerminatedCount = 0
+    fallbackStopNotFoundCount = 0
+    fallbackStopAlreadyExitedCount = 0
+    fallbackStopIdentityMismatchCount = 0
+    fallbackStopWaitTimeoutCount = 0
     fallbackStopFailureCount = 0
     processesAfterCount = $null
     emptyVerificationScanCount = 0
@@ -507,6 +782,7 @@ function Start-TaskRunnerTreeGuard {
     $evidence.capturedTreeProcessCount = [int]$State.observedTreeProcessCount
     $evidence.trackingAttemptCount = [int]$State.trackingAttemptCount
     $evidence.trackingFailureCount = [int]$State.trackingFailureCount
+    $evidence.ancestryRejectionCount = [int]$State.ancestryRejectionCount
     if ($TerminateTree) {
       foreach ($rootIdentity in @($State.rootIdentities.Values)) {
         $rootProcess = @($currentTree | Where-Object {
@@ -515,12 +791,10 @@ function Start-TaskRunnerTreeGuard {
         if ($rootProcess.Count -eq 0) {
           continue
         }
-        $evidence.taskkillAttemptCount += 1
-        $rootProcessIdText = [string][int]$rootIdentity.processId
-        & taskkill.exe /PID $rootProcessIdText /T /F *> $null
-        if ($LASTEXITCODE -ne 0) {
-          $evidence.taskkillFailureCount += 1
-        }
+        $stopResult = Invoke-ExactProcessStop `
+          -ProcessId ([int]$rootIdentity.processId) `
+          -ExpectedStartTicks ([int64]$rootIdentity.nativeStartTicks)
+        Add-ExactProcessStopEvidence -Evidence $evidence -Prefix "rootStop" -Result $stopResult
       }
     }
   } catch {
@@ -540,12 +814,11 @@ function Complete-TaskRunnerTreeGuard {
     Start-Sleep -Milliseconds $graceMilliseconds
     $remaining = @(Update-TaskRunnerTreeState -State $State)
     foreach ($process in $remaining) {
-      $evidence.fallbackStopAttemptCount += 1
-      try {
-        Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
-      } catch {
-        $evidence.fallbackStopFailureCount += 1
-      }
+      $identity = $State.observedIdentities[[string][int]$process.ProcessId]
+      $stopResult = Invoke-ExactProcessStop `
+        -ProcessId ([int]$process.ProcessId) `
+        -ExpectedStartTicks ([int64]$identity.nativeStartTicks)
+      Add-ExactProcessStopEvidence -Evidence $evidence -Prefix "fallbackStop" -Result $stopResult
     }
 
     $deadline = (Get-Date).AddSeconds(5)
@@ -558,12 +831,11 @@ function Complete-TaskRunnerTreeGuard {
       } else {
         $consecutiveEmptyScans = 0
         foreach ($process in $matches) {
-          $evidence.fallbackStopAttemptCount += 1
-          try {
-            Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
-          } catch {
-            $evidence.fallbackStopFailureCount += 1
-          }
+          $identity = $State.observedIdentities[[string][int]$process.ProcessId]
+          $stopResult = Invoke-ExactProcessStop `
+            -ProcessId ([int]$process.ProcessId) `
+            -ExpectedStartTicks ([int64]$identity.nativeStartTicks)
+          Add-ExactProcessStopEvidence -Evidence $evidence -Prefix "fallbackStop" -Result $stopResult
         }
       }
       if ($consecutiveEmptyScans -lt 2) {
@@ -580,6 +852,7 @@ function Complete-TaskRunnerTreeGuard {
     $evidence.capturedTreeProcessCount = [int]$State.observedTreeProcessCount
     $evidence.trackingAttemptCount = [int]$State.trackingAttemptCount
     $evidence.trackingFailureCount = [int]$State.trackingFailureCount
+    $evidence.ancestryRejectionCount = [int]$State.ancestryRejectionCount
     $evidence.ok = (
       $evidence.captureSucceeded -and
       $evidence.enumerationSucceeded -eq $true -and
@@ -601,6 +874,11 @@ function Stop-AndVerifyTaskSmokePackageProcesses {
     enumerationSucceeded = $null
     processesBeforeCount = $null
     stopAttemptCount = 0
+    stopTerminatedCount = 0
+    stopNotFoundCount = 0
+    stopAlreadyExitedCount = 0
+    stopIdentityMismatchCount = 0
+    stopWaitTimeoutCount = 0
     stopFailureCount = 0
     processesAfterCount = $null
     emptyVerificationScanCount = 0
@@ -630,12 +908,11 @@ function Stop-AndVerifyTaskSmokePackageProcesses {
       } else {
         $consecutiveEmptyScans = 0
         foreach ($process in $matches) {
-          $evidence.stopAttemptCount += 1
-          try {
-            Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
-          } catch {
-            $evidence.stopFailureCount += 1
-          }
+          $nativeStartTicks = Get-TaskProcessNativeStartTicks -Process $process
+          $stopResult = Invoke-ExactProcessStop `
+            -ProcessId ([int]$process.ProcessId) `
+            -ExpectedStartTicks $nativeStartTicks
+          Add-ExactProcessStopEvidence -Evidence $evidence -Prefix "stop" -Result $stopResult
         }
       }
       if ($consecutiveEmptyScans -lt 2) {

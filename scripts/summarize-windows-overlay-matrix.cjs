@@ -678,8 +678,8 @@ function validateCleanupArtifacts(
       );
       expect(
         objectOrEmpty(taskCleanup.runnerProcessGuard).treeTerminationRequired === true &&
-          objectOrEmpty(taskCleanup.runnerProcessGuard).taskkillAttemptCount >= 1,
-        "timed-out interactive task invoked full-tree taskkill before rollback",
+          objectOrEmpty(taskCleanup.runnerProcessGuard).rootStopAttemptCount >= 1,
+        "timed-out interactive task attempted exact verified runner-root termination before rollback",
         failures
       );
     }
@@ -717,11 +717,8 @@ function validateTaskRunnerProcessGuard(value, required, failures) {
       "capturedTreeProcessCount",
       "trackingAttemptCount",
       "trackingFailureCount",
+      "ancestryRejectionCount",
       "processesBeforeCount",
-      "taskkillAttemptCount",
-      "taskkillFailureCount",
-      "fallbackStopAttemptCount",
-      "fallbackStopFailureCount",
       "processesAfterCount",
       "emptyVerificationScanCount"
     ]) {
@@ -731,6 +728,8 @@ function validateTaskRunnerProcessGuard(value, required, failures) {
         failures
       );
     }
+    validateExactProcessStopCounters(guard, "rootStop", "runner root", failures);
+    validateExactProcessStopCounters(guard, "fallbackStop", "runner-tree fallback", failures);
     expect(typeof guard.treeTerminationRequired === "boolean", "task wrapper records whether tree termination was required", failures);
     expect(guard.processesAfterCount === 0, "task wrapper left no captured runner-tree process", failures);
     expect(
@@ -801,8 +800,6 @@ function validateTaskPackageProcessGuard(value, required, failures) {
     expect(guard.enumerationSucceeded === true, "task wrapper enumerated package-owned smoke processes", failures);
     for (const field of [
       "processesBeforeCount",
-      "stopAttemptCount",
-      "stopFailureCount",
       "processesAfterCount",
       "emptyVerificationScanCount"
     ]) {
@@ -812,6 +809,7 @@ function validateTaskPackageProcessGuard(value, required, failures) {
         failures
       );
     }
+    validateExactProcessStopCounters(guard, "stop", "package-process", failures);
     expect(guard.processesAfterCount === 0, "task wrapper left no package-owned smoke processes", failures);
     expect(
       guard.emptyVerificationScanCount >= 2,
@@ -820,6 +818,36 @@ function validateTaskPackageProcessGuard(value, required, failures) {
     );
     expect(guard.verifiedEmpty === true, "task wrapper independently verified the package process set is empty", failures);
   }
+}
+
+function validateExactProcessStopCounters(value, prefix, label, failures) {
+  const fields = [
+    `${prefix}AttemptCount`,
+    `${prefix}TerminatedCount`,
+    `${prefix}NotFoundCount`,
+    `${prefix}AlreadyExitedCount`,
+    `${prefix}IdentityMismatchCount`,
+    `${prefix}WaitTimeoutCount`,
+    `${prefix}FailureCount`
+  ];
+  for (const field of fields) {
+    expect(
+      Number.isInteger(value[field]) && value[field] >= 0,
+      `task wrapper ${label} guard records nonnegative ${field}`,
+      failures
+    );
+  }
+  expect(
+    value[`${prefix}AttemptCount`] ===
+      value[`${prefix}TerminatedCount`] +
+        value[`${prefix}NotFoundCount`] +
+        value[`${prefix}AlreadyExitedCount`] +
+        value[`${prefix}IdentityMismatchCount`] +
+        value[`${prefix}WaitTimeoutCount`] +
+        value[`${prefix}FailureCount`],
+    `task wrapper ${label} guard accounts for every exact-handle stop outcome`,
+    failures
+  );
 }
 
 function validateProcessCleanupArtifact(value, phase, failures) {
@@ -833,6 +861,54 @@ function validateProcessCleanupArtifact(value, phase, failures) {
   );
   expect(value.phase === phase, `${phase} package-process cleanup phase matches`, failures);
   expect(value.ok === true, `${phase} package-process cleanup completed successfully`, failures);
+  expect(Array.isArray(value.processesBeforeCleanup), `${phase} package-process cleanup records the initial process set`, failures);
+  expect(Array.isArray(value.cleanupResults), `${phase} package-process cleanup records exact-handle stop results`, failures);
+  if (Array.isArray(value.processesBeforeCleanup) && Array.isArray(value.cleanupResults)) {
+    expect(
+      value.cleanupResults.length === value.processesBeforeCleanup.length,
+      `${phase} package-process cleanup accounts for every initial process`,
+      failures
+    );
+    const beforeProcessIds = value.processesBeforeCleanup.map((process) => objectOrEmpty(process).processId);
+    const resultProcessIds = value.cleanupResults.map((result) => objectOrEmpty(result).processId);
+    expect(
+      beforeProcessIds.every((processId) => Number.isInteger(processId) && processId > 0) &&
+        resultProcessIds.every((processId) => Number.isInteger(processId) && processId > 0) &&
+        new Set(beforeProcessIds).size === beforeProcessIds.length &&
+        new Set(resultProcessIds).size === resultProcessIds.length &&
+        [...beforeProcessIds].sort((a, b) => a - b).join(",") ===
+          [...resultProcessIds].sort((a, b) => a - b).join(","),
+      `${phase} package-process cleanup accounts for each initial process identity exactly once`,
+      failures
+    );
+    for (const process of value.processesBeforeCleanup) {
+      expect(
+        objectOrEmpty(process).creationDatePresent === true,
+        `${phase} package-process cleanup captured each process creation identity`,
+        failures
+      );
+    }
+    for (const result of value.cleanupResults) {
+      const resultObject = objectOrEmpty(result);
+      const safeStatuses = ["terminated", "open-not-found", "already-exited", "identity-mismatch"];
+      const failureStatuses = [
+        "invalid-identity",
+        "open-denied",
+        "open-failed",
+        "creation-query-failed",
+        "terminate-failed",
+        "wait-failed",
+        "wait-timeout",
+        "unknown-failed"
+      ];
+      expect(
+        (safeStatuses.includes(resultObject.status) && !resultObject.error) ||
+          (failureStatuses.includes(resultObject.status) && resultObject.error === "exact-process-stop-failed"),
+        `${phase} package-process cleanup records a closed exact-handle stop outcome`,
+        failures
+      );
+    }
+  }
   expect(
     Array.isArray(value.processesAfterCleanup) && value.processesAfterCleanup.length === 0,
     `${phase} package-process cleanup left no package processes`,
@@ -5386,6 +5462,9 @@ function runSelfTest() {
       ["wrong-close-ordinal", { wrongCloseOrdinal: true }, "response matched its ordinal"],
       ["terminal-close-live", { terminalCloseStillAttached: true }, "final shutdown detached the presenter"],
       ["missing-after-cleanup", { omitAfterCleanup: true }, "after-cases package-process cleanup evidence"],
+      ["cleanup-missing-creation-identity", { processCleanupMissingIdentity: true }, "captured each process creation identity"],
+      ["cleanup-unknown-stop-outcome", { processCleanupUnknownStop: true }, "closed exact-handle stop outcome"],
+      ["cleanup-duplicate-result-identity", { processCleanupDuplicateResult: true }, "accounts for each initial process identity exactly once"],
       ["rollback-failed", { rollbackFailed: true }, "launch-env rollback completed successfully"],
       ["rollback-byte-mismatch", { rollbackByteMismatch: true }, "restored launch env bytes match exactly"],
       ["task-delete-unverified", { taskDeletionUnverified: true }, "interactive task cleanup completed successfully"],
@@ -5394,9 +5473,10 @@ function runSelfTest() {
       ["task-query-wrong-exit", { taskQueryWrongExit: true }, "task absence query completed with the expected missing-task exit code"],
       ["task-cleanup-phase-error", { taskCleanupPhaseError: true }, "cleanup phases completed without a suppressed exception"],
       ["task-runner-leftover", { taskRunnerLeftover: true }, "task wrapper runner-tree guard completed successfully"],
+      ["task-runner-stop-counter-imbalance", { taskRootStopCounterImbalance: true }, "accounts for every exact-handle stop outcome"],
       ["task-runner-done-missing", { taskRunnerDoneMissing: true }, "completed without a runner or matrix failure"],
       ["task-live-deadline", { taskDeadlineTimeout: true }, "completed without a runner or matrix failure"],
-      ["task-timeout-no-tree-kill", { taskTimedOutNoTreeKill: true }, "invoked full-tree taskkill before rollback"],
+      ["task-timeout-no-root-stop", { taskTimedOutNoRootStop: true }, "attempted exact verified runner-root termination before rollback"],
       ["task-guard-byte-mismatch", { taskGuardByteMismatch: true }, "task wrapper launch-env guard completed successfully"],
       ["task-process-leftover", { taskProcessLeftover: true }, "task wrapper package-process guard completed successfully"],
       ["task-files-left", { taskFilesLeft: true }, "task wrapper handoff-file cleanup completed successfully"]
@@ -8417,15 +8497,35 @@ function persistentReuseEvidenceFixture(options) {
 }
 
 function writeCleanupFixture(root, options = {}) {
-  const cleanup = (phase) => ({
-    kind: "steam-bridge-windows-smoke-process-cleanup",
-    phase,
-    generatedAt: "2026-07-10T00:00:00.000Z",
-    ok: true,
-    processesBeforeCleanup: [],
-    cleanupResults: [],
-    processesAfterCleanup: []
-  });
+  const cleanup = (phase) => {
+    const hasSyntheticProcess =
+      options.processCleanupMissingIdentity ||
+      options.processCleanupUnknownStop ||
+      options.processCleanupDuplicateResult;
+    return {
+      kind: "steam-bridge-windows-smoke-process-cleanup",
+      phase,
+      generatedAt: "2026-07-10T00:00:00.000Z",
+      ok: true,
+      processesBeforeCleanup: options.processCleanupDuplicateResult
+        ? [
+            { processId: 100, creationDatePresent: true },
+            { processId: 200, creationDatePresent: true }
+          ]
+        : hasSyntheticProcess
+          ? [{ processId: 100, creationDatePresent: !options.processCleanupMissingIdentity }]
+        : [],
+      cleanupResults: options.processCleanupDuplicateResult
+        ? [
+            { processId: 100, status: "terminated", error: null },
+            { processId: 100, status: "terminated", error: null }
+          ]
+        : hasSyntheticProcess
+          ? [{ processId: 100, status: options.processCleanupUnknownStop ? "unsafe-stop" : "terminated", error: null }]
+        : [],
+      processesAfterCleanup: []
+    };
+  };
   writeJson(path.join(root, "smoke-process-cleanup-before-run.json"), cleanup("before-run"));
   if (!options.omitAfterCleanup) {
     writeJson(path.join(root, "smoke-process-cleanup-after-cases.json"), cleanup("after-cases"));
@@ -8447,7 +8547,7 @@ function writeCleanupFixture(root, options = {}) {
   const taskProcessOk = !options.taskProcessLeftover;
   const taskRunnerOk = !options.taskRunnerLeftover;
   const taskFileOk = !options.taskFilesLeft;
-  const taskDeadline = options.taskDeadlineTimeout === true || options.taskTimedOutNoTreeKill === true;
+  const taskDeadline = options.taskDeadlineTimeout === true || options.taskTimedOutNoRootStop === true;
   const runnerDoneMissing = options.taskRunnerDoneMissing === true;
   const taskCleanupOk =
     !options.taskDeletionUnverified &&
@@ -8456,7 +8556,7 @@ function writeCleanupFixture(root, options = {}) {
     !options.taskQueryWrongExit &&
     !options.taskCleanupPhaseError &&
     taskRunnerOk &&
-    !options.taskTimedOutNoTreeKill &&
+    !options.taskTimedOutNoRootStop &&
     taskLaunchEnvOk &&
     taskProcessOk &&
     taskFileOk;
@@ -8490,12 +8590,25 @@ function writeCleanupFixture(root, options = {}) {
       capturedTreeProcessCount: 4,
       trackingAttemptCount: 4,
       trackingFailureCount: 0,
+      ancestryRejectionCount: 0,
       treeTerminationRequired: runnerDoneMissing || taskDeadline,
       enumerationSucceeded: true,
       processesBeforeCount: options.taskRunnerLeftover || taskDeadline ? 1 : 0,
-      taskkillAttemptCount: taskDeadline && !options.taskTimedOutNoTreeKill ? 1 : 0,
-      taskkillFailureCount: 0,
+      rootStopAttemptCount: taskDeadline && !options.taskTimedOutNoRootStop ? 1 : 0,
+      rootStopTerminatedCount:
+        (taskDeadline && !options.taskTimedOutNoRootStop ? 1 : 0) +
+        (options.taskRootStopCounterImbalance ? 1 : 0),
+      rootStopNotFoundCount: 0,
+      rootStopAlreadyExitedCount: 0,
+      rootStopIdentityMismatchCount: 0,
+      rootStopWaitTimeoutCount: 0,
+      rootStopFailureCount: 0,
       fallbackStopAttemptCount: options.taskRunnerLeftover ? 1 : 0,
+      fallbackStopTerminatedCount: 0,
+      fallbackStopNotFoundCount: 0,
+      fallbackStopAlreadyExitedCount: 0,
+      fallbackStopIdentityMismatchCount: 0,
+      fallbackStopWaitTimeoutCount: 0,
       fallbackStopFailureCount: options.taskRunnerLeftover ? 1 : 0,
       processesAfterCount: options.taskRunnerLeftover ? 1 : 0,
       emptyVerificationScanCount: options.taskRunnerLeftover ? 0 : 2,
@@ -8519,6 +8632,11 @@ function writeCleanupFixture(root, options = {}) {
       enumerationSucceeded: true,
       processesBeforeCount: options.taskProcessLeftover ? 1 : 0,
       stopAttemptCount: options.taskProcessLeftover ? 1 : 0,
+      stopTerminatedCount: 0,
+      stopNotFoundCount: 0,
+      stopAlreadyExitedCount: 0,
+      stopIdentityMismatchCount: 0,
+      stopWaitTimeoutCount: 0,
       stopFailureCount: options.taskProcessLeftover ? 1 : 0,
       processesAfterCount: options.taskProcessLeftover ? 1 : 0,
       emptyVerificationScanCount: options.taskProcessLeftover ? 0 : 2,

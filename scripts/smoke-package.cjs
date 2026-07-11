@@ -57,6 +57,8 @@ try {
   runElectronSmokeActionStaticChecks();
   runElectronPreloadUserGestureGateSelfTest();
   runWindowsSmokeHelperStaticChecks();
+  runWindowsExactProcessStopSelfTest();
+  runWindowsTaskTreeAncestrySelfTest();
 
   console.log("Packed steam-bridge package smoke test passed.");
 } finally {
@@ -562,6 +564,92 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(nativeExitCapture.includes(expected), `Windows native exit capture missing ${expected}`);
   }
+  const taskTreeTracking = taskWrapper.slice(
+    taskWrapper.indexOf("function Get-TaskProcessStartTicks"),
+    taskWrapper.indexOf("function Start-TaskRunnerTreeGuard")
+  );
+  for (const expected of [
+    "function Test-TaskRunnerTreeParentChild",
+    "$childStartTicks -ge $parentStartTicks",
+    "nativeStartTicks = $nativeStartTicks",
+    "$State.ancestryRejectionCount += 1",
+    "if (Add-TaskRunnerTreeIdentity -State $State -Process $process -Root $false)",
+    "if (-not $capturedRoot)"
+  ]) {
+    assert.ok(taskTreeTracking.includes(expected), `Windows task-tree ancestry guard missing ${expected}`);
+  }
+  const taskTreeCleanup = taskWrapper.slice(
+    taskWrapper.indexOf("function Start-TaskRunnerTreeGuard"),
+    taskWrapper.indexOf("function Stop-AndVerifyTaskSmokePackageProcesses")
+  );
+  assert.ok(
+    taskTreeCleanup.includes("ancestryRejectionCount = [int]$State.ancestryRejectionCount"),
+    "Windows task-tree cleanup must record ancestry rejection evidence"
+  );
+  assert.ok(
+    taskTreeCleanup.includes("-ExpectedStartTicks ([int64]$rootIdentity.nativeStartTicks)") &&
+      (taskTreeCleanup.match(/-ExpectedStartTicks \(\[int64\]\$identity\.nativeStartTicks\)/g) || []).length >= 2,
+    "Windows runner-tree cleanup must terminate only the stored native identities"
+  );
+  assert.doesNotMatch(
+    taskTreeCleanup,
+    /taskkill(?:\.exe)?|Stop-Process\s+-Id/i,
+    "Windows runner-tree cleanup must terminate only through the exact-handle guard"
+  );
+  const taskPackageCleanup = taskWrapper.slice(
+    taskWrapper.indexOf("function Stop-AndVerifyTaskSmokePackageProcesses"),
+    taskWrapper.indexOf("function Remove-AndVerifyTaskFiles")
+  );
+  assert.doesNotMatch(
+    taskPackageCleanup,
+    /taskkill(?:\.exe)?|Stop-Process\s+-Id/i,
+    "Windows task package cleanup must terminate only through the exact-handle guard"
+  );
+  assert.ok(
+    taskPackageCleanup.includes("-ExpectedStartTicks $nativeStartTicks"),
+    "Windows task package cleanup must pass the captured native identity to termination"
+  );
+  const taskExactStopRuntime = taskWrapper.slice(
+    taskWrapper.indexOf('if (-not ("SteamBridgeExactProcessStop" -as [type]))'),
+    taskWrapper.indexOf("function Add-ExactProcessStopEvidence")
+  ).trim();
+  const matrixExactStopRuntime = matrixHelper.slice(
+    matrixHelper.indexOf('if (-not ("SteamBridgeExactProcessStop" -as [type]))'),
+    matrixHelper.indexOf("$CloseProbeEvidenceSchema")
+  ).trim();
+  assert.equal(
+    taskExactStopRuntime,
+    matrixExactStopRuntime,
+    "Windows task and matrix cleanup must share the exact tested handle-bound stop runtime"
+  );
+  for (const expected of [
+    "SafeProcessHandle",
+    "CaptureExactStartTicks",
+    "OpenProcess(access, false",
+    "GetProcessTimes(process",
+    "actualCreationTicks != expectedNativeCreationTicks",
+    "TerminateProcess(process, 1)",
+    "WaitForSingleObject(process",
+    '"identity-mismatch"',
+    '"already-exited"'
+  ]) {
+    assert.ok(taskExactStopRuntime.includes(expected), `Windows exact process stop runtime missing ${expected}`);
+  }
+  const matrixProcessCleanup = matrixHelper.slice(
+    matrixHelper.indexOf("function Stop-StaleSteamOverlayHelpers"),
+    matrixHelper.indexOf("function Start-LaunchEnvRollbackTransaction")
+  );
+  assert.doesNotMatch(
+    matrixProcessCleanup,
+    /taskkill(?:\.exe)?|Stop-Process\s+-Id/i,
+    "Windows matrix cleanup must terminate only through the exact-handle guard"
+  );
+  assert.ok(
+    matrixProcessCleanup.includes("Get-ExactProcessNativeStartTicks") &&
+      matrixProcessCleanup.includes("Invoke-ExactProcessStop") &&
+      (matrixProcessCleanup.match(/-ExpectedStartTicks \$nativeStartTicks/g) || []).length >= 2,
+    "Windows matrix cleanup must capture and terminate exact process identities"
+  );
   const taskCleanupFinally = taskWrapper.slice(taskWrapper.lastIndexOf("} finally {"));
   assert.ok(
     taskCleanupFinally.indexOf("$runnerProcessGuard = Start-TaskRunnerTreeGuard") <
@@ -671,6 +759,18 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(exampleReadme.includes(expected), `Electron example README missing KeepTask cleanup warning: ${expected}`);
   }
+  for (const expected of [
+    "must already be foreground through genuine user interaction",
+    "stale parent-PID matches are rejected and counted",
+    "requires that stored exact identity",
+    "never uses recursive `taskkill /T` or a PID-only stop",
+    "Steam's exact identity after wrapper cleanup"
+  ]) {
+    assert.ok(
+      exampleReadme.replace(/\s+/g, " ").includes(expected),
+      `Electron example README missing Windows safety guidance: ${expected}`
+    );
+  }
   assert.ok(
     matrixHelper.includes('$text -notlike "Steam launch options:*"') &&
       matrixHelper.includes('$text -notlike "Steam shortcut launch options:*"') &&
@@ -700,9 +800,10 @@ function runWindowsSmokeHelperStaticChecks() {
     processCleanupStart >= 0 &&
       processCleanupEnd > processCleanupStart &&
       processCleanupBlock.includes("packageAppDirPresent") &&
+      processCleanupBlock.includes("creationDatePresent") &&
       processCleanupBlock.includes("executablePathPresent") &&
       processCleanupBlock.includes("commandLinePresent") &&
-      processCleanupBlock.includes('error = "stop-process-failed"'),
+      processCleanupBlock.includes('"exact-process-stop-failed"'),
     "Windows process cleanup artifacts must record sanitized presence/status evidence"
   );
   assert.doesNotMatch(
@@ -1891,7 +1992,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "Wait-TaskRunnerTreeCapture",
     "Start-TaskRunnerTreeGuard",
     "Complete-TaskRunnerTreeGuard",
-    "taskkill.exe",
+    "SteamBridgeExactProcessStop",
+    "Invoke-ExactProcessStop",
     "Get-ExactTaskRunnerProcesses",
     "Stop-AndVerifyTaskSmokePackageProcesses",
     "Remove-AndVerifyTaskFiles",
@@ -2131,6 +2233,186 @@ function assertWindowsExpandableClickShape(sourceLine) {
     result.status,
     0,
     `Windows expandable click AST check failed: ${String(result.stderr || "").trim()}`
+  );
+}
+
+function runWindowsExactProcessStopSelfTest() {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const taskWrapper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-overlay-task.ps1"),
+    "utf8"
+  );
+  const runtimeStart = taskWrapper.indexOf('if (-not ("SteamBridgeExactProcessStop" -as [type]))');
+  const evidenceStart = taskWrapper.indexOf("function Add-ExactProcessStopEvidence", runtimeStart);
+  const evidenceEnd = taskWrapper.indexOf("\nfunction Resolve-FullPath", evidenceStart);
+  assert.ok(
+    runtimeStart >= 0 && evidenceStart > runtimeStart && evidenceEnd > evidenceStart,
+    "Windows exact process stop self-test could not isolate the tested runtime"
+  );
+  const testPath = path.join(tempRoot, "windows-exact-process-stop-self-test.ps1");
+  const testScript = `${taskWrapper.slice(runtimeStart, evidenceStart)}
+${taskWrapper.slice(evidenceStart, evidenceEnd)}
+$ErrorActionPreference = "Stop"
+$sentinel = $null
+$unrelated = $null
+try {
+  $sentinel = Start-Process powershell.exe -ArgumentList @("-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 60") -WindowStyle Hidden -PassThru
+  $sentinelCim = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $sentinel.Id) -ErrorAction Stop
+  $sentinelCimTicks = ([DateTime]$sentinelCim.CreationDate).ToUniversalTime().Ticks
+  $sentinelNativeTicks = Get-ExactProcessNativeStartTicks -ProcessId $sentinel.Id -CimStartTicks $sentinelCimTicks
+  if ($sentinelNativeTicks -le 0 -or [Math]::Abs($sentinelNativeTicks - $sentinelCimTicks) -gt 9) { exit 1 }
+
+  $wrong = Invoke-ExactProcessStop -ProcessId $sentinel.Id -ExpectedStartTicks ($sentinelNativeTicks + 10)
+  $sentinel.Refresh()
+  if ($wrong.status -ne "identity-mismatch" -or -not $wrong.ok -or $sentinel.HasExited) { exit 2 }
+
+  $exact = Invoke-ExactProcessStop -ProcessId $sentinel.Id -ExpectedStartTicks $sentinelNativeTicks
+  if ($exact.status -ne "terminated" -or -not $exact.ok -or -not $sentinel.WaitForExit(5000)) { exit 3 }
+
+  $unrelated = Start-Process powershell.exe -ArgumentList @("-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 60") -WindowStyle Hidden -PassThru
+  $gone = Invoke-ExactProcessStop -ProcessId $sentinel.Id -ExpectedStartTicks $sentinelNativeTicks
+  $unrelated.Refresh()
+  if (-not $gone.ok -or $gone.status -notin @("open-not-found", "already-exited", "identity-mismatch") -or $unrelated.HasExited) { exit 4 }
+
+  $invalid = Invoke-ExactProcessStop -ProcessId 0 -ExpectedStartTicks 0
+  if ($invalid.ok -or $invalid.status -ne "invalid-identity") { exit 5 }
+
+  $evidence = [PSCustomObject]@{
+    stopAttemptCount = 0
+    stopTerminatedCount = 0
+    stopNotFoundCount = 0
+    stopAlreadyExitedCount = 0
+    stopIdentityMismatchCount = 0
+    stopWaitTimeoutCount = 0
+    stopFailureCount = 0
+  }
+  foreach ($result in @($wrong, $exact, $gone, $invalid)) {
+    Add-ExactProcessStopEvidence -Evidence $evidence -Prefix "stop" -Result $result
+  }
+  $outcomes = $evidence.stopTerminatedCount + $evidence.stopNotFoundCount +
+    $evidence.stopAlreadyExitedCount + $evidence.stopIdentityMismatchCount +
+    $evidence.stopWaitTimeoutCount + $evidence.stopFailureCount
+  if ($evidence.stopAttemptCount -ne 4 -or $outcomes -ne 4 -or
+      $evidence.stopTerminatedCount -ne 1 -or $evidence.stopFailureCount -ne 1) { exit 6 }
+  $serialized = $evidence | ConvertTo-Json -Compress
+  if ($serialized -match "(?i)processId|startTicks|path|commandLine") { exit 7 }
+  $orderedEvidence = [ordered]@{
+    rootStopAttemptCount = 0
+    rootStopTerminatedCount = 0
+    rootStopNotFoundCount = 0
+    rootStopAlreadyExitedCount = 0
+    rootStopIdentityMismatchCount = 0
+    rootStopWaitTimeoutCount = 0
+    rootStopFailureCount = 0
+  }
+  Add-ExactProcessStopEvidence -Evidence $orderedEvidence -Prefix "rootStop" -Result $wrong
+  if ($orderedEvidence.rootStopAttemptCount -ne 1 -or $orderedEvidence.rootStopIdentityMismatchCount -ne 1) { exit 8 }
+  Write-Output "WINDOWS_EXACT_PROCESS_STOP_SELF_TEST_OK"
+  exit 0
+} finally {
+  foreach ($owned in @($sentinel, $unrelated)) {
+    if ($null -ne $owned) {
+      try {
+        $owned.Refresh()
+        if (-not $owned.HasExited) {
+          $owned.Kill()
+          [void]$owned.WaitForExit(5000)
+        }
+      } catch {}
+      $owned.Dispose()
+    }
+  }
+}
+`;
+  fs.writeFileSync(testPath, testScript);
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", testPath],
+    { encoding: "utf8", windowsHide: true }
+  );
+  assert.equal(
+    result.status,
+    0,
+    `Windows exact process stop self-test failed: ${String(result.stderr || "").trim()}`
+  );
+}
+
+function runWindowsTaskTreeAncestrySelfTest() {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const taskWrapper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-overlay-task.ps1"),
+    "utf8"
+  );
+  const start = taskWrapper.indexOf("function Get-TaskProcessStartTicks");
+  const end = taskWrapper.indexOf("\nfunction Start-TaskRunnerTreeGuard", start);
+  assert.ok(start >= 0 && end > start, "Windows task-tree self-test could not isolate ancestry functions");
+  const testPath = path.join(tempRoot, "windows-overlay-task-tree-self-test.ps1");
+  const testScript = `${taskWrapper.slice(start, end)}
+$parentStart = [DateTime]::UtcNow
+function Get-TaskProcessNativeStartTicks {
+  param($Process)
+  return Get-TaskProcessStartTicks -Process $Process
+}
+$parent = [PSCustomObject]@{ ProcessId = 100; ParentProcessId = 1; CreationDate = $parentStart }
+$validChild = [PSCustomObject]@{ ProcessId = 200; ParentProcessId = 100; CreationDate = $parentStart.AddMilliseconds(1) }
+$equalTimeChild = [PSCustomObject]@{ ProcessId = 204; ParentProcessId = 100; CreationDate = $parentStart }
+$staleChild = [PSCustomObject]@{ ProcessId = 201; ParentProcessId = 100; CreationDate = $parentStart.AddMinutes(-1) }
+$staleGrandchild = [PSCustomObject]@{ ProcessId = 205; ParentProcessId = 201; CreationDate = $parentStart.AddMilliseconds(2) }
+$wrongParent = [PSCustomObject]@{ ProcessId = 202; ParentProcessId = 101; CreationDate = $parentStart.AddMilliseconds(1) }
+$missingStart = [PSCustomObject]@{ ProcessId = 203; ParentProcessId = 100; CreationDate = $null }
+if (-not (Test-TaskRunnerTreeParentChild -Process $validChild -ParentProcess $parent)) { exit 1 }
+if (-not (Test-TaskRunnerTreeParentChild -Process $equalTimeChild -ParentProcess $parent)) { exit 2 }
+if (Test-TaskRunnerTreeParentChild -Process $staleChild -ParentProcess $parent) { exit 3 }
+if (Test-TaskRunnerTreeParentChild -Process $wrongParent -ParentProcess $parent) { exit 4 }
+if (Test-TaskRunnerTreeParentChild -Process $missingStart -ParentProcess $parent) { exit 5 }
+$state = New-TaskRunnerTreeState -RunnerPath "runner.ps1"
+if (Add-TaskRunnerTreeIdentity -State $state -Process $missingStart -Root $true) { exit 6 }
+if ($state.rootIdentities.Count -ne 0) { exit 7 }
+if (-not (Add-TaskRunnerTreeIdentity -State $state -Process $parent -Root $true)) { exit 8 }
+$identity = $state.rootIdentities["100"]
+if (-not (Test-TaskRunnerTreeIdentity -Process $parent -Identity $identity)) { exit 9 }
+if (Test-TaskRunnerTreeIdentity -Process $parent -Identity $null) { exit 10 }
+$script:MockProcesses = @($parent, $validChild, $equalTimeChild, $staleChild, $staleGrandchild, $missingStart)
+function Get-CimInstance { return @($script:MockProcesses) }
+$active = @(Update-TaskRunnerTreeState -State $state)
+$activeIds = @($active | ForEach-Object { [int]$_.ProcessId } | Sort-Object)
+if (($activeIds -join ",") -ne "100,200,204") { exit 11 }
+$observedIds = @($state.observedIdentities.Values | ForEach-Object { [int]$_.processId } | Sort-Object)
+if (($observedIds -join ",") -ne "100,200,204") { exit 12 }
+if ($state.ancestryRejectionCount -lt 1) { exit 13 }
+$reusedPid = [PSCustomObject]@{ ProcessId = 100; ParentProcessId = 1; CreationDate = $parentStart.AddMinutes(1) }
+$script:MockProcesses = @($reusedPid)
+if (@(Update-TaskRunnerTreeState -State $state).Count -ne 0) { exit 14 }
+$script:MockRootMatches = @($missingStart)
+function Get-ExactTaskRunnerProcesses { return @($script:MockRootMatches) }
+$invalidRootState = New-TaskRunnerTreeState -RunnerPath "runner.ps1"
+if (Wait-TaskRunnerTreeCapture -State $invalidRootState -WaitSeconds 1) { exit 15 }
+if ($invalidRootState.rootIdentities.Count -ne 0) { exit 16 }
+$validRoot = [PSCustomObject]@{ ProcessId = 300; ParentProcessId = 1; CreationDate = $parentStart }
+$invalidRoot = [PSCustomObject]@{ ProcessId = 301; ParentProcessId = 1; CreationDate = $null }
+$script:MockRootMatches = @($invalidRoot, $validRoot)
+$script:MockProcesses = @($validRoot)
+$mixedRootState = New-TaskRunnerTreeState -RunnerPath "runner.ps1"
+if (-not (Wait-TaskRunnerTreeCapture -State $mixedRootState -WaitSeconds 1)) { exit 17 }
+if ($mixedRootState.rootIdentities.Count -ne 1 -or -not $mixedRootState.rootIdentities.ContainsKey("300")) { exit 18 }
+exit 0
+`;
+  fs.writeFileSync(testPath, testScript);
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", testPath],
+    { encoding: "utf8", windowsHide: true }
+  );
+  assert.equal(
+    result.status,
+    0,
+    `Windows task-tree ancestry self-test failed: ${String(result.stderr || "").trim()}`
   );
 }
 
