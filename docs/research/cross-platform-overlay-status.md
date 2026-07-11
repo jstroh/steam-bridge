@@ -361,7 +361,7 @@ focus return, three-way D3D11, crash, cleanup, rollback, and Steam-continuity
 gates. Focused progress and unlock cases separately passed the audited Windows
 needs-present polling and parking contract.
 
-The current grouped worktree extends the proved same-process gate across the
+The grouped implementation extends the proved same-process gate across the
 remaining single-cycle active surface in one coherent slice: 14 distinct
 actions and 27 exact managed, public shortcut-route, and synthetic-checkout
 case/action pairs. Web and duplicate retain their historical dedicated buttons;
@@ -377,9 +377,36 @@ checks, syntax, semantic fixtures, and diff checks pass. Native Windows
 PowerShell 5.1 parsed both full scripts and four representative generated
 probes, exercised all 27 exact resolver pairs and exclusions, and compiled the
 embedded C#. No app launch, deployment, addon rebuild, Steam restart, or live
-route claim occurred in this implementation slice. Commit and exact CI must
-pass before one signed transactional deployment and broad managed,
-shortcut-route, and public checkout rerun.
+route claim occurred in that implementation slice. Commits `313d217` and
+`04687d3` are pushed, and replacement exact CI run `29145651561` passed package
+smoke plus Linux x64, Windows x64, and Apple Silicon macOS.
+
+The exact 128-file `04687d3` Windows package then reused the verified native
+trio without a rebuild. Transfer hashes, signing, same-volume transactional
+activation, independent active-package and unchanged-shortcut audits passed
+with 12/12 valid signables, app/addon publisher agreement, byte-preserved Valve
+runtimes, unchanged non-signable sources, zero zone streams, stable selection,
+four audited rollback generations, zero Smoke processes, and exact Steam
+process/session/start continuity without a restart.
+
+The checkout-first broad pass completed its ungated prepare-only case. Direct
+approval then bound the exact source process, window, control process, session,
+enabled/non-iconic state, 2.25 renderer/window scale, and matching client
+geometry, but the source window was not foreground. The schema-3 fallback
+started its exact-HWND foreground hook and wrote one atomic ready marker. No
+real local/Parsec title-bar click or valid challenge acknowledgment arrived, so
+the bounded transition wait observed zero foreground-transition hook events and
+timed out. The gate sent zero activation and close input, emitted one terminal
+skip/incomplete branch,
+and stopped the suite before the two shortcut checkout cases. Task and package
+process cleanup, launch-environment rollback, task deletion/files, selection,
+rollback retention, and exact Steam continuity remained clean. This is live
+evidence that the grouped nonforeground fallback fails closed, not a checkout
+or D3D11 regression. Do not rerun unattended, forge the acknowledgment, use the
+already-disproved macOS synthetic click, or continue to later broad batches
+after this stop condition. Repeat the public checkout batch once when a real
+local/Parsec click and its exact challenge acknowledgment can occur strictly
+after the ready marker or the source naturally launches foreground.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

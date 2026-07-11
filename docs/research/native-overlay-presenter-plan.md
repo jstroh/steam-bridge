@@ -2057,6 +2057,21 @@ Persistent reuse still needs its separate ordered three-cycle confirmation
 design; weakening the one-cycle handoff-only rule would be an architecture
 regression, not route parity.
 
+Commits `313d217` and `04687d3` now record that grouped boundary, and exact CI
+run `29145651561` passed all four jobs. The exact 128-file Windows package reused
+the verified native trio and passed signing, transactional deployment, active
+package, unchanged shortcut, rollback, selection, and Steam-continuity audits.
+The checkout-first broad run passed prepare-only, then naturally exercised the
+schema-3 nonforeground fallback for direct approval. Exact source/process/
+session/DPI binding and hook readiness passed, but no real local/Parsec click or
+challenge acknowledgment arrived. The transition timed out with zero
+foreground-transition hook events, zero activation input, and zero close input;
+cleanup and continuity remained
+green. This settles the fallback's live fail-closed behavior but adds no grouped
+route success claim. Resume the broad suites only with a post-marker real click
+and its exact challenge acknowledgment or a naturally foreground source; do not
+weaken or simulate that precondition.
+
 The same run established the Windows input coordinate invariant more precisely.
 Process and thread per-monitor-v2 awareness plus physical native-host/panel
 bounds produced a physical-resolution screenshot, but the remaining literal
