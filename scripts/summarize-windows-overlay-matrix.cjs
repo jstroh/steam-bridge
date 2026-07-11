@@ -57,6 +57,13 @@ const PERSISTENT_REUSE_ACTION = "presenter-persistent-reuse-three-cycle";
 const WINDOWS_PERSISTENT_REUSE_CYCLES = 3;
 const WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS = 30;
 const WINDOWS_FULL_DIAGNOSTICS_MIN_INTERVAL_MS = 250;
+const FATAL_LIFECYCLE_EVENT_TYPES = new Set([
+  "app:render-process-gone",
+  "app:child-process-gone",
+  "app:gpu-process-crashed",
+  "process:uncaught-exception",
+  "process:unhandled-rejection"
+]);
 
 main();
 
@@ -1057,6 +1064,13 @@ function validateManifestCoverage(
           expect(
             row.closeProbe.sameProcessUserGestureEvidenceValid === true,
             `matrix manifest case ${expected.id} recorded one coherent same-process user-gesture handoff`,
+            failures
+          );
+          expect(
+            row.closeProbe.userGestureCompletionHandshakeValid === true &&
+              row.closeProbe.userGestureGracefulShutdownValid === true &&
+              row.closeProbe.userGestureCompletionOrderValid === true,
+            `matrix manifest case ${expected.id} held result-written state through focus proof and one graceful completion quit`,
             failures
           );
           expect(
@@ -3008,11 +3022,21 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const overlayNeedsPresent = readOkValue(steam.overlayNeedsPresent);
   const wait = result.wait && typeof result.wait === "object" && !Array.isArray(result.wait) ? result.wait : null;
   const presenterBackendEvidence = summarizePresenterBackendEvidence(nativePresenter, events);
+  const userGestureCompletion = readJsonIfPresent(
+    path.join(caseDir || path.dirname(resultLog), "user-gesture-completion.json"),
+    failures
+  );
+  const fullLifecycleEvents = readJsonLinesIfPresent(
+    path.join(caseDir || path.dirname(resultLog), "diagnostics", "lifecycle.jsonl"),
+    failures
+  );
   const closeProbe = summarizeCloseProbe(
     closeProbeEvents,
     caseDir || path.dirname(resultLog),
     nativePresenter,
-    events
+    events,
+    userGestureCompletion,
+    fullLifecycleEvents
   );
   const initTxnRequestShape = summarizeInitTxnRequestShapeEvent(events);
   const initTxnTargetMissing = summarizeInitTxnTargetMissing(events);
@@ -3543,7 +3567,14 @@ function summarizeCaseRenderingHealth(renderingHealth) {
   };
 }
 
-function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifecycleEvents = []) {
+function summarizeCloseProbe(
+  events,
+  caseDir = "",
+  nativePresenter = null,
+  lifecycleEvents = [],
+  userGestureCompletion = null,
+  fullLifecycleEvents = []
+) {
   const normalizedEvents = Array.isArray(events) ? events.filter(Boolean) : [];
   const startEvent = normalizedEvents.find((event) => event.type === "probe:start");
   const sentEvents = normalizedEvents.filter((event) => event.type === "probe:sent");
@@ -3596,7 +3627,9 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     userGestureReadyEvents,
     userGestureActivationEvents,
     userGestureConsumedProbeEvents,
-    userGestureFocusReturnEvents
+    userGestureFocusReturnEvents,
+    userGestureCompletion,
+    fullLifecycleEvents
   });
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
@@ -3714,6 +3747,9 @@ function summarizeCloseProbe(events, caseDir = "", nativePresenter = null, lifec
     nativePresenterHandoffChecks: ownerHandoff.checks,
     sameProcessUserGestureEvidenceValid: sameProcessUserGesture.valid,
     sameProcessUserGestureChecks: sameProcessUserGesture.checks,
+    userGestureCompletionHandshakeValid: sameProcessUserGesture.completionHandshakeValid,
+    userGestureGracefulShutdownValid: sameProcessUserGesture.gracefulShutdownValid,
+    userGestureCompletionOrderValid: sameProcessUserGesture.completionOrderValid,
     userGestureReadyEventCount: userGestureReadyEvents.length,
     userGesturePreDispatchEventCount: normalizedEvents.filter(
       (event) => event.type === "probe:user-gesture-gate-pre-dispatch"
@@ -3784,9 +3820,15 @@ function summarizeSameProcessUserGestureHandoff({
   userGestureReadyEvents,
   userGestureActivationEvents,
   userGestureConsumedProbeEvents,
-  userGestureFocusReturnEvents
+  userGestureFocusReturnEvents,
+  userGestureCompletion,
+  fullLifecycleEvents
 }) {
   const lifecycle = Array.isArray(lifecycleEvents) ? lifecycleEvents.filter(Boolean) : [];
+  const completeLifecycle = Array.isArray(fullLifecycleEvents)
+    ? fullLifecycleEvents.filter(Boolean)
+    : [];
+  const completion = objectOrEmpty(userGestureCompletion);
   const armedAppEvents = lifecycle.filter((event) =>
     ["autorun:user-gesture-gate-armed", "event:autorun:user-gesture-gate-armed"].includes(
       String((event && event.type) || "")
@@ -3871,6 +3913,32 @@ function summarizeSameProcessUserGestureHandoff({
   );
   const foregroundClearEvents = normalizedEvents.filter(
     (event) => event.type === "probe:foreground-clear"
+  );
+  const resultWrittenEvents = completeLifecycle.filter((event) =>
+    ["autorun:result-written", "event:autorun:result-written"].includes(String(event.type || ""))
+  );
+  const keepOpenEvents = completeLifecycle.filter((event) =>
+    ["autorun:keep-open-after-result", "event:autorun:keep-open-after-result"].includes(
+      String(event.type || "")
+    )
+  );
+  const afterCloseStableEvents = completeLifecycle.filter((event) =>
+    ["overlay:presenter-after-close-stable", "event:overlay:presenter-after-close-stable"].includes(
+      String(event.type || "")
+    )
+  );
+  const completionQuitEvents = completeLifecycle.filter((event) =>
+    ["control:user-gesture-completion-quit", "event:control:user-gesture-completion-quit"].includes(
+      String(event.type || "")
+    )
+  );
+  const beforeQuitEvents = completeLifecycle.filter((event) => event.type === "app:before-quit");
+  const willQuitEvents = completeLifecycle.filter((event) => event.type === "app:will-quit");
+  const processExitEvents = completeLifecycle.filter((event) => event.type === "process:exit");
+  const appQuitEvents = completeLifecycle.filter((event) => event.type === "app:quit");
+  const processSignalEvents = completeLifecycle.filter((event) => event.type === "process:signal");
+  const fullLifecycleFatalEvents = completeLifecycle.filter((event) =>
+    FATAL_LIFECYCLE_EVENT_TYPES.has(String((event && event.type) || ""))
   );
 
   const readyGeometry = [
@@ -4207,6 +4275,61 @@ function summarizeSameProcessUserGestureHandoff({
       !containsRawForegroundHandoffIdentifier(focusReturn)
   );
 
+  const resultWrittenPayload = objectOrEmpty(
+    resultWrittenEvents[0] && resultWrittenEvents[0].payload
+  );
+  const keepOpenPayload = objectOrEmpty(keepOpenEvents[0] && keepOpenEvents[0].payload);
+  const completionQuitPayload = objectOrEmpty(
+    completionQuitEvents[0] && completionQuitEvents[0].payload
+  );
+  const processExitPayload = objectOrEmpty(processExitEvents[0] && processExitEvents[0].payload);
+  const appQuitPayload = objectOrEmpty(appQuitEvents[0] && appQuitEvents[0].payload);
+  const completionHandshakeValid = Boolean(
+    completion.schema === 1 &&
+      completion.required === true &&
+      completion.probeProcessExited === true &&
+      completion.probeExitCode === 0 &&
+      completion.probeLogPresent === true &&
+      completion.probeParseErrorCount === 0 &&
+      completion.completeEventCount === 1 &&
+      completion.incompleteEventCount === 0 &&
+      completion.timeoutEventCount === 0 &&
+      completion.terminalEventCount === 1 &&
+      completion.terminalExclusive === true &&
+      completion.focusReturnEventCount === 1 &&
+      completion.focusReturnObserved === true &&
+      completion.controlDescriptorValid === true &&
+      completion.controlHandoffOnly === true &&
+      completion.controlProcessMatchesResult === true &&
+      completion.quitAttempted === true &&
+      completion.quitResponseOk === true &&
+      completion.sourceProcessExited === true &&
+      completion.ok === true &&
+      !containsRawForegroundHandoffIdentifier(completion)
+  );
+  const gracefulShutdownValid = Boolean(
+    resultWrittenEvents.length === 1 &&
+      resultWrittenPayload.action === "presenter-web-open-and-wait" &&
+      resultWrittenPayload.resultFileWritten === true &&
+      keepOpenEvents.length === 1 &&
+      keepOpenPayload.action === "presenter-web-open-and-wait" &&
+      keepOpenPayload.resultFileWritten === true &&
+      afterCloseStableEvents.length === 1 &&
+      completionQuitEvents.length === 1 &&
+      completionQuitPayload.action === "presenter-web-open-and-wait" &&
+      completionQuitPayload.resultFileWritten === true &&
+      completionQuitPayload.gateConsumed === true &&
+      !containsRawForegroundHandoffIdentifier(completionQuitPayload) &&
+      beforeQuitEvents.length === 1 &&
+      willQuitEvents.length === 1 &&
+      processExitEvents.length === 1 &&
+      processExitPayload.exitCode === 0 &&
+      appQuitEvents.length === 1 &&
+      appQuitPayload.exitCode === 0 &&
+      processSignalEvents.length === 0 &&
+      fullLifecycleFatalEvents.length === 0
+  );
+
   const armedAt = Date.parse((armedAppEvent && armedAppEvent.at) || "");
   const readyAt = Date.parse((readyAppEvent && readyAppEvent.at) || "");
   const readyProbeAt = Date.parse((readyProbeEvent && readyProbeEvent.at) || "");
@@ -4221,6 +4344,61 @@ function summarizeSameProcessUserGestureHandoff({
   const sentEvent = normalizedEvents.find((event) => event.type === "probe:sent");
   const sentAt = Date.parse((sentEvent && sentEvent.at) || "");
   const focusReturnAt = Date.parse((focusReturnEvent && focusReturnEvent.at) || "");
+  const resultWrittenAt = Date.parse((resultWrittenEvents[0] && resultWrittenEvents[0].at) || "");
+  const keepOpenAt = Date.parse((keepOpenEvents[0] && keepOpenEvents[0].at) || "");
+  const afterCloseStableAt = Date.parse(
+    (afterCloseStableEvents[0] && afterCloseStableEvents[0].at) || ""
+  );
+  const completionQuitAt = Date.parse(
+    (completionQuitEvents[0] && completionQuitEvents[0].at) || ""
+  );
+  const beforeQuitAt = Date.parse((beforeQuitEvents[0] && beforeQuitEvents[0].at) || "");
+  const willQuitAt = Date.parse((willQuitEvents[0] && willQuitEvents[0].at) || "");
+  const processExitAt = Date.parse((processExitEvents[0] && processExitEvents[0].at) || "");
+  const appQuitAt = Date.parse((appQuitEvents[0] && appQuitEvents[0].at) || "");
+  const lifecycleOrderValid = Boolean(
+    [
+      resultWrittenEvents[0],
+      keepOpenEvents[0],
+      afterCloseStableEvents[0],
+      completionQuitEvents[0],
+      beforeQuitEvents[0],
+      willQuitEvents[0],
+      processExitEvents[0],
+      appQuitEvents[0]
+    ].every((event) => completeLifecycle.indexOf(event) >= 0) &&
+      completeLifecycle.indexOf(resultWrittenEvents[0]) < completeLifecycle.indexOf(keepOpenEvents[0]) &&
+      completeLifecycle.indexOf(keepOpenEvents[0]) < completeLifecycle.indexOf(afterCloseStableEvents[0]) &&
+      completeLifecycle.indexOf(afterCloseStableEvents[0]) <
+        completeLifecycle.indexOf(completionQuitEvents[0]) &&
+      completeLifecycle.indexOf(completionQuitEvents[0]) <
+        completeLifecycle.indexOf(beforeQuitEvents[0]) &&
+      completeLifecycle.indexOf(beforeQuitEvents[0]) < completeLifecycle.indexOf(willQuitEvents[0]) &&
+      completeLifecycle.indexOf(willQuitEvents[0]) < completeLifecycle.indexOf(processExitEvents[0]) &&
+      completeLifecycle.indexOf(willQuitEvents[0]) < completeLifecycle.indexOf(appQuitEvents[0])
+  );
+  const completionOrderValid = Boolean(
+    [
+      resultWrittenAt,
+      keepOpenAt,
+      afterCloseStableAt,
+      focusReturnAt,
+      completionQuitAt,
+      beforeQuitAt,
+      willQuitAt,
+      processExitAt,
+      appQuitAt
+    ].every(Number.isFinite) &&
+      lifecycleOrderValid &&
+      resultWrittenAt <= keepOpenAt &&
+      keepOpenAt <= focusReturnAt &&
+      afterCloseStableAt <= focusReturnAt &&
+      focusReturnAt <= completionQuitAt &&
+      completionQuitAt <= beforeQuitAt &&
+      beforeQuitAt <= willQuitAt &&
+      willQuitAt <= processExitAt &&
+      willQuitAt <= appQuitAt
+  );
   const orderValid = Boolean(
     [
       armedAt,
@@ -4245,7 +4423,8 @@ function summarizeSameProcessUserGestureHandoff({
       consumedAt <= consumedProbeAt &&
       consumedProbeAt <= focusAt &&
       focusAt <= sentAt &&
-      sentAt <= focusReturnAt
+      sentAt <= focusReturnAt &&
+      completionOrderValid
   );
 
   const checks = {
@@ -4276,12 +4455,18 @@ function summarizeSameProcessUserGestureHandoff({
     probePayloadsSanitized,
     focusShapeValid,
     focusReturnObserved,
+    completionHandshakeValid,
+    gracefulShutdownValid,
+    completionOrderValid,
     orderValid
   };
   return {
     valid: Object.values(checks).every(Boolean),
     activationPointerSucceeded,
     focusReturnObserved,
+    completionHandshakeValid,
+    gracefulShutdownValid,
+    completionOrderValid,
     checks
   };
 }
@@ -5288,6 +5473,18 @@ function runSelfTest() {
       true
     );
     assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.userGestureCompletionHandshakeValid,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.userGestureGracefulShutdownValid,
+      true
+    );
+    assert.equal(
+      userGestureGateSummary.caseSummaries[0].closeProbe.userGestureCompletionOrderValid,
+      true
+    );
+    assert.equal(
       userGestureGateSummary.caseSummaries[0].closeProbe.nativePresenterHandoffRequestCount,
       0
     );
@@ -5563,7 +5760,27 @@ function runSelfTest() {
       ["focus-null-counts", { gestureFocusNullCounts: true }],
       ["focus-native-flags-wrong", { gestureFocusNativeFlagsWrong: true }],
       ["focus-message-delta-wrong", { gestureFocusMessageDeltaWrong: true }],
-      ["focus-app-reason-wrong", { gestureFocusAppReasonWrong: true }]
+      ["focus-app-reason-wrong", { gestureFocusAppReasonWrong: true }],
+      ["probe-complete-missing", { gestureProbeCompleteMissing: true }],
+      ["probe-complete-duplicate", { gestureProbeCompleteDuplicate: true }],
+      ["probe-incomplete", { gestureProbeIncomplete: true }],
+      ["probe-timeout", { gestureProbeTimeout: true }],
+      ["probe-exit-nonzero", { gestureProbeExitNonzero: true }],
+      ["after-close-stable-missing", { gestureAfterCloseStableMissing: true }],
+      ["completion-control-invalid", { gestureCompletionControlInvalid: true }],
+      ["completion-pid-mismatch", { gestureCompletionPidMismatch: true }],
+      ["completion-quit-not-attempted", { gestureCompletionQuitAttemptedMissing: true }],
+      ["completion-quit-rejected", { gestureCompletionQuitRejected: true }],
+      ["completion-source-exit-missing", { gestureCompletionSourceExitMissing: true }],
+      ["completion-quit-missing", { gestureCompletionQuitMissing: true }],
+      ["completion-quit-before-focus", { gestureCompletionQuitBeforeFocus: true }],
+      ["graceful-shutdown-missing", { gestureGracefulShutdownMissing: true }],
+      ["result-write-false", { gestureResultWriteFalse: true }],
+      ["process-exit-nonzero", { gestureProcessExitNonzero: true }],
+      ["app-quit-nonzero", { gestureAppQuitNonzero: true }],
+      ["late-fatal", { gestureLateFatal: true }],
+      ["completion-leaks-pid", { gestureCompletionLeaksPid: true }],
+      ["completion-quit-leaks-port", { gestureCompletionQuitLeaksPort: true }]
     ]) {
       assertFixtureSummaryFailure(
         tempRoot,
@@ -7640,6 +7857,159 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
           : "exact-source-window-foreground"
       }
     });
+    if (!options.gestureProbeCompleteMissing) {
+      closeProbeEvents.push({
+      type: options.gestureProbeIncomplete
+        ? "probe:incomplete"
+        : options.gestureProbeTimeout
+          ? "probe:timeout"
+          : "probe:complete",
+        at: "2026-07-02T00:00:05.100Z",
+        payload: options.gestureProbeIncomplete
+          ? { reason: "source-focus-return-not-observed", sentCount: 1, expectedCloseCount: 1 }
+          : options.gestureProbeTimeout
+            ? { shortcutToggleProbe: false, sentCount: 1, expectedCloseCount: 1 }
+            : { sentCount: 1, expectedCloseCount: 1 }
+      });
+      if (options.gestureProbeCompleteDuplicate) {
+        closeProbeEvents.push({
+          type: "probe:complete",
+          at: "2026-07-02T00:00:05.110Z",
+          payload: { sentCount: 1, expectedCloseCount: 1 }
+        });
+      }
+    }
+
+    const completeEventCount = options.gestureProbeCompleteMissing
+      ? 0
+      : options.gestureProbeCompleteDuplicate
+        ? 2
+        : options.gestureProbeIncomplete || options.gestureProbeTimeout
+          ? 0
+          : 1;
+    const incompleteEventCount = options.gestureProbeIncomplete ? 1 : 0;
+    const timeoutEventCount = options.gestureProbeTimeout ? 1 : 0;
+    const terminalEventCount = completeEventCount + incompleteEventCount + timeoutEventCount;
+    const terminalExclusive =
+      !options.gestureProbeExitNonzero && terminalEventCount === 1;
+    const terminalOk = Boolean(
+      terminalExclusive &&
+        completeEventCount === 1 &&
+        incompleteEventCount === 0 &&
+        timeoutEventCount === 0 &&
+        !options.gestureFocusReturnMissing
+    );
+    const controlDescriptorValid = Boolean(
+      terminalOk && !options.gestureCompletionControlInvalid
+    );
+    const controlProcessMatchesResult = Boolean(
+      controlDescriptorValid && !options.gestureCompletionPidMismatch
+    );
+    const quitAttempted = Boolean(
+      terminalOk &&
+        controlProcessMatchesResult &&
+        !options.gestureCompletionQuitAttemptedMissing
+    );
+    const quitResponseOk = Boolean(quitAttempted && !options.gestureCompletionQuitRejected);
+    const sourceProcessExited = Boolean(
+      quitResponseOk && !options.gestureCompletionSourceExitMissing
+    );
+    const completionEvidenceFixture = {
+      schema: 1,
+      required: true,
+      probeProcessExited: true,
+      probeExitCode: options.gestureProbeExitNonzero ? 1 : 0,
+      probeLogPresent: true,
+      probeParseErrorCount: 0,
+      completeEventCount,
+      incompleteEventCount,
+      timeoutEventCount,
+      terminalEventCount,
+      terminalExclusive,
+      focusReturnEventCount: 1,
+      focusReturnObserved: !options.gestureFocusReturnMissing,
+      controlDescriptorValid,
+      controlHandoffOnly: controlDescriptorValid,
+      controlProcessMatchesResult,
+      quitAttempted,
+      quitResponseOk,
+      sourceProcessExited,
+      ok: Boolean(terminalOk && controlProcessMatchesResult && quitResponseOk && sourceProcessExited)
+    };
+    if (options.gestureCompletionLeaksPid) {
+      completionEvidenceFixture.pid = 4245;
+    }
+    writeJson(path.join(caseDir, "user-gesture-completion.json"), completionEvidenceFixture);
+
+    const completionLifecycle = [
+      {
+        type: "event:autorun:result-written",
+        at: "2026-07-02T00:00:04.200Z",
+        payload: {
+          action: "presenter-web-open-and-wait",
+          resultFileWritten: !options.gestureResultWriteFalse
+        }
+      },
+      {
+        type: "event:autorun:keep-open-after-result",
+        at: "2026-07-02T00:00:04.210Z",
+        payload: { action: "presenter-web-open-and-wait", resultFileWritten: true }
+      },
+      ...(!options.gestureAfterCloseStableMissing
+        ? [
+            {
+              type: "event:overlay:presenter-after-close-stable",
+              at: "2026-07-02T00:00:04.500Z",
+              payload: { sample: 2 }
+            }
+          ]
+        : []),
+      ...(!options.gestureCompletionQuitMissing
+        ? [
+            {
+              type: "event:control:user-gesture-completion-quit",
+              at: options.gestureCompletionQuitBeforeFocus
+                ? "2026-07-02T00:00:04.900Z"
+                : "2026-07-02T00:00:05.200Z",
+              payload: {
+                action: "presenter-web-open-and-wait",
+                resultFileWritten: true,
+                gateConsumed: true,
+                ...(options.gestureCompletionQuitLeaksPort ? { port: 43123 } : {})
+              }
+            }
+          ]
+        : []),
+      ...(!options.gestureGracefulShutdownMissing
+        ? [
+            { type: "app:before-quit", at: "2026-07-02T00:00:05.300Z", payload: {} },
+            { type: "app:will-quit", at: "2026-07-02T00:00:05.400Z", payload: {} },
+            {
+              type: "process:exit",
+              at: "2026-07-02T00:00:05.500Z",
+              payload: { exitCode: options.gestureProcessExitNonzero ? 1 : 0 }
+            },
+            {
+              type: "app:quit",
+              at: "2026-07-02T00:00:05.510Z",
+              payload: { exitCode: options.gestureAppQuitNonzero ? 1 : 0 }
+            }
+          ]
+        : []),
+      ...(options.gestureLateFatal
+        ? [
+            {
+              type: "process:unhandled-rejection",
+              at: "2026-07-02T00:00:05.505Z",
+              payload: { name: "Error", message: "late fixture failure" }
+            }
+          ]
+        : [])
+    ];
+    writeText(
+      path.join(caseDir, "diagnostics", "lifecycle.jsonl"),
+      completionLifecycle.map((entry) => JSON.stringify(entry)).join("\n") + "\n"
+    );
   }
   if (!options.missingPresenterFocus && options.presenterFocusAfterInput) {
     closeProbeEvents.push({

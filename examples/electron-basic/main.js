@@ -249,6 +249,8 @@ let postClosePresenterSnapshotHandle;
 let passiveNotificationNeedsPresentObserverHandle;
 let passiveNotificationNeedsPresentState;
 let autorunUserGestureGate;
+let autorunUserGestureResultWritten = false;
+let autorunUserGestureCompletionQuitConsumed = false;
 let managedOverlayWaitSequence = 0;
 let pendingManagedOverlayShownWait;
 let pendingManagedOverlayLifecycle;
@@ -544,10 +546,21 @@ async function runAutorunSmoke() {
   }
   recordEvent("autorun:result-ready", { action: AUTORUN_ACTION, resultFile: AUTORUN_RESULT_FILE || null });
   const line = `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`;
-  writeSmokeResultLine(line);
-  recordEvent("autorun:result-written", { action: AUTORUN_ACTION, resultFile: AUTORUN_RESULT_FILE || null });
+  const resultFileWritten = writeSmokeResultLine(line);
+  if (AUTORUN_USER_GESTURE_GATE) {
+    autorunUserGestureResultWritten = resultFileWritten;
+  }
+  recordEvent("autorun:result-written", {
+    action: AUTORUN_ACTION,
+    resultFile: AUTORUN_RESULT_FILE || null,
+    resultFileWritten
+  });
   if (AUTORUN_KEEP_OPEN_AFTER_RESULT) {
-    recordEvent("autorun:keep-open-after-result", { resultFile: AUTORUN_RESULT_FILE || null });
+    recordEvent("autorun:keep-open-after-result", {
+      action: AUTORUN_ACTION,
+      resultFile: AUTORUN_RESULT_FILE || null,
+      resultFileWritten
+    });
     process.stdout.write(line);
     return;
   }
@@ -1024,7 +1037,7 @@ async function handleSmokeControlRequest(request, response) {
 
   if (
     CONTROL_HANDOFF_ONLY &&
-    !(request.method === "POST" && requestUrl.pathname === "/foreground-handoff")
+    !isHandoffOnlySmokeControlRequestAllowed(request.method, requestUrl.pathname)
   ) {
     sendJsonResponse(response, 404, { ok: false, error: { code: "HANDOFF_ONLY_CONTROL_SERVER" } });
     return;
@@ -1036,6 +1049,13 @@ async function handleSmokeControlRequest(request, response) {
   }
 
   if (request.method === "POST" && requestUrl.pathname === "/foreground-handoff") {
+    if (AUTORUN_USER_GESTURE_GATE) {
+      sendJsonResponse(response, 409, {
+        ok: false,
+        error: { code: "USER_GESTURE_GATE_FORBIDS_FOREGROUND_HANDOFF" }
+      });
+      return;
+    }
     let body;
     let requestOrdinal = 1;
     const reuseCycle = nativePresenterForegroundHandoffReuseCycle;
@@ -1157,12 +1177,51 @@ async function handleSmokeControlRequest(request, response) {
   }
 
   if (request.method === "POST" && requestUrl.pathname === "/quit") {
+    if (CONTROL_HANDOFF_ONLY) {
+      if (!canCompleteAutorunUserGestureRun()) {
+        sendJsonResponse(response, 409, {
+          ok: false,
+          error: { code: "USER_GESTURE_COMPLETION_NOT_READY" }
+        });
+        return;
+      }
+      autorunUserGestureCompletionQuitConsumed = true;
+      removeSmokeControlFile();
+      recordEvent("control:user-gesture-completion-quit", {
+        action: AUTORUN_ACTION,
+        resultFileWritten: true,
+        gateConsumed: true
+      });
+    }
     sendJsonResponse(response, 200, { ok: true });
     setImmediate(() => app.quit());
     return;
   }
 
   sendJsonResponse(response, 404, { ok: false, error: { message: `Unknown smoke control route: ${requestUrl.pathname}` } });
+}
+
+function isHandoffOnlySmokeControlRequestAllowed(method, pathname) {
+  if (method !== "POST") {
+    return false;
+  }
+  if (pathname === "/foreground-handoff") {
+    return true;
+  }
+  return pathname === "/quit" && canCompleteAutorunUserGestureRun();
+}
+
+function canCompleteAutorunUserGestureRun() {
+  return Boolean(
+    AUTORUN &&
+      AUTORUN_USER_GESTURE_GATE &&
+      AUTORUN_KEEP_OPEN_AFTER_RESULT &&
+      AUTORUN_ACTION === AUTORUN_USER_GESTURE_GATE_ACTION &&
+      AUTORUN_RESULT_FILE &&
+      autorunUserGestureResultWritten &&
+      autorunUserGestureGate?.state === "consumed" &&
+      !autorunUserGestureCompletionQuitConsumed
+  );
 }
 
 function requestWindowsNativePresenterForegroundHandoff(requestedWindow, requestOrdinal = 1) {
@@ -4683,14 +4742,16 @@ function delay(ms) {
 
 function writeSmokeResultLine(line, resultFile = AUTORUN_RESULT_FILE) {
   if (!resultFile) {
-    return;
+    return false;
   }
 
   try {
     fs.mkdirSync(path.dirname(resultFile), { recursive: true });
     fs.appendFileSync(resultFile, line);
+    return true;
   } catch (error) {
     console.error(`Failed to write smoke result file ${resultFile}:`, error);
+    return false;
   }
 }
 

@@ -125,6 +125,15 @@ if ($AutorunUserGestureGate -and $Action -ne "presenter-web-open-and-wait") {
   throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."
 }
 
+if ($AutorunUserGestureGate -and (
+    -not $KeepOpenAfterResult -or
+    -not $ControlServer -or
+    -not $ControlHandoffOnly -or
+    [string]::IsNullOrWhiteSpace($ControlFile)
+  )) {
+  throw "-AutorunUserGestureGate requires keep-open, handoff-only control, and one control file."
+}
+
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
   if ($scriptDir -and (Test-Path -LiteralPath (Join-Path $scriptDir "SteamBridgeSmoke.exe"))) {
@@ -1812,6 +1821,12 @@ function Assert-SmokeResult {
   }
   if ($app.appId -ne $AppId) {
     $failures.Add("app ID is $AppId")
+  }
+  if (
+    $app.autorunKeepOpenAfterResult -isnot [bool] -or
+    $app.autorunKeepOpenAfterResult -ne [bool]$KeepOpenAfterResult
+  ) {
+    $failures.Add("autorun keep-open state matches the helper switch")
   }
   if ($processInfo.platform -ne "win32") {
     $failures.Add("platform is win32")

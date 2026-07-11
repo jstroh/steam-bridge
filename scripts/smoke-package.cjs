@@ -887,8 +887,15 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     helper.includes('[switch]$AutorunUserGestureGate') &&
       helper.includes('if ($AutorunUserGestureGate -and $Action -ne "presenter-web-open-and-wait")') &&
-      helper.includes('throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."'),
-    "Windows smoke helper must restrict the opt-in user-gesture gate to presenter-web-open-and-wait"
+      helper.includes('throw "-AutorunUserGestureGate requires presenter-web-open-and-wait."') &&
+      helper.includes("-not $KeepOpenAfterResult") &&
+      helper.includes("-not $ControlServer") &&
+      helper.includes("-not $ControlHandoffOnly") &&
+      helper.includes("[string]::IsNullOrWhiteSpace($ControlFile)") &&
+      helper.includes('throw "-AutorunUserGestureGate requires keep-open, handoff-only control, and one control file."') &&
+      helper.includes("$app.autorunKeepOpenAfterResult -isnot [bool]") &&
+      helper.includes("$app.autorunKeepOpenAfterResult -ne [bool]$KeepOpenAfterResult"),
+    "Windows smoke helper must restrict the user-gesture gate to one keep-open handoff-only completion scope"
   );
   const userGestureTargetStart = matrixHelper.indexOf("function Resolve-AutorunUserGestureGateTarget");
   const userGestureTargetEnd = matrixHelper.indexOf(
@@ -1146,6 +1153,55 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows schema-2 foreground mechanism union missing ${expected}`);
   }
+  const matrixCaseStart = matrixHelper.indexOf("function Invoke-MatrixCase");
+  const matrixCaseEnd = matrixHelper.indexOf("\nResolve-SmokeExe", matrixCaseStart);
+  assert.ok(
+    matrixCaseStart >= 0 && matrixCaseEnd > matrixCaseStart,
+    "Windows matrix must retain one bounded process-per-case runner"
+  );
+  const matrixCaseBlock = matrixHelper.slice(matrixCaseStart, matrixCaseEnd);
+  for (const expected of [
+    "$keepOpenForUserGestureCompletion = [bool]$Case.autorunUserGestureGate",
+    '$args += @("-AutorunUserGestureGate", "-KeepOpenAfterResult")',
+    "-KeepOpenAfterResult:$keepOpenForUserGestureCompletion",
+    "Wait-WindowsOverlayCloseProbeTerminal",
+    "Wait-MatrixHandoffOnlySmokeControlDescriptor",
+    "[int]$completionControl.pid -eq [int]$result.snapshot.process.pid",
+    '-Path "/quit"',
+    '"user-gesture-completion.json"',
+    "probeExitCode = $terminal.processExitCode",
+    "terminalExclusive = $terminal.terminalExclusive",
+    "focusReturnObserved = $terminal.focusReturnObserved",
+    "quitAttempted = $quitAttempted",
+    "quitResponseOk = $quitResponseOk",
+    "sourceProcessExited = $sourceProcessExited"
+  ]) {
+    assert.ok(matrixCaseBlock.includes(expected), `Windows user-gesture completion runner missing ${expected}`);
+  }
+  assert.ok(
+    matrixCaseBlock.indexOf("Wait-WindowsOverlayCloseProbeTerminal") <
+      matrixCaseBlock.indexOf('-Path "/quit"') &&
+      matrixCaseBlock.includes("if ($terminal.ok -and $controlProcessMatchesResult)"),
+    "Windows user-gesture completion must require a successful probe terminal before graceful quit"
+  );
+  const probeTerminalStart = matrixHelper.indexOf("function Wait-WindowsOverlayCloseProbeTerminal");
+  const probeTerminalEnd = matrixHelper.indexOf(
+    "\nfunction Invoke-Preflight",
+    probeTerminalStart
+  );
+  const probeTerminalBlock = matrixHelper.slice(probeTerminalStart, probeTerminalEnd);
+  for (const expected of [
+    '$_.type -eq "probe:complete"',
+    '$_.type -eq "probe:incomplete"',
+    '$_.type -eq "probe:timeout"',
+    '$_.type -eq "probe:user-gesture-app-focus-return"',
+    "$processExitCode -eq 0",
+    "$terminalEventCount -eq 1",
+    "$focusReturnEvents.Count -eq 1",
+    '"exact-source-window-foreground"'
+  ]) {
+    assert.ok(probeTerminalBlock.includes(expected), `Windows close-probe terminal waiter missing ${expected}`);
+  }
   for (const expected of [
     'const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1"',
     'const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1"',
@@ -1161,7 +1217,22 @@ function runWindowsSmokeHelperStaticChecks() {
     "userGestureActivationEvents.length === 1",
     "foregroundClearEvents.length === 0",
     "Number.isInteger(activationTarget.x)",
-    "activationDpi.rendererScale === readyViewport.devicePixelRatio"
+    "activationDpi.rendererScale === readyViewport.devicePixelRatio",
+    "completion.schema === 1",
+    "completion.probeExitCode === 0",
+    "completion.terminalEventCount === 1",
+    "completion.controlProcessMatchesResult === true",
+    "completion.quitAttempted === true",
+    "completion.quitResponseOk === true",
+    "completion.sourceProcessExited === true",
+    "afterCloseStableEvents.length === 1",
+    "completionQuitEvents.length === 1",
+    "resultWrittenPayload.resultFileWritten === true",
+    "keepOpenPayload.resultFileWritten === true",
+    "processExitPayload.exitCode === 0",
+    "appQuitPayload.exitCode === 0",
+    "fullLifecycleFatalEvents.length === 0",
+    "completionOrderValid"
   ]) {
     assert.ok(matrixSummary.includes(expected), `Windows summary user-gesture schema contract missing ${expected}`);
   }
@@ -2295,6 +2366,84 @@ function runElectronSmokeActionStaticChecks() {
     main.includes("actionDelayMs: AUTORUN_USER_GESTURE_GATE ? 0 : AUTORUN_ACTION_DELAY_MS") &&
       main.includes("result = await armAutorunUserGestureGate(AUTORUN_ACTION)"),
     "Electron smoke autorun must bypass its ordinary action delay only for the opt-in gate"
+  );
+  const completionReadyStart = main.indexOf("function canCompleteAutorunUserGestureRun");
+  const completionReadyEnd = main.indexOf(
+    "\nfunction requestWindowsNativePresenterForegroundHandoff",
+    completionReadyStart
+  );
+  assert.ok(
+    completionReadyStart >= 0 && completionReadyEnd > completionReadyStart,
+    "Electron smoke app must define one bounded user-gesture completion state gate"
+  );
+  const completionReadyBlock = main.slice(completionReadyStart, completionReadyEnd);
+  for (const expected of [
+    "AUTORUN_USER_GESTURE_GATE",
+    "AUTORUN_KEEP_OPEN_AFTER_RESULT",
+    "AUTORUN_ACTION === AUTORUN_USER_GESTURE_GATE_ACTION",
+    "AUTORUN_RESULT_FILE",
+    "autorunUserGestureResultWritten",
+    'autorunUserGestureGate?.state === "consumed"',
+    "!autorunUserGestureCompletionQuitConsumed"
+  ]) {
+    assert.ok(
+      completionReadyBlock.includes(expected),
+      `Electron user-gesture completion gate missing ${expected}`
+    );
+  }
+  assert.doesNotMatch(
+    completionReadyBlock,
+    /setTimeout|setInterval|setImmediate|\bdelay\s*\(/,
+    "Electron user-gesture completion eligibility must be state driven"
+  );
+  const completionQuitStart = main.indexOf(
+    'if (request.method === "POST" && requestUrl.pathname === "/quit")'
+  );
+  const completionQuitEnd = main.indexOf("\n  sendJsonResponse(response, 404", completionQuitStart);
+  const completionQuitBlock = main.slice(completionQuitStart, completionQuitEnd);
+  assert.ok(
+    completionQuitStart >= 0 &&
+      completionQuitEnd > completionQuitStart &&
+      main.includes("isHandoffOnlySmokeControlRequestAllowed(request.method, requestUrl.pathname)") &&
+      completionQuitBlock.includes("canCompleteAutorunUserGestureRun()") &&
+      completionQuitBlock.includes("autorunUserGestureCompletionQuitConsumed = true") &&
+      completionQuitBlock.includes("removeSmokeControlFile()") &&
+      completionQuitBlock.includes('recordEvent("control:user-gesture-completion-quit"') &&
+      completionQuitBlock.includes("app.quit()") &&
+      !completionQuitBlock.includes("process.exit"),
+    "Electron handoff-only completion must consume one state-gated capability before graceful quit"
+  );
+  const gateOwnerHandoffRouteStart = main.indexOf(
+    'if (request.method === "POST" && requestUrl.pathname === "/foreground-handoff")'
+  );
+  const gateOwnerHandoffRouteEnd = main.indexOf(
+    'if (request.method === "POST" && requestUrl.pathname === "/action")',
+    gateOwnerHandoffRouteStart
+  );
+  const gateOwnerHandoffRoute = main.slice(
+    gateOwnerHandoffRouteStart,
+    gateOwnerHandoffRouteEnd
+  );
+  const gateOwnerHandoffInvocation =
+    "requestWindowsNativePresenterForegroundHandoff(body.targetWindow, requestOrdinal)";
+  assert.ok(
+    gateOwnerHandoffRouteStart >= 0 &&
+      gateOwnerHandoffRouteEnd > gateOwnerHandoffRouteStart &&
+      gateOwnerHandoffRoute.includes("if (AUTORUN_USER_GESTURE_GATE)") &&
+      gateOwnerHandoffRoute.includes("USER_GESTURE_GATE_FORBIDS_FOREGROUND_HANDOFF") &&
+      gateOwnerHandoffRoute.indexOf("USER_GESTURE_GATE_FORBIDS_FOREGROUND_HANDOFF") <
+        gateOwnerHandoffRoute.indexOf(gateOwnerHandoffInvocation),
+    "Electron same-process gate must reject the legacy foreground-handoff route before native focus"
+  );
+  const autorunResultWriteStart = main.indexOf("const resultFileWritten = writeSmokeResultLine(line)");
+  const autorunKeepOpenStart = main.indexOf("if (AUTORUN_KEEP_OPEN_AFTER_RESULT)", autorunResultWriteStart);
+  assert.ok(
+    autorunResultWriteStart >= 0 &&
+      autorunKeepOpenStart > autorunResultWriteStart &&
+      main.slice(autorunResultWriteStart, autorunKeepOpenStart).includes(
+        "autorunUserGestureResultWritten = resultFileWritten"
+      ),
+    "Electron autorun must arm completion only after the configured result write returns"
   );
 
   for (const expected of [

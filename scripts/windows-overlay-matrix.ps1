@@ -5432,6 +5432,86 @@ function Stop-WindowsOverlayCloseProbe {
   }
 }
 
+function Wait-WindowsOverlayCloseProbeTerminal {
+  param($Process, [string]$ProbeLog, [datetime]$Deadline)
+
+  while ((Get-Date) -lt $Deadline) {
+    try {
+      $Process.Refresh()
+      if ($Process.HasExited) { break }
+    } catch {
+      break
+    }
+    Start-Sleep -Milliseconds 100
+  }
+
+  $processExited = $false
+  $processExitCode = $null
+  try {
+    $Process.Refresh()
+    $processExited = $Process.HasExited
+    if ($processExited) {
+      $processExitCode = [int]$Process.ExitCode
+    }
+  } catch {}
+
+  $events = @()
+  $parseErrorCount = 0
+  if (Test-Path -LiteralPath $ProbeLog -PathType Leaf) {
+    foreach ($line in Get-Content -LiteralPath $ProbeLog) {
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      try {
+        $events += ($line | ConvertFrom-Json)
+      } catch {
+        $parseErrorCount += 1
+      }
+    }
+  }
+
+  $completeEvents = @($events | Where-Object { $_.type -eq "probe:complete" })
+  $incompleteEvents = @($events | Where-Object { $_.type -eq "probe:incomplete" })
+  $timeoutEvents = @($events | Where-Object { $_.type -eq "probe:timeout" })
+  $focusReturnEvents = @($events | Where-Object { $_.type -eq "probe:user-gesture-app-focus-return" })
+  $terminalEventCount = $completeEvents.Count + $incompleteEvents.Count + $timeoutEvents.Count
+  $focusReturnObserved = (
+    $focusReturnEvents.Count -eq 1 -and
+    $focusReturnEvents[0].payload.observed -eq $true -and
+    $focusReturnEvents[0].payload.lifecycleComplete -eq $true -and
+    $focusReturnEvents[0].payload.sourceWindowValid -eq $true -and
+    $focusReturnEvents[0].payload.ownerMatches -eq $true -and
+    $focusReturnEvents[0].payload.sameInteractiveSession -eq $true -and
+    $focusReturnEvents[0].payload.focused -eq $true -and
+    [string]$focusReturnEvents[0].payload.reason -eq "exact-source-window-foreground"
+  )
+  $terminalExclusive = (
+    $processExited -and
+    $processExitCode -eq 0 -and
+    $parseErrorCount -eq 0 -and
+    $terminalEventCount -eq 1
+  )
+
+  return [PSCustomObject]@{
+    processExited = $processExited
+    processExitCode = $processExitCode
+    logPresent = Test-Path -LiteralPath $ProbeLog -PathType Leaf
+    parseErrorCount = $parseErrorCount
+    completeEventCount = $completeEvents.Count
+    incompleteEventCount = $incompleteEvents.Count
+    timeoutEventCount = $timeoutEvents.Count
+    terminalEventCount = $terminalEventCount
+    terminalExclusive = $terminalExclusive
+    focusReturnEventCount = $focusReturnEvents.Count
+    focusReturnObserved = $focusReturnObserved
+    ok = (
+      $terminalExclusive -and
+      $completeEvents.Count -eq 1 -and
+      $incompleteEvents.Count -eq 0 -and
+      $timeoutEvents.Count -eq 0 -and
+      $focusReturnObserved
+    )
+  }
+}
+
 function Invoke-Preflight {
   $preflightDir = Join-Path $ArtifactRoot "00-preflight"
   New-Item -ItemType Directory -Force -Path $preflightDir | Out-Null
@@ -5639,6 +5719,49 @@ function Wait-MatrixSmokeControlDescriptor {
     Start-Sleep -Milliseconds 100
   }
   throw "Timed out waiting for the readiness-gated persistent-reuse control descriptor."
+}
+
+function Read-MatrixHandoffOnlySmokeControlDescriptor {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return $null
+  }
+  $control = Read-MatrixJsonFile -Path $Path
+  $controlProcess = if ([int]$control.pid -gt 0) {
+    Get-Process -Id ([int]$control.pid) -ErrorAction SilentlyContinue
+  } else {
+    $null
+  }
+  if (
+    -not $control -or
+    [string]$control.host -ne "127.0.0.1" -or
+    [int]$control.port -lt 1 -or
+    [int]$control.port -gt 65535 -or
+    [string]::IsNullOrWhiteSpace([string]$control.token) -or
+    [int]$control.pid -le 0 -or
+    $control.handoffOnly -ne $true -or
+    -not $controlProcess
+  ) {
+    throw "User-gesture completion control descriptor is invalid or not handoff-only scoped."
+  }
+  return $control
+}
+
+function Wait-MatrixHandoffOnlySmokeControlDescriptor {
+  param([string]$Path, [int]$WaitSeconds)
+
+  $deadline = (Get-Date).AddSeconds([Math]::Max(1, $WaitSeconds))
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $control = Read-MatrixHandoffOnlySmokeControlDescriptor -Path $Path
+      if ($control) {
+        return $control
+      }
+    } catch {}
+    Start-Sleep -Milliseconds 100
+  }
+  throw "Timed out waiting for the handoff-only user-gesture completion descriptor."
 }
 
 function Invoke-MatrixSmokeControlRequest {
@@ -5856,6 +5979,7 @@ function Invoke-MatrixCase {
   $diagnosticDir = Join-Path $caseDir "diagnostics"
   $helperLog = Join-Path $caseDir "helper.log"
   $useCloseProbe = Test-CaseUsesCloseProbe -Case $Case
+  $keepOpenForUserGestureCompletion = [bool]$Case.autorunUserGestureGate
   $controlFile = if ($useCloseProbe) { Join-Path $caseDir "smoke-control.json" } else { "" }
   New-Item -ItemType Directory -Force -Path $caseDir | Out-Null
   if ($controlFile) {
@@ -5908,7 +6032,7 @@ function Invoke-MatrixCase {
     $args += @("-ControlServer", "-ControlHandoffOnly", "-ControlFile", $controlFile)
   }
   if ($Case.autorunUserGestureGate) {
-    $args += "-AutorunUserGestureGate"
+    $args += @("-AutorunUserGestureGate", "-KeepOpenAfterResult")
   }
   if ($Case.allowOverlayNotReady) {
     $args += "-AllowOverlayNotReady"
@@ -5920,7 +6044,8 @@ function Invoke-MatrixCase {
       -ResultFile $resultFile `
       -DiagnosticDir $diagnosticDir `
       -ControlFile $controlFile `
-      -ControlHandoffOnly:([bool]$controlFile)
+      -ControlHandoffOnly:([bool]$controlFile) `
+      -KeepOpenAfterResult:$keepOpenForUserGestureCompletion
     Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
     if ($LaunchMode -eq "steam-launch") {
       if (-not $ShortcutGameId) {
@@ -6004,9 +6129,95 @@ function Invoke-MatrixCase {
     -CaseDir $caseDir `
     -DiagnosticDir $diagnosticDir `
     -ControlFile $controlFile
+  $closeProbeDeadline = (Get-Date).AddSeconds(
+    [Math]::Max(1, ($CloseProbeTimeoutSeconds * [Math]::Max(1, [int]$Case.persistentReuseCycles))) + 2
+  )
   $caseStartedAt = Get-Date
   try {
     Invoke-Helper -Arguments $args -LogFile $helperLog
+    if ($keepOpenForUserGestureCompletion) {
+      $terminal = Wait-WindowsOverlayCloseProbeTerminal `
+        -Process $closeProbeProcess `
+        -ProbeLog (Join-Path $caseDir "close-probe.log") `
+        -Deadline $closeProbeDeadline
+      $result = Read-MatrixSmokeResult -Path $resultFile
+      $completionControl = $null
+      if ($terminal.ok) {
+        try {
+          $completionControl = Wait-MatrixHandoffOnlySmokeControlDescriptor `
+            -Path $controlFile `
+            -WaitSeconds 5
+        } catch {}
+      }
+      $controlDescriptorValid = [bool]$completionControl
+      $controlProcessMatchesResult = (
+        $completionControl -and
+        [int]$completionControl.pid -eq [int]$result.snapshot.process.pid
+      )
+      $quitAttempted = $false
+      $quitResponseOk = $false
+      $sourceProcessExited = $false
+      if ($terminal.ok -and $controlProcessMatchesResult) {
+        $quitAttempted = $true
+        try {
+          $quitResponse = Invoke-MatrixSmokeControlRequest `
+            -Control $completionControl `
+            -Method "POST" `
+            -Path "/quit" `
+            -Body ([PSCustomObject]@{}) `
+            -RequestTimeoutSeconds 5
+          $quitResponseOk = $quitResponse.ok -eq $true
+        } catch {}
+        if ($quitResponseOk) {
+          $sourceExitDeadline = (Get-Date).AddSeconds(10)
+          while (
+            (Get-Date) -lt $sourceExitDeadline -and
+            (Get-Process -Id ([int]$completionControl.pid) -ErrorAction SilentlyContinue)
+          ) {
+            Start-Sleep -Milliseconds 100
+          }
+          $sourceProcessExited = -not [bool](
+            Get-Process -Id ([int]$completionControl.pid) -ErrorAction SilentlyContinue
+          )
+        }
+      }
+
+      $completionEvidence = [PSCustomObject]@{
+        schema = 1
+        required = $true
+        probeProcessExited = $terminal.processExited
+        probeExitCode = $terminal.processExitCode
+        probeLogPresent = $terminal.logPresent
+        probeParseErrorCount = $terminal.parseErrorCount
+        completeEventCount = $terminal.completeEventCount
+        incompleteEventCount = $terminal.incompleteEventCount
+        timeoutEventCount = $terminal.timeoutEventCount
+        terminalEventCount = $terminal.terminalEventCount
+        terminalExclusive = $terminal.terminalExclusive
+        focusReturnEventCount = $terminal.focusReturnEventCount
+        focusReturnObserved = $terminal.focusReturnObserved
+        controlDescriptorValid = $controlDescriptorValid
+        controlHandoffOnly = ($completionControl -and $completionControl.handoffOnly -eq $true)
+        controlProcessMatchesResult = $controlProcessMatchesResult
+        quitAttempted = $quitAttempted
+        quitResponseOk = $quitResponseOk
+        sourceProcessExited = $sourceProcessExited
+        ok = (
+          $terminal.ok -and
+          $controlDescriptorValid -and
+          $controlProcessMatchesResult -and
+          $quitResponseOk -and
+          $sourceProcessExited
+        )
+      }
+      Write-MatrixJsonFile `
+        -Path (Join-Path $caseDir "user-gesture-completion.json") `
+        -Value $completionEvidence `
+        -Depth 5
+      if (-not $completionEvidence.ok) {
+        throw "User-gesture focus-return completion handshake failed."
+      }
+    }
   } catch {
     if ($LaunchMode -in @("steam-launch", "steam-app")) {
       $resultHasSmokePayload = Test-SmokeResultPayload -Path $resultFile

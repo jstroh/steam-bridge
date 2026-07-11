@@ -149,11 +149,15 @@ foreground, confirms the gate is still unconsumed, and repeats the point/window
 check immediately before dispatch. It then requires the exact lifecycle native
 host to already own foreground without a focus/native-show request, sends one
 close input, and requires exact source-window focus return after inactive,
-close, park, completion, and stable-idle evidence. The new branch never runs
-the legacy blocker-clear key input. The standalone helper exposes
-`-AutorunUserGestureGate` only for
-`presenter-web-open-and-wait`; the matrix opts in automatically for case
-`11-managed-web-open-and-wait`.
+close, park, completion, and stable-idle evidence. For that proof only, autorun
+holds the result-written app open until the probe records one complete terminal
+state. The handoff-only loopback server then accepts one authenticated graceful
+quit only when the gate was consumed and the configured result file was
+written. It rejects the legacy foreground-handoff route for this case. The new
+branch never runs the blocker-clear key input. The standalone helper exposes
+`-AutorunUserGestureGate` only for `presenter-web-open-and-wait` and requires
+keep-open plus one handoff-only control file; the matrix configures that scope
+automatically for case `11-managed-web-open-and-wait`.
 
 Both branches record only sanitized relationship booleans and counts—never
 handles, process/session IDs, ports, tokens, or the private nonce—while the

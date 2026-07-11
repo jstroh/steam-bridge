@@ -178,8 +178,8 @@ final-dispatch agreed on one nonzero physical target, stable client origin and
 size, 2.25 renderer/window scale, original HWND/main-window/owner/control/
 session, point owner/root, and foreground. The recorded native pointer instead
 reported `(0,0)` despite `3/3` inputs and zero API error. The gate stayed at one
-arm event and one ready event with no consumed/rejected event, created no overlay result,
-sent no close input, and timed out.
+arm event and one ready event with no consumed/rejected event, created no
+overlay result, sent no close input, and timed out.
 
 Generated-script AST inspection explains the discrepancy: two terminal
 continuation backticks in the outer expandable PowerShell here-string were
@@ -197,6 +197,40 @@ the expanded command shape on native PowerShell, and adds a zero-coordinate
 adversarial summary fixture. Repeat only after that slice is committed, passes
 exact CI, and is repackaged/signed into the stable deployment without a Steam
 restart.
+
+Commit `1619c52` fixed the generated call, passed exact CI run `29132171785`,
+and was packaged around the unchanged verified addon. Its 128-file signed
+candidate passed a fail-closed transactional deployment and an independent
+active audit with 12 valid signatures, app/addon trust anchored to the prior
+live signer, exact non-signable sources, byte-preserved Valve runtimes, zero
+zone streams, an unchanged private selection, the same Steam process/session,
+and both rollback generations retained. The read-only assumed-shortcut audit
+also passed without a Steam restart.
+
+The one permitted focused run then proved the same-process mechanism through
+the product lifecycle: one armed/ready/consumed gate, exact source/control/
+session/foreground and rebound-DPI checks, one correctly targeted activation
+input, one close input, visible D3D11 presentation, inactive callback, close,
+park, open-and-wait completion, and a visible focused app snapshot. Top-level,
+native-host, and renderer diagnostics all reported `windows-d3d11`; crash,
+task, process, launch-environment, Steam-continuity, selection, and deployment-
+rollback guards passed. The matrix and Smoke result exited zero.
+Because the semantic summary failed, the outer runner intentionally retained
+its private failed-run diagnostic state; its aggregate private-run cleanup flag
+was therefore false even though no Smoke process remained.
+
+The semantic summary rejected only the absent external exact-HWND focus-return
+event. The result lifecycle reached closed, inactive, parked, completion,
+snapshot, and result-written before the probe finished its post-close capture;
+autorun then exited the source process, and the required after-close-stable
+event never appeared. The probe therefore could not emit its stable-focus
+observation. This is a state-coordination race after a successful activation/
+close lifecycle, not an input, presenter, D3D11, or product/task/process cleanup
+failure. The retained failed-run runner state still requires deliberate cleanup
+after durable evidence recording. Repeat only after the consumed gate keeps the
+app alive through one state-driven focus-return acknowledgment and then performs
+one authenticated graceful quit; do not rerun `1619c52`, add input, lengthen
+waits, restart Steam, or add a broker.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
