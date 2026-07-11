@@ -138,10 +138,13 @@ close target first, binds the exact lifecycle native-host window to the Smoke
 process and interactive session, then makes one authenticated loopback request
 for that owning process to run its existing native-host activation path.
 
-The exact managed web-wait and duplicate-open cases instead use schema-3
-`same-process-user-gesture-v1`. Their context-isolated preload privately maps
-each action to its own **Presenter Web Wait** or **Duplicate Guard** button and
-records one actual DOM click; main
+The single-cycle active managed, shortcut-route, and public synthetic-checkout
+cases use schema-3 `same-process-user-gesture-v1`. The historical managed web
+and duplicate-open cases retain their dedicated **Presenter Web Wait** and
+**Duplicate Guard** buttons. Every newly gated action maps to one hidden,
+inert **Run Gated Action** button that the context-isolated preload reveals only
+after a valid arm. The preload privately derives the target and records one
+actual DOM click; main
 world receives neither the nonce nor a generic consume API. Before one renderer
 activation `SendInput`, the probe binds the source window to the lifecycle and
 authenticated control process, exact HWND and process-start identity, and
@@ -176,9 +179,9 @@ the managed-web action):
 
 The coordinator must copy `action`, `requestOrdinal`, `mechanism`, and
 `challenge` from the exact ready marker after validating that marker against
-the selected case. It must not hardcode the web action when controlling the
-duplicate-open case, whose action is `presenter-duplicate-open-guard`; both
-currently use requested transition ordinal `1`.
+the selected case. It must not infer the action from a route name or hardcode
+the web action; every gated case currently uses requested transition ordinal
+`1`.
 
 Write a temporary sibling and rename it to the acknowledgment path; do not
 write the final file incrementally. The probe removes stale acknowledgment and
@@ -212,13 +215,17 @@ one complete terminal state. The handoff-only loopback server then accepts one
 authenticated graceful quit only when the gate was consumed and the configured
 result file was written. It rejects the legacy foreground-handoff route for
 this case. The branch never runs the blocker-clear key input. The standalone
-helper exposes `-AutorunUserGestureGate` only for the exact
-`presenter-web-open-and-wait` and `presenter-duplicate-open-guard` actions and
-requires keep-open plus one handoff-only control file. The matrix configures
-that scope automatically for cases `11-managed-web-open-and-wait` and
-`11b-managed-duplicate-open-guard`. Historical schema-2 web artifacts remain
-auditable, but duplicate-open requires schema 3 and neither historical format
-contains the external foreground-transition contract.
+helper exposes `-AutorunUserGestureGate` only for the 14 closed single-cycle
+active actions and requires keep-open plus one handoff-only control file. The
+matrix independently binds 27 exact case/action pairs: managed `11`, `11b`, and
+`12` through `22` including both `15` variants; all ten public
+`30-shortcut-*-open-and-wait` routes; and checkout `02`, `03`, and `04`.
+Readiness `10`, checkout prepare `01`, raw observe `23`/`24`, passive
+notification `25`/`26`, and persistent reuse `40` remain outside this gate.
+Current manifests record `single-cycle-active-v1`; the auditor then requires
+schema 3 and complete gate evidence for every selected mapped case while
+rejecting a gated excluded case. Marker-absent historical artifacts remain
+auditable, including schema-2 managed web evidence.
 
 Both branches record only sanitized relationship booleans and counts—never
 handles, process/session IDs, ports, tokens, or the private nonce—while the
@@ -294,15 +301,15 @@ The Windows managed suite includes `11b-managed-duplicate-open-guard` and gives
 it the same exact schema-3 user-gesture gate used by the proved managed-web
 path. Its summary audit requires the intended
 generic, named direct/wait, shortcut/controller, and checkout helpers to return
-the busy result without invoking the checkout operation. Treat the case as
-implemented but not yet live-proved on Windows until a packaged run also shows
-one overlay target, close/back-to-app, parking, D3D11 identity in all three
-diagnostic fields, and clean crash/cleanup evidence.
+the busy result without invoking the checkout operation. The exact signed
+`f46e8ff` package passed that live proof with one overlay target,
+close/back-to-app, parking, three-way D3D11 identity, and clean crash/cleanup
+evidence.
 
-After both focused foreground/close gates pass, use the dedicated persistent
-reuse suite to prove that one Steam-launched process keeps one managed
-controller, native surface lease, D3D11 surface instance, and HWND across three
-complete web open/close/park cycles:
+Persistent reuse is a separate proof boundary. Its dedicated suite is intended
+to prove that one Steam-launched process keeps one managed controller, native
+surface lease, D3D11 surface instance, and HWND across three complete web
+open/close/park cycles:
 
 ```powershell
 .\windows-overlay-matrix.ps1 `
@@ -320,9 +327,11 @@ first stale handoff, identity change, detach, renderer disagreement, or
 lifecycle failure. Its summary requires positive and stable controller, lease,
 native-instance, and opaque HWND-identity values in every shown and parked
 snapshot, exactly one attach and no detach before final shutdown, and three
-single close inputs with exact-host foreground rechecks. This is implemented
-coverage awaiting current-package live proof; do not run it ahead of the
-focused duplicate-open close gate.
+single close inputs with exact-host foreground rechecks. The current live run
+stopped fail-closed during cycle 1 because this suite still uses the historical
+owner-process handoff. Do not rerun it until a separate ordered verify-only
+three-cycle confirmation protocol exists; do not weaken the single-cycle
+handoff-only gate to make persistent reuse fit.
 
 If a local Smart App Control/App Control policy blocks a freshly rebuilt native
 addon, pass `-NativePath <path-to-accepted-.node>` only for diagnostic

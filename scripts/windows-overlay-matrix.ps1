@@ -252,6 +252,7 @@ $SameProcessUserGestureEvidenceSchema = 3
 $CloseProbeForegroundHandoff = "owner-process-native-show-v1"
 $SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"
 $ExternalForegroundTransition = "external-foreground-event-v1"
+$AutorunUserGestureGatePolicy = "single-cycle-active-v1"
 
 if (-not $AppDir) {
   $scriptDir = Split-Path -Parent $PSCommandPath
@@ -1901,6 +1902,63 @@ function Test-CheckoutJsonFile {
   Write-Host "Validated Windows checkout JSON target: source=json-file expectedAppId=checked"
 }
 
+function Resolve-AutorunUserGestureGateCase {
+  param($Case)
+
+  $expectedAction = ""
+  $targetId = ""
+  switch -CaseSensitive ([string]$Case.id) {
+    "11-managed-web-open-and-wait" {
+      $expectedAction = "presenter-web-open-and-wait"
+      $targetId = "presenter-web-wait"
+      break
+    }
+    "11b-managed-duplicate-open-guard" {
+      $expectedAction = "presenter-duplicate-open-guard"
+      $targetId = "presenter-duplicate-guard"
+      break
+    }
+    "12-managed-store-open-and-wait" { $expectedAction = "presenter-store-open-and-wait"; break }
+    "13-managed-friends-open-and-wait" { $expectedAction = "presenter-friends-open-and-wait"; break }
+    "14-managed-dialog-open-and-wait" { $expectedAction = "presenter-dialog-auto-open-and-wait"; break }
+    "15-managed-shortcut" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "15-managed-shortcut-keyboard" { $expectedAction = "presenter-shortcut"; break }
+    "16-managed-checkout-route" { $expectedAction = "presenter-checkout"; break }
+    "17-managed-profile-open-and-wait" { $expectedAction = "presenter-profile-open-and-wait"; break }
+    "18-managed-players-open-and-wait" { $expectedAction = "presenter-players-open-and-wait"; break }
+    "19-managed-community-open-and-wait" { $expectedAction = "presenter-community-open-and-wait"; break }
+    "20-managed-stats-open-and-wait" { $expectedAction = "presenter-stats-open-and-wait"; break }
+    "21-managed-achievements-open-and-wait" { $expectedAction = "presenter-achievements-open-and-wait"; break }
+    "22-managed-user-open-and-wait" { $expectedAction = "presenter-user-open-and-wait"; break }
+    "30-shortcut-friends-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-web-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-store-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-profile-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-players-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-community-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-stats-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-achievements-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-user-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "30-shortcut-dialog-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    "02-checkout-approval" { $expectedAction = "presenter-checkout"; break }
+    "03-shortcut-checkout" { $expectedAction = "presenter-shortcut"; break }
+    "04-shortcut-checkout-open-and-wait" { $expectedAction = "presenter-shortcut-open-and-wait"; break }
+    default { return $null }
+  }
+
+  if ([string]$Case.action -cne $expectedAction) {
+    return $null
+  }
+  if (-not $targetId) {
+    $targetId = "autorun-user-gesture-target"
+  }
+
+  return [PSCustomObject]@{
+    action = $expectedAction
+    targetId = $targetId
+  }
+}
+
 function Test-MatrixCloseProbeRequirements {
   param([object[]]$Cases)
 
@@ -1922,14 +1980,11 @@ function Test-MatrixCloseProbeRequirements {
     throw "Selected Windows user-gesture gate case(s) require -CloseProbe so the matrix can deliver and audit the one-shot renderer click: $caseIds"
   }
   $unsupportedUserGestureCases = @($userGestureCases | Where-Object {
-    -not (
-      ($_.id -ceq "11-managed-web-open-and-wait" -and $_.action -ceq "presenter-web-open-and-wait") -or
-      ($_.id -ceq "11b-managed-duplicate-open-guard" -and $_.action -ceq "presenter-duplicate-open-guard")
-    )
+    $null -eq (Resolve-AutorunUserGestureGateCase -Case $_)
   })
   if ($unsupportedUserGestureCases.Count -gt 0) {
     $caseIds = (($unsupportedUserGestureCases | ForEach-Object { $_.id }) -join ", ")
-    throw "The bounded Windows user-gesture gate supports only its exact managed-web and duplicate-open case/action pairs: $caseIds"
+    throw "The bounded Windows user-gesture gate supports only exact single-cycle active case/action pairs: $caseIds"
   }
 }
 
@@ -2750,7 +2805,8 @@ function New-ShortcutOpenAndWaitCase {
     [string]$CheckoutJsonFileOverride = "",
     [string]$InitTxnRequestFileOverride = "",
     [string]$WebModal = "",
-    [string]$StoreRouteOverride = ""
+    [string]$StoreRouteOverride = "",
+    [switch]$AutorunUserGestureGate
   )
 
   return New-Case `
@@ -2764,6 +2820,7 @@ function New-ShortcutOpenAndWaitCase {
     -CheckoutTransactionIdOverride $CheckoutTransactionIdOverride `
     -CheckoutJsonFileOverride $CheckoutJsonFileOverride `
     -InitTxnRequestFileOverride $InitTxnRequestFileOverride `
+    -AutorunUserGestureGate:$AutorunUserGestureGate `
     -WebModal $WebModal `
     -StoreRouteOverride $StoreRouteOverride
 }
@@ -2791,7 +2848,8 @@ function New-PublicShortcutRouteCases {
       -Id $caseId `
       -ShortcutTargetOverride $target `
       -WebModal $webModal `
-      -StoreRouteOverride $storeRouteOverride
+      -StoreRouteOverride $storeRouteOverride `
+      -AutorunUserGestureGate
   }
 
   return $cases
@@ -2825,10 +2883,10 @@ function Get-MatrixCases {
       -ManagedOverlayResultMode "complete" `
       -WebModal "true" `
       -AutorunUserGestureGate
-    New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute
-    New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait"
-    New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog
-    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase
+    New-ManagedOpenAndWaitCase -Id "12-managed-store-open-and-wait" -Action "presenter-store-open-and-wait" -StoreRouteOverride $StoreRoute -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "13-managed-friends-open-and-wait" -Action "presenter-friends-open-and-wait" -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "14-managed-dialog-open-and-wait" -Action "presenter-dialog-auto-open-and-wait" -DialogOverride $Dialog -AutorunUserGestureGate
+    New-ShortcutOpenAndWaitCase -Id "15-managed-shortcut" -ShortcutTargetOverride $ShortcutTarget -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase -AutorunUserGestureGate
     New-Case `
       -Id "15-managed-shortcut-keyboard" `
       -Action "presenter-shortcut" `
@@ -2842,14 +2900,15 @@ function Get-MatrixCases {
       -CheckoutTransactionIdOverride $shortcutCheckoutTransactionIdForCase `
       -CheckoutJsonFileOverride $shortcutCheckoutJsonFileForCase `
       -InitTxnRequestFileOverride $shortcutCheckoutInitTxnRequestFileForCase `
+      -AutorunUserGestureGate `
       -ResultDelayMs 30000
-    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase -RequireMicroTxnCallback:$RequireMicroTxnCallback
-    New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait"
-    New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait"
-    New-ManagedOpenAndWaitCase -Id "19-managed-community-open-and-wait" -Action "presenter-community-open-and-wait"
-    New-ManagedOpenAndWaitCase -Id "20-managed-stats-open-and-wait" -Action "presenter-stats-open-and-wait"
-    New-ManagedOpenAndWaitCase -Id "21-managed-achievements-open-and-wait" -Action "presenter-achievements-open-and-wait"
-    New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait"
+    New-Case -Id "16-managed-checkout-route" -Action "presenter-checkout" -RequireEvent @("overlay:presenter-open", "overlay:presenter-wait-closed", "overlay:presenter-parked", "overlay:presenter-checkout-open-and-wait-complete") -RequireOverlayActivated -RequireManagedOverlayComplete -ManagedOverlayResultMode "complete" -CheckoutTransactionIdOverride $checkoutTransactionIdForCase -CheckoutJsonFileOverride $checkoutJsonFileForCase -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase -RequireMicroTxnCallback:$RequireMicroTxnCallback -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "17-managed-profile-open-and-wait" -Action "presenter-profile-open-and-wait" -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "18-managed-players-open-and-wait" -Action "presenter-players-open-and-wait" -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "19-managed-community-open-and-wait" -Action "presenter-community-open-and-wait" -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "20-managed-stats-open-and-wait" -Action "presenter-stats-open-and-wait" -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "21-managed-achievements-open-and-wait" -Action "presenter-achievements-open-and-wait" -AutorunUserGestureGate
+    New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait" -AutorunUserGestureGate
     New-Case -Id "23-raw-native-dialog-open-observe" -Action "presenter-dialog" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -DialogOverride $Dialog -CloseProbeOnActivation -ResultDelayMs 12000
     New-Case -Id "24-raw-native-user-open-observe" -Action "presenter-user-native" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -UserDialogOverride $UserDialog -CloseProbeOnActivation -ResultDelayMs 12000
     New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
@@ -2887,7 +2946,8 @@ function Get-MatrixCases {
       -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
       -CheckoutJsonFileOverride $checkoutJsonFileForCase `
       -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase `
-      -RequireMicroTxnCallback:$RequireMicroTxnCallback
+      -RequireMicroTxnCallback:$RequireMicroTxnCallback `
+      -AutorunUserGestureGate
     New-Case `
       -Id "03-shortcut-checkout" `
       -Action "presenter-shortcut" `
@@ -2901,6 +2961,7 @@ function Get-MatrixCases {
       -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
       -CheckoutJsonFileOverride $checkoutJsonFileForCase `
       -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase `
+      -AutorunUserGestureGate `
       -ResultDelayMs 30000
     New-Case `
       -Id "04-shortcut-checkout-open-and-wait" `
@@ -2912,7 +2973,8 @@ function Get-MatrixCases {
       -ShortcutTargetOverride "checkout" `
       -CheckoutTransactionIdOverride $checkoutTransactionIdForCase `
       -CheckoutJsonFileOverride $checkoutJsonFileForCase `
-      -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase
+      -InitTxnRequestFileOverride $checkoutInitTxnRequestFileForCase `
+      -AutorunUserGestureGate
   )
   if ($InitTxnRequestFile) {
     $checkout = @($checkout | Where-Object { @("01-checkout-prepare", "02-checkout-approval") -contains $_.id })
@@ -3041,6 +3103,7 @@ function Write-MatrixManifest {
     windowMode = $WindowMode
     closeProbe = [bool]$CloseProbe
     closeProbeInput = $CloseProbeInput
+    autorunUserGestureGatePolicy = $AutorunUserGestureGatePolicy
     closeProbeEvidenceSchema = $CloseProbeEvidenceSchema
     supportedCloseProbeEvidenceSchemas = @(
       $CloseProbeEvidenceSchema,
@@ -3212,21 +3275,12 @@ function Start-WindowsOverlayCloseProbe {
   $userGestureAction = ""
   $userGestureTargetId = ""
   if ($useUserGestureGate) {
-    if (
-      $Case.id -ceq "11-managed-web-open-and-wait" -and
-      $Case.action -ceq "presenter-web-open-and-wait"
-    ) {
-      $userGestureAction = "presenter-web-open-and-wait"
-      $userGestureTargetId = "presenter-web-wait"
-    } elseif (
-      $Case.id -ceq "11b-managed-duplicate-open-guard" -and
-      $Case.action -ceq "presenter-duplicate-open-guard"
-    ) {
-      $userGestureAction = "presenter-duplicate-open-guard"
-      $userGestureTargetId = "presenter-duplicate-guard"
-    } else {
+    $userGestureCase = Resolve-AutorunUserGestureGateCase -Case $Case
+    if ($null -eq $userGestureCase) {
       throw "Unsupported Windows user-gesture gate case/action pair: $($Case.id) / $($Case.action)"
     }
+    $userGestureAction = [string]$userGestureCase.action
+    $userGestureTargetId = [string]$userGestureCase.targetId
   }
   if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null

@@ -12,6 +12,52 @@ const packDir = path.join(tempRoot, "pack");
 const consumerDir = path.join(tempRoot, "consumer");
 const keepTemp = process.env.STEAM_BRIDGE_KEEP_PACKAGE_SMOKE === "1";
 const windowsCleanupSelfTestOnly = process.argv.includes("--windows-cleanup-self-test");
+const GENERIC_USER_GESTURE_GATE_TARGET = "autorun-user-gesture-target";
+const USER_GESTURE_ACTION_TARGETS = Object.freeze({
+  "presenter-web-open-and-wait": "presenter-web-wait",
+  "presenter-duplicate-open-guard": "presenter-duplicate-guard",
+  "presenter-store-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-dialog-auto-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-friends-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-profile-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-players-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-community-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-stats-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-achievements-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-user-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-checkout": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-shortcut": GENERIC_USER_GESTURE_GATE_TARGET,
+  "presenter-shortcut-open-and-wait": GENERIC_USER_GESTURE_GATE_TARGET
+});
+const WINDOWS_USER_GESTURE_CASE_ACTIONS = Object.freeze({
+  "11-managed-web-open-and-wait": "presenter-web-open-and-wait",
+  "11b-managed-duplicate-open-guard": "presenter-duplicate-open-guard",
+  "12-managed-store-open-and-wait": "presenter-store-open-and-wait",
+  "13-managed-friends-open-and-wait": "presenter-friends-open-and-wait",
+  "14-managed-dialog-open-and-wait": "presenter-dialog-auto-open-and-wait",
+  "15-managed-shortcut": "presenter-shortcut-open-and-wait",
+  "15-managed-shortcut-keyboard": "presenter-shortcut",
+  "16-managed-checkout-route": "presenter-checkout",
+  "17-managed-profile-open-and-wait": "presenter-profile-open-and-wait",
+  "18-managed-players-open-and-wait": "presenter-players-open-and-wait",
+  "19-managed-community-open-and-wait": "presenter-community-open-and-wait",
+  "20-managed-stats-open-and-wait": "presenter-stats-open-and-wait",
+  "21-managed-achievements-open-and-wait": "presenter-achievements-open-and-wait",
+  "22-managed-user-open-and-wait": "presenter-user-open-and-wait",
+  "30-shortcut-friends-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-web-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-store-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-profile-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-players-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-community-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-stats-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-achievements-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-user-open-and-wait": "presenter-shortcut-open-and-wait",
+  "30-shortcut-dialog-open-and-wait": "presenter-shortcut-open-and-wait",
+  "02-checkout-approval": "presenter-checkout",
+  "03-shortcut-checkout": "presenter-shortcut",
+  "04-shortcut-checkout-open-and-wait": "presenter-shortcut-open-and-wait"
+});
 
 if (windowsCleanupSelfTestOnly) {
   try {
@@ -1014,7 +1060,7 @@ function runWindowsSmokeHelperStaticChecks() {
       helper.includes('if ($AutorunUserGestureGate -and $Action -cnotin @(') &&
       helper.includes('"presenter-web-open-and-wait",') &&
       helper.includes('"presenter-duplicate-open-guard"') &&
-      helper.includes('throw "-AutorunUserGestureGate requires presenter-web-open-and-wait or presenter-duplicate-open-guard."') &&
+      helper.includes('throw "-AutorunUserGestureGate requires one supported single-cycle active action."') &&
       helper.includes("-not $KeepOpenAfterResult") &&
       helper.includes("-not $ControlServer") &&
       helper.includes("-not $ControlHandoffOnly") &&
@@ -1022,7 +1068,7 @@ function runWindowsSmokeHelperStaticChecks() {
       helper.includes('throw "-AutorunUserGestureGate requires keep-open, handoff-only control, and one control file."') &&
       helper.includes("$app.autorunKeepOpenAfterResult -isnot [bool]") &&
       helper.includes("$app.autorunKeepOpenAfterResult -ne [bool]$KeepOpenAfterResult"),
-    "Windows smoke helper must restrict the user-gesture gate to two exact actions in one keep-open handoff-only completion scope"
+    "Windows smoke helper must restrict the user-gesture gate to supported single-cycle active actions in one keep-open handoff-only completion scope"
   );
   const userGestureTargetStart = matrixHelper.indexOf("function Resolve-AutorunUserGestureGateTarget");
   const userGestureTargetEnd = matrixHelper.indexOf(
@@ -1063,12 +1109,10 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(userGestureTargetBlock.includes(expected), `Windows user-gesture target resolver missing ${expected}`);
   }
   for (const expected of [
-    '$Case.id -ceq "11-managed-web-open-and-wait"',
-    '$Case.action -ceq "presenter-web-open-and-wait"',
-    '$userGestureTargetId = "presenter-web-wait"',
-    '$Case.id -ceq "11b-managed-duplicate-open-guard"',
-    '$Case.action -ceq "presenter-duplicate-open-guard"',
-    '$userGestureTargetId = "presenter-duplicate-guard"',
+    "function Resolve-AutorunUserGestureGateCase",
+    "$userGestureCase = Resolve-AutorunUserGestureGateCase -Case $Case",
+    "$userGestureAction = [string]$userGestureCase.action",
+    "$userGestureTargetId = [string]$userGestureCase.targetId",
     "`$script:UserGestureAction = '$userGestureAction'",
     "`$script:UserGestureTargetId = '$userGestureTargetId'",
     "`$script:ExternalForegroundRequestOrdinal = 1"
@@ -1414,6 +1458,8 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     '$SameProcessUserGestureForegroundHandoff = "same-process-user-gesture-v1"',
+    '$AutorunUserGestureGatePolicy = "single-cycle-active-v1"',
+    "autorunUserGestureGatePolicy = $AutorunUserGestureGatePolicy",
     "$SameProcessUserGestureEvidenceSchema",
     "supportedCloseProbeEvidenceSchemas = @(",
     "supportedExternalForegroundTransitions = @($ExternalForegroundTransition)",
@@ -1425,6 +1471,192 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixHelper.includes(expected), `Windows close-probe schema union missing ${expected}`);
   }
+  const userGestureResolverStart = matrixHelper.indexOf(
+    "function Resolve-AutorunUserGestureGateCase"
+  );
+  const userGestureResolverEnd = matrixHelper.indexOf(
+    "\nfunction Test-MatrixCloseProbeRequirements",
+    userGestureResolverStart
+  );
+  assert.ok(
+    userGestureResolverStart >= 0 && userGestureResolverEnd > userGestureResolverStart,
+    "Windows matrix must define one closed user-gesture case resolver"
+  );
+  const userGestureResolver = matrixHelper.slice(
+    userGestureResolverStart,
+    userGestureResolverEnd
+  );
+  assert.equal(
+    Object.keys(WINDOWS_USER_GESTURE_CASE_ACTIONS).length,
+    27,
+    "Windows gate test contract must cover 27 exact single-cycle active cases"
+  );
+  const resolvedCaseArms = new Map(
+    [...userGestureResolver.matchAll(/^\s*"([^"]+)"\s*\{([^{}]*)\}/gm)].map(
+      (match) => [match[1], match[2]]
+    )
+  );
+  assert.deepEqual(
+    [...resolvedCaseArms.keys()].sort(),
+    Object.keys(WINDOWS_USER_GESTURE_CASE_ACTIONS).sort(),
+    "Windows user-gesture resolver must contain exactly the intended 27 case IDs"
+  );
+  for (const [caseId, action] of Object.entries(WINDOWS_USER_GESTURE_CASE_ACTIONS)) {
+    const arm = resolvedCaseArms.get(caseId) || "";
+    assert.ok(
+      arm.includes(`$expectedAction = "${action}"`),
+      `Windows user-gesture resolver missing exact ${caseId} / ${action}`
+    );
+    if (caseId === "11-managed-web-open-and-wait") {
+      assert.ok(
+        arm.includes('$targetId = "presenter-web-wait"'),
+        "Windows managed-web resolver arm must preserve its historical target"
+      );
+    } else if (caseId === "11b-managed-duplicate-open-guard") {
+      assert.ok(
+        arm.includes('$targetId = "presenter-duplicate-guard"'),
+        "Windows duplicate-open resolver arm must preserve its historical target"
+      );
+    } else {
+      assert.ok(
+        !arm.includes("$targetId ="),
+        `Windows expanded resolver arm must use only the generic target fallback: ${caseId}`
+      );
+    }
+  }
+  for (const excludedCaseId of [
+    "10-presenter-ready",
+    "01-checkout-prepare",
+    "23-raw-native-dialog-open-observe",
+    "24-raw-native-user-open-observe",
+    "25-managed-achievement-progress",
+    "26-managed-achievement-unlock",
+    "40-persistent-reuse-three-cycle"
+  ]) {
+    assert.ok(
+      !userGestureResolver.includes(`"${excludedCaseId}"`),
+      `Windows user-gesture resolver must exclude ${excludedCaseId}`
+    );
+  }
+  assert.ok(
+    userGestureResolver.includes('$targetId = "presenter-web-wait"') &&
+      userGestureResolver.includes('$targetId = "presenter-duplicate-guard"') &&
+      userGestureResolver.includes('$targetId = "autorun-user-gesture-target"') &&
+      userGestureResolver.includes("[string]$Case.action -cne $expectedAction"),
+    "Windows user-gesture resolver must preserve historical targets and fail closed before selecting the generic target"
+  );
+
+  const allowedGateActionStart = helper.indexOf("if ($AutorunUserGestureGate -and $Action -cnotin @(");
+  const allowedGateActionEnd = helper.indexOf(
+    "\nif ($AutorunUserGestureGate -and (",
+    allowedGateActionStart
+  );
+  const allowedGateActionBlock = helper.slice(allowedGateActionStart, allowedGateActionEnd);
+  assert.ok(
+    allowedGateActionStart >= 0 && allowedGateActionEnd > allowedGateActionStart,
+    "Windows smoke helper must retain a closed gate action allowlist"
+  );
+  const allowedGateActions = [...allowedGateActionBlock.matchAll(/^\s*"([^"]+)",?\s*$/gm)]
+    .map((match) => match[1])
+    .sort();
+  assert.deepEqual(
+    allowedGateActions,
+    Object.keys(USER_GESTURE_ACTION_TARGETS).sort(),
+    "Windows smoke gate allowlist must contain exactly the 14 supported single-cycle active actions"
+  );
+
+  const matrixLines = matrixHelper.split(/\r?\n/);
+  const getExplicitCaseDeclaration = (caseId) => {
+    const start = matrixLines.findIndex((line) => line.includes(`-Id "${caseId}"`));
+    assert.ok(start >= 0, `Windows matrix case declaration missing ${caseId}`);
+    let end = start + 1;
+    while (
+      end < matrixLines.length &&
+      !/^\s{4}New-(?:Case|ManagedOpenAndWaitCase|ShortcutOpenAndWaitCase)\b/.test(
+        matrixLines[end]
+      )
+    ) {
+      end += 1;
+    }
+    return matrixLines.slice(start, end).join("\n");
+  };
+  for (const caseId of [
+    "11-managed-web-open-and-wait",
+    "11b-managed-duplicate-open-guard",
+    "12-managed-store-open-and-wait",
+    "13-managed-friends-open-and-wait",
+    "14-managed-dialog-open-and-wait",
+    "15-managed-shortcut",
+    "15-managed-shortcut-keyboard",
+    "16-managed-checkout-route",
+    "17-managed-profile-open-and-wait",
+    "18-managed-players-open-and-wait",
+    "19-managed-community-open-and-wait",
+    "20-managed-stats-open-and-wait",
+    "21-managed-achievements-open-and-wait",
+    "22-managed-user-open-and-wait",
+    "02-checkout-approval",
+    "03-shortcut-checkout",
+    "04-shortcut-checkout-open-and-wait"
+  ]) {
+    assert.ok(
+      getExplicitCaseDeclaration(caseId).includes("-AutorunUserGestureGate"),
+      `Windows matrix active case must enable the user-gesture gate: ${caseId}`
+    );
+  }
+  for (const caseId of [
+    "10-presenter-ready",
+    "01-checkout-prepare",
+    "23-raw-native-dialog-open-observe",
+    "24-raw-native-user-open-observe",
+    "25-managed-achievement-progress",
+    "26-managed-achievement-unlock",
+    "40-persistent-reuse-three-cycle"
+  ]) {
+    assert.ok(
+      !getExplicitCaseDeclaration(caseId).includes("-AutorunUserGestureGate"),
+      `Windows matrix non-single-cycle case must remain outside the user-gesture gate: ${caseId}`
+    );
+  }
+  const publicShortcutCasesStart = matrixHelper.indexOf("function New-PublicShortcutRouteCases");
+  const publicShortcutCasesEnd = matrixHelper.indexOf(
+    "\nfunction Get-MatrixCases",
+    publicShortcutCasesStart
+  );
+  const publicShortcutCasesBlock = matrixHelper.slice(
+    publicShortcutCasesStart,
+    publicShortcutCasesEnd
+  );
+  assert.ok(
+    publicShortcutCasesBlock.includes("-AutorunUserGestureGate") &&
+      publicShortcutCasesBlock.includes('"30-shortcut-{0}-open-and-wait"'),
+    "Windows public shortcut route constructor must gate its exact ten generated cases"
+  );
+  const publicShortcutTargetsBlock = publicShortcutCasesBlock.match(
+    /\$targets = @\(([\s\S]*?)\n\s*\)/
+  )?.[1];
+  assert.ok(publicShortcutTargetsBlock, "Windows public shortcut route target list is missing");
+  const publicShortcutTargets = [
+    ...publicShortcutTargetsBlock.matchAll(/^\s*"([^"]+)",?\s*$/gm)
+  ]
+    .map((match) => match[1])
+    .sort();
+  assert.deepEqual(
+    publicShortcutTargets,
+    [
+      "friends",
+      "web",
+      "store",
+      "profile",
+      "players",
+      "community",
+      "stats",
+      "achievements",
+      "user",
+      "dialog"
+    ].sort(),
+    "Windows public shortcut route constructor must retain exactly ten supported targets"
+  );
   const matrixCaseStart = matrixHelper.indexOf("function Invoke-MatrixCase");
   const matrixCaseEnd = matrixHelper.indexOf("\nResolve-SmokeExe", matrixCaseStart);
   assert.ok(
@@ -2748,16 +2980,43 @@ function runElectronSmokeActionStaticChecks() {
     ["main", main],
     ["preload", preload]
   ]) {
+    const mappingBlock = source.match(
+      /const AUTORUN_USER_GESTURE_GATE_TARGETS = Object\.freeze\(\{([\s\S]*?)\n\}\);/
+    )?.[1];
+    assert.ok(mappingBlock, `Electron smoke ${label} closed gate mapping block is missing`);
+    const actualMappings = Object.fromEntries(
+      [...mappingBlock.matchAll(/^\s*"([^"]+)":\s*"([^"]+)",?\s*$/gm)].map(
+        (match) => [match[1], match[2]]
+      )
+    );
+    assert.deepEqual(
+      actualMappings,
+      USER_GESTURE_ACTION_TARGETS,
+      `Electron smoke ${label} must retain exactly the 14 closed action-to-target mappings`
+    );
     for (const expected of [
-      "const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({",
-      '"presenter-web-open-and-wait": "presenter-web-wait"',
-      '"presenter-duplicate-open-guard": "presenter-duplicate-guard"',
       'typeof action !== "string"',
       "Object.prototype.hasOwnProperty.call(AUTORUN_USER_GESTURE_GATE_TARGETS, action)"
     ]) {
-      assert.ok(source.includes(expected), `Electron smoke ${label} closed gate mapping missing ${expected}`);
+      assert.ok(source.includes(expected), `Electron smoke ${label} closed gate resolver missing ${expected}`);
     }
   }
+  const genericGateButton = html.match(
+    /<button id="autorun-user-gesture-target"[^>]*>Run Gated Action<\/button>/
+  )?.[0];
+  assert.ok(genericGateButton, "Electron smoke UI must include the inert generic gate target");
+  assert.ok(
+    genericGateButton.includes('type="button"') &&
+      genericGateButton.includes(" hidden") &&
+      !/\bonclick=|\bdata-/.test(genericGateButton) &&
+      (html.match(/autorun-user-gesture-target/g) || []).length === 1,
+    "Electron smoke generic gate target must start hidden and carry no main-world action dispatcher"
+  );
+  assert.ok(
+    preload.includes('if (button.id === "autorun-user-gesture-target") {') &&
+      preload.includes("button.hidden = false"),
+    "Electron smoke preload must reveal the generic gate target before measuring ready evidence"
+  );
 
   const gateArmStart = main.indexOf("function armAutorunUserGestureGate");
   const gateArmEnd = main.indexOf("\nfunction handleAutorunUserGestureGateReady", gateArmStart);
@@ -3148,7 +3407,21 @@ function runElectronPreloadUserGestureGateSelfTest() {
       targetId: "presenter-duplicate-guard",
       otherAction: "presenter-web-open-and-wait",
       otherTargetId: "presenter-web-wait"
-    }
+    },
+    ...Object.entries(USER_GESTURE_ACTION_TARGETS)
+      .filter(([, targetId]) => targetId === GENERIC_USER_GESTURE_GATE_TARGET)
+      .map(([action, targetId]) => ({
+        action,
+        targetId,
+        otherAction:
+          action === "presenter-store-open-and-wait"
+            ? "presenter-friends-open-and-wait"
+            : "presenter-web-open-and-wait",
+        otherTargetId:
+          action === "presenter-store-open-and-wait"
+            ? GENERIC_USER_GESTURE_GATE_TARGET
+            : "presenter-web-wait"
+      }))
   ];
 
   for (const gateCase of cases) {
@@ -3156,6 +3429,7 @@ function runElectronPreloadUserGestureGateSelfTest() {
   }
 
   function runPreloadGateCase({ action, targetId, otherAction, otherTargetId }) {
+    const sharedTargetRetarget = targetId === otherTargetId;
     const ipcListeners = new Map();
     const ipcInvocations = [];
     const buttonListeners = new Map();
@@ -3171,6 +3445,7 @@ function runElectronPreloadUserGestureGateSelfTest() {
     };
     const createButton = (id) => ({
       id,
+      hidden: id === GENERIC_USER_GESTURE_GATE_TARGET,
       isConnected: true,
       disabled: false,
       getBoundingClientRect: () => ({ ...rect }),
@@ -3243,6 +3518,9 @@ function runElectronPreloadUserGestureGateSelfTest() {
     const armListener = ipcListeners.get("steam-smoke:autorun-user-gesture-gate-arm");
     assert.equal(typeof armListener, "function", "Electron smoke preload did not register its private arm listener");
     const nonce = "a".repeat(64);
+    if (targetId === GENERIC_USER_GESTURE_GATE_TARGET) {
+      assert.equal(buttons.get(targetId).hidden, true);
+    }
     for (const invalidAction of [
       action.toUpperCase(),
       `${action} `,
@@ -3267,7 +3545,16 @@ function runElectronPreloadUserGestureGateSelfTest() {
     assert.deepEqual(Object.keys(armNotice), ["action"]);
     assert.equal(armNotice.action, action);
     assert.deepEqual(buttonLookups, [targetId]);
-    assert.equal(buttonListeners.has(otherTargetId), false, "The other action button must remain untouched");
+    if (targetId === GENERIC_USER_GESTURE_GATE_TARGET) {
+      assert.equal(
+        buttons.get(targetId).hidden,
+        false,
+        "Electron smoke preload must reveal the generic gate target before ready IPC"
+      );
+    }
+    if (!sharedTargetRetarget) {
+      assert.equal(buttonListeners.has(otherTargetId), false, "The other action button must remain untouched");
+    }
     const { listener: clickListener, options: clickListenerOptions } = buttonListeners.get(targetId);
     assert.equal(clickListenerOptions.capture, true);
     assert.equal(clickListenerOptions.once, true);
@@ -3289,7 +3576,15 @@ function runElectronPreloadUserGestureGateSelfTest() {
       1,
       "A second supported action must not retarget an armed gate"
     );
-    assert.equal(buttonListeners.has(otherTargetId), false);
+    if (!sharedTargetRetarget) {
+      assert.equal(buttonListeners.has(otherTargetId), false);
+    } else {
+      assert.equal(
+        buttonListeners.get(targetId).listener,
+        clickListener,
+        "A second generic action sharing the target must not replace the armed click listener"
+      );
+    }
 
     const click = {
       currentTarget: buttons.get(targetId),
@@ -3299,12 +3594,14 @@ function runElectronPreloadUserGestureGateSelfTest() {
       clientX: 160,
       clientY: 58
     };
-    clickListener({ ...click, currentTarget: buttons.get(otherTargetId) });
-    assert.equal(
-      ipcInvocations.filter((entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-consume").length,
-      0,
-      "A click from the other action button must not consume the gate"
-    );
+    if (!sharedTargetRetarget) {
+      clickListener({ ...click, currentTarget: buttons.get(otherTargetId) });
+      assert.equal(
+        ipcInvocations.filter((entry) => entry.channel === "steam-smoke:autorun-user-gesture-gate-consume").length,
+        0,
+        "A click from the other action button must not consume the gate"
+      );
+    }
     clickListener(click);
     clickListener(click);
     const consumeCalls = ipcInvocations.filter(

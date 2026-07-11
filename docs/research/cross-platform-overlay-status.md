@@ -352,20 +352,34 @@ nonforeground rerun after the ordinary foreground path passed. Full-desktop
 PNGs remain private local operational evidence and are not commit or publication
 artifacts; the durable conclusions above come from sanitized structured evidence.
 
-The bounded follow-up worktree now extends that same gate to only
-`11b-managed-duplicate-open-guard` through exact case-owned action/button
-mapping. Main and the isolated preload independently map the web and duplicate
-actions, the generated probe binds the selected action and target, and the
-semantic auditor derives its expectation from the case rather than reported
-evidence. Historical schema-2 web and ungated duplicate artifacts remain
-auditable; duplicate schema 2, cross-action/target substitutions, coherent wrong
-ordinals, missing-manifest bad evidence, and duplicate guard events fail. Package
-smoke, all 196 tests, API/platform/native checks, syntax, semantic fixtures,
-diff checks, native PowerShell 5.1 full and generated-script parsing, embedded
-C# compilation, and strict two-action marker/ack tests pass. No live duplicate
-case ran in this implementation slice. Repeat only after commit, exact CI,
-signing, and transactional deployment, then run the single focused public
-duplicate case.
+The exact signed `f46e8ff` follow-up then settled duplicate-open suppression and
+both passive notification routes. The duplicate case launched already
+foreground, used the mutually exclusive schema-3 not-required branch, and
+proved every generic, named, shortcut, and checkout attempt stayed suppressed
+without running the checkout operation before completing close, park, exact
+focus return, three-way D3D11, crash, cleanup, rollback, and Steam-continuity
+gates. Focused progress and unlock cases separately passed the audited Windows
+needs-present polling and parking contract.
+
+The current grouped worktree extends the proved same-process gate across the
+remaining single-cycle active surface in one coherent slice: 14 distinct
+actions and 27 exact managed, public shortcut-route, and synthetic-checkout
+case/action pairs. Web and duplicate retain their historical dedicated buttons;
+new actions share one hidden inert button revealed only by the isolated preload
+after a valid arm. Readiness, checkout prepare, raw observe, passive
+notifications, and persistent reuse remain excluded. The matrix emits
+`single-cycle-active-v1`; the independent auditor requires schema 3 and complete
+gate evidence for every mapped case under that marker, validates both configured
+and actually resolved shortcut target types, and rejects downgraded, malformed,
+cross-case, extra-event, or gated-excluded evidence. Marker-absent historical
+artifacts remain auditable. Package smoke, all 196 tests, API/platform/native
+checks, syntax, semantic fixtures, and diff checks pass. Native Windows
+PowerShell 5.1 parsed both full scripts and four representative generated
+probes, exercised all 27 exact resolver pairs and exclusions, and compiled the
+embedded C#. No app launch, deployment, addon rebuild, Steam restart, or live
+route claim occurred in this implementation slice. Commit and exact CI must
+pass before one signed transactional deployment and broad managed,
+shortcut-route, and public checkout rerun.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

@@ -2043,6 +2043,20 @@ continuity. `WIN-FOCUS-001` is settled and a broker is not justified. The
 nonforeground WinEvent/marker/ack fallback remains fail-closed tested evidence
 infrastructure, not a product mechanism that needs an artificial live rerun.
 
+The next Windows coverage slice applies that proved mechanism to the complete
+single-cycle active matrix boundary instead of adding route-specific focus
+machinery. Main, isolated preload, helper, matrix, and auditor use independent
+closed mappings for 14 actions and 27 exact managed, public shortcut-route, and
+synthetic-checkout cases. Newly gated actions share one hidden inert renderer
+button; web and duplicate retain their historical targets. Current manifests
+identify this contract as `single-cycle-active-v1`, requiring schema-3 gate
+evidence and exact configured/resolved shortcut targets while preserving
+marker-absent historical audits. Readiness, prepare-only checkout, raw observe,
+passive notifications, and persistent reuse stay outside the contract.
+Persistent reuse still needs its separate ordered three-cycle confirmation
+design; weakening the one-cycle handoff-only rule would be an architecture
+regression, not route parity.
+
 The same run established the Windows input coordinate invariant more precisely.
 Process and thread per-monitor-v2 awareness plus physical native-host/panel
 bounds produced a physical-resolution screenshot, but the remaining literal

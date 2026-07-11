@@ -53,6 +53,22 @@ const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2, 3]);
 const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
 const SAME_PROCESS_USER_GESTURE_HANDOFF = "same-process-user-gesture-v1";
 const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
+const USER_GESTURE_GATE_POLICY = "single-cycle-active-v1";
+const GENERIC_USER_GESTURE_GATE_TARGET = "autorun-user-gesture-target";
+const USER_GESTURE_SCHEMA_3_ONLY = Object.freeze([3]);
+const SUPPORTED_SHORTCUT_TARGETS = new Set([
+  "friends",
+  "web",
+  "store",
+  "profile",
+  "players",
+  "community",
+  "stats",
+  "achievements",
+  "user",
+  "dialog",
+  "checkout"
+]);
 const USER_GESTURE_GATE_EXPECTATIONS = Object.freeze({
   "11-managed-web-open-and-wait": Object.freeze({
     action: "presenter-web-open-and-wait",
@@ -63,6 +79,143 @@ const USER_GESTURE_GATE_EXPECTATIONS = Object.freeze({
     action: "presenter-duplicate-open-guard",
     targetId: "presenter-duplicate-guard",
     evidenceSchemas: Object.freeze([3])
+  }),
+  "12-managed-store-open-and-wait": Object.freeze({
+    action: "presenter-store-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "13-managed-friends-open-and-wait": Object.freeze({
+    action: "presenter-friends-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "14-managed-dialog-open-and-wait": Object.freeze({
+    action: "presenter-dialog-auto-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "15-managed-shortcut": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "15-managed-shortcut-keyboard": Object.freeze({
+    action: "presenter-shortcut",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "16-managed-checkout-route": Object.freeze({
+    action: "presenter-checkout",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "17-managed-profile-open-and-wait": Object.freeze({
+    action: "presenter-profile-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "18-managed-players-open-and-wait": Object.freeze({
+    action: "presenter-players-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "19-managed-community-open-and-wait": Object.freeze({
+    action: "presenter-community-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "20-managed-stats-open-and-wait": Object.freeze({
+    action: "presenter-stats-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "21-managed-achievements-open-and-wait": Object.freeze({
+    action: "presenter-achievements-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "22-managed-user-open-and-wait": Object.freeze({
+    action: "presenter-user-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "30-shortcut-friends-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "friends"
+  }),
+  "30-shortcut-web-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "web"
+  }),
+  "30-shortcut-store-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "store"
+  }),
+  "30-shortcut-profile-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "profile"
+  }),
+  "30-shortcut-players-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "players"
+  }),
+  "30-shortcut-community-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "community"
+  }),
+  "30-shortcut-stats-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "stats"
+  }),
+  "30-shortcut-achievements-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "achievements"
+  }),
+  "30-shortcut-user-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "user"
+  }),
+  "30-shortcut-dialog-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "dialog"
+  }),
+  "02-checkout-approval": Object.freeze({
+    action: "presenter-checkout",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY
+  }),
+  "03-shortcut-checkout": Object.freeze({
+    action: "presenter-shortcut",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "checkout"
+  }),
+  "04-shortcut-checkout-open-and-wait": Object.freeze({
+    action: "presenter-shortcut-open-and-wait",
+    targetId: GENERIC_USER_GESTURE_GATE_TARGET,
+    evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+    shortcutTarget: "checkout"
   })
 });
 const WINDOWS_CLOSE_SCALE_TOLERANCE = 0.02;
@@ -368,6 +521,13 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
+  if (Object.prototype.hasOwnProperty.call(manifest, "autorunUserGestureGatePolicy")) {
+    expect(
+      manifest.autorunUserGestureGatePolicy === USER_GESTURE_GATE_POLICY,
+      `matrix manifest autorunUserGestureGatePolicy is ${USER_GESTURE_GATE_POLICY}`,
+      failures
+    );
+  }
   for (const field of ["shortcutName", "shortcutExe", "shortcutStartDir", "shortcutLaunchPrefix", "javaScriptRunnerExe"]) {
     expect(manifest[field] === undefined, `matrix manifest omits raw ${field}`, failures);
   }
@@ -487,6 +647,27 @@ function validateManifest(manifest, failures) {
   }
   expect(Array.isArray(manifest.cases), "matrix manifest cases is an array", failures);
   if (Array.isArray(manifest.cases)) {
+    const enforcesCurrentUserGestureGatePolicy =
+      manifest.autorunUserGestureGatePolicy === USER_GESTURE_GATE_POLICY;
+    const currentPolicyHasGatedCase =
+      enforcesCurrentUserGestureGatePolicy &&
+      manifest.cases.some((entry) => Boolean(getUserGestureGateExpectation(entry?.id)));
+    if (currentPolicyHasGatedCase) {
+      expect(
+        manifest.closeProbe === true,
+        "matrix manifest current gate policy requires the Windows close probe",
+        failures
+      );
+      expect(
+        manifest.closeProbeEvidenceSchema === 2 &&
+          Array.isArray(manifest.supportedCloseProbeEvidenceSchemas) &&
+          manifest.supportedCloseProbeEvidenceSchemas.length === 2 &&
+          manifest.supportedCloseProbeEvidenceSchemas.includes(2) &&
+          manifest.supportedCloseProbeEvidenceSchemas.includes(3),
+        "matrix manifest current gate policy records the schema-2/schema-3 evidence union",
+        failures
+      );
+    }
     expect(
       manifest.expectedCaseCount === manifest.cases.length,
       "matrix manifest expectedCaseCount matches cases length",
@@ -501,6 +682,38 @@ function validateManifest(manifest, failures) {
         seen.add(entry.id);
       }
       if (entry && entry.action) {
+        const userGestureExpectation = getUserGestureGateExpectation(entry.id);
+        if (enforcesCurrentUserGestureGatePolicy) {
+          expect(
+            entry.autorunUserGestureGate === Boolean(userGestureExpectation),
+            userGestureExpectation
+              ? `matrix manifest current gate policy requires user-gesture gate for exact case ${entry.id}`
+              : `matrix manifest current gate policy excludes user-gesture gate for case ${entry.id}`,
+            failures
+          );
+          if (userGestureExpectation) {
+            expect(
+              entry.action === userGestureExpectation.action,
+              `matrix manifest current gate policy binds exact action for case ${entry.id}`,
+              failures
+            );
+            expect(
+              entry.closeProbeEvidenceSchema === 3 &&
+                entry.closeProbeForegroundHandoff === SAME_PROCESS_USER_GESTURE_HANDOFF &&
+                entry.externalForegroundTransition === EXTERNAL_FOREGROUND_TRANSITION,
+              `matrix manifest current gate policy requires schema-3 user-gesture evidence for case ${entry.id}`,
+              failures
+            );
+          } else {
+            expect(
+              entry.closeProbeEvidenceSchema === manifest.closeProbeEvidenceSchema &&
+                entry.closeProbeForegroundHandoff === OWNER_PROCESS_FOREGROUND_HANDOFF &&
+                entry.externalForegroundTransition === "",
+              `matrix manifest current gate policy retains default close-probe evidence for case ${entry.id}`,
+              failures
+            );
+          }
+        }
         if (SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS.has(manifest.closeProbeEvidenceSchema)) {
           expect(
             SUPPORTED_CLOSE_PROBE_INPUTS.has(entry.expectedCloseProbeInput),
@@ -1062,6 +1275,51 @@ function validateManifestCoverage(
     }
     expect(row.action === expected.action, `matrix manifest case ${expected.id} action matches result`, failures);
     expect(row.appId === manifest.appId, `matrix manifest case ${expected.id} App ID matches manifest`, failures);
+    const userGestureExpectation = getUserGestureGateExpectation(expected.id);
+    const currentPolicyRequiresUserGestureGate =
+      manifest.autorunUserGestureGatePolicy === USER_GESTURE_GATE_POLICY &&
+      Boolean(userGestureExpectation);
+    if (currentPolicyRequiresUserGestureGate) {
+      expect(
+        manifest.closeProbe === true &&
+          expected.autorunUserGestureGate === true &&
+          row.closeProbe.sameProcessUserGestureEvidencePresent === true &&
+          row.closeProbe.sameProcessUserGestureEvidenceValid === true,
+        `matrix manifest current gate policy requires audited user-gesture evidence for case ${expected.id}`,
+        failures
+      );
+    }
+    const isShortcutAction =
+      expected.action === "presenter-shortcut" ||
+      expected.action === "presenter-shortcut-open-and-wait";
+    if (isShortcutAction) {
+      expect(
+        SUPPORTED_SHORTCUT_TARGETS.has(expected.shortcutTarget),
+        `matrix manifest case ${expected.id} records a supported shortcut target`,
+        failures
+      );
+      expect(
+        row.shortcutOpenEventCount === 1 &&
+          row.shortcutOpenTargets[0] === expected.shortcutTarget &&
+          row.shortcutOpenOverlayTargetTypes[0] === expected.shortcutTarget,
+        `matrix manifest case ${expected.id} opened exactly its configured shortcut target`,
+        failures
+      );
+    }
+    if (userGestureExpectation?.shortcutTarget) {
+      expect(
+        expected.shortcutTarget === userGestureExpectation.shortcutTarget,
+        `matrix manifest case ${expected.id} records its exact case-owned shortcut target`,
+        failures
+      );
+      expect(
+        row.shortcutOpenEventCount === 1 &&
+          row.shortcutOpenTargets[0] === userGestureExpectation.shortcutTarget &&
+          row.shortcutOpenOverlayTargetTypes[0] === userGestureExpectation.shortcutTarget,
+        `matrix manifest case ${expected.id} opened exactly its case-owned shortcut target`,
+        failures
+      );
+    }
     if (["steam-launch", "steam-app"].includes(manifest.launchMode)) {
       expect(row.steamLaunch === true, `matrix manifest case ${expected.id} was Steam-launched`, failures);
       expect(
@@ -3219,6 +3477,17 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
   const crashDiagnostics = objectOrEmpty(snapshot.crashDiagnostics);
   const action = objectOrEmpty(result.action);
   const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+  const shortcutOpenEvents = events.filter(
+    (event) => event && event.type === "overlay:shortcut-open"
+  );
+  const shortcutOpenTargets = shortcutOpenEvents.map((event) => {
+    const target = objectOrEmpty(event.payload).target;
+    return typeof target === "string" ? target : "";
+  });
+  const shortcutOpenOverlayTargetTypes = shortcutOpenEvents.map((event) => {
+    const type = objectOrEmpty(objectOrEmpty(event.payload).overlayTarget).type;
+    return typeof type === "string" ? type : "";
+  });
   const overlayActiveEvents = events.filter(isOverlayActiveEvent).length;
   const overlayInactiveEvents = events.filter(isOverlayInactiveEvent).length;
   const crashDumps = Array.isArray(crashDiagnostics.crashDumps) ? crashDiagnostics.crashDumps : [];
@@ -3300,6 +3569,15 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
       `${caseName}: result action matches its exact case-owned action`,
       failures
     );
+    if (userGestureExpectation.shortcutTarget) {
+      expect(
+        shortcutOpenEvents.length === 1 &&
+          shortcutOpenTargets[0] === userGestureExpectation.shortcutTarget &&
+          shortcutOpenOverlayTargetTypes[0] === userGestureExpectation.shortcutTarget,
+        `${caseName}: result opened exactly its case-owned shortcut target`,
+        failures
+      );
+    }
   }
   if (closeProbe.sameProcessUserGestureEvidencePresent) {
     expect(
@@ -3432,6 +3710,9 @@ function summarizeCaseResult(caseName, result, resultLog, renderingHealth = null
     closeProbeInput: closeProbe.input,
     closeProbe,
     eventTypes: events.map((event) => event && event.type).filter(Boolean),
+    shortcutOpenEventCount: shortcutOpenEvents.length,
+    shortcutOpenTargets,
+    shortcutOpenOverlayTargetTypes,
     wait,
     crashDumpCount: crashDumps.length,
     fatalLifecycleEventCount: fatalLifecycleEvents.length,
@@ -3688,6 +3969,7 @@ function summarizeManifest(manifest) {
     overlayIsolateChildProcesses: manifest.overlayIsolateChildProcesses || "",
     expectedNativeHostBackend: manifest.expectedNativeHostBackend || "",
     nativePathOverride: Boolean(manifest.nativePathOverride),
+    autorunUserGestureGatePolicy: String(manifest.autorunUserGestureGatePolicy || ""),
     closeProbeEvidenceSchema: Number(manifest.closeProbeEvidenceSchema || 0),
     closeProbeForegroundHandoff: String(manifest.closeProbeForegroundHandoff || ""),
     requireMicroTxnCallback: manifest.requireMicroTxnCallback === true,
@@ -5991,6 +6273,55 @@ function assertFixtureSummaryFailure(tempRoot, name, writeFixture, options, expe
 }
 
 function runSelfTest() {
+  const expectedUserGestureGateExpectations = [
+    ["11-managed-web-open-and-wait", "presenter-web-open-and-wait", "presenter-web-wait", [2, 3], ""],
+    ["11b-managed-duplicate-open-guard", "presenter-duplicate-open-guard", "presenter-duplicate-guard", [3], ""],
+    ["12-managed-store-open-and-wait", "presenter-store-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["13-managed-friends-open-and-wait", "presenter-friends-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["14-managed-dialog-open-and-wait", "presenter-dialog-auto-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["15-managed-shortcut", "presenter-shortcut-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["15-managed-shortcut-keyboard", "presenter-shortcut", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["16-managed-checkout-route", "presenter-checkout", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["17-managed-profile-open-and-wait", "presenter-profile-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["18-managed-players-open-and-wait", "presenter-players-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["19-managed-community-open-and-wait", "presenter-community-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["20-managed-stats-open-and-wait", "presenter-stats-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["21-managed-achievements-open-and-wait", "presenter-achievements-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["22-managed-user-open-and-wait", "presenter-user-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ...[
+      "friends",
+      "web",
+      "store",
+      "profile",
+      "players",
+      "community",
+      "stats",
+      "achievements",
+      "user",
+      "dialog"
+    ].map((shortcutTarget) => [
+      `30-shortcut-${shortcutTarget}-open-and-wait`,
+      "presenter-shortcut-open-and-wait",
+      GENERIC_USER_GESTURE_GATE_TARGET,
+      [3],
+      shortcutTarget
+    ]),
+    ["02-checkout-approval", "presenter-checkout", GENERIC_USER_GESTURE_GATE_TARGET, [3], ""],
+    ["03-shortcut-checkout", "presenter-shortcut", GENERIC_USER_GESTURE_GATE_TARGET, [3], "checkout"],
+    ["04-shortcut-checkout-open-and-wait", "presenter-shortcut-open-and-wait", GENERIC_USER_GESTURE_GATE_TARGET, [3], "checkout"]
+  ].sort((left, right) => left[0].localeCompare(right[0]));
+  const actualUserGestureGateExpectations = Object.entries(USER_GESTURE_GATE_EXPECTATIONS)
+    .map(([caseId, expectation]) => [
+      caseId,
+      expectation.action,
+      expectation.targetId,
+      [...expectation.evidenceSchemas],
+      expectation.shortcutTarget || ""
+    ])
+    .sort((left, right) => left[0].localeCompare(right[0]));
+  assert.equal(actualUserGestureGateExpectations.length, 27);
+  assert.deepEqual(actualUserGestureGateExpectations, expectedUserGestureGateExpectations);
+
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-summary-"));
   try {
     const blockedRoot = path.join(tempRoot, "blocked");
@@ -6236,6 +6567,289 @@ function runSelfTest() {
         .externalForegroundControllerAcknowledgedEventCount,
       1
     );
+
+    for (const [name, options] of [
+      [
+        "generic-managed-requested",
+        { caseId: "12-managed-store-open-and-wait", userGestureGate: true }
+      ],
+      [
+        "generic-managed-already-foreground",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          userGestureGate: true,
+          alreadyForeground: true
+        }
+      ],
+      [
+        "public-shortcut-route",
+        { caseId: "30-shortcut-friends-open-and-wait", userGestureGate: true }
+      ],
+      [
+        "dynamic-managed-shortcut",
+        {
+          caseId: "15-managed-shortcut",
+          manifestShortcutTarget: "friends",
+          reportedShortcutTarget: "friends",
+          reportedShortcutOverlayTargetType: "friends",
+          userGestureGate: true
+        }
+      ],
+      [
+        "checkout-approval",
+        { caseId: "02-checkout-approval", userGestureGate: true }
+      ],
+      [
+        "checkout-keyboard-shortcut",
+        {
+          caseId: "03-shortcut-checkout",
+          requiredEvents: [
+            "overlay:presenter-shortcut-ready",
+            "overlay:shortcut-open",
+            "overlay:presenter-wait-shown",
+            "overlay:presenter-wait-closed",
+            "overlay:presenter-parked"
+          ],
+          events: [
+            { type: "overlay:presenter-shortcut-ready" },
+            {
+              type: "overlay:shortcut-open",
+              payload: { target: "checkout", overlayTarget: { type: "checkout" } }
+            },
+            { type: "overlay:presenter-wait-shown" },
+            { type: "callback:overlay-activated", payload: { active: true } },
+            { type: "overlay:presenter-wait-closed" },
+            { type: "callback:overlay-activated", payload: { active: false } },
+            { type: "overlay:presenter-parked" }
+          ],
+          userGestureGate: true,
+          expectedCloseProbeInput: "toggle-sendinput"
+        }
+      ]
+    ]) {
+      const root = path.join(tempRoot, `expanded-user-gesture-${name}`);
+      writeManagedWebCloseEvidenceFixture(root, options);
+      const summary = summarizeWindowsOverlayMatrixArtifacts(root);
+      assert.deepEqual(summary.failures, [], JSON.stringify(summary.caseSummaries[0], null, 2));
+      assert.equal(summary.caseSummaries[0].closeProbe.sameProcessUserGestureEvidenceValid, true);
+      assert.equal(summary.caseSummaries[0].closeProbe.evidenceSchema, 3);
+    }
+
+    const historicalExpandedUngatedRoot = path.join(
+      tempRoot,
+      "expanded-user-gesture-historical-ungated"
+    );
+    writeManagedWebCloseEvidenceFixture(historicalExpandedUngatedRoot, {
+      caseId: "12-managed-store-open-and-wait"
+    });
+    const historicalExpandedUngatedSummary = summarizeWindowsOverlayMatrixArtifacts(
+      historicalExpandedUngatedRoot
+    );
+    assert.deepEqual(historicalExpandedUngatedSummary.failures, []);
+    assert.equal(
+      historicalExpandedUngatedSummary.caseSummaries[0].closeProbe
+        .sameProcessUserGestureEvidencePresent,
+      false
+    );
+
+    for (const [name, options, failure] of [
+      [
+        "generic-wrong-action",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          action: "presenter-friends-open-and-wait",
+          userGestureGate: true
+        },
+        "result action matches its exact case-owned action"
+      ],
+      [
+        "generic-wrong-target",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          reportedUserGestureTargetId: "presenter-web-wait",
+          userGestureGate: true
+        },
+        "user-gesture evidence matches its exact case-owned action and target"
+      ],
+      [
+        "generic-schema-2",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          closeProbeEvidenceSchema: 2,
+          legacyUserGestureSchema2: true,
+          userGestureGate: true
+        },
+        "uses its exact supported user-gesture action and evidence schema"
+      ],
+      [
+        "current-policy-missing-gate",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          closeProbeEvidenceSchema: 2,
+          currentUserGestureGatePolicy: true
+        },
+        "current gate policy requires user-gesture gate for exact case"
+      ],
+      [
+        "current-policy-false-gate",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          closeProbeEvidenceSchema: 2,
+          currentUserGestureGatePolicy: true,
+          manifestAutorunUserGestureGateFalse: true
+        },
+        "current gate policy requires user-gesture gate for exact case"
+      ],
+      [
+        "unknown-policy-string",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          reportedUserGestureGatePolicy: "wrong-policy",
+          userGestureGate: true
+        },
+        `autorunUserGestureGatePolicy is ${USER_GESTURE_GATE_POLICY}`
+      ],
+      [
+        "unknown-policy-type",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          reportedUserGestureGatePolicy: 1,
+          userGestureGate: true
+        },
+        `autorunUserGestureGatePolicy is ${USER_GESTURE_GATE_POLICY}`
+      ],
+      [
+        "current-policy-close-probe-false",
+        {
+          caseId: "12-managed-store-open-and-wait",
+          manifestCloseProbeFalse: true,
+          userGestureGate: true
+        },
+        "current gate policy requires the Windows close probe"
+      ],
+      [
+        "current-policy-web-schema-2",
+        {
+          caseId: "11-managed-web-open-and-wait",
+          closeProbeEvidenceSchema: 2,
+          currentUserGestureGatePolicy: true,
+          legacyUserGestureSchema2: true,
+          userGestureGate: true
+        },
+        "current gate policy requires schema-3 user-gesture evidence"
+      ],
+      [
+        "public-shortcut-manifest-target",
+        {
+          caseId: "30-shortcut-friends-open-and-wait",
+          manifestShortcutTarget: "web",
+          userGestureGate: true
+        },
+        "records its exact case-owned shortcut target"
+      ],
+      [
+        "public-shortcut-result-target",
+        {
+          caseId: "30-shortcut-friends-open-and-wait",
+          reportedShortcutTarget: "web",
+          userGestureGate: true
+        },
+        "result opened exactly its case-owned shortcut target"
+      ],
+      [
+        "public-shortcut-extra-missing-target",
+        {
+          caseId: "30-shortcut-friends-open-and-wait",
+          extraShortcutOpenWithoutTarget: true,
+          userGestureGate: true
+        },
+        "result opened exactly its case-owned shortcut target"
+      ],
+      [
+        "public-shortcut-wrong-resolved-target",
+        {
+          caseId: "30-shortcut-friends-open-and-wait",
+          reportedShortcutOverlayTargetType: "web",
+          userGestureGate: true
+        },
+        "result opened exactly its case-owned shortcut target"
+      ],
+      [
+        "public-shortcut-missing-resolved-target",
+        {
+          caseId: "30-shortcut-friends-open-and-wait",
+          omitShortcutOverlayTarget: true,
+          userGestureGate: true
+        },
+        "result opened exactly its case-owned shortcut target"
+      ],
+      [
+        "dynamic-shortcut-wrong-resolved-target",
+        {
+          caseId: "15-managed-shortcut",
+          manifestShortcutTarget: "friends",
+          reportedShortcutTarget: "friends",
+          reportedShortcutOverlayTargetType: "web",
+          userGestureGate: true
+        },
+        "opened exactly its configured shortcut target"
+      ],
+      [
+        "case-variant",
+        {
+          caseId: "12-Managed-Store-Open-And-Wait",
+          action: "presenter-store-open-and-wait",
+          reportedUserGestureTargetId: GENERIC_USER_GESTURE_GATE_TARGET,
+          userGestureGate: true
+        },
+        "user-gesture evidence belongs to an exact supported case"
+      ],
+      [
+        "checkout-prepare",
+        { caseId: "01-checkout-prepare", action: "presenter-checkout", userGestureGate: true },
+        "user-gesture evidence belongs to an exact supported case"
+      ],
+      [
+        "readiness",
+        { caseId: "10-presenter-ready", action: "presenter-ready", userGestureGate: true },
+        "user-gesture evidence belongs to an exact supported case"
+      ],
+      [
+        "raw-observe",
+        {
+          caseId: "23-raw-native-dialog-open-observe",
+          action: "presenter-dialog",
+          userGestureGate: true
+        },
+        "user-gesture evidence belongs to an exact supported case"
+      ],
+      [
+        "passive-notification",
+        {
+          caseId: "25-managed-achievement-progress",
+          action: "presenter-achievement-progress",
+          userGestureGate: true
+        },
+        "user-gesture evidence belongs to an exact supported case"
+      ],
+      [
+        "persistent-reuse",
+        {
+          caseId: "40-persistent-reuse-three-cycle",
+          action: PERSISTENT_REUSE_ACTION,
+          userGestureGate: true
+        },
+        "user-gesture evidence belongs to an exact supported case"
+      ]
+    ]) {
+      assertFixtureSummaryFailure(
+        tempRoot,
+        `expanded-user-gesture-${name}`,
+        writeManagedWebCloseEvidenceFixture,
+        options,
+        failure
+      );
+    }
 
     const duplicateUserGestureOptions = {
       caseId: "11b-managed-duplicate-open-guard",
@@ -8056,7 +8670,27 @@ function writeRenderHealthBlockedFixture(root) {
 
 function writeManagedCaseFixture(root, options = {}) {
   const caseId = options.caseId || "11-managed-web-open-and-wait";
-  const action = options.action || "presenter-web-open-and-wait";
+  const userGestureExpectation = getUserGestureGateExpectation(caseId);
+  const action = options.action || userGestureExpectation?.action || "presenter-web-open-and-wait";
+  const expectedShortcutTarget = userGestureExpectation?.shortcutTarget || "";
+  const manifestShortcutTarget = Object.prototype.hasOwnProperty.call(
+    options,
+    "manifestShortcutTarget"
+  )
+    ? options.manifestShortcutTarget
+    : expectedShortcutTarget;
+  const reportedShortcutTarget = Object.prototype.hasOwnProperty.call(
+    options,
+    "reportedShortcutTarget"
+  )
+    ? options.reportedShortcutTarget
+    : expectedShortcutTarget;
+  const reportedShortcutOverlayTargetType = Object.prototype.hasOwnProperty.call(
+    options,
+    "reportedShortcutOverlayTargetType"
+  )
+    ? options.reportedShortcutOverlayTargetType
+    : expectedShortcutTarget;
   const requiredEvents = options.requiredEvents || [
     "overlay:presenter-open-and-wait-start",
     "overlay:presenter-wait-closed",
@@ -8082,6 +8716,7 @@ function writeManagedCaseFixture(root, options = {}) {
         allowOverlayNotReady: false,
         requireManagedOverlayComplete: true,
         managedOverlayResultMode: "complete",
+        shortcutTarget: manifestShortcutTarget,
         hasCheckoutTransactionId: false
       }
     ]
@@ -8110,6 +8745,20 @@ function writeManagedCaseFixture(root, options = {}) {
       { type: "overlay:presenter-parked" },
       { type: "overlay:presenter-open-and-wait-complete" }
     ];
+  if (!options.events && reportedShortcutTarget) {
+    events.splice(1, 0, {
+      type: "overlay:shortcut-open",
+      payload: {
+        target: reportedShortcutTarget,
+        ...(!options.omitShortcutOverlayTarget
+          ? { overlayTarget: { type: reportedShortcutOverlayTargetType } }
+          : {})
+      }
+    });
+    if (options.extraShortcutOpenWithoutTarget) {
+      events.splice(2, 0, { type: "overlay:shortcut-open", payload: {} });
+    }
+  }
   if (!options.events && !options.omitInactiveEvent) {
     events.splice(2, 0, { type: "callback:overlay-activated", payload: { active: false } });
   }
@@ -8233,7 +8882,23 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   );
   const manifestPath = path.join(root, "matrix-manifest.json");
   const manifest = JSON.parse(readText(manifestPath));
+  const emitCurrentUserGestureGatePolicy =
+    options.currentUserGestureGatePolicy === true ||
+    (options.userGestureGate &&
+      !legacyUserGestureSchema2 &&
+      options.currentUserGestureGatePolicy !== false);
+  if (emitCurrentUserGestureGatePolicy) {
+    manifest.autorunUserGestureGatePolicy = Object.prototype.hasOwnProperty.call(
+      options,
+      "reportedUserGestureGatePolicy"
+    )
+      ? options.reportedUserGestureGatePolicy
+      : USER_GESTURE_GATE_POLICY;
+  }
   manifest.closeProbe = true;
+  if (options.manifestCloseProbeFalse) {
+    manifest.closeProbe = false;
+  }
   manifest.closeProbeInput = "auto";
   manifest.closeProbeEvidenceSchema = options.userGestureGate ? 2 : closeProbeEvidenceSchema;
   if (closeProbeEvidenceSchema >= 2) {
@@ -8271,6 +8936,10 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
           : EXTERNAL_FOREGROUND_TRANSITION;
     }
   } else {
+    if (options.manifestAutorunUserGestureGateFalse) {
+      manifest.cases[0].autorunUserGestureGate = false;
+      manifest.cases[0].closeProbeForegroundHandoff = OWNER_PROCESS_FOREGROUND_HANDOFF;
+    }
     manifest.cases[0].externalForegroundTransition = "";
   }
   writeJson(manifestPath, manifest);
@@ -8499,7 +9168,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     nativePresenterFocus.hwnd = "0x1234";
   }
   if (closeProbeEvidenceSchema >= 2 && !userGestureGate) {
-    const resultPath = path.join(root, "11-managed-web-open-and-wait", "result.log");
+    const resultPath = path.join(root, caseId, "result.log");
     const result = readSmokeResult(resultPath);
     if (!options.missingAppHandoff) {
       const appHandoff = {

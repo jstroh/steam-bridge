@@ -127,7 +127,19 @@ const AUTORUN_USER_GESTURE_GATE = readBoolean(
 );
 const AUTORUN_USER_GESTURE_GATE_TARGETS = Object.freeze({
   "presenter-web-open-and-wait": "presenter-web-wait",
-  "presenter-duplicate-open-guard": "presenter-duplicate-guard"
+  "presenter-duplicate-open-guard": "presenter-duplicate-guard",
+  "presenter-store-open-and-wait": "autorun-user-gesture-target",
+  "presenter-dialog-auto-open-and-wait": "autorun-user-gesture-target",
+  "presenter-friends-open-and-wait": "autorun-user-gesture-target",
+  "presenter-profile-open-and-wait": "autorun-user-gesture-target",
+  "presenter-players-open-and-wait": "autorun-user-gesture-target",
+  "presenter-community-open-and-wait": "autorun-user-gesture-target",
+  "presenter-stats-open-and-wait": "autorun-user-gesture-target",
+  "presenter-achievements-open-and-wait": "autorun-user-gesture-target",
+  "presenter-user-open-and-wait": "autorun-user-gesture-target",
+  "presenter-checkout": "autorun-user-gesture-target",
+  "presenter-shortcut": "autorun-user-gesture-target",
+  "presenter-shortcut-open-and-wait": "autorun-user-gesture-target"
 });
 const AUTORUN_USER_GESTURE_GATE_REJECTION_REASONS = new Set([
   "gate-disabled",

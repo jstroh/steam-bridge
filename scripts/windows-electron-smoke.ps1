@@ -123,9 +123,21 @@ if ($RequireMicroTxnCallback -and $Action -ne "presenter-checkout") {
 
 if ($AutorunUserGestureGate -and $Action -cnotin @(
     "presenter-web-open-and-wait",
-    "presenter-duplicate-open-guard"
+    "presenter-duplicate-open-guard",
+    "presenter-store-open-and-wait",
+    "presenter-dialog-auto-open-and-wait",
+    "presenter-friends-open-and-wait",
+    "presenter-profile-open-and-wait",
+    "presenter-players-open-and-wait",
+    "presenter-community-open-and-wait",
+    "presenter-stats-open-and-wait",
+    "presenter-achievements-open-and-wait",
+    "presenter-user-open-and-wait",
+    "presenter-checkout",
+    "presenter-shortcut",
+    "presenter-shortcut-open-and-wait"
   )) {
-  throw "-AutorunUserGestureGate requires presenter-web-open-and-wait or presenter-duplicate-open-guard."
+  throw "-AutorunUserGestureGate requires one supported single-cycle active action."
 }
 
 if ($AutorunUserGestureGate -and (
