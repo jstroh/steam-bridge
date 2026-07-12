@@ -3439,6 +3439,11 @@ function Start-WindowsOverlayCloseProbe {
     $userGestureAction = [string]$userGestureCase.action
     $userGestureTargetId = [string]$userGestureCase.targetId
   }
+  $userGestureLifecycleCompleteEvent = if ($userGestureAction -eq "presenter-checkout") {
+    "overlay:presenter-checkout-open-and-wait-complete"
+  } else {
+    "overlay:presenter-open-and-wait-complete"
+  }
   if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null
   }
@@ -3934,6 +3939,7 @@ public static class SteamBridgeWindowsProbe {
 `$script:PersistentReuseEvidenceSchema = $PersistentReuseEvidenceSchema
 `$script:UserGestureAction = '$userGestureAction'
 `$script:UserGestureTargetId = '$userGestureTargetId'
+`$script:UserGestureLifecycleCompleteEvent = '$userGestureLifecycleCompleteEvent'
 `$script:ExternalForegroundRequestOrdinal = 1
 `$script:ExternalForegroundTransition = '$externalForegroundTransition'
 `$script:ExternalForegroundReadyMarker = [Text.Encoding]::UTF8.GetString(
@@ -4511,7 +4517,7 @@ function Wait-AutorunUserGestureSourceFocusReturn {
     } else {
       `$text -match 'callback:overlay-activated' -and
       `$text -match '"active":false' -and
-      `$text -match 'overlay:presenter-open-and-wait-complete' -and
+      `$text -match [regex]::Escape(`$script:UserGestureLifecycleCompleteEvent) -and
       `$text -match 'overlay:presenter-after-close-stable'
     }
     if (-not `$evidence.lifecycleComplete) {

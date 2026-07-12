@@ -1928,6 +1928,21 @@ function runWindowsSmokeHelperStaticChecks() {
     !focusReturnBlock.includes("'overlay:presenter-after-close-stable')).Count -ge 3"),
     "Windows persistent focus-return must accept the single final stable sample after three completed cycles"
   );
+  for (const expected of [
+    '$script:UserGestureLifecycleCompleteEvent',
+    '$text -match [regex]::Escape(`$script:UserGestureLifecycleCompleteEvent)'
+  ]) {
+    assert.ok(
+      focusReturnBlock.includes(expected),
+      `Windows single-cycle focus-return lifecycle gate missing ${expected}`
+    );
+  }
+  assert.ok(
+    matrixHelper.includes('$userGestureAction -eq "presenter-checkout"') &&
+      matrixHelper.includes('"overlay:presenter-checkout-open-and-wait-complete"') &&
+      matrixHelper.includes('"overlay:presenter-open-and-wait-complete"'),
+    "Windows focus-return lifecycle gate must select the checkout-specific completion event"
+  );
   const probeTerminalStart = matrixHelper.indexOf("function Wait-WindowsOverlayCloseProbeTerminal");
   const probeTerminalEnd = matrixHelper.indexOf(
     "\nfunction Invoke-Preflight",

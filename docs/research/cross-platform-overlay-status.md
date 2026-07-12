@@ -693,6 +693,20 @@ settles the persistent-reuse release profile; the next distinct live evidence
 is the complete public `checkout`, `shortcut-routes`, and `managed-routes`
 profiles on the same exact signed deployment.
 
+That candidate's checkout profile passed public prepare-only. Direct approval
+then launched already foreground and completed activation, the typed checkout
+completion, inactive callback, close, park, final stable state, and three-way
+D3D11 evidence. Its external probe sent one guarded close input but waited for
+the generic `overlay:presenter-open-and-wait-complete` event rather than the
+checkout action's valid typed
+`overlay:presenter-checkout-open-and-wait-complete`. The terminal handshake
+therefore timed out before the two shortcut checkout cases. Task/process/
+environment cleanup, rollback, and Steam continuity passed. The focused
+replacement selects the lifecycle-completion event from the already-bound
+action and keeps the generic event for all other single-cycle routes. This is
+an evidence-predicate repair; it does not change checkout, overlay, input, or
+focus behavior. Do not rerun the unchanged candidate.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
