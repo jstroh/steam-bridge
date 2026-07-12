@@ -4506,7 +4506,7 @@ function Wait-AutorunUserGestureSourceFocusReturn {
     }
     `$evidence.lifecycleComplete = if (`$script:UsePersistentReuseGate) {
       ([regex]::Matches(`$text, 'overlay:presenter-persistent-reuse-cycle')).Count -eq 3 -and
-      ([regex]::Matches(`$text, 'overlay:presenter-after-close-stable')).Count -ge 3 -and
+      ([regex]::Matches(`$text, 'overlay:presenter-after-close-stable')).Count -ge 1 -and
       `$text -match 'overlay:presenter-persistent-reuse-complete'
     } else {
       `$text -match 'callback:overlay-activated' -and

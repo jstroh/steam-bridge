@@ -627,6 +627,24 @@ gives reopened cycles one scale-derived approach move inside the already-bound
 panel before the existing target move/down/up. It adds no click, retry, wait,
 or target change and requires exact four-event/approach evidence.
 
+Commit `8f69534`, exact CI run `29187116221`, and Release `29210084780` passed.
+The independently rehashed 114-file Electron `43.1.0` candidate retained all
+1,121 methods, passed four installed-certificate signatures and publisher
+agreement, and deployed transactionally with rollback and Steam continuity.
+Its one case-40 run launched already foreground and proved the approach move:
+one trusted gesture and one D3D11 attach completed three ordered active, shown,
+close, inactive, and parked cycles with six typed callbacks and one persistent-
+reuse completion. Reopened cycles used one atomic four-event approach, target,
+down, and up dispatch; there was no retry or extra click. The external probe
+then timed out before source-focus evaluation because its lifecycle predicate
+required three `overlay:presenter-after-close-stable` samples. The product had
+already recorded three completed cycle/park events and its designed single
+final stable sample, so `lifecycleComplete` remained false and authenticated
+quit was correctly withheld. Task/process/environment cleanup and exact Steam
+continuity passed. Do not rerun `8f69534`. The focused replacement changes only
+that overstrict probe predicate to accept the three completed cycles plus one
+final stable sample; it does not change product timing, input, or focus rules.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

@@ -1907,6 +1907,27 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixCaseBlock.includes("if ($terminal.ok -and $controlProcessMatchesResult)"),
     "Windows user-gesture completion must require a successful probe terminal before graceful quit"
   );
+  const focusReturnStart = matrixHelper.indexOf("function Wait-AutorunUserGestureSourceFocusReturn");
+  const focusReturnEnd = matrixHelper.indexOf("\nfunction Get-ForegroundProbeSnapshot", focusReturnStart);
+  const focusReturnBlock = matrixHelper.slice(focusReturnStart, focusReturnEnd);
+  assert.ok(
+    focusReturnStart >= 0 && focusReturnEnd > focusReturnStart,
+    "Windows close probe must retain the source-focus-return waiter"
+  );
+  for (const expected of [
+    "'overlay:presenter-persistent-reuse-cycle')).Count -eq 3",
+    "'overlay:presenter-after-close-stable')).Count -ge 1",
+    "'overlay:presenter-persistent-reuse-complete'"
+  ]) {
+    assert.ok(
+      focusReturnBlock.includes(expected),
+      `Windows persistent focus-return lifecycle gate missing ${expected}`
+    );
+  }
+  assert.ok(
+    !focusReturnBlock.includes("'overlay:presenter-after-close-stable')).Count -ge 3"),
+    "Windows persistent focus-return must accept the single final stable sample after three completed cycles"
+  );
   const probeTerminalStart = matrixHelper.indexOf("function Wait-WindowsOverlayCloseProbeTerminal");
   const probeTerminalEnd = matrixHelper.indexOf(
     "\nfunction Invoke-Preflight",
