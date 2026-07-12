@@ -526,6 +526,16 @@ without exporting key material. The failed run proves neither a current
 candidate nor live overlay behavior; rerun it only with this material gate
 repair.
 
+Replacement candidate-only Release `29176334259` at exact `1028ef2` passed all
+three prebuilds, assembly, the Electron `43.1.0` Windows ASAR gate, exact
+physical runtime-trio layout, no-override executable load with the 1,121-method
+manifest, checkout-tool and public live-smoke protocol closure, byte-preserved
+Valve DLLs, 114-file retained archive/audit, canonical-candidate rehash, and
+artifact upload. An independent download reverified the tarball, bundle, audit,
+commit, Electron version, method hash, and content fingerprint. The exact
+candidate remains unsigned; installed-certificate signing and no-click/live
+binding are the next distinct gates.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
