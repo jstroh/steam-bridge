@@ -568,6 +568,17 @@ verification-only replay of the existing artifact. Do not rerun `a6a5553`;
 ship the repaired auditor in one replacement candidate before the next live
 gate.
 
+Commit `fe7d989`, exact CI run `29180630025`, and final candidate-only Release
+`29180717107` are green. The independently verified 114-file Electron `43.1.0`
+candidate passed the installed-certificate signed gate, four required
+signatures, app/addon publisher agreement, all 1,121 native methods,
+transactional deployment, rollback retention, and Steam continuity. Its one
+candidate-bound no-click task then passed packaged binding, native load,
+interactive readiness, default render health, lazy D3D11 selection,
+presenter-ready, the bundled semantic summary, process/task/environment
+cleanup, and post-wrapper Steam continuity. This closes the pre-modal gate; do
+not rerun it without a material change.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
