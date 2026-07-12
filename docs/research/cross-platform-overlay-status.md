@@ -689,9 +689,11 @@ zero-exit shutdown. Presenter, native-host, and renderer diagnostics agreed on
 `windows-d3d11`. The candidate's own bundled auditor exited zero with no
 failure lines. Task deletion, exact process guards, launch-environment byte
 restoration, rollback, and the original Steam identity/session passed. This
-settles the persistent-reuse release profile; the next distinct live evidence
-is the complete public `checkout`, `shortcut-routes`, and `managed-routes`
-profiles on the same exact signed deployment.
+settles persistent-reuse product behavior. The combined release receipt,
+however, requires all four profile manifests to deep-equal the final package
+binding. Because the later action-aware checkout repair changed that package,
+final candidate `655b568` still needs one receipt-bound `persistent-reuse` root
+alongside complete `checkout`, `shortcut-routes`, and `managed-routes` roots.
 
 That candidate's checkout profile passed public prepare-only. Direct approval
 then launched already foreground and completed activation, the typed checkout
