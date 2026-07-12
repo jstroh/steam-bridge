@@ -550,6 +550,24 @@ binding through the packaged runner. A replacement candidate containing that
 helper is required before no-click or live proof; do not rerun the unchanged
 `1028ef2` task.
 
+Commit `a6a5553` contains that physical-fingerprint repair, and exact CI plus
+replacement candidate-only Release `29179993719` are green. The independently
+verified 114-file Electron `43.1.0` candidate passed the local installed-
+certificate signed gate, four required signature checks, app/addon publisher
+agreement, all 1,121 native methods, transactional deployment, rollback
+retention, and Steam-process continuity. Its one candidate-bound no-click task
+then passed the packaged Electron fingerprint boundary, interactive readiness,
+default render health, lazy `windows-d3d11` presenter selection, the
+presenter-ready case, and cleanup. The bundled summary alone rejected that
+artifact because it incorrectly demanded attached native-host and renderer
+diagnostics from the deliberately non-attaching `presenter-ready` native-load
+gate. A focused auditor repair now labels that result as selection-only lazy
+readiness without claiming renderer proof, preserves three-way backend
+agreement for attached cases, and passes both focused self-tests and a
+verification-only replay of the existing artifact. Do not rerun `a6a5553`;
+ship the repaired auditor in one replacement candidate before the next live
+gate.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

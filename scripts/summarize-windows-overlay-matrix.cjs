@@ -626,25 +626,7 @@ function readSuccessfulNativeLoadGate(preflightDir, manifest, nativeLoadBlocker,
   expect(summary.overlayActiveEvents === 0, "native-load gate does not activate a modal overlay", failures);
   const expectedBackend = String(manifest?.expectedNativeHostBackend || "");
   const backend = objectOrEmpty(summary.presenterBackendEvidence?.result);
-  const lifecycle = Array.isArray(summary.presenterBackendEvidence?.lifecycle)
-    ? summary.presenterBackendEvidence.lifecycle
-    : [];
-  if (expectedBackend) {
-    expect(
-      backend.attached === true &&
-        backend.backend === expectedBackend &&
-        backend.hostBackend === expectedBackend &&
-        backend.rendererBackend === expectedBackend &&
-        backend.agrees === true,
-      `native-load gate result has complete ${expectedBackend} backend agreement`,
-      failures
-    );
-    expect(
-      lifecycle.some((entry) => entry.complete && entry.agrees && entry.backend === expectedBackend),
-      `native-load gate lifecycle has complete ${expectedBackend} backend agreement`,
-      failures
-    );
-  }
+  const backendValidation = validateNativeLoadBackendEvidence(result, summary, expectedBackend, failures);
   return {
     ok: failures.length === failureCountBefore,
     appId: summary.appId,
@@ -652,11 +634,68 @@ function readSuccessfulNativeLoadGate(preflightDir, manifest, nativeLoadBlocker,
     backend: backend.backend || "",
     hostBackend: backend.hostBackend || "",
     rendererBackend: backend.rendererBackend || "",
-    backendAgrees: backend.agrees === true,
+    backendAgrees: backendValidation.backendAgrees,
+    lazyPresenterReady: backendValidation.lazyPresenterReady,
+    rendererProofRequired: backendValidation.rendererProofRequired,
     lifecycleCompleteCount: summary.presenterBackendEvidence?.lifecycleCompleteCount || 0,
     runtimeConfig: summary.runtimeConfig,
     crashDumpCount: summary.crashDumpCount,
     fatalLifecycleEventCount: summary.fatalLifecycleEventCount
+  };
+}
+
+function validateNativeLoadBackendEvidence(result, summary, expectedBackend, failures) {
+  const backend = objectOrEmpty(summary.presenterBackendEvidence?.result);
+  const lifecycle = Array.isArray(summary.presenterBackendEvidence?.lifecycle)
+    ? summary.presenterBackendEvidence.lifecycle
+    : [];
+  if (!expectedBackend) {
+    return {
+      backendAgrees: backend.agrees === true,
+      lazyPresenterReady: false,
+      rendererProofRequired: false
+    };
+  }
+
+  const snapshot = objectOrEmpty(result?.snapshot);
+  const overlay = objectOrEmpty(snapshot.overlay);
+  const availability = objectOrEmpty(readOkValue(overlay.nativeHostAvailability));
+  const lazyPresenterReady =
+    summary.action === "presenter-ready" &&
+    backend.present === true &&
+    backend.attached !== true &&
+    backend.backend === expectedBackend &&
+    availability.available === true;
+  const rendererProofRequired = backend.attached === true;
+
+  expect(
+    backend.backend === expectedBackend,
+    `native-load gate presenter selects ${expectedBackend}`,
+    failures
+  );
+  if (rendererProofRequired) {
+    expect(
+      backend.complete === true && backend.agrees === true,
+      `native-load gate attached presenter has complete ${expectedBackend} backend agreement`,
+      failures
+    );
+    expect(
+      lifecycle.some((entry) => entry.complete && entry.agrees && entry.backend === expectedBackend),
+      `native-load gate lifecycle has complete ${expectedBackend} backend agreement`,
+      failures
+    );
+  } else {
+    expect(
+      lazyPresenterReady,
+      `native-load gate has lazy ${expectedBackend} presenter readiness without claiming renderer proof`,
+      failures
+    );
+  }
+
+  return {
+    backendAgrees: rendererProofRequired && backend.agrees === true,
+    lazyPresenterReady,
+    rendererProofRequired
   };
 }
 
@@ -5197,6 +5236,15 @@ function printSummary(summary) {
         `dcompFatal=${formatValue(summary.renderHealth.disableDirectCompositionFatal)}`
     );
   }
+  if (summary.nativeLoadGate) {
+    console.log(
+      `nativeLoad: action=${formatValue(summary.nativeLoadGate.action)} ` +
+        `backend=${formatValue(summary.nativeLoadGate.backend)} ` +
+        `lazyPresenterReady=${formatValue(summary.nativeLoadGate.lazyPresenterReady)} ` +
+        `rendererProofRequired=${formatValue(summary.nativeLoadGate.rendererProofRequired)} ` +
+        `backendAgrees=${formatValue(summary.nativeLoadGate.backendAgrees)}`
+    );
+  }
   if (summary.nativeLoadBlocker) {
     console.log(
       `native-load blocker: code=${summary.nativeLoadBlocker.blockerCode} ` +
@@ -7900,6 +7948,125 @@ function runSelfTest() {
     .sort((left, right) => left[0].localeCompare(right[0]));
   assert.equal(actualUserGestureGateExpectations.length, 27);
   assert.deepEqual(actualUserGestureGateExpectations, expectedUserGestureGateExpectations);
+
+  const lazyBackendSummary = {
+    action: "presenter-ready",
+    presenterBackendEvidence: {
+      result: {
+        present: true,
+        attached: false,
+        backend: "windows-d3d11",
+        hostBackend: "",
+        rendererBackend: "",
+        complete: false,
+        agrees: false
+      },
+      lifecycle: []
+    }
+  };
+  const lazyBackendResult = {
+    snapshot: {
+      overlay: {
+        nativeHostAvailability: { ok: true, value: { available: true } }
+      }
+    }
+  };
+  const lazyBackendFailures = [];
+  assert.deepEqual(
+    validateNativeLoadBackendEvidence(
+      lazyBackendResult,
+      lazyBackendSummary,
+      "windows-d3d11",
+      lazyBackendFailures
+    ),
+    { backendAgrees: false, lazyPresenterReady: true, rendererProofRequired: false }
+  );
+  assert.deepEqual(lazyBackendFailures, []);
+
+  const unavailableLazyBackendFailures = [];
+  validateNativeLoadBackendEvidence(
+    { snapshot: { overlay: { nativeHostAvailability: { ok: true, value: { available: false } } } } },
+    lazyBackendSummary,
+    "windows-d3d11",
+    unavailableLazyBackendFailures
+  );
+  assert.ok(
+    unavailableLazyBackendFailures.includes(
+      "native-load gate has lazy windows-d3d11 presenter readiness without claiming renderer proof"
+    )
+  );
+  const wrongLazyBackendFailures = [];
+  validateNativeLoadBackendEvidence(
+    lazyBackendResult,
+    {
+      ...lazyBackendSummary,
+      presenterBackendEvidence: {
+        ...lazyBackendSummary.presenterBackendEvidence,
+        result: { ...lazyBackendSummary.presenterBackendEvidence.result, backend: "windows-opengl" }
+      }
+    },
+    "windows-d3d11",
+    wrongLazyBackendFailures
+  );
+  assert.ok(wrongLazyBackendFailures.includes("native-load gate presenter selects windows-d3d11"));
+
+  const attachedBackendSummary = {
+    action: "presenter-ready",
+    presenterBackendEvidence: {
+      result: {
+        present: true,
+        attached: true,
+        backend: "windows-d3d11",
+        hostBackend: "windows-d3d11",
+        rendererBackend: "windows-d3d11",
+        complete: true,
+        agrees: true
+      },
+      lifecycle: [
+        {
+          attached: true,
+          backend: "windows-d3d11",
+          hostBackend: "windows-d3d11",
+          rendererBackend: "windows-d3d11",
+          complete: true,
+          agrees: true
+        }
+      ]
+    }
+  };
+  const attachedBackendFailures = [];
+  assert.deepEqual(
+    validateNativeLoadBackendEvidence(
+      { snapshot: { overlay: {} } },
+      attachedBackendSummary,
+      "windows-d3d11",
+      attachedBackendFailures
+    ),
+    { backendAgrees: true, lazyPresenterReady: false, rendererProofRequired: true }
+  );
+  assert.deepEqual(attachedBackendFailures, []);
+  const incompleteAttachedBackendFailures = [];
+  validateNativeLoadBackendEvidence(
+    { snapshot: { overlay: {} } },
+    {
+      ...attachedBackendSummary,
+      presenterBackendEvidence: {
+        ...attachedBackendSummary.presenterBackendEvidence,
+        result: {
+          ...attachedBackendSummary.presenterBackendEvidence.result,
+          rendererBackend: "windows-opengl",
+          agrees: false
+        }
+      }
+    },
+    "windows-d3d11",
+    incompleteAttachedBackendFailures
+  );
+  assert.ok(
+    incompleteAttachedBackendFailures.includes(
+      "native-load gate attached presenter has complete windows-d3d11 backend agreement"
+    )
+  );
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-summary-"));
   try {
