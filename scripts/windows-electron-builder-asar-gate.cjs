@@ -184,10 +184,12 @@ async function main() {
     const config = {
       ...fixtureConfig,
       directories: { output: outputRoot },
-      win: {
-        ...fixtureConfig.win,
-        forceCodeSigning: requireSigned
-      },
+      win: createWindowsSigningConfig(
+        fixtureConfig.win,
+        requireSigned,
+        expectedPublisherThumbprint,
+        expectedPublisherSubject
+      ),
       afterPack: async (context) => {
         const appRuntimeDir = resolvePackagedWindowsRuntimeDirectory(context.appOutDir);
         const appRuntime = inspectWindowsRuntimeDirectory(appRuntimeDir);
@@ -483,13 +485,34 @@ function verifyAsarLayout(appDir, expectedProvenance, expectedPackageJson, expec
   }
 
   const physicalPackageDir = path.join(resourcesDir, "app.asar.unpacked", "node_modules", "steam-bridge");
-  const physicalFiles = listFiles(physicalPackageDir).map((filePath) => normalizeRelativePath(path.relative(physicalPackageDir, filePath)));
+  const physicalFiles = listPhysicalRuntimeFiles(physicalPackageDir);
   assert.deepEqual(physicalFiles.sort(), [...WINDOWS_RUNTIME_FILES].sort(), "Only the exact Windows runtime trio may be unpacked");
 
   const archivedProvenance = JSON.parse(
     asar.extractFile(asarPath, asarEntryPath(["steam-bridge-package-provenance.json"])).toString("utf8")
   );
   assert.deepEqual(archivedProvenance, expectedProvenance, "Archived provenance must match the exact tarball stage");
+}
+
+function listPhysicalRuntimeFiles(physicalPackageDir) {
+  return inspectCandidateDirectory(physicalPackageDir).files.map((entry) => entry.relativePath);
+}
+
+function createWindowsSigningConfig(baseConfig, signed, publisherThumbprint, publisherSubject) {
+  const config = {
+    ...baseConfig,
+    forceCodeSigning: signed
+  };
+  if (!signed) {
+    return config;
+  }
+  config.signtoolOptions = {
+    ...(baseConfig.signtoolOptions || {}),
+    ...(publisherThumbprint
+      ? { certificateSha1: publisherThumbprint }
+      : { certificateSubjectName: publisherSubject })
+  };
+  return config;
 }
 
 function runPackagedExecutable(appExe, artifactDir, expectedNativeBindingManifest) {
@@ -820,6 +843,24 @@ function selfTest() {
     fs.mkdirSync(path.join(bundleDir, "resources"), { recursive: true });
     fs.writeFileSync(path.join(bundleDir, "app.exe"), "executable bytes");
     fs.writeFileSync(path.join(bundleDir, "resources", "app.asar"), "archive bytes");
+    const physicalRuntimeDir = path.join(tempRoot, "physical-runtime");
+    fs.mkdirSync(physicalRuntimeDir);
+    for (const fileName of WINDOWS_RUNTIME_FILES) {
+      fs.writeFileSync(path.join(physicalRuntimeDir, fileName), fileName);
+    }
+    assert.deepEqual(listPhysicalRuntimeFiles(physicalRuntimeDir), [...WINDOWS_RUNTIME_FILES].sort());
+    assert.deepEqual(createWindowsSigningConfig({ signExts: [".node"] }, false, "thumbprint", "subject"), {
+      signExts: [".node"],
+      forceCodeSigning: false
+    });
+    assert.deepEqual(createWindowsSigningConfig({ signtoolOptions: { timeStampServer: "server" } }, true, "ABCD", "subject"), {
+      signtoolOptions: { timeStampServer: "server", certificateSha1: "ABCD" },
+      forceCodeSigning: true
+    });
+    assert.deepEqual(createWindowsSigningConfig({}, true, "", "publisher subject"), {
+      forceCodeSigning: true,
+      signtoolOptions: { certificateSubjectName: "publisher subject" }
+    });
     const firstArchive = createDeterministicBundleArchive(bundleDir, path.join(tempRoot, "first.tar"));
     fs.utimesSync(path.join(bundleDir, "app.exe"), new Date(1_000_000), new Date(2_000_000));
     const secondArchive = createDeterministicBundleArchive(bundleDir, path.join(tempRoot, "second.tar"));

@@ -514,6 +514,18 @@ tarball copy; the candidate-only Release workflow and pre-live
 publication contract, not new live success: the fresh Electron `43.1.0` Windows
 candidate and assisted four-profile proof remain pending.
 
+Manual candidate-only Release `29159836514` then passed all three exact native
+prebuilds and release assembly at `fe04b35`, but its unsigned Windows gate
+stopped after electron-builder packaging when the ASAR layout verifier called a
+recursive-list helper removed by the fingerprint refactor. The focused repair
+routes that exact physical-runtime check through the strict candidate inspector.
+The same gate now also passes the already-required expected publisher
+thumbprint into electron-builder's certificate-store selector, with subject as
+a fallback, so a signed local candidate can use an installed certificate
+without exporting key material. The failed run proves neither a current
+candidate nor live overlay behavior; rerun it only with this material gate
+repair.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
