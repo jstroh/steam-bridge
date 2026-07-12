@@ -676,6 +676,23 @@ fixtures and direct replay of this retained exact artifact now pass with zero
 failures. One exact packaged replacement remains required so its bundled
 auditor owns the final case-40 claim.
 
+Evidence-auditor commit `691e5f1`, exact CI `29212540405`, and Release
+`29212634815` passed. The independently downloaded Electron `43.1.0` candidate
+reverified its canonical hash, 114-file bundle, and 1,121-method native API,
+then passed four required installed-certificate signatures with publisher
+agreement and transactional deployment. Its one case-40 run launched already
+foreground and completed three exact-host close cycles, three shown/closed/
+parked sequences, six ordered active/inactive callbacks, one D3D11 attach,
+stable controller/lease/native-instance/host identity, exact source focus
+return, authenticated quit, one final detach, one final stable sample, and
+zero-exit shutdown. Presenter, native-host, and renderer diagnostics agreed on
+`windows-d3d11`. The candidate's own bundled auditor exited zero with no
+failure lines. Task deletion, exact process guards, launch-environment byte
+restoration, rollback, and the original Steam identity/session passed. This
+settles the persistent-reuse release profile; the next distinct live evidence
+is the complete public `checkout`, `shortcut-routes`, and `managed-routes`
+profiles on the same exact signed deployment.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
