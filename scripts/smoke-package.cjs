@@ -1545,7 +1545,7 @@ function runWindowsSmokeHelperStaticChecks() {
     '"verify-only"',
     "persistentReuseGate = `$script:UsePersistentReuseGate",
     "sameHostAsCycleOne",
-    "Get-PersistentReuseCompletedCycles",
+    "Get-PersistentReuseLifecycleState",
     "persistent-cycle-readiness-order-invalid",
     "activeCallbackCount",
     "inactiveCallbackCount",
@@ -1561,6 +1561,11 @@ function runWindowsSmokeHelperStaticChecks() {
       `Windows persistent verify-only gate missing ${expected}`
     );
   }
+  assert.doesNotMatch(
+    matrixHelper,
+    /\[regex\]::Matches\(`\$text, '\"active\"\\s\*:\\s\*(?:true|false)'\)/,
+    "Windows persistent callback ordering must count typed callback events instead of nested active fields"
+  );
   const foregroundSnapshotStart = matrixHelper.indexOf(
     "function Get-ForegroundProbeSnapshot"
   );

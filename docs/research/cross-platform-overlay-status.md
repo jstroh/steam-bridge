@@ -579,6 +579,21 @@ presenter-ready, the bundled semantic summary, process/task/environment
 cleanup, and post-wrapper Steam continuity. This closes the pre-modal gate; do
 not rerun it without a material change.
 
+The first exact `fe7d989` persistent-reuse case then passed its preflight,
+started already foreground, consumed one trusted renderer gesture, attached the
+D3D11 presenter, received one active callback, and reached cycle-1 shown state
+without an external marker or click. The close probe failed closed before
+input with `persistent-cycle-readiness-order-invalid`: its raw text regex
+counted both the callback's top-level `active=true` and the presenter's nested
+`lastOverlayEvent.active=true` snapshot as callbacks. It sent zero close input;
+task/process/environment cleanup, rollback, candidate binding, signatures, and
+Steam continuity passed. The focused repair parses the lifecycle once per poll
+and counts only exact typed overlay-activation callback events. Local tests,
+package smoke, native PowerShell parsing, and a retained-artifact replay show
+one typed active callback while the raw text contains multiple nested matches.
+Do not rerun `fe7d989`; repeat case `40` only on a candidate containing this
+parser repair.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

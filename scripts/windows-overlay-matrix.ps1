@@ -5400,11 +5400,15 @@ function Get-LifecyclePresenterGeometry {
   return `$fallback
 }
 
-function Get-PersistentReuseShownCycles {
-  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
-    return @()
+function Get-PersistentReuseLifecycleState {
+  `$state = [ordered]@{
+    shownCycles = @()
+    completedCycles = @()
+    overlayActivationStates = @()
   }
-  `$cycles = @()
+  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
+    return [PSCustomObject]`$state
+  }
   foreach (`$line in @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)) {
     try {
       `$event = `$line | ConvertFrom-Json -ErrorAction Stop
@@ -5412,35 +5416,24 @@ function Get-PersistentReuseShownCycles {
       continue
     }
     if (
-      `$event.type -eq "event:overlay:presenter-wait-shown" -and
-      `$event.payload.api -eq "persistentReuseThreeCycle" -and
+      `$event.type -ceq "event:overlay:presenter-wait-shown" -and
+      `$event.payload.api -ceq "persistentReuseThreeCycle" -and
       [int]`$event.payload.cycle -ge 1
     ) {
-      `$cycles += [int]`$event.payload.cycle
-    }
-  }
-  return @(`$cycles)
-}
-
-function Get-PersistentReuseCompletedCycles {
-  if (-not (Test-Path -LiteralPath '$lifecycleLog')) {
-    return @()
-  }
-  `$cycles = @()
-  foreach (`$line in @(Get-Content -LiteralPath '$lifecycleLog' -ErrorAction SilentlyContinue)) {
-    try {
-      `$event = `$line | ConvertFrom-Json -ErrorAction Stop
-    } catch {
-      continue
-    }
-    if (
-      `$event.type -eq "event:overlay:presenter-persistent-reuse-cycle" -and
+      `$state.shownCycles += [int]`$event.payload.cycle
+    } elseif (
+      `$event.type -ceq "event:overlay:presenter-persistent-reuse-cycle" -and
       [int]`$event.payload.cycle -ge 1
     ) {
-      `$cycles += [int]`$event.payload.cycle
+      `$state.completedCycles += [int]`$event.payload.cycle
+    } elseif (
+      `$event.type -ceq "event:callback:overlay-activated" -and
+      `$event.payload.active -is [bool]
+    ) {
+      `$state.overlayActivationStates += [bool]`$event.payload.active
     }
   }
-  return @(`$cycles)
+  return [PSCustomObject]`$state
 }
 
 function Read-SmokeControlDescriptor {
@@ -6360,8 +6353,9 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
     }
     `$shownEventCount = ([regex]::Matches(`$text, 'overlay:presenter-wait-shown')).Count
     `$cycleReady = if ($expectedCloseCount -gt 1) {
-      `$shownCycles = @(Get-PersistentReuseShownCycles)
-      `$completedCycles = @(Get-PersistentReuseCompletedCycles)
+      `$persistentLifecycleState = Get-PersistentReuseLifecycleState
+      `$shownCycles = @(`$persistentLifecycleState.shownCycles)
+      `$completedCycles = @(`$persistentLifecycleState.completedCycles)
       `$expectedCycle = `$sentCount + 1
       `$expectedCycleCount = @(`$shownCycles | Where-Object { `$_ -eq `$expectedCycle }).Count
       `$outOfOrderCycleCount = @(`$shownCycles | Where-Object { `$_ -gt `$expectedCycle }).Count
@@ -6369,8 +6363,9 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
       `$completedAtOrAfter = @(`$completedCycles | Where-Object { `$_ -ge `$expectedCycle })
       `$completedBeforeOrdered = (`$completedBefore.Count -eq (`$expectedCycle - 1))
       `$completedBeforeInvalid = (`$completedBefore.Count -gt (`$expectedCycle - 1))
-      `$activeCallbackCount = ([regex]::Matches(`$text, '"active"\s*:\s*true')).Count
-      `$inactiveCallbackCount = ([regex]::Matches(`$text, '"active"\s*:\s*false')).Count
+      `$overlayActivationStates = @(`$persistentLifecycleState.overlayActivationStates)
+      `$activeCallbackCount = @(`$overlayActivationStates | Where-Object { `$_ -eq `$true }).Count
+      `$inactiveCallbackCount = @(`$overlayActivationStates | Where-Object { `$_ -eq `$false }).Count
       `$callbackOrderInvalid = (
         `$activeCallbackCount -gt `$expectedCycle -or
         `$inactiveCallbackCount -gt (`$expectedCycle - 1)
