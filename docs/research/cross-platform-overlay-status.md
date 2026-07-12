@@ -645,6 +645,19 @@ continuity passed. Do not rerun `8f69534`. The focused replacement changes only
 that overstrict probe predicate to accept the three completed cycles plus one
 final stable sample; it does not change product timing, input, or focus rules.
 
+Replacement commit `76294dd`, exact CI `29211089463`, Release `29211172471`,
+independent rehash, 114-file/1,121-method audit, four-signature publisher gate,
+transactional deployment, rollback, and Steam continuity passed. Its first
+case-40 launch naturally reached one fresh nonforeground marker. No real click
+or challenge-bound acknowledgment arrived, so the hook observed zero foreground
+transition events and the gate sent zero activation and close input before one
+terminal incomplete branch. Task deletion, exact process guards, environment
+restoration, zero remaining package processes, and Steam continuity passed.
+This is authorization-bound no-click evidence, not a test of the corrected
+focus-return predicate. Repeat `76294dd` only with a user ready to click the
+source title bar once immediately after a new marker; never pre-acknowledge or
+synthesize that click.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
