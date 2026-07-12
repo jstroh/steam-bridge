@@ -536,6 +536,20 @@ commit, Electron version, method hash, and content fingerprint. The exact
 candidate remains unsigned; installed-certificate signing and no-click/live
 binding are the next distinct gates.
 
+The exact downloaded tarball then passed a local installed-certificate signed
+gate with 114 files, four valid required signatures, app/addon publisher
+agreement, preserved Valve DLL bytes, Electron `43.1.0`, and all 1,121 native
+methods. Transactional deployment retained the previous active package as a
+rollback and preserved the current Steam process identity. The first no-click
+interactive task stopped before preflight or any overlay case: its packaged
+Electron-as-Node fingerprint runner transparently expanded physical
+`resources/app.asar`, so virtual archive entries produced false link/stat drift.
+The focused helper fix sets Electron's `process.noAsar` boundary; the same
+signed executable, deployed bytes, and audit then passed exact candidate
+binding through the packaged runner. A replacement candidate containing that
+helper is required before no-click or live proof; do not rerun the unchanged
+`1028ef2` task.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

@@ -6,6 +6,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+if (process.versions.electron) {
+  process.noAsar = true;
+}
+
 const BUNDLE_CONTENT_ALGORITHM = "steam-bridge-windows-bundle-content-v1";
 const CANDIDATE_BINDING_DOMAIN = "steam-bridge-windows-candidate-binding-v1";
 const CANDIDATE_AUDIT_DOMAIN = "steam-bridge-windows-package-audit-v1";
@@ -485,6 +489,9 @@ function compareOrdinal(left, right) {
 
 function selfTest() {
   const tar = require("tar");
+  if (process.versions.electron) {
+    assert.equal(process.noAsar, true);
+  }
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-candidate-fingerprint-self-test-"));
   try {
     const bundle = path.join(tempRoot, "bundle");
