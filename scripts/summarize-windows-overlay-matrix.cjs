@@ -3875,11 +3875,14 @@ function verifyPersistentReuseProof(
     ]);
     const resultProjection = events
       .filter((event) => persistentTypes.has(String(event?.type || "")))
-      .map((event) => ({ type: event.type, payload: objectOrEmpty(event.payload) }));
+      .map((event) => ({
+        type: event.type,
+        payload: canonicalizeRedactedEvidence(objectOrEmpty(event.payload))
+      }));
     const lifecycleProjection = lifecycle
       .map((event) => ({
         type: String(event?.type || "").replace(/^event:/, ""),
-        payload: objectOrEmpty(event?.payload)
+        payload: canonicalizeRedactedEvidence(objectOrEmpty(event?.payload))
       }))
       .filter((event) => persistentTypes.has(event.type));
     expect(
@@ -3981,12 +3984,16 @@ function verifyPersistentReuseProof(
       const closed = indexes["event:overlay:presenter-wait-closed"];
       const parked = indexes["event:overlay:presenter-parked"];
       const cycleComplete = indexes["event:overlay:presenter-persistent-reuse-cycle"];
-      const cycleActiveIndexes = activeIndexes.filter(
-        (eventIndex) => eventIndex > waitStart && eventIndex < cycleComplete
-      );
-      const cycleInactiveIndexes = inactiveIndexes.filter(
-        (eventIndex) => eventIndex > waitStart && eventIndex < cycleComplete
-      );
+      const cycleActiveIndex = activeIndexes[cycle - 1] ?? -1;
+      const cycleInactiveIndex = inactiveIndexes[cycle - 1] ?? -1;
+      const nextShownIndex =
+        cycle < WINDOWS_PERSISTENT_REUSE_CYCLES
+          ? lifecycle.findIndex(
+              (event) =>
+                event?.type === "event:overlay:presenter-wait-shown" &&
+                Number(objectOrEmpty(event.payload).cycle) === cycle + 1
+            )
+          : lifecycleCompleteIndex;
       const waitEvents = [waitStart, shown, closed, parked].map((eventIndex) =>
         objectOrEmpty(lifecycle[eventIndex]?.payload)
       );
@@ -4013,9 +4020,9 @@ function verifyPersistentReuseProof(
         failures
       );
       expect(
-        cycleActiveIndexes.length === 1 &&
-          cycleInactiveIndexes.length === 1 &&
-          cycleActiveIndexes[0] < cycleInactiveIndexes[0],
+        cycleActiveIndex > waitStart &&
+          cycleActiveIndex < cycleInactiveIndex &&
+          cycleInactiveIndex < nextShownIndex,
         `${caseName}: persistent cycle ${cycle} binds one ordered active and inactive callback pair`,
         failures
       );
@@ -4324,6 +4331,16 @@ function verifyPersistentCloseProbe(
       expect(payload.requestOrdinal === ordinal, `${caseName}: persistent focus cycle ${ordinal} response matched its ordinal`, failures);
     }
   });
+  const lifecycleActiveCallbacks = fullLifecycleEvents.filter(
+    (lifecycleEvent) =>
+      lifecycleEvent?.type === "event:callback:overlay-activated" &&
+      objectOrEmpty(lifecycleEvent.payload).active === true
+  );
+  const lifecycleInactiveCallbacks = fullLifecycleEvents.filter(
+    (lifecycleEvent) =>
+      lifecycleEvent?.type === "event:callback:overlay-activated" &&
+      objectOrEmpty(lifecycleEvent.payload).active === false
+  );
   const persistentScreenshotPathSets = [];
   sent.forEach((event, index) => {
     const payload = objectOrEmpty(event.payload);
@@ -4387,16 +4404,8 @@ function verifyPersistentCloseProbe(
       const lifecycleParked = cycleLifecycle.find(
         (lifecycleEvent) => lifecycleEvent?.type === "event:overlay:presenter-parked"
       );
-      const lifecycleActive = cycleLifecycle.find(
-        (lifecycleEvent) =>
-          lifecycleEvent?.type === "event:callback:overlay-activated" &&
-          objectOrEmpty(lifecycleEvent.payload).active === true
-      );
-      const lifecycleInactive = cycleLifecycle.find(
-        (lifecycleEvent) =>
-          lifecycleEvent?.type === "event:callback:overlay-activated" &&
-          objectOrEmpty(lifecycleEvent.payload).active === false
-      );
+      const lifecycleActive = lifecycleActiveCallbacks[index];
+      const lifecycleInactive = lifecycleInactiveCallbacks[index];
       const lifecycleComplete = fullLifecycleEvents[cycleCompleteIndex];
       const cyclePresenter = objectOrEmpty(objectOrEmpty(lifecycleShown?.payload).presenter);
       const cycleNativeHostRect = findNativeHostRect(cyclePresenter, []);
@@ -4599,6 +4608,15 @@ function verifyPersistentCloseProbe(
       const closedAt = eventTime(lifecycleClosed);
       const parkedAt = eventTime(lifecycleParked);
       const cycleCompleteAt = eventTime(lifecycleComplete);
+      const nextShown =
+        ordinal < WINDOWS_PERSISTENT_REUSE_CYCLES
+          ? fullLifecycleEvents.find(
+              (lifecycleEvent) =>
+                lifecycleEvent?.type === "event:overlay:presenter-wait-shown" &&
+                Number(objectOrEmpty(lifecycleEvent.payload).cycle) === ordinal + 1
+            )
+          : null;
+      const inactiveBoundaryAt = nextShown ? eventTime(nextShown) : cycleCompleteAt;
       expect(
         [
           activeAt,
@@ -4617,16 +4635,12 @@ function verifyPersistentCloseProbe(
           focusAt <= dispatchAt &&
           dispatchAt <= sentAt &&
           dispatchAt <= Math.min(inactiveAt, closedAt, parkedAt) &&
-          Math.max(inactiveAt, closedAt, parkedAt) <= cycleCompleteAt,
+          Math.max(closedAt, parkedAt) <= cycleCompleteAt &&
+          inactiveAt <= inactiveBoundaryAt,
         `${caseName}: persistent input cycle ${ordinal} causally bridges shown and active to close and inactive`,
         failures
       );
       if (ordinal < WINDOWS_PERSISTENT_REUSE_CYCLES) {
-        const nextShown = fullLifecycleEvents.find(
-          (lifecycleEvent) =>
-            lifecycleEvent?.type === "event:overlay:presenter-wait-shown" &&
-            Number(objectOrEmpty(lifecycleEvent.payload).cycle) === ordinal + 1
-        );
         expect(
           Number.isFinite(cycleCompleteAt) &&
             Number.isFinite(eventTime(nextShown)) &&
@@ -6805,8 +6819,7 @@ function summarizeSameProcessUserGestureHandoff({
       keepOpenEvents.length === 1 &&
       keepOpenPayload.action === expectedAction &&
       keepOpenPayload.resultFileWritten === true &&
-      afterCloseStableEvents.length ===
-        (persistentReuseUserGesture ? WINDOWS_PERSISTENT_REUSE_CYCLES : 1) &&
+      afterCloseStableEvents.length === 1 &&
       persistentReuseCompleteEvents.length === (persistentReuseUserGesture ? 1 : 0) &&
       completionQuitEvents.length === 1 &&
       completionQuitPayload.action === expectedAction &&
@@ -7795,6 +7808,30 @@ function objectOrEmpty(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function canonicalizeRedactedEvidence(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalizeRedactedEvidence);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length === 3 &&
+    keys[0] === "present" &&
+    keys[1] === "redacted" &&
+    keys[2] === "type" &&
+    value.redacted === true &&
+    typeof value.present === "boolean" &&
+    typeof value.type === "string"
+  ) {
+    return { redacted: true, present: value.present };
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, canonicalizeRedactedEvidence(entry)])
+  );
+}
+
 function isOverlayActiveEvent(event) {
   if (!event || event.type !== "callback:overlay-activated") {
     return false;
@@ -8208,6 +8245,17 @@ function runSelfTest() {
     });
     assert.deepEqual(
       summarizeWindowsOverlayMatrixArtifacts(persistentAlternateCallbackRoot).failures,
+      []
+    );
+    const persistentLateInactiveRoot = path.join(
+      tempRoot,
+      "persistent-reuse-late-cycle-one-inactive"
+    );
+    writeCurrentPersistentReuseFixture(persistentLateInactiveRoot, {
+      lateFirstInactiveAfterCycle: true
+    });
+    assert.deepEqual(
+      summarizeWindowsOverlayMatrixArtifacts(persistentLateInactiveRoot).failures,
       []
     );
     const persistentFastCloseRoot = path.join(
@@ -12624,11 +12672,15 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
           presenter: parkedLifecyclePresenter
         }
       },
-      {
-        type: "overlay:presenter-after-close-stable",
-        at: at(baseSecond + 6),
-        payload: { source: "state-change", sample: 2, presenter: parked }
-      },
+      ...(cycle === WINDOWS_PERSISTENT_REUSE_CYCLES
+        ? [
+            {
+              type: "overlay:presenter-after-close-stable",
+              at: at(baseSecond + 6),
+              payload: { source: "state-change", sample: 2, presenter: parked }
+            }
+          ]
+        : []),
       {
         type: "overlay:presenter-persistent-reuse-cycle",
         at: at(baseSecond + 7),
@@ -12668,9 +12720,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
             event.type === type &&
             (active === undefined || objectOrEmpty(event.payload).active === active)
         );
-      events.splice(
-        segmentStart,
-        segment.length,
+      const reordered = [
         take("overlay:presenter-wait-start"),
         take("callback:overlay-activated", true),
         take("overlay:presenter-wait-shown"),
@@ -12679,8 +12729,31 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
         take("callback:overlay-activated", false),
         take("overlay:presenter-after-close-stable"),
         take("overlay:presenter-persistent-reuse-cycle")
-      );
+      ].filter(Boolean);
+      events.splice(segmentStart, segment.length, ...reordered);
     }
+  }
+  if (options.lateFirstInactiveAfterCycle) {
+    const firstWaitStart = events.findIndex(
+      (event) => event.type === "overlay:presenter-wait-start" && event.payload.cycle === 1
+    );
+    const firstCycleComplete = events.findIndex(
+      (event) =>
+        event.type === "overlay:presenter-persistent-reuse-cycle" && event.payload.cycle === 1
+    );
+    const firstInactive = events.findIndex(
+      (event, index) =>
+        index > firstWaitStart &&
+        index < firstCycleComplete &&
+        event.type === "callback:overlay-activated" &&
+        objectOrEmpty(event.payload).active === false
+    );
+    const [inactive] = events.splice(firstInactive, 1);
+    inactive.at = at(14);
+    const secondWaitStart = events.findIndex(
+      (event) => event.type === "overlay:presenter-wait-start" && event.payload.cycle === 2
+    );
+    events.splice(secondWaitStart + 1, 0, inactive);
   }
   if (options.rawResultCycle) {
     const cycle = events.find(

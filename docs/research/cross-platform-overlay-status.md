@@ -658,6 +658,24 @@ focus-return predicate. Repeat `76294dd` only with a user ready to click the
 source title bar once immediately after a new marker; never pre-acknowledge or
 synthesize that click.
 
+The second `76294dd` launch started already foreground, so it emitted exactly
+one not-required transition and needed no click. One trusted activation and
+three close dispatches completed all three shown, closed, inactive, and parked
+cycles on one D3D11 attach with stable controller, lease, native-instance, and
+host identity. The corrected waiter then proved exact source-window focus
+return, authenticated quit, one final detach, and zero-exit shutdown. Task,
+process, environment, rollback, and Steam-continuity gates passed. The bundled
+auditor rejected only evidence-layer assumptions: redaction markers changed
+shape when sanitized twice, the cycle-1 inactive callback was recorded after
+its cycle-complete event but before cycle 2 was shown, and the auditor still
+expected three stable samples instead of the product's single final sample.
+The focused repair makes redaction idempotent, canonicalizes already-redacted
+projection fields, pairs three typed callback pairs globally with a strict
+next-shown boundary, and uses the single final stable sample. Live-shaped
+fixtures and direct replay of this retained exact artifact now pass with zero
+failures. One exact packaged replacement remains required so its bundled
+auditor owns the final case-40 claim.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

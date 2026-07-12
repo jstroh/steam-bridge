@@ -69,6 +69,13 @@ function sanitizeSmokeValue(value) {
 
 function sanitizeValue(value, key) {
   if (isSensitiveKey(key)) {
+    if (isRedactionMarker(value)) {
+      return {
+        redacted: true,
+        present: value.present,
+        type: value.type
+      };
+    }
     return redactValue(value);
   }
 
@@ -97,6 +104,22 @@ function sanitizeValue(value, key) {
   }
 
   return value;
+}
+
+function isRedactionMarker(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const keys = Object.keys(value).sort();
+  return (
+    keys.length === 3 &&
+    keys[0] === "present" &&
+    keys[1] === "redacted" &&
+    keys[2] === "type" &&
+    value.redacted === true &&
+    typeof value.present === "boolean" &&
+    typeof value.type === "string"
+  );
 }
 
 function sanitizeString(value) {

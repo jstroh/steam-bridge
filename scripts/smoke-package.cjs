@@ -2004,7 +2004,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "completion.quitAttempted === true",
     "completion.quitResponseOk === true",
     "completion.sourceProcessExited === true",
-    "persistentReuseUserGesture ? WINDOWS_PERSISTENT_REUSE_CYCLES : 1",
+    "afterCloseStableEvents.length === 1",
     "persistentReuseCompleteEvents.length === (persistentReuseUserGesture ? 1 : 0)",
     "completionQuitEvents.length === 1",
     "resultWrittenPayload.resultFileWritten === true",
@@ -2016,6 +2016,10 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(matrixSummary.includes(expected), `Windows summary user-gesture schema contract missing ${expected}`);
   }
+  assert.ok(
+    !matrixSummary.includes("persistentReuseUserGesture ? WINDOWS_PERSISTENT_REUSE_CYCLES : 1"),
+    "Windows summary must accept the single final stable sample after three persistent cycles"
+  );
   assert.ok(
     matrixHelper.includes("$controlFileBase64 = [Convert]::ToBase64String") &&
       matrixHelper.includes("[Convert]::FromBase64String('$controlFileBase64')") &&

@@ -333,6 +333,13 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(serialized.includes("135792468"), false);
   assert.equal(serialized.includes("order-private-sdk-001"), false);
   assert.equal(serialized.includes("order-private-002"), false);
+  assert.deepEqual(sanitizeSmokeValue(sanitized), sanitized);
+  assert.deepEqual(
+    sanitizeSmokeValue({
+      steamUrl: { redacted: true, present: true, type: "string", unexpected: "must-not-survive" }
+    }).steamUrl,
+    { redacted: true, present: true, type: "object" }
+  );
   assert.equal(serialized.includes("order-private-001"), false);
   assert.equal(serialized.includes("steam://return/private-token"), false);
   assert.equal(serialized.includes("private-init-txn-response"), false);
