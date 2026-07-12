@@ -4348,6 +4348,21 @@ function verifyPersistentCloseProbe(
       const scale = Number(targetScale.value);
       const expectedTarget = expectedWebCloseTarget(panel, objectOrEmpty(target.panel), scale);
       const pointer = objectOrEmpty(payload.nativePointerSent);
+      const pointerApproach = objectOrEmpty(pointer.approach);
+      const approachExpected = ordinal > 1;
+      const expectedPointerCount = approachExpected ? 4 : 3;
+      const pointerApproachValid = approachExpected
+        ? Boolean(
+            panel &&
+              Number.isInteger(pointerApproach.x) &&
+              Number.isInteger(pointerApproach.y) &&
+              pointerApproach.x >= panel.left &&
+              pointerApproach.x < Number(target.x) &&
+              pointerApproach.y === Number(target.y) &&
+              pointerApproach.y >= panel.top &&
+              pointerApproach.y <= panel.bottom
+          )
+        : Object.keys(pointerApproach).length === 0;
       const expectedMode = ordinal === 1 ? "initial-user-gesture" : "verify-only";
       const waitStartIndex = fullLifecycleEvents.findIndex(
         (lifecycleEvent) =>
@@ -4511,11 +4526,13 @@ function verifyPersistentCloseProbe(
       );
       expect(
         payload.input === "web-close-click-sendinput" &&
-          pointer.sent === 3 &&
-          pointer.expected === 3 &&
+          pointer.sent === expectedPointerCount &&
+          pointer.expected === expectedPointerCount &&
           pointer.lastError === 0 &&
           pointer.method === "sendinput" &&
           pointer.moveNoCoalesce === true &&
+          pointer.approachUsed === approachExpected &&
+          pointerApproachValid &&
           Number.isInteger(pointer.x) &&
           Number.isInteger(pointer.y) &&
           pointer.x === Number(target.x) &&
@@ -8291,6 +8308,7 @@ function runSelfTest() {
       ["dispatch-evidence-mismatch", { dispatchEvidenceMismatchCycle: 2 }, "dispatch confirmation matches the post-dispatch success record exactly"],
       ["pointer-mismatch", { pointerMismatchCycle: 3 }, "sends one exact audited close click"],
       ["coalesced-move", { coalescedMoveCycle: 2 }, "sends one exact audited close click"],
+      ["missing-approach", { missingApproachCycle: 2 }, "sends one exact audited close click"],
       ["raw-hwnd", { rawHwndCycle: 2 }, "omits raw native HWND evidence"],
       ["wrapped-raw-hwnd", { wrappedRawHwndCycle: 2 }, "omits raw native HWND evidence"],
       ["raw-result-start", { rawResultStart: true }, "current persistent result events omit raw native HWND evidence"],
@@ -10887,6 +10905,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     y: target.y,
     method: options.pointerFallback ? "cursor-mouse-event-fallback" : "sendinput",
     moveNoCoalesce: true,
+    approachUsed: false,
+    approach: null,
     coordinateSource: target.source
   };
   const foreground = {
@@ -13022,6 +13042,19 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     });
     sent.payload.nativePointerSent.x = target.payload.target.x;
     sent.payload.nativePointerSent.y = target.payload.target.y;
+    if (cycle > 1) {
+      sent.payload.nativePointerSent.sent = 4;
+      sent.payload.nativePointerSent.expected = 4;
+      sent.payload.nativePointerSent.approachUsed = true;
+      sent.payload.nativePointerSent.approach = {
+        x: target.payload.target.x - 10,
+        y: target.payload.target.y
+      };
+    }
+    if (options.missingApproachCycle === cycle) {
+      sent.payload.nativePointerSent.approachUsed = false;
+      sent.payload.nativePointerSent.approach = null;
+    }
     if (options.coalescedMoveCycle === cycle) {
       sent.payload.nativePointerSent.moveNoCoalesce = false;
     }

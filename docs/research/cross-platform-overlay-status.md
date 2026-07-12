@@ -613,6 +613,20 @@ focused next experiment sets the documented `MOUSEEVENTF_MOVE_NOCOALESCE` flag
 on the existing move and audits it. It adds no click, retry, wait, or coordinate
 change.
 
+Commit `541e6f5`, exact CI run `29186335373`, Release `29186402604`, independent
+candidate binding, signing, corrected deployment, rollback, and Steam
+continuity passed. Its one case-40 run reproduced the exact cycle-2 no-effect
+failure even though the three-event dispatch now audited
+`moveNoCoalesce=true`. Native-host message counters supply the decisive
+distinction: cycle 1's successful close increased `WM_MOUSEMOVE`, while cycle 2
+remained unchanged from shown state through timeout. Steam intercepts the
+button messages before the host WndProc, so their host counters remain zero in
+both cycles. Non-coalescing at an unchanged absolute coordinate is disproved;
+do not rerun `541e6f5`. The next focused experiment keeps one atomic click but
+gives reopened cycles one scale-derived approach move inside the already-bound
+panel before the existing target move/down/up. It adds no click, retry, wait,
+or target change and requires exact four-event/approach evidence.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

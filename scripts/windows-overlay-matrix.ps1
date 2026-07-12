@@ -3903,6 +3903,24 @@ public static class SteamBridgeWindowsProbe {
     lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
     return sent;
   }
+
+  public static uint SendMouseClickInputWithApproach(
+    int approachX,
+    int approachY,
+    int x,
+    int y,
+    out int lastError
+  ) {
+    INPUT[] inputs = new INPUT[4];
+    inputs[0] = MouseInput(approachX, approachY, MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE);
+    inputs[1] = MouseInput(x, y, MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE);
+    inputs[2] = MouseInput(x, y, MOUSEEVENTF_LEFTDOWN);
+    inputs[3] = MouseInput(x, y, MOUSEEVENTF_LEFTUP);
+
+    uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = sent == inputs.Length ? 0 : Marshal.GetLastWin32Error();
+    return sent;
+  }
 }
 '@
 
@@ -3957,17 +3975,42 @@ function Send-NativeKeyChord {
 }
 
 function Send-NativeMouseClick {
-  param([int]`$X, [int]`$Y)
+  param(
+    [int]`$X,
+    [int]`$Y,
+    [switch]`$UseApproach,
+    [int]`$ApproachX = 0,
+    [int]`$ApproachY = 0
+  )
 
   `$lastError = 0
-  `$sent = [SteamBridgeWindowsProbe]::SendMouseClickInput(`$X, `$Y, [ref]`$lastError)
+  `$sent = if (`$UseApproach) {
+    [SteamBridgeWindowsProbe]::SendMouseClickInputWithApproach(
+      `$ApproachX,
+      `$ApproachY,
+      `$X,
+      `$Y,
+      [ref]`$lastError
+    )
+  } else {
+    [SteamBridgeWindowsProbe]::SendMouseClickInput(`$X, `$Y, [ref]`$lastError)
+  }
 
   return [PSCustomObject]@{
     sent = `$sent
-    expected = 3
+    expected = if (`$UseApproach) { 4 } else { 3 }
     lastError = `$lastError
     method = "sendinput"
     moveNoCoalesce = `$true
+    approachUsed = [bool]`$UseApproach
+    approach = if (`$UseApproach) {
+      [PSCustomObject]@{
+        x = `$ApproachX
+        y = `$ApproachY
+      }
+    } else {
+      `$null
+    }
     x = `$X
     y = `$Y
   }
@@ -4991,12 +5034,21 @@ function Get-WebCloseClickTarget {
       [Math]::Max(1, `$rect.height - 1),
       [Math]::Max(1, [Math]::Round(18 * `$scale))
     ))
+    `$targetX = [int]([Math]::Round(`$rect.right - `$rightInset))
+    `$targetY = [int]([Math]::Round(`$rect.top + `$topInset))
+    `$approachDistance = [int][Math]::Max(1, [Math]::Round(32 * `$scale))
+    `$approachX = [int][Math]::Max(`$rect.left + 1, `$targetX - `$approachDistance)
     return [PSCustomObject]@{
-      x = [int]([Math]::Round(`$rect.right - `$rightInset))
-      y = [int]([Math]::Round(`$rect.top + `$topInset))
+      x = `$targetX
+      y = `$targetY
       source = `$panel.source
       panel = `$rect
       scale = `$scaleEvidence
+      approach = [PSCustomObject]@{
+        x = `$approachX
+        y = `$targetY
+        logicalDistance = 32
+      }
       insets = [PSCustomObject]@{
         right = `$rightInset
         top = `$topInset
@@ -6507,7 +6559,30 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
         if (`$target) {
-          `$nativePointerSent = Send-NativeMouseClick ([int]`$target.x) ([int]`$target.y)
+          `$useApproach = (`$script:UsePersistentReuseGate -and `$cycle -gt 1)
+          `$approach = `$target.approach
+          if (`$useApproach -and (
+            -not `$approach -or
+            [int]`$approach.x -ge [int]`$target.x -or
+            [int]`$approach.y -ne [int]`$target.y -or
+            [int]`$approach.x -lt [int]`$target.panel.left -or
+            [int]`$approach.x -gt [int]`$target.panel.right -or
+            [int]`$approach.y -lt [int]`$target.panel.top -or
+            [int]`$approach.y -gt [int]`$target.panel.bottom
+          )) {
+            `$nativePointerSent = [PSCustomObject]@{
+              sent = 0
+              expected = 4
+              lastError = -1
+              error = "persistent-close-approach-target-invalid"
+              approachUsed = `$true
+              coordinateSource = `$target.source
+            }
+          } else {
+            `$approachX = if (`$approach) { [int]`$approach.x } else { 0 }
+            `$approachY = if (`$approach) { [int]`$approach.y } else { 0 }
+            `$nativePointerSent = Send-NativeMouseClick ([int]`$target.x) ([int]`$target.y) -UseApproach:`$useApproach -ApproachX `$approachX -ApproachY `$approachY
+          }
           if (`$nativePointerSent) {
             `$nativePointerSent | Add-Member -NotePropertyName coordinateSource -NotePropertyValue `$target.source -Force
           } else {

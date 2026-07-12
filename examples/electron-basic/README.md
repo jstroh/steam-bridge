@@ -343,10 +343,14 @@ descriptor remains handoff-only and binds the control process and session on
 every cycle; the authenticated HTTP control route is invoked only for the final
 quit after the result and three-cycle proof exist.
 
-Each close remains one scale-aware three-event `SendInput` dispatch. Its
-absolute move carries `MOUSEEVENTF_MOVE_NOCOALESCE`, so a repeated target after
-reopening is not eligible for Windows' default mouse-move coalescing; this does
-not add a click, retry, delay, or coordinate change.
+Each close remains one atomic, scale-aware `SendInput` dispatch with exactly one
+button down/up pair. Cycle 1 uses target-move/down/up. Reopened cycles 2 and 3
+first move from a scale-derived point inside the already-validated panel, then
+move to the same close target and click. Both moves carry
+`MOUSEEVENTF_MOVE_NOCOALESCE`. This four-event reentry sequence is required
+because an exact signed run proved that a same-coordinate move can be accepted
+without reaching the native host; it adds no second click, retry, delay, or
+target change.
 
 The summary requires one schema-3-strength initial gate, three scale-aware
 close targets and successful `SendInput` dispatches, exact active/inactive and
