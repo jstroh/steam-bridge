@@ -707,6 +707,19 @@ action and keeps the generic event for all other single-cycle routes. This is
 an evidence-predicate repair; it does not change checkout, overlay, input, or
 focus behavior. Do not rerun the unchanged candidate.
 
+Action-aware repair `655b568`, exact CI `29213554018`, and Release
+`29213640604` passed. The independently verified 114-file/1,121-method
+candidate passed four installed-certificate signatures, publisher agreement,
+transactional deployment, rollback, and Steam continuity. Its first checkout
+launch passed prepare-only and reached one fresh nonforeground marker for
+direct approval. No real local/Parsec click or challenge acknowledgment
+arrived, so the exact-source hook observed zero transition events and the gate
+sent zero activation and close input before failing closed. Task/process/
+environment cleanup, rollback, and the original Steam identity remained clean.
+This run did not exercise the repaired typed-completion predicate or the two
+shortcut checkout cases. Repeat the complete profile once only with a user
+ready to click after a fresh marker; do not rerun it unattended.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
