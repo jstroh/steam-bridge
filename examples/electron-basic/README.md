@@ -343,6 +343,11 @@ descriptor remains handoff-only and binds the control process and session on
 every cycle; the authenticated HTTP control route is invoked only for the final
 quit after the result and three-cycle proof exist.
 
+Each close remains one scale-aware three-event `SendInput` dispatch. Its
+absolute move carries `MOUSEEVENTF_MOVE_NOCOALESCE`, so a repeated target after
+reopening is not eligible for Windows' default mouse-move coalescing; this does
+not add a click, retry, delay, or coordinate change.
+
 The summary requires one schema-3-strength initial gate, three scale-aware
 close targets and successful `SendInput` dispatches, exact active/inactive and
 shown/closed/parked ordering, positive and stable controller, lease,

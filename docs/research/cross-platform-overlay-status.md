@@ -594,6 +594,25 @@ one typed active callback while the raw text contains multiple nested matches.
 Do not rerun `fe7d989`; repeat case `40` only on a candidate containing this
 parser repair.
 
+Commit `a60751e`, exact CI run `29185165592`, and candidate-only Release
+`29185241512` then passed. The independently rebound 114-file Electron `43.1.0`
+candidate passed all 1,121 methods, four valid installed-certificate
+signatures, publisher agreement, corrected transactional deployment, rollback,
+and Steam continuity. Its one case-40 run launched already foreground and
+passed the former parser stop: one trusted renderer gesture, one D3D11 attach,
+cycle-1 active/shown/close/inactive/park completion, and cycle-2 active/shown
+all appeared in order. Cycle 2 had a readable ready web panel, exact same-host
+foreground verification, 225% DPI agreement, a scale-aware target, and an
+accepted `3/3` pointer dispatch with error zero. Unlike cycle 1, the target-area
+pixels were unchanged after dispatch; Steam emitted no inactive callback and
+the action ended with the exact cycle-2 close-and-park failure. Task deletion,
+zero runner/package processes, environment restoration, rollback, and exact
+Steam identity all passed. Do not rerun `a60751e`. Because both cycles used the
+same absolute target and Windows normally coalesces mouse-move messages, the
+focused next experiment sets the documented `MOUSEEVENTF_MOVE_NOCOALESCE` flag
+on the existing move and audits it. It adds no click, retry, wait, or coordinate
+change.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

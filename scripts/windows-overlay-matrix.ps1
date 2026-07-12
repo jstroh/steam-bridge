@@ -3487,6 +3487,7 @@ public static class SteamBridgeWindowsProbe {
   const uint MOUSEEVENTF_MOVE = 0x0001;
   const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
   const uint MOUSEEVENTF_LEFTUP = 0x0004;
+  const uint MOUSEEVENTF_MOVE_NOCOALESCE = 0x2000;
   const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
   const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
   const int SM_XVIRTUALSCREEN = 76;
@@ -3894,7 +3895,7 @@ public static class SteamBridgeWindowsProbe {
 
   public static uint SendMouseClickInput(int x, int y, out int lastError) {
     INPUT[] inputs = new INPUT[3];
-    inputs[0] = MouseInput(x, y, MOUSEEVENTF_MOVE);
+    inputs[0] = MouseInput(x, y, MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE);
     inputs[1] = MouseInput(x, y, MOUSEEVENTF_LEFTDOWN);
     inputs[2] = MouseInput(x, y, MOUSEEVENTF_LEFTUP);
 
@@ -3966,6 +3967,7 @@ function Send-NativeMouseClick {
     expected = 3
     lastError = `$lastError
     method = "sendinput"
+    moveNoCoalesce = `$true
     x = `$X
     y = `$Y
   }

@@ -1549,6 +1549,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "persistent-cycle-readiness-order-invalid",
     "activeCallbackCount",
     "inactiveCallbackCount",
+    "MOUSEEVENTF_MOVE_NOCOALESCE",
+    "moveNoCoalesce = `$true",
     '"cycle-{0:D2}-detected"',
     '"cycle-{0:D2}-before-send"',
     '"cycle-{0:D2}-after-send"',

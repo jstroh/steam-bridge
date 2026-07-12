@@ -4515,6 +4515,7 @@ function verifyPersistentCloseProbe(
           pointer.expected === 3 &&
           pointer.lastError === 0 &&
           pointer.method === "sendinput" &&
+          pointer.moveNoCoalesce === true &&
           Number.isInteger(pointer.x) &&
           Number.isInteger(pointer.y) &&
           pointer.x === Number(target.x) &&
@@ -5892,6 +5893,7 @@ function summarizeCloseProbe(
     nativePointerExpected: Number(nativePointerSent.expected),
     nativePointerLastError: Number(nativePointerSent.lastError),
     nativePointerMethod: String(nativePointerSent.method || ""),
+    nativePointerMoveNoCoalesce: nativePointerSent.moveNoCoalesce === true,
     nativePointerSucceeded:
       Number(nativePointerSent.sent) === 3 &&
       Number(nativePointerSent.expected) === 3 &&
@@ -8288,6 +8290,7 @@ function runSelfTest() {
       ["parked-before-dispatch", { parkedBeforeDispatchCycle: 2 }, "causally bridges shown and active to close and inactive"],
       ["dispatch-evidence-mismatch", { dispatchEvidenceMismatchCycle: 2 }, "dispatch confirmation matches the post-dispatch success record exactly"],
       ["pointer-mismatch", { pointerMismatchCycle: 3 }, "sends one exact audited close click"],
+      ["coalesced-move", { coalescedMoveCycle: 2 }, "sends one exact audited close click"],
       ["raw-hwnd", { rawHwndCycle: 2 }, "omits raw native HWND evidence"],
       ["wrapped-raw-hwnd", { wrappedRawHwndCycle: 2 }, "omits raw native HWND evidence"],
       ["raw-result-start", { rawResultStart: true }, "current persistent result events omit raw native HWND evidence"],
@@ -10883,6 +10886,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     x: options.pointerMissesTarget ? target.x - 1 : target.x,
     y: target.y,
     method: options.pointerFallback ? "cursor-mouse-event-fallback" : "sendinput",
+    moveNoCoalesce: true,
     coordinateSource: target.source
   };
   const foreground = {
@@ -13018,6 +13022,9 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     });
     sent.payload.nativePointerSent.x = target.payload.target.x;
     sent.payload.nativePointerSent.y = target.payload.target.y;
+    if (options.coalescedMoveCycle === cycle) {
+      sent.payload.nativePointerSent.moveNoCoalesce = false;
+    }
     if (options.pointerMismatchCycle === cycle) {
       sent.payload.nativePointerSent.x += 1;
     }
