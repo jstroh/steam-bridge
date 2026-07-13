@@ -643,6 +643,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "hasCheckoutUrl",
     "cleanStaleOverlayHelpers",
     "taskRunLevel",
+    "lazyPresenterReady",
+    "rendererProofRequired",
     "sameSteamIdentityAcrossProfiles",
     "verifyCandidateDirectory",
     "readAndValidateLiveProofReceipt"

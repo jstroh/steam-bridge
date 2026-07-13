@@ -884,6 +884,24 @@ replacement before any more live
 profiles, then repeat one complete no-modal candidate-bound preflight and strict
 post-run fingerprint.
 
+The exact `6bdca68` CI and Release outputs, independent package verification,
+installed-certificate signing, and transactional deployment subsequently
+passed, including 114-file source/active identity, 4/4 valid signatures,
+publisher agreement, retained rollback, zero package-local logs or processes,
+and exact Steam continuity. Before spending another live run, a static final-
+receipt audit found that `windows-live-proof-receipt.cjs` still modeled both the
+native-load gate and route case `10-presenter-ready` as attached D3D11 evidence.
+That tool predated `fe7d989`; the current matrix summary correctly treats those
+deliberately lazy checks as selection and host-availability proof without a
+renderer attachment. A genuine final root would therefore have passed the
+matrix auditor but failed receipt generation. No live profile was started after
+the finding. The focused repair uses the real selection-only summary shape for
+both readiness boundaries and keeps exact three-way D3D11 agreement mandatory
+for every attached case, with adversarial self-tests for fake readiness
+attachment and incomplete attached routes. Because the receipt helper is part
+of the fingerprinted package, build, sign, and deploy one replacement before
+collecting final evidence.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

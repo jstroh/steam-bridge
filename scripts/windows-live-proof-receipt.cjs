@@ -456,10 +456,12 @@ function validateProfileSummary(summary, contract, candidateBinding) {
   assert.equal(nativeLoad.appId, PUBLIC_APP_ID);
   assert.equal(nativeLoad.action, "presenter-ready");
   assert.equal(nativeLoad.backend, EXPECTED_BACKEND);
-  assert.equal(nativeLoad.hostBackend, EXPECTED_BACKEND);
-  assert.equal(nativeLoad.rendererBackend, EXPECTED_BACKEND);
-  assert.equal(nativeLoad.backendAgrees, true);
-  assert.ok(nativeLoad.lifecycleCompleteCount >= 1);
+  assert.equal(nativeLoad.hostBackend, "");
+  assert.equal(nativeLoad.rendererBackend, "");
+  assert.equal(nativeLoad.backendAgrees, false);
+  assert.equal(nativeLoad.lazyPresenterReady, true);
+  assert.equal(nativeLoad.rendererProofRequired, false);
+  assert.equal(nativeLoad.lifecycleCompleteCount, 0);
   assert.equal(nativeLoad.crashDumpCount, 0);
   assert.equal(nativeLoad.fatalLifecycleEventCount, 0);
   validateRuntimeConfig(nativeLoad.runtimeConfig, candidateBinding.electronVersion, false);
@@ -530,7 +532,7 @@ function validateProfileSummary(summary, contract, candidateBinding) {
       candidateBinding.electronVersion,
       expected.hasCheckoutTransactionId
     );
-    validateBackendEvidence(row.presenterBackendEvidence);
+    validateBackendEvidence(row.presenterBackendEvidence, expected.action === "presenter-ready");
     assert.ok(row.steamRenderingHealth);
     assert.equal(row.steamRenderingHealth.status, "healthy");
     assert.equal(row.steamRenderingHealth.recentSevereSignalCount, 0);
@@ -619,8 +621,24 @@ function validateRuntimeConfig(config, electronVersion, hasCheckoutTransactionId
   });
 }
 
-function validateBackendEvidence(evidence) {
+function validateBackendEvidence(evidence, selectionOnly = false) {
   assert.ok(evidence);
+  if (selectionOnly) {
+    assert.deepEqual(evidence.result, {
+      source: "result",
+      present: true,
+      attached: false,
+      backend: EXPECTED_BACKEND,
+      hostBackend: "",
+      rendererBackend: "",
+      complete: false,
+      agrees: false
+    });
+    assert.deepEqual(evidence.lifecycle, []);
+    assert.equal(evidence.lifecycleAttachedCount, 0);
+    assert.equal(evidence.lifecycleCompleteCount, 0);
+    return;
+  }
   assert.deepEqual(evidence.result, {
     source: "result",
     present: true,
@@ -1326,6 +1344,43 @@ function selfTest() {
   const badNativeLoad = createSelfTestSummary(PROFILE_CONTRACTS[0], candidateBinding);
   badNativeLoad.nativeLoadGate.ok = false;
   assert.throws(() => validateProfileSummary(badNativeLoad, PROFILE_CONTRACTS[0], candidateBinding));
+  const attachedNativeLoad = createSelfTestSummary(PROFILE_CONTRACTS[0], candidateBinding);
+  Object.assign(attachedNativeLoad.nativeLoadGate, {
+    hostBackend: EXPECTED_BACKEND,
+    rendererBackend: EXPECTED_BACKEND,
+    backendAgrees: true,
+    lazyPresenterReady: false,
+    rendererProofRequired: true,
+    lifecycleCompleteCount: 1
+  });
+  assert.throws(() => validateProfileSummary(attachedNativeLoad, PROFILE_CONTRACTS[0], candidateBinding));
+  const managedRoutesContract = PROFILE_CONTRACTS.find((entry) => entry.name === "managed-routes");
+  const readyCaseIndex = managedRoutesContract.cases.findIndex((entry) => entry.action === "presenter-ready");
+  assert.ok(readyCaseIndex >= 0);
+  const attachedReadyCase = createSelfTestSummary(managedRoutesContract, candidateBinding);
+  Object.assign(attachedReadyCase.caseSummaries[readyCaseIndex].presenterBackendEvidence, {
+    result: {
+      source: "result",
+      present: true,
+      attached: true,
+      backend: EXPECTED_BACKEND,
+      hostBackend: EXPECTED_BACKEND,
+      rendererBackend: EXPECTED_BACKEND,
+      complete: true,
+      agrees: true
+    },
+    lifecycle: [],
+    lifecycleAttachedCount: 1,
+    lifecycleCompleteCount: 1
+  });
+  assert.throws(() => validateProfileSummary(attachedReadyCase, managedRoutesContract, candidateBinding));
+  const incompleteAttachedRoute = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
+  Object.assign(incompleteAttachedRoute.caseSummaries[1].presenterBackendEvidence.result, {
+    rendererBackend: "",
+    complete: false,
+    agrees: false
+  });
+  assert.throws(() => validateProfileSummary(incompleteAttachedRoute, PROFILE_CONTRACTS[1], candidateBinding));
   const badRuntime = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
   badRuntime.caseSummaries[1].runtimeConfig.nativePathOverride = true;
   assert.throws(() => validateProfileSummary(badRuntime, PROFILE_CONTRACTS[1], candidateBinding));
@@ -1520,21 +1575,38 @@ function createSelfTestSummary(contract, candidateBinding) {
     isPackaged: true,
     electronVersion: candidateBinding.electronVersion
   });
-  const backendEvidence = () => ({
-    result: {
-      source: "result",
-      present: true,
-      attached: true,
-      backend: EXPECTED_BACKEND,
-      hostBackend: EXPECTED_BACKEND,
-      rendererBackend: EXPECTED_BACKEND,
-      complete: true,
-      agrees: true
-    },
-    lifecycle: [],
-    lifecycleAttachedCount: 1,
-    lifecycleCompleteCount: 1
-  });
+  const backendEvidence = (selectionOnly = false) =>
+    selectionOnly
+      ? {
+          result: {
+            source: "result",
+            present: true,
+            attached: false,
+            backend: EXPECTED_BACKEND,
+            hostBackend: "",
+            rendererBackend: "",
+            complete: false,
+            agrees: false
+          },
+          lifecycle: [],
+          lifecycleAttachedCount: 0,
+          lifecycleCompleteCount: 0
+        }
+      : {
+          result: {
+            source: "result",
+            present: true,
+            attached: true,
+            backend: EXPECTED_BACKEND,
+            hostBackend: EXPECTED_BACKEND,
+            rendererBackend: EXPECTED_BACKEND,
+            complete: true,
+            agrees: true
+          },
+          lifecycle: [],
+          lifecycleAttachedCount: 1,
+          lifecycleCompleteCount: 1
+        };
   const caseSummaries = contract.cases.map((expected) => ({
     caseName: expected.id,
     failures: [],
@@ -1554,7 +1626,7 @@ function createSelfTestSummary(contract, candidateBinding) {
     managedCheckoutOperationStarted: expected.id === "02-checkout-approval",
     microTxnCallbackCount: 0,
     runtimeConfig: runtimeConfig(expected.hasCheckoutTransactionId),
-    presenterBackendEvidence: backendEvidence(),
+    presenterBackendEvidence: backendEvidence(expected.action === "presenter-ready"),
     steamRenderingHealth: {
       status: "healthy",
       recentSevereSignalCount: 0,
@@ -1634,10 +1706,12 @@ function createSelfTestSummary(contract, candidateBinding) {
       appId: PUBLIC_APP_ID,
       action: "presenter-ready",
       backend: EXPECTED_BACKEND,
-      hostBackend: EXPECTED_BACKEND,
-      rendererBackend: EXPECTED_BACKEND,
-      backendAgrees: true,
-      lifecycleCompleteCount: 1,
+      hostBackend: "",
+      rendererBackend: "",
+      backendAgrees: false,
+      lazyPresenterReady: true,
+      rendererProofRequired: false,
+      lifecycleCompleteCount: 0,
       runtimeConfig: runtimeConfig(),
       crashDumpCount: 0,
       fatalLifecycleEventCount: 0

@@ -1247,11 +1247,12 @@ node .\windows-live-proof-receipt.cjs `
 
 The generator validates readiness, a successful no-modal native-load gate,
 default render health, exact ordered case/action/target contracts, resolved
-default runtime configuration, three-way D3D11 identity, semantic lifecycle,
-crash state, all cleanup guards, unchanged Steam identity across all four
-profiles, and a final deployed-directory fingerprint. Its receipt contains only
-allowlisted release metadata, hashes, enums, booleans, counts, and fixed case
-IDs—no paths, process or session IDs, URLs, Steam IDs, transaction IDs,
+default runtime configuration, lazy D3D11 selection and host availability for
+`presenter-ready`, three-way D3D11 identity for every attached case, semantic
+lifecycle, crash state, all cleanup guards, unchanged Steam identity across all
+four profiles, and a final deployed-directory fingerprint. Its receipt contains
+only allowlisted release metadata, hashes, enums, booleans, counts, and fixed
+case IDs—no paths, process or session IDs, URLs, Steam IDs, transaction IDs,
 publisher identity, or screenshot names. Retain it beside the exact `.tgz`,
 bundle archive, package audit, and executable probe. The audit and receipt are
 not independently signed; trusted generation and immutable storage provenance

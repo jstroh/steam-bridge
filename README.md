@@ -828,7 +828,9 @@ the private `--checkout-json-file` checkout suite.
   fingerprint for the deployed directory.
   The signed candidate must still pass
   `presenter-ready` and the live Windows overlay gates before it carries an
-  overlay release claim.
+  overlay release claim. `presenter-ready` proves lazy D3D11 selection and
+  native-host availability without claiming a renderer attachment; every
+  attached live case must prove presenter/native-host/renderer agreement.
 - The ASAR gate's audited `.tgz` is the canonical npm release candidate. Verify
   it with `npm run release:publish-candidate -- --tarball <file.tgz>
   --bundle-archive <win-unpacked.tar> --audit-manifest <audit.json>`, then add
