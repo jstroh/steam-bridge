@@ -742,6 +742,20 @@ the distinct checkout profile with a fresh user foreground transition, and use
 a consumed activation there as the precise state-change condition for one
 later receipt-bound persistent retry.
 
+The subsequent checkout and candidate-bound diagnostic preflight tasks stopped
+before any case or input because the active deployment no longer matched its
+signed fingerprint. A byte comparison found all 114 expected files unchanged
+and one added 157-byte top-level `debug.log`. This is Chromium runtime logging
+into the shortcut working directory, not source or signer drift, but it still
+correctly invalidates the immutable release candidate. Electron's documented
+`--log-file`/`ELECTRON_LOG_FILE` controls support a bounded fix: public shortcut
+and Steam-app wrapper options now point logging beside the external launch-env
+file, direct launches set the same external environment target before process
+creation, printed evidence redacts the path, and the matrix rejects shortcut
+options without the external route. Do not delete the file and continue or
+weaken fingerprinting. Build, sign, deploy, update the shortcut once with Steam
+stopped, and prove 114 unchanged files before and after the next live profile.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

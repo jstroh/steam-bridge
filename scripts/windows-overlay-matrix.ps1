@@ -2707,7 +2707,11 @@ function ConvertTo-SanitizedShortcutResult {
 
 function Get-StableShortcutLaunchOptions {
   if ($ShortcutLaunchPrefix) {
-    $envOption = Join-MatrixLaunchOptions @("--steam-bridge-smoke-env-file=$LaunchEnvFile")
+    $externalLogFile = Join-Path (Split-Path -Parent $LaunchEnvFile) "electron-debug.log"
+    $envOption = Join-MatrixLaunchOptions @(
+      "--steam-bridge-smoke-env-file=$LaunchEnvFile",
+      "--log-file=$externalLogFile"
+    )
     return (($ShortcutLaunchPrefix.Trim(), $envOption) -join " ").Trim()
   }
 
@@ -2729,6 +2733,9 @@ function Get-StableShortcutLaunchOptions {
   }
   if ($LaunchEnvFile -and $line -notmatch "--steam-bridge-smoke-env-file=") {
     throw "Computed Windows shortcut launch options do not include the smoke env file."
+  }
+  if ($LaunchEnvFile -and $line -notmatch "--log-file=") {
+    throw "Computed Windows shortcut launch options do not route Electron logging outside the package."
   }
   return [string]$line
 }
@@ -7649,7 +7656,7 @@ if ($LaunchMode -in @("steam-launch", "steam-app")) {
       Write-Host "  javaScriptRunnerExe: configured"
     }
   } else {
-    Write-Host "  realSteamAppLaunchOptions: --steam-bridge-smoke-env-file=<launchEnvFile>"
+    Write-Host "  realSteamAppLaunchOptions: --steam-bridge-smoke-env-file=<launchEnvFile> --log-file=<externalLogFile>"
   }
 }
 

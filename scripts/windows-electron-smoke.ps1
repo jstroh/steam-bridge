@@ -344,7 +344,10 @@ function Redact-SmokeLaunchArgument {
 function Get-LaunchOptionsLine {
   param([string]$LogFile, [string]$SmokeAction)
   if ($SmokeEnvFile) {
-    return (Join-LaunchOptions @("--steam-bridge-smoke-env-file=$SmokeEnvFile"))
+    return (Join-LaunchOptions @(
+      "--steam-bridge-smoke-env-file=$SmokeEnvFile",
+      "--log-file=$(Get-ExternalElectronLogFile -LogFile $LogFile)"
+    ))
   }
   return (Join-LaunchOptions (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction | ForEach-Object {
     Redact-SmokeLaunchArgument -Argument $_
@@ -364,10 +367,22 @@ function Join-LaunchOptions {
   }) -join " ")
 }
 
+function Get-ExternalElectronLogFile {
+  param([string]$LogFile)
+
+  $baseFile = if ($SmokeEnvFile) { $SmokeEnvFile } else { $LogFile }
+  $parent = Split-Path -Parent $baseFile
+  if (-not $parent) {
+    throw "Could not resolve the external Electron log directory."
+  }
+  return (Join-Path $parent "electron-debug.log")
+}
+
 function Get-SmokeEnv {
   param([string]$LogFile, [string]$SmokeAction)
 
   $envMap = [ordered]@{
+    ELECTRON_LOG_FILE = Get-ExternalElectronLogFile -LogFile $LogFile
     SteamAppId = "$AppId"
     SteamGameId = "$AppId"
     SteamOverlayGameId = "$AppId"
@@ -497,7 +512,8 @@ function Format-SmokeEnvLines {
         "STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL",
         "STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE",
         "STEAM_BRIDGE_SMOKE_INIT_TXN_REQUEST_FILE",
-        "STEAM_BRIDGE_SMOKE_INIT_TXN_API_KEY_ENV"
+        "STEAM_BRIDGE_SMOKE_INIT_TXN_API_KEY_ENV",
+        "ELECTRON_LOG_FILE"
       ) -contains $key -or $key -match "(?i)(api[_-]?key|publisher[_-]?key|secret|token)"
     )) {
       $value = "REDACTED"

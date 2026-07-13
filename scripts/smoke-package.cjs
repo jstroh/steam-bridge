@@ -894,7 +894,10 @@ function runWindowsSmokeHelperStaticChecks() {
     matrixHelper.includes('$text -notlike "Steam launch options:*"') &&
       matrixHelper.includes('$text -notlike "Steam shortcut launch options:*"') &&
       matrixHelper.includes('$text -notlike "Launch URL:*"') &&
-      matrixHelper.includes("Computed Windows shortcut launch options do not include the smoke env file."),
+      matrixHelper.includes("Computed Windows shortcut launch options do not include the smoke env file.") &&
+      matrixHelper.includes(
+        "Computed Windows shortcut launch options do not route Electron logging outside the package."
+      ),
     "Windows matrix must parse only the actual shortcut launch options line"
   );
   assert.ok(
@@ -2270,6 +2273,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "--steam-bridge-smoke-checkout-transaction-id=$CheckoutTransactionId",
     "--steam-bridge-smoke-checkout-json-file=$CheckoutJsonFile",
     "--steam-bridge-smoke-env-file=$SmokeEnvFile",
+    "--log-file=$(Get-ExternalElectronLogFile -LogFile $LogFile)",
+    "ELECTRON_LOG_FILE",
+    "electron-debug.log",
     "--steam-bridge-electron-overlay-in-process-gpu=$OverlayInProcessGpu",
     "--steam-bridge-windows-native-host-backend=$NativeHostBackend",
     "--steam-bridge-windows-native-host-style=$NativeHostStyle",
@@ -2780,6 +2786,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "inspect",
     "SteamBridgeSmoke.exe",
     "--steam-bridge-smoke-env-file=",
+    "--log-file=",
+    "electron-debug.log",
     "%command%",
     "localconfig.vdf",
     "Fully quit Steam before editing localconfig.vdf",
@@ -2790,6 +2798,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "backupPath",
     "containsSmokeExe",
     "containsEnvFileArg",
+    "containsLogFileArg",
     "containsCommandToken",
     "parseTextVdf",
     "Windows Steam app launch options self-test passed."

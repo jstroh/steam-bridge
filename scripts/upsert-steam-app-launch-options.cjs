@@ -191,9 +191,12 @@ function resolveSmokeEnvFile(options) {
 }
 
 function buildSmokeLaunchOptions(smokeExe, smokeEnvFile) {
+  const pathApi = path.win32.isAbsolute(smokeEnvFile) ? path.win32 : path;
+  const electronLogFile = pathApi.join(pathApi.dirname(smokeEnvFile), "electron-debug.log");
   return [
     quoteLaunchArg(smokeExe),
     quoteLaunchArg(`--steam-bridge-smoke-env-file=${smokeEnvFile}`),
+    quoteLaunchArg(`--log-file=${electronLogFile}`),
     "%command%"
   ].join(" ");
 }
@@ -286,6 +289,7 @@ function inspectLaunchOptions(localConfigPath, appId) {
     launchOptionsLength: launchOptions.length,
     containsSmokeExe: /SteamBridgeSmoke(?:\.exe)?/i.test(launchOptions),
     containsEnvFileArg: /steam-bridge-smoke-env-file/i.test(launchOptions),
+    containsLogFileArg: /--log-file=.*electron-debug\.log/i.test(launchOptions),
     containsCommandToken: /%command%/i.test(launchOptions),
     localConfigPath,
     steamRunning: isSteamRunning()
@@ -321,6 +325,7 @@ function setLaunchOptions(localConfigPath, appId, launchOptions, options) {
     hasLaunchOptions: true,
     containsSmokeExe: true,
     containsEnvFileArg: true,
+    containsLogFileArg: true,
     containsCommandToken: true,
     localConfigPath,
     backupPath: changed ? backupPath : "",
@@ -594,11 +599,12 @@ function runSelfTest() {
     const launchOptions = buildSmokeLaunchOptions(path.join(smokeDir, "SteamBridgeSmoke.exe"), envFile);
     assert.match(launchOptions, /SteamBridgeSmoke\.exe/);
     assert.match(launchOptions, /steam-bridge-smoke-env-file/);
+    assert.match(launchOptions, /--log-file=.*electron-debug\.log/);
     assert.match(launchOptions, /%command%/);
     assert.doesNotMatch(launchOptions, /\\\\/);
     assert.equal(
       buildSmokeLaunchOptions("C:\\Smoke App\\SteamBridgeSmoke.exe", "C:\\Smoke App\\smoke.env"),
-      '"C:\\Smoke App\\SteamBridgeSmoke.exe" "--steam-bridge-smoke-env-file=C:\\Smoke App\\smoke.env" %command%'
+      '"C:\\Smoke App\\SteamBridgeSmoke.exe" "--steam-bridge-smoke-env-file=C:\\Smoke App\\smoke.env" "--log-file=C:\\Smoke App\\electron-debug.log" %command%'
     );
 
     const setResult = setLaunchOptions(localConfig, "12345", launchOptions, { backup });
@@ -609,6 +615,7 @@ function runSelfTest() {
     assert.equal(secondInspect.hasLaunchOptions, true);
     assert.equal(secondInspect.containsSmokeExe, true);
     assert.equal(secondInspect.containsEnvFileArg, true);
+    assert.equal(secondInspect.containsLogFileArg, true);
     assert.equal(secondInspect.containsCommandToken, true);
 
     const idempotent = setLaunchOptions(localConfig, "12345", launchOptions, { backup });
