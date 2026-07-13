@@ -731,6 +731,17 @@ passed. Do not treat a chat response as click proof; repeat once only after the
 user explicitly confirms the Smoke title bar itself was clicked after a fresh
 marker.
 
+The next `655b568` persistent attempt launched already foreground, so no marker
+or external click was needed. Exact source/control/session/DPI/point binding
+passed at pre- and final-dispatch, and the probe sent one correctly targeted
+3/3 no-coalesce activation click with zero API error. The renderer did not
+consume the gate and Steam emitted no active callback, so the probe timed out
+with zero close input before presenter attachment. All cleanup, rollback, and
+Steam-continuity guards passed. Do not repeat persistent unchanged; first run
+the distinct checkout profile with a fresh user foreground transition, and use
+a consumed activation there as the precise state-change condition for one
+later receipt-bound persistent retry.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
