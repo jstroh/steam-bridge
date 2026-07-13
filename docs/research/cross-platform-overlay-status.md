@@ -68,6 +68,43 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
+Independent verification bound its Electron `43.1.0` package, 114-file retained
+bundle, all 1,121 declared native methods, canonical tarball SHA-256
+`e2d42550d879327b0e2d64eb05b6db0598723baedff28545fb0ebb453bffafaa`, and
+bundle-archive SHA-256
+`3efa5ce3ddd5af26ad6c2012c22a0c65631461f50768bf692f9a30296a8dd576`
+to the exact commit and `main`. The installed-certificate gate rebuilt that
+exact tarball with signing required and passed 4/4 required signatures,
+app/addon publisher agreement, 114 files, 1,121 methods, and zero package-local
+logs. Transactional deployment retained a byte-verified rollback and preserved
+the exact Steam PID/session/start identity. An independent post-deployment audit
+reproved source/active byte identity, signed-audit binding, signature and
+publisher agreement, zero active-package processes, removed stage, rollback
+inventory, and Steam continuity.
+
+The same deployed candidate then passed one complete candidate-bound no-modal
+`managed / 10-presenter-ready` task through the Limited interactive wrapper.
+Public App ID `480`, assumed-shortcut semantics, native-load, default render
+health, lazy D3D11 selection-only readiness, the semantic summarizer, every
+task/process/launch-env/Steam cleanup guard, and matching pre/post fingerprints
+all passed. A second independent audit still found the exact 114-file candidate
+with no package-local logs or processes. This settles the current package-
+immutability boundary.
+
+The first focused active `11-managed-web-open-and-wait` recovery on that exact
+candidate naturally launched its authenticated source nonforeground. The
+schema-3 probe wrote exactly one valid atomic source-ready marker with the
+foreground transition hook armed and zero activation/close input. No real
+post-marker local/Parsec title-bar click or copied-challenge acknowledgment was
+available, so the branch correctly emitted zero controller-ack, transition,
+activation, or close events and failed closed before writing a Smoke result.
+There was no App Control or Steam-process policy block; all wrapper cleanup,
+the strict post-run fingerprint, rollback/signature audit, and Steam continuity
+remained green. Repeat only once when a real coordinator is ready to click the
+exact Smoke title bar after the fresh marker and acknowledge only after click
+success. Do not synthesize or loop that acceptance input.
+
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
 In the already-running signed Smoke app, one genuine **Presenter Web Wait**
