@@ -385,16 +385,19 @@ out of packaged-native product proof because they prove the selected route, not
 that the final bundled `.node` has enough trust/reputation to load.
 
 The Windows package also includes `windows-native-overlay-control.ps1` and the
-source for a tiny C# OpenGL control app. This is a route diagnostic, not an
+source for a tiny C# OpenGL control app. Generated files default to a source-
+hash-addressed directory under
+`%LOCALAPPDATA%\SteamBridgeNativeOverlayControl\bin` instead of changing the
+signed package. This is a route diagnostic, not an
 Electron-builder API. It compares Steam's native overlay behavior against the
 Electron smoke app by launching a native OpenGL window through Steam, initializing
 Steam as App ID `480`, and calling raw web/store/dialog/user overlay APIs while
-capturing screenshots and result JSON. Build it, sign the exact package, then
+capturing screenshots and result JSON. Build it, sign the generated control
+executable with normal Authenticode tooling if local policy requires it, then
 install its stable shortcut:
 
 ```powershell
 .\windows-native-overlay-control.ps1 -Mode build
-.\sign-windows-package.ps1 -CertificateSubject "Steam Bridge Local Test Code Signing"
 .\windows-native-overlay-control.ps1 -Mode shortcut -InstallShortcut
 ```
 
@@ -1190,9 +1193,10 @@ The stable Windows shortcut routes Chromium `--log-file` to the external smoke
 runtime directory next to the launch-env file. Direct launches set the matching
 environment variable, and packaged helper invocations that use Electron as a
 Node runner route any Electron log to a unique temporary file and remove it
-afterward. A live run must not add `debug.log` or any other runtime file to the
-signed candidate directory; doing so changes its exact fingerprint and
-invalidates later profile and receipt proof.
+afterward. The render-health comparison stores any Chromium log in its external
+case-artifact directory. A live run must not add `debug.log` or any other
+runtime file to the signed candidate directory; doing so changes its exact
+fingerprint and invalidates later profile and receipt proof.
 
 For a production release claim, pass the exact schema-2 package audit to every
 task-wrapped profile with `-CandidateAuditManifest`. The matrix fingerprints
@@ -1202,7 +1206,8 @@ env file, `InitTxn` input, renderer override, skipped gate, shortened health
 window, allow-unhealthy flag, custom JavaScript runner, elevated task, or stale-
 helper cleanup. Keep the exact public App ID `480` web URL default and
 `-TaskRunLevel Limited`; candidate-bound runs also reject reparse-point ancestry
-for the candidate and launch-environment paths:
+for the candidate, artifact, and launch-environment paths, and every matrix run
+requires its artifact root to resolve outside the candidate:
 
 ```json
 [

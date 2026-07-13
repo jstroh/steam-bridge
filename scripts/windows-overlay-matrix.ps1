@@ -299,6 +299,7 @@ if (-not $ArtifactRoot) {
   $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
   $ArtifactRoot = Join-Path $env:TEMP "steam-bridge-windows-overlay-matrix-$timestamp"
 }
+$ArtifactRoot = [System.IO.Path]::GetFullPath($ArtifactRoot)
 
 $defaultLaunchEnvFile = [System.IO.Path]::GetFullPath(
   (Join-Path $env:LOCALAPPDATA "SteamBridgeSmoke\steam-bridge-windows-smoke.env")
@@ -311,7 +312,12 @@ if (-not $LaunchEnvFile) {
 $pathTrimChars = @([char]92, [char]47)
 $pathSeparator = [string][System.IO.Path]::DirectorySeparatorChar
 $normalizedCandidateRoot = $AppDir.TrimEnd($pathTrimChars).ToLowerInvariant()
+$normalizedArtifactRoot = $ArtifactRoot.TrimEnd($pathTrimChars).ToLowerInvariant()
 $normalizedLaunchEnvFile = $LaunchEnvFile.ToLowerInvariant()
+$artifactRootOutsideCandidate = [bool](
+  $normalizedArtifactRoot -ne $normalizedCandidateRoot -and
+  -not $normalizedArtifactRoot.StartsWith($normalizedCandidateRoot + $pathSeparator)
+)
 $launchEnvOutsideCandidate = [bool](
   $normalizedLaunchEnvFile -ne $normalizedCandidateRoot -and
   -not $normalizedLaunchEnvFile.StartsWith($normalizedCandidateRoot + $pathSeparator)
@@ -321,12 +327,20 @@ $launchEnvUsesDefaultPath = [bool]$LaunchEnvFile.Equals(
   [System.StringComparison]::OrdinalIgnoreCase
 )
 $candidatePathHasNoReparsePoints = -not (Test-PathAncestorChainHasReparsePoint -Path $AppDir)
+$artifactRootPathHasNoReparsePoints = -not (Test-PathAncestorChainHasReparsePoint -Path $ArtifactRoot)
 $launchEnvPathHasNoReparsePoints = -not (Test-PathAncestorChainHasReparsePoint -Path $LaunchEnvFile)
+if (-not $artifactRootOutsideCandidate) {
+  throw "-ArtifactRoot must resolve outside -AppDir."
+}
 if (-not $launchEnvOutsideCandidate) {
   throw "-LaunchEnvFile must resolve outside -AppDir."
 }
-if ($CandidateAuditManifest -and (-not $candidatePathHasNoReparsePoints -or -not $launchEnvPathHasNoReparsePoints)) {
-  throw "Candidate-bound runs require reparse-point-free candidate and launch-environment path ancestry."
+if ($CandidateAuditManifest -and (
+  -not $candidatePathHasNoReparsePoints -or
+  -not $artifactRootPathHasNoReparsePoints -or
+  -not $launchEnvPathHasNoReparsePoints
+)) {
+  throw "Candidate-bound runs require reparse-point-free candidate, artifact, and launch-environment path ancestry."
 }
 
 if (-not $WebUrl) {

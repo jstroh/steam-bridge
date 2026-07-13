@@ -244,8 +244,14 @@ async function main() {
       publisherMatches.nativeAddon = true;
     }
 
+    const preExecutableInspection = inspectCandidateDirectory(appDir);
     const executableProbe = runPackagedExecutable(appExe, outputRoot, sourceNativeBindingManifest);
     const bundleInspection = inspectCandidateDirectory(appDir);
+    assert.deepEqual(
+      bundleInspection,
+      preExecutableInspection,
+      "Packaged executable probe must not mutate the final bundle"
+    );
     assertSignatureHashesMatchInspection(appDir, signatureFiles, signatures, bundleInspection);
     const bundleArchivePath = path.join(
       outputRoot,
@@ -1117,6 +1123,7 @@ function isolatedCandidateEnvironment(profileRoot, additions = {}) {
     TEMP: temp,
     TMP: temp,
     TMPDIR: temp,
+    ELECTRON_LOG_FILE: path.join(resolvedProfileRoot, "electron-debug.log"),
     ...additions
   });
 }

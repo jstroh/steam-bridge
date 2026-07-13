@@ -506,9 +506,10 @@ function Invoke-WithSmokeEnvironment {
 }
 
 function New-SmokeEnvironment {
-  param($Case, [string]$ResultFile, [string]$DiagnosticDir)
+  param($Case, [string]$ResultFile, [string]$DiagnosticDir, [string]$ElectronLogFile)
 
   $envMap = [ordered]@{
+    ELECTRON_LOG_FILE = $ElectronLogFile
     SteamAppId = "$AppId"
     SteamGameId = "$AppId"
     SteamOverlayGameId = "$AppId"
@@ -538,6 +539,7 @@ function Invoke-RenderHealthCase {
   $caseDir = Join-Path $ArtifactRoot $Case.name
   $diagnosticDir = Join-Path $caseDir "diagnostics"
   $resultFile = Join-Path $caseDir "result.log"
+  $electronLogFile = Join-Path $caseDir "electron-debug.log"
   $lifecyclePath = Join-Path $diagnosticDir "lifecycle.jsonl"
   $desktopScreenshotPath = Join-Path $caseDir "desktop.png"
   $clientScreenshotPath = Join-Path $caseDir "client.png"
@@ -545,6 +547,7 @@ function Invoke-RenderHealthCase {
   New-Item -ItemType Directory -Force -Path $caseDir | Out-Null
   Remove-Item -LiteralPath $diagnosticDir -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $electronLogFile -Force -ErrorAction SilentlyContinue
 
   $process = $null
   $startedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -552,7 +555,11 @@ function Invoke-RenderHealthCase {
   $launchError = $null
 
   try {
-    $envMap = New-SmokeEnvironment -Case $Case -ResultFile $resultFile -DiagnosticDir $diagnosticDir
+    $envMap = New-SmokeEnvironment `
+      -Case $Case `
+      -ResultFile $resultFile `
+      -DiagnosticDir $diagnosticDir `
+      -ElectronLogFile $electronLogFile
     $process = Invoke-WithSmokeEnvironment -EnvMap $envMap -Body {
       Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru
     }
@@ -608,6 +615,7 @@ function Invoke-RenderHealthCase {
       lifecycleEventCount = $events.Count
       lifecyclePath = $lifecyclePath
       resultFile = $resultFile
+      electronLogFile = $electronLogFile
       diagnosticDir = $diagnosticDir
       liveProcesses = @($liveProcesses | ForEach-Object {
         [PSCustomObject]@{
@@ -636,6 +644,7 @@ function Invoke-RenderHealthCase {
       error = $launchError
       lifecyclePath = $lifecyclePath
       resultFile = $resultFile
+      electronLogFile = $electronLogFile
       diagnosticDir = $diagnosticDir
     }
     Write-JsonFile -Path (Join-Path $caseDir "render-health-case.json") -Value $caseResult

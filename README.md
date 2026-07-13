@@ -1139,7 +1139,8 @@ the private `--checkout-json-file` checkout suite.
   destabilizing Steam's webhelper/client UI.
   Live Steam-launched suites also run a render-health gate after native-load
   passes and before `steam://rungameid`. The gate launches the packaged smoke
-  app directly in a tiny comparison matrix and writes
+  app directly in a tiny comparison matrix, routes Chromium logs into each
+  external case-artifact directory instead of the signed package, and writes
   `00-preflight/render-health-gate.json` plus
   `00-preflight/render-health/render-health-summary.json`. If the default
   Windows render path is already blank, white, or crashy, the matrix stops

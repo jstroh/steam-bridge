@@ -349,9 +349,12 @@ function Get-LaunchOptionsLine {
       "--log-file=$(Get-ExternalElectronLogFile -LogFile $LogFile)"
     ))
   }
-  return (Join-LaunchOptions (Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction | ForEach-Object {
-    Redact-SmokeLaunchArgument -Argument $_
-  }))
+  return (Join-LaunchOptions @(
+    @(Get-SmokeArgs -LogFile $LogFile -SmokeAction $SmokeAction | ForEach-Object {
+      Redact-SmokeLaunchArgument -Argument $_
+    })
+    "--log-file=$(Get-ExternalElectronLogFile -LogFile $LogFile)"
+  ))
 }
 
 function Join-LaunchOptions {

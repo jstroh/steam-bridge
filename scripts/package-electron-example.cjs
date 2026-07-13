@@ -273,20 +273,29 @@ function validatePackagedNativeBinding(appPath) {
   const appResources = isMac
     ? path.join(appPath, "SteamBridgeSmoke.app", "Contents", "Resources", "app")
     : path.join(appPath, "resources", "app");
-  const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+  const electronLogRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-electron-native-probe-"));
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: "1",
+    ELECTRON_LOG_FILE: path.join(electronLogRoot, "electron-debug.log")
+  };
   delete env.STEAM_BRIDGE_NATIVE_PATH;
-  run(
-    executable,
-    [
-      path.join(appResources, "native-binding-probe.cjs"),
-      "--native-binding-module",
-      path.join(appResources, "node_modules", "steam-bridge", "dist", "native.js"),
-      "--manifest",
-      path.join(appResources, "native-binding-manifest.json")
-    ],
-    appPath,
-    { env }
-  );
+  try {
+    run(
+      executable,
+      [
+        path.join(appResources, "native-binding-probe.cjs"),
+        "--native-binding-module",
+        path.join(appResources, "node_modules", "steam-bridge", "dist", "native.js"),
+        "--manifest",
+        path.join(appResources, "native-binding-manifest.json")
+      ],
+      appPath,
+      { env }
+    );
+  } finally {
+    fs.rmSync(electronLogRoot, { recursive: true, force: true });
+  }
 }
 
 function copyTargetHelpers(appPath) {

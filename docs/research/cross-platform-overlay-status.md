@@ -808,11 +808,81 @@ The repair now passes package smoke, all 196 tests, normal platform/API/native
 checks, diff checks, and native PowerShell 5.1 parsing for both changed scripts.
 The Steam-app wrapper's real packaged-Electron fallback self-test exits zero,
 does not update the invalid candidate's existing log, and leaks no temporary
-Electron log. More decisively, a disposable copy containing exactly the 114
-expected files passed complete preflight and all four render-health comparisons
-through the packaged Electron-as-Node runner, exited zero, remained at 114
+Electron log. A disposable copy containing exactly the 114 expected files also
+passed the packaged Electron-as-Node runner path, exited zero, remained at 114
 files, and produced neither a package-local `debug.log` nor a temporary-log
-leak. This is diagnostic validation of the repair, not a signed-candidate claim.
+leak. This is diagnostic validation of the repair, not a signed-candidate claim;
+the complete native-load/render-health proof is the exact signed-candidate run
+recorded below.
+
+Commit `e6c0de9` and exact CI `29218818555` passed package smoke plus Linux,
+Windows, and Apple Silicon macOS checks. Release `29218924795` passed all three
+prebuilds and the Windows publish-tarball/ASAR gate. Independent download
+reverified the exact commit, canonical tarball, Electron `43.1.0`, 1,121 native
+methods, and 114-file retained bundle. The canonical local installed-certificate
+gate regenerated the signed bundle, archive, and audit together with 4/4
+required valid signatures and app/addon publisher agreement. Transactional
+deployment retained the invalid package as rollback and preserved the exact
+Steam process identity. The active candidate fingerprinted at 114 files before
+launch. Its candidate-bound no-modal `managed / 10-presenter-ready` task passed
+native load, every render-health comparison, stable-shortcut audit, lazy D3D11
+presenter readiness, the bundled semantic summary, task/process/environment
+cleanup, and Steam continuity. The post-run fingerprint still reported exactly
+114 files and no `debug.log`. This settled the two Electron-as-Node helper
+writers only; overall candidate immutability remained open, so the after-every-
+profile fingerprint requirement still applied.
+
+An `e6c0de9` persistent task was then started before a read-only contract review
+reconciled the new checkpoint with `WIN-PERSISTENT-REUSE-001`. The no-modal
+presenter-ready pass did not prove that Steam's previously missing web-close
+chrome had recovered, so the run was intentionally stopped without writing its
+fresh foreground acknowledgment. It reached the marker but authorized zero
+activation or close input. The wrapper recorded intentional runner termination;
+task deletion, exact runner/package cleanup, launch-environment restoration,
+Steam continuity, and the post-run 114-file/no-`debug.log` fingerprint passed.
+One focused active managed-web recovery case was therefore required before the
+next persistent receipt attempt; only a safe close target, close/back/focus
+completion, semantic pass, and unchanged fingerprint could satisfy that gate.
+
+Three bounded attempts to obtain that active managed-web recovery evidence all
+failed closed before authorized input. The first two exposed marker-watcher
+errors and sent zero input. The third reached a fresh marker in a connected
+Parsec window, but a synthesized macOS click did not produce Windows foreground
+ownership, so no challenge acknowledgment was written and the case again sent
+zero activation or close input. Task/process/environment cleanup, Steam
+continuity, and the 114-file fingerprint passed after each attempt. This
+confirms the existing foreground contract: do not spend more development loops
+on macOS title-bar synthesis. Keep the one genuinely interactive foreground
+acceptance as a final manual check if a complete profile naturally needs it.
+
+A distinct checkout recovery attempt then passed preflight and reached a fresh
+marker with Windows reporting no usable foreground owner. It correctly sent no
+input and failed closed, but its post-run fingerprint found 115 files: the same
+157-byte top-level `debug.log` had appeared. Write-time correlation isolated the
+writer to preflight's `in-process-gpu-on` render-health case. That helper starts
+the packaged executable directly and was the one production launch class still
+missing external Electron log routing. The deployed `e6c0de9` package is invalid
+for further receipt work; the unexpected file was preserved rather than deleted
+or excluded.
+
+The resulting launch/write audit covered every default packaged execution path
+in one slice. Render-health cases now set a per-case external
+`ELECTRON_LOG_FILE`; standalone shortcut options always include an external
+`--log-file`; package and final-ASAR executable probes use isolated external
+logs; the ASAR gate compares the full bundle immediately before and after its
+executable probe; native-control helper logs and generated binaries default
+outside the package; and the packaged smoke app no longer rewrites its bundled
+`steam_appid.txt`. Matrix artifacts must also resolve outside the candidate.
+Package smoke, all 196 tests, platform/API/native checks, diff checks, and native
+PowerShell 5.1 parsing pass. One focused interactive Windows regression ran all
+four render-health comparisons against a disposable 114-file copy: default
+health passed, all four cases recorded external log routing, zero package-local
+runtime logs appeared, and the complete content inventory stayed identical at
+114 files. The final candidate-bound matrix will separately enforce exact
+process cleanup. Build, sign, and deploy one exact
+replacement before any more live
+profiles, then repeat one complete no-modal candidate-bound preflight and strict
+post-run fingerprint.
 
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable

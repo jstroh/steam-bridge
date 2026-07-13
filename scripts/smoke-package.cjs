@@ -419,6 +419,14 @@ function runMacosPackageSigningStaticChecks() {
     packagerScript.includes("windows-steam-app-launch-options.ps1"),
     "Windows Electron package must include the real Steam app launch-options PowerShell wrapper"
   );
+  for (const expected of [
+    "steam-bridge-electron-native-probe-",
+    "ELECTRON_RUN_AS_NODE",
+    "ELECTRON_LOG_FILE",
+    'fs.rmSync(electronLogRoot, { recursive: true, force: true })'
+  ]) {
+    assert.ok(packagerScript.includes(expected), `packaged native-binding probe missing ${expected}`);
+  }
   assert.ok(
     matrixScript.includes("verify-macos-steam-signing.cjs"),
     "macOS overlay matrix must verify package signing before live cases"
@@ -557,6 +565,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "getAuthenticodeEvidence",
     "sanitizedChildEnvironment",
     "isolatedCandidateEnvironment",
+    "ELECTRON_LOG_FILE",
+    'path.join(resolvedProfileRoot, "electron-debug.log")',
+    "preExecutableInspection",
+    "Packaged executable probe must not mutate the final bundle",
     "createDeterministicBundleArchive",
     "runtimeDllPreservation",
     "verifyLiveSmokeCapability",
@@ -2325,6 +2337,11 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(helper.includes(expected), `Windows smoke helper missing ${expected}`);
   }
+  assert.equal(
+    (helper.match(/--log-file=\$\(Get-ExternalElectronLogFile -LogFile \$LogFile\)/g) || []).length,
+    2,
+    "Windows smoke launch-options branches must both route Chromium logs externally"
+  );
   assert.match(
     helper,
     /if \(\$RequireMicroTxnCallback -and \$Action -ne "presenter-checkout"\)/,
@@ -2530,6 +2547,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "STEAM_BRIDGE_WINDOWS_CANDIDATE_BINDING ",
     "candidateBinding = $candidateBinding",
     "candidatePathHasNoReparsePoints",
+    "artifactRootOutsideCandidate",
+    "artifactRootPathHasNoReparsePoints",
+    "-ArtifactRoot must resolve outside -AppDir.",
     "launchEnvOutsideCandidate",
     "launchEnvPathHasNoReparsePoints",
     "launchEnvUsesDefaultPath",
@@ -2776,10 +2796,62 @@ function runWindowsSmokeHelperStaticChecks() {
     "FailOnUnhealthyDefault",
     "Capture-DesktopScreenshot",
     "Analyze-ClientScreenshot",
-    "fatalLifecycleEventCount"
+    "fatalLifecycleEventCount",
+    "ELECTRON_LOG_FILE",
+    "electron-debug.log",
+    "-ElectronLogFile $electronLogFile"
   ]) {
     assert.ok(renderHealthHelper.includes(expected), `Windows render health helper missing ${expected}`);
   }
+  const renderHealthEnvironmentStart = renderHealthHelper.indexOf("function New-SmokeEnvironment {");
+  const renderHealthCaseStart = renderHealthHelper.indexOf("function Invoke-RenderHealthCase {");
+  const renderHealthSummaryStart = renderHealthHelper.indexOf("function New-RenderHealthSummary {");
+  assert.ok(
+    renderHealthEnvironmentStart >= 0 &&
+      renderHealthCaseStart > renderHealthEnvironmentStart &&
+      renderHealthSummaryStart > renderHealthCaseStart,
+    "Windows render health helper must retain its environment, case, and summary boundaries"
+  );
+  const renderHealthEnvironment = renderHealthHelper.slice(renderHealthEnvironmentStart, renderHealthCaseStart);
+  const renderHealthCase = renderHealthHelper.slice(renderHealthCaseStart, renderHealthSummaryStart);
+  for (const expected of [
+    "ELECTRON_LOG_FILE = $ElectronLogFile",
+    "$caseDir = Join-Path $ArtifactRoot $Case.name",
+    '$electronLogFile = Join-Path $caseDir "electron-debug.log"',
+    "-ElectronLogFile $electronLogFile",
+    "Invoke-WithSmokeEnvironment -EnvMap $envMap -Body {",
+    "Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru"
+  ]) {
+    assert.ok(
+      renderHealthEnvironment.includes(expected) || renderHealthCase.includes(expected),
+      `Windows render health launch boundary missing ${expected}`
+    );
+  }
+  assert.equal(
+    (renderHealthHelper.match(/Start-Process\s+-FilePath\s+\$exe\b/g) || []).length,
+    1,
+    "Windows render health helper must have exactly one direct packaged-app launch"
+  );
+  for (const expected of [
+    "ELECTRON_RUN_AS_NODE",
+    "ELECTRON_LOG_FILE",
+    "previousElectronRunAsNode",
+    "previousElectronLogFile",
+    "electronLogPath",
+    "Remove-Item -LiteralPath $electronLogPath",
+    "controlSourceHash",
+    'Join-Path $AppDir "windows-native-overlay-control\\SteamBridgeNativeOverlayControl.cs"',
+    'Join-Path $env:LOCALAPPDATA "SteamBridgeNativeOverlayControl\\bin"',
+    "Get-FileHash -LiteralPath $controlSourceForIdentity -Algorithm SHA256",
+    "Remove-Item -LiteralPath $exe -Force",
+    "$dllMatches"
+  ]) {
+    assert.ok(nativeControlHelper.includes(expected), `Windows native overlay control helper missing ${expected}`);
+  }
+  assert.ok(
+    !nativeControlHelper.includes('$ControlDir = Join-Path $AppDir "native-overlay-control"'),
+    "Windows native overlay control must not build generated diagnostics inside the signed package by default"
+  );
   for (const expected of [
     "steam-bridge-windows-steam-app-launch-options",
     "print-wrapper",
@@ -3254,6 +3326,16 @@ function runElectronSmokeActionStaticChecks() {
     "utf8"
   );
   const preload = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "preload.js"), "utf8");
+  assert.ok(
+    main.includes("function writeSteamAppIdFiles(appId) {") &&
+      main.includes("if (app.isPackaged) {\n    return;\n  }"),
+    "Packaged Electron smoke must leave the candidate steam_appid.txt unchanged"
+  );
+  assert.doesNotMatch(
+    main,
+    /directories\.add\(path\.dirname\(process\.execPath\)\)/,
+    "Packaged Electron smoke must not write steam_appid.txt beside its executable"
+  );
   const html = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "index.html"), "utf8");
   const linuxHelper = fs.readFileSync(path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), "utf8");
   const deckHelper = fs.readFileSync(path.join(repoRoot, "scripts", "steam-deck-smoke.sh"), "utf8");

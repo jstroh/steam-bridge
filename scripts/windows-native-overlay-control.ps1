@@ -39,7 +39,17 @@ if (-not $AppDir) {
 }
 
 if (-not $ControlDir) {
-  $ControlDir = Join-Path $AppDir "native-overlay-control"
+  $scriptDir = Split-Path -Parent $PSCommandPath
+  $controlSourceForIdentity = @(
+    (Join-Path $AppDir "windows-native-overlay-control\SteamBridgeNativeOverlayControl.cs"),
+    (Join-Path $scriptDir "windows-native-overlay-control\SteamBridgeNativeOverlayControl.cs"),
+    (Join-Path (Get-Location) "scripts\windows-native-overlay-control\SteamBridgeNativeOverlayControl.cs")
+  ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+  if (-not $controlSourceForIdentity) {
+    throw "Missing SteamBridgeNativeOverlayControl.cs for the external build identity."
+  }
+  $controlSourceHash = (Get-FileHash -LiteralPath $controlSourceForIdentity -Algorithm SHA256).Hash.ToLowerInvariant()
+  $ControlDir = Join-Path (Join-Path $env:LOCALAPPDATA "SteamBridgeNativeOverlayControl\bin") $controlSourceHash
 }
 
 if (-not $ArtifactRoot) {
@@ -140,6 +150,7 @@ function Build-ControlExe {
   $exe = Resolve-ControlExe
   $dll = Resolve-SteamApiDll
   Copy-Item -LiteralPath $dll -Destination (Join-Path $ControlDir "steam_api64.dll") -Force
+  Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
   Add-Type `
     -Path $source `
     -ReferencedAssemblies @("System.Windows.Forms", "System.Drawing") `
@@ -154,9 +165,15 @@ function Resolve-BuiltControlExe {
   if (-not (Test-Path -LiteralPath $exe)) {
     return Build-ControlExe
   }
+  $sourceDll = Resolve-SteamApiDll
   $dll = Join-Path $ControlDir "steam_api64.dll"
-  if (-not (Test-Path -LiteralPath $dll)) {
-    Copy-Item -LiteralPath (Resolve-SteamApiDll) -Destination $dll -Force
+  $dllMatches = [bool](
+    (Test-Path -LiteralPath $dll -PathType Leaf) -and
+    (Get-FileHash -LiteralPath $sourceDll -Algorithm SHA256).Hash -eq
+      (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
+  )
+  if (-not $dllMatches) {
+    Copy-Item -LiteralPath $sourceDll -Destination $dll -Force
   }
   return $exe
 }
@@ -302,12 +319,25 @@ function Invoke-JavaScriptRunner {
   )
 
   if ($Runner.UseElectronRunAsNode) {
-    $cmdLine =
-      "set ELECTRON_RUN_AS_NODE=1&& " +
-      (ConvertTo-CmdArgument $Runner.Command) +
-      " " +
-      (($Arguments | ForEach-Object { ConvertTo-CmdArgument $_ }) -join " ")
-    return @(& cmd.exe /d /s /c $cmdLine 2>&1 | ForEach-Object { [string]$_ })
+    $electronLogPath = [System.IO.Path]::Combine(
+      [System.IO.Path]::GetTempPath(),
+      [System.IO.Path]::GetRandomFileName()
+    )
+    $previousElectronRunAsNode = [System.Environment]::GetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "Process")
+    $previousElectronLogFile = [System.Environment]::GetEnvironmentVariable("ELECTRON_LOG_FILE", "Process")
+    try {
+      [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "1", "Process")
+      [System.Environment]::SetEnvironmentVariable("ELECTRON_LOG_FILE", $electronLogPath, "Process")
+      $cmdLine =
+        (ConvertTo-CmdArgument $Runner.Command) +
+        " " +
+        (($Arguments | ForEach-Object { ConvertTo-CmdArgument $_ }) -join " ")
+      return @(& cmd.exe /d /s /c $cmdLine 2>&1 | ForEach-Object { [string]$_ })
+    } finally {
+      [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", $previousElectronRunAsNode, "Process")
+      [System.Environment]::SetEnvironmentVariable("ELECTRON_LOG_FILE", $previousElectronLogFile, "Process")
+      Remove-Item -LiteralPath $electronLogPath -Force -ErrorAction SilentlyContinue
+    }
   }
   return @(& $Runner.Command @Arguments 2>&1 | ForEach-Object { [string]$_ })
 }

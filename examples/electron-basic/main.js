@@ -5336,10 +5336,11 @@ function configureWindowsNativeHostBackend(backend) {
 }
 
 function writeSteamAppIdFiles(appId) {
-  const directories = new Set([process.cwd(), __dirname]);
   if (app.isPackaged) {
-    directories.add(path.dirname(process.execPath));
+    return;
   }
+
+  const directories = new Set([process.cwd(), __dirname]);
 
   for (const directory of directories) {
     try {
