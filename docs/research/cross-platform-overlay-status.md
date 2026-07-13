@@ -756,6 +756,64 @@ options without the external route. Do not delete the file and continue or
 weaken fingerprinting. Build, sign, deploy, update the shortcut once with Steam
 stopped, and prove 114 unchanged files before and after the next live profile.
 
+Commit `3d2e7fb`, exact CI `29216938687`, and Release `29217031371` completed
+that bounded repair. The independently verified Electron `43.1.0` candidate
+contained 114 files and all 1,121 native methods, then passed four required
+installed-certificate signatures, publisher agreement, transactional
+deployment, rollback retention, and the one required stable-shortcut refresh
+with a single evidence-backed Steam restart. Its first receipt-bound persistent
+profile reached a fresh nonforeground marker. The operator then explicitly
+reported two double-clicks instead of the required one single title-bar click,
+so the controller correctly wrote no challenge acknowledgment and made no claim
+about the observed foreground transition. The profile failed closed and
+Electron exited. Task deletion, exact runner/package process guards,
+launch-environment byte restoration, and Steam identity/session continuity all
+passed. The post-launch fingerprint still reported exactly 114 files and no
+top-level `debug.log`, settling the external-log immutability repair. The
+multi-click attempt is invalid operator input, not overlay evidence; repeat the
+profile once with exactly one single click after a fresh marker.
+
+That fresh retry launched already foreground and needed no external click. It
+consumed one trusted activation, attached the D3D11 presenter, and completed
+cycle 1 with active/shown, one guarded close click, inactive, parked, and the
+first reuse-cycle event. Cycle 2 reached active/shown on the same presenter,
+but all eight readiness captures and the terminal capture showed Steam store
+content without the browser chrome or close glyph. The probe therefore had no
+safe coordinate source, sent zero cycle-2 close input, and failed closed. The
+managed wait subsequently timed out while diagnostics still reported an
+attached, active `windows-d3d11` presenter with `overlayNeedsPresent=true`.
+Task deletion, exact runner/package guards, launch-environment restoration,
+Steam continuity, and the 114-file/no-`debug.log` fingerprint passed. This does
+not invalidate the earlier complete persistent-reuse behavior proof, but it is
+not a final receipt root. Do not repeat it unchanged: run a distinct profile to
+test whether Steam's web-close chrome recovers, and permit one later persistent
+retry only after that concrete state change or a product/contract change.
+
+The distinct `3d2e7fb` checkout profile then exposed a second candidate-
+immutability defect before receipt collection could continue. Its post-wrapper
+fingerprint found 115 files and the same 157-byte top-level `debug.log`.
+Timestamp correlation placed creation at the end of the final render-health
+comparison in preflight, before checkout prepare. The ordinary app launch paths
+were already routed externally, but two packaged helper paths still use the
+Electron executable as Node with `ELECTRON_RUN_AS_NODE=1` and no matching
+`ELECTRON_LOG_FILE`: the matrix JavaScript runner and Steam-app launch-options
+wrapper. The bounded repair assigns each such invocation a unique temporary
+external log, restores both inherited environment variables, and removes the
+temporary file during helper cleanup. The mutated deployment is invalid; do not
+delete its added file or continue any receipt profile. Build, sign, and deploy
+one replacement only after the full checks, then require exact 114-file
+fingerprints before and after complete preflight and every profile.
+
+The repair now passes package smoke, all 196 tests, normal platform/API/native
+checks, diff checks, and native PowerShell 5.1 parsing for both changed scripts.
+The Steam-app wrapper's real packaged-Electron fallback self-test exits zero,
+does not update the invalid candidate's existing log, and leaks no temporary
+Electron log. More decisively, a disposable copy containing exactly the 114
+expected files passed complete preflight and all four render-health comparisons
+through the packaged Electron-as-Node runner, exited zero, remained at 114
+files, and produced neither a package-local `debug.log` nor a temporary-log
+leak. This is diagnostic validation of the repair, not a signed-candidate claim.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and

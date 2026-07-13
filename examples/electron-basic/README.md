@@ -1187,10 +1187,12 @@ can contain private paths or arguments, so do not share or archive them as test
 evidence.
 
 The stable Windows shortcut routes Chromium `--log-file` to the external smoke
-runtime directory next to the launch-env file. A live run must not add
-`debug.log` or any other runtime file to the signed candidate directory; doing
-so changes its exact fingerprint and invalidates later profile and receipt
-proof.
+runtime directory next to the launch-env file. Direct launches set the matching
+environment variable, and packaged helper invocations that use Electron as a
+Node runner route any Electron log to a unique temporary file and remove it
+afterward. A live run must not add `debug.log` or any other runtime file to the
+signed candidate directory; doing so changes its exact fingerprint and
+invalidates later profile and receipt proof.
 
 For a production release claim, pass the exact schema-2 package audit to every
 task-wrapped profile with `-CandidateAuditManifest`. The matrix fingerprints

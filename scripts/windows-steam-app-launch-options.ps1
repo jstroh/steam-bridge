@@ -107,10 +107,13 @@ function Invoke-NodeLikeScript {
   $stdoutPath = [System.IO.Path]::GetTempFileName()
   $stderrPath = [System.IO.Path]::GetTempFileName()
   $resultPath = [System.IO.Path]::GetTempFileName()
+  $electronLogPath = "$resultPath.electron.log"
   $previousElectronRunAsNode = [System.Environment]::GetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "Process")
+  $previousElectronLogFile = [System.Environment]::GetEnvironmentVariable("ELECTRON_LOG_FILE", "Process")
   try {
     if ($Runner.UseElectronRunAsNode) {
       [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "1", "Process")
+      [System.Environment]::SetEnvironmentVariable("ELECTRON_LOG_FILE", $electronLogPath, "Process")
     }
     $runnerArguments = @($Arguments) + @("--result-file", $resultPath)
     $process = Start-Process `
@@ -140,7 +143,8 @@ function Invoke-NodeLikeScript {
     return $process.ExitCode
   } finally {
     [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", $previousElectronRunAsNode, "Process")
-    Remove-Item -LiteralPath $stdoutPath,$stderrPath,$resultPath -Force -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable("ELECTRON_LOG_FILE", $previousElectronLogFile, "Process")
+    Remove-Item -LiteralPath $stdoutPath,$stderrPath,$resultPath,$electronLogPath -Force -ErrorAction SilentlyContinue
   }
 }
 

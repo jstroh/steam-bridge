@@ -1625,9 +1625,12 @@ function Invoke-ElectronJavaScriptRunner {
 
   $stdoutPath = [System.IO.Path]::GetTempFileName()
   $stderrPath = [System.IO.Path]::GetTempFileName()
+  $electronLogPath = "$stdoutPath.electron.log"
   $previousElectronRunAsNode = [System.Environment]::GetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "Process")
+  $previousElectronLogFile = [System.Environment]::GetEnvironmentVariable("ELECTRON_LOG_FILE", "Process")
   try {
     [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", "1", "Process")
+    [System.Environment]::SetEnvironmentVariable("ELECTRON_LOG_FILE", $electronLogPath, "Process")
     try {
       $process = Start-Process `
         -FilePath $Command `
@@ -1656,7 +1659,8 @@ function Invoke-ElectronJavaScriptRunner {
     }
   } finally {
     [System.Environment]::SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", $previousElectronRunAsNode, "Process")
-    Remove-Item -LiteralPath $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable("ELECTRON_LOG_FILE", $previousElectronLogFile, "Process")
+    Remove-Item -LiteralPath $stdoutPath,$stderrPath,$electronLogPath -Force -ErrorAction SilentlyContinue
   }
 }
 
