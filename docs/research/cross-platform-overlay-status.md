@@ -722,6 +722,15 @@ This run did not exercise the repaired typed-completion predicate or the two
 shortcut checkout cases. Repeat the complete profile once only with a user
 ready to click after a fresh marker; do not rerun it unattended.
 
+The first `655b568` receipt-bound persistent attempt likewise reached one fresh
+nonforeground marker. A chat acknowledgment followed the click prompt, but the
+Windows hook observed zero foreground transition events and no challenge-bound
+acknowledgment was written. The gate sent zero activation and close input and
+failed closed. Task/process/environment cleanup, rollback, and Steam continuity
+passed. Do not treat a chat response as click proof; repeat once only after the
+user explicitly confirms the Smoke title bar itself was clicked after a fresh
+marker.
+
 A 2026-07-02 interactive Windows laptop process-per-case baseline slice proved
 the current Windows lane without a native presenter or repaint loop. The stable
 Steam shortcut launch environment now sets `SteamAppId`, `SteamGameId`, and
