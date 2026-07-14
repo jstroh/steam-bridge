@@ -407,7 +407,40 @@ identity, exact prior-candidate rollback identity, 114 active files, 4/4 valid
 signatures, app/addon publisher agreement, zero active/rollback package
 processes, zero active-package `debug.log`, no stage, and exact Steam PID/
 session/start continuity. The exact replacement is therefore eligible for one
-new single-call `persistent-reuse` root; it has not yet produced live evidence.
+new single-call `persistent-reuse` root.
+
+That exact receipt root is
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-persistent-reuse-singlecall-20260714-102001`.
+The single-call coordinator was armed before the Limited task launched. The
+source naturally started foreground, so the probe took its exclusive
+external-transition-not-required branch, emitted no marker or acknowledgment,
+and required no Computer Use click. The isolated preload still proved one ready
+and consumed trusted gesture with exactly one activation dispatch. The unused
+waiting coordinator was stopped only after the task had completed and written
+its cleanup evidence.
+
+All three persistent cycles passed. Each showed the same D3D11 host, detected a
+physical Steam web panel, sent one guarded close, observed inactive/closed/
+parked state, and completed before the next cycle. The repaired detector
+returned panel left/right `834..2622` and target `(2586,430)` at 225% scale for
+cycles 1, 2, and 3; the formerly failing second cycle now closed normally. The
+semantic auditor passed three shown/closed/parked sequences, six ordered active/
+inactive callbacks, one attach, stable controller/surface-lease/native-instance/
+host identities, exact focus return, 17/17 presenter/native-host/renderer
+`windows-d3d11` lifecycle snapshots, terminal completion, authenticated quit,
+and zero crashes. The completion verifier found one exclusive complete event,
+zero incomplete/timeout events, valid handoff-only control binding, successful
+quit, and source exit.
+
+The wrapper deleted its Limited task, emptied runner and package processes,
+removed task files, restored launch environment bytes, and retained exact Steam
+continuity. Independent post-profile fingerprinting then rebound the active
+114-file/398,126,943-byte package to the signed audit with zero `debug.log`, 4/4
+valid signatures, publisher agreement, the exact 114-file `5a2ee54` rollback,
+the complete 115-file invalid `2d2178c` rollback and its unexpected file, no
+stage or package process, and the same Steam PID/session/start identity. This is
+valid `persistent-reuse` receipt evidence. Do not rerun it; the next ordered
+root is the four-case public `checkout` profile on the unchanged candidate.
 
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.

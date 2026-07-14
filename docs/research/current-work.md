@@ -94,7 +94,32 @@ Exact replay against both new-root cycle images returns the real panel
 all three cycles from the historical passing root
 `C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-prebound-20260714-004205`
 also returns `834..2622` and `(2586,430)`. The deployed `509f3fe` candidate now
-contains this exact repair and has not run a live profile.
+contains this exact repair.
+
+Its receipt-bound `persistent-reuse` root is
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-persistent-reuse-singlecall-20260714-102001`.
+The single-call coordinator was armed before task launch, but the source started
+naturally foreground and took the valid transition-not-required branch. It
+created no marker or acknowledgment and required no Computer Use click. The
+unused waiting coordinator was stopped only after the task had completed.
+
+The root passed public App ID `480`, exact signed-candidate binding, native load,
+all render-health/readiness/assumed-shortcut gates, one trusted isolated-preload
+activation, three D3D11 shown/closed/parked cycles, six ordered active/inactive
+callbacks, one attach, stable controller/surface-lease/native-instance/host
+identities, exact source focus return, 17/17 presenter/native-host/renderer
+`windows-d3d11` lifecycle snapshots, authenticated quit, final completion, and
+zero crashes. All three 225%-scaled screenshots detected panel right edge
+`2622` and targeted `(2586,430)`, including the formerly failing second cycle.
+The wrapper deleted its Limited task and passed runner/package/task-file/
+launch-environment/Steam cleanup. The semantic auditor reports zero failures.
+
+Independent post-profile verification retained the exact 114-file/398,126,943-
+byte active fingerprint, zero `debug.log`, 4/4 signatures, publisher agreement,
+the exact 114-file `5a2ee54` rollback, the complete 115-file invalid `2d2178c`
+rollback and its unexpected file, no stage or package process, and exact Steam
+PID/session/start continuity. This root is valid receipt evidence. The next
+ordered profile is public `checkout`; do not rerun persistent reuse.
 
 ## Last Verification
 
@@ -118,27 +143,31 @@ contains this exact repair and has not run a live profile.
 - Exact Release `29350937834`, independent artifact verification, the local
   installed-certificate gate, signed source binding, staged-copy binding,
   transactional deployment, and an independent post-transaction audit pass.
+- Exact signed `509f3fe` persistent-reuse passes the semantic auditor, all three
+  close cycles at the repaired target, full cleanup, and the independent
+  post-profile candidate/rollback/signature/stage/process/Steam audit.
 
 ## Next Actions
 
-1. On exact signed candidate `509f3fe`, collect one new `persistent-reuse` root with the
-   proved single-call coordinator and unchanged 30-second hook. Require three
-   shown/closed/parked cycles, six ordered callbacks, one D3D11 attach, stable
-   identities, exact focus return, complete three-way renderer evidence,
-   wrapper cleanup, and an unchanged post-profile candidate.
-2. If persistent reuse passes, collect `checkout`, `shortcut-routes`, and
-   `managed-routes` in order with a complete fingerprint/deployment/Steam audit
-   after each. Stop on the first mutation or semantic failure.
+1. Collect public `checkout` on exact signed `509f3fe`. Arm the proved
+   single-call coordinator before task launch, but allow the valid naturally-
+   foreground branch to require no external click. Require all four public cases,
+   action-aware terminal lifecycle, three-way D3D11 agreement, cleanup, and an
+   unchanged post-profile deployment audit.
+2. If checkout passes, collect `shortcut-routes` and `managed-routes` in order
+   with a complete fingerprint/deployment/Steam audit after each. Stop on the
+   first mutation or semantic failure.
 3. Generate and validate the exact 31-case/27-activation receipt and complete
    the final Windows production-readiness audit.
 
 ## Exact Next Step
 
-Collect one candidate-bound `persistent-reuse` root on exact signed `509f3fe`
-using only the proved single-call coordinator and unchanged 30-second hook.
-Fingerprint and audit the active package, rollbacks, stage/process state,
-signatures, and exact Steam continuity immediately afterward. Do not advance to
-`checkout` unless all three cycles and every invariant pass.
+Collect the four-case public `checkout` root on exact signed `509f3fe`, with the
+same coordinator armed for at most one challenge-bound click only if a fresh
+nonforeground marker appears. Fingerprint and audit the active package,
+rollbacks, stage/process state, signatures, and exact Steam continuity
+immediately afterward. Do not start `shortcut-routes` unless every checkout
+case and invariant passes.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
