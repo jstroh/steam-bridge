@@ -4782,6 +4782,9 @@ function Find-WebClosePanelRectFromScreenshot {
     `$bestRun = `$null
     `$topRun = `$null
     `$consecutiveMisses = 0
+    `$upperBandBottom = `$null
+    `$upperBandLeftValues = [System.Collections.Generic.List[int]]::new()
+    `$upperBandRightValues = [System.Collections.Generic.List[int]]::new()
 
     for (`$y = `$scanTop; `$y -le `$scanBottom; `$y += 2) {
       `$runStart = `$null
@@ -4837,11 +4840,17 @@ function Find-WebClosePanelRectFromScreenshot {
             right = `$rowBestRight
             width = `$rowBestWidth
           }
+          `$upperBandHeight = [int][Math]::Max(180, [Math]::Round(`$rect.height * 0.25))
+          `$upperBandBottom = [int][Math]::Min(`$scanBottom, `$y + `$upperBandHeight)
         }
         `$bottom = `$y
         `$leftSum += `$rowBestLeft
         `$rightSum += `$rowBestRight
         `$runSamples += 1
+        if (`$null -ne `$upperBandBottom -and `$y -le `$upperBandBottom) {
+          `$upperBandLeftValues.Add([int]`$rowBestLeft)
+          `$upperBandRightValues.Add([int]`$rowBestRight)
+        }
         `$consecutiveMisses = 0
       } elseif (`$null -ne `$top) {
         `$consecutiveMisses += 1
@@ -4855,7 +4864,13 @@ function Find-WebClosePanelRectFromScreenshot {
       return `$null
     }
 
-    if (`$topRun) {
+    if (`$upperBandLeftValues.Count -ge 4 -and `$upperBandRightValues.Count -eq `$upperBandLeftValues.Count) {
+      `$sortedUpperLeft = @(`$upperBandLeftValues | Sort-Object)
+      `$sortedUpperRight = @(`$upperBandRightValues | Sort-Object)
+      `$upperMedianIndex = [int][Math]::Floor((`$sortedUpperLeft.Count - 1) / 2)
+      `$left = [Math]::Max(`$rect.left, [int]`$sortedUpperLeft[`$upperMedianIndex])
+      `$right = [Math]::Min(`$rect.right, [int]`$sortedUpperRight[`$upperMedianIndex])
+    } elseif (`$topRun) {
       `$left = [Math]::Max(`$rect.left, [int]`$topRun.left)
       `$right = [Math]::Min(`$rect.right, [int]`$topRun.right)
     } else {
@@ -4883,6 +4898,7 @@ function Find-WebClosePanelRectFromScreenshot {
       runSamples = `$runSamples
       topRun = `$topRun
       bestRun = `$bestRun
+      upperBandSampleCount = `$upperBandRightValues.Count
     }
   } catch {
     return `$null

@@ -2184,6 +2184,25 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixHelper.includes("logicalTop = 18"),
     "Windows close probe must enter physical per-monitor DPI coordinates before screenshot and SendInput work"
   );
+  const webClosePanelFinderStart = matrixHelper.indexOf("function Find-WebClosePanelRectFromScreenshot");
+  const webClosePanelFinderEnd = matrixHelper.indexOf("\nfunction Get-WebClosePanelRect", webClosePanelFinderStart);
+  const webClosePanelFinder = matrixHelper.slice(webClosePanelFinderStart, webClosePanelFinderEnd);
+  assert.ok(
+    webClosePanelFinderStart >= 0 &&
+      webClosePanelFinderEnd > webClosePanelFinderStart &&
+      webClosePanelFinder.includes("`$upperBandLeftValues = [System.Collections.Generic.List[int]]::new()") &&
+      webClosePanelFinder.includes("`$upperBandRightValues = [System.Collections.Generic.List[int]]::new()") &&
+      webClosePanelFinder.includes("[Math]::Round(`$rect.height * 0.25)") &&
+      webClosePanelFinder.includes("`$upperBandRightValues.Add([int]`$rowBestRight)") &&
+      webClosePanelFinder.includes("`$sortedUpperRight = @(`$upperBandRightValues | Sort-Object)") &&
+      webClosePanelFinder.includes("`$upperMedianIndex") &&
+      webClosePanelFinder.includes("`$sortedUpperRight[`$upperMedianIndex]"),
+    "Windows screenshot panel bounds must use an upper-band median instead of one cursor-contaminated row"
+  );
+  const lowerMedian = (values) => {
+    const sorted = [...values].sort((left, right) => left - right);
+    return sorted[Math.floor((sorted.length - 1) / 2)];
+  };
   const roundMidpointToEven = (value) => {
     const lower = Math.floor(value);
     return Math.abs(value - lower - 0.5) < 1e-10 ? (lower % 2 === 0 ? lower : lower + 1) : Math.round(value);
@@ -2216,6 +2235,26 @@ function runWindowsSmokeHelperStaticChecks() {
       scaledPanelCloseTarget.y >= 427 &&
       scaledPanelCloseTarget.y <= 437,
     "Windows scaled panel close target must stay inside the observed close-control bounds"
+  );
+  const cursorContaminatedUpperBandRights = [
+    ...Array.from({ length: 75 }, (_, index) => 2672 + Math.min(18, Math.floor(index / 8) * 2)),
+    ...Array(140).fill(2622)
+  ];
+  assert.equal(
+    lowerMedian(cursorContaminatedUpperBandRights),
+    2622,
+    "Windows screenshot panel bounds must reject a cursor-expanded top-row right edge"
+  );
+  assert.deepEqual(
+    screenshotPanelCloseTarget({
+      left: 834,
+      top: 390,
+      width: lowerMedian(cursorContaminatedUpperBandRights) - 834,
+      height: 1106,
+      scale: 2.25
+    }),
+    { x: 2586, y: 430, rightInset: 36, topInset: 40 },
+    "Windows cursor-contaminated replay must retain the observed close-control target"
   );
   assert.deepEqual(
     screenshotPanelCloseTarget({ left: 0, top: 0, width: 640, height: 480, scale: 1 }),

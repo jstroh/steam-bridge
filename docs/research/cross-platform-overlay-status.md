@@ -312,6 +312,67 @@ real exact-window click and later atomic acknowledgment inside the existing
 30-second hook without extra input or longer waits; a user-coordinated physical
 local/Parsec click is the direct eligible path.
 
+That materially different path is now proved by a single Windows Computer Use
+call. The coordinator began before task launch, rejected pre-existing Smoke
+windows, polled the fresh source marker, validated its closed schema and exact
+action/ordinal/challenge/source binding, resolved exactly one package-bound
+Smoke title, obtained fresh geometry, delivered one title-bar click, revalidated
+the marker, and atomically renamed the exact acknowledgment. Its source hash is
+`7435c507fc32ec0bf70bdfcf5740a30514549244856d1cd524c13ca13e0d5538`.
+Window discovery took 15 ms before launch. After 67,877 ms of marker polling,
+the click began 372 ms later, completed in 352 ms, and the acknowledgment was
+durable 997 ms after marker discovery. The native probe accepted exactly one
+post-boundary foreground event, exact PID/HWND/session/point/geometry binding,
+source foreground, one trusted activation dispatch, the later matching
+acknowledgment, and clean hook teardown. No extra or forged activation/close
+counts were present.
+
+The resulting exact signed-candidate root is
+`C:\Users\admin\steam-bridge-artifacts\windows-5a2ee54-persistent-reuse-singlecall-20260714-091243`.
+It passed candidate binding, public App ID `480`, native load, all repaired
+render-health gates, readiness, assumed shortcut state, and the initial trusted
+gesture. Cycle 1 attached and showed the D3D11 host, painted visible Steam web
+content, detected panel bounds `834..2622`, targeted physical point
+`(2586,430)`, sent one guarded close, observed inactive/closed/parked, and
+completed. Cycle 2 retained the same host and verify-only reuse contract and
+again reached active/shown. Its screenshot detector, however, reported right
+edge `2672` and target `(2636,430)`. One guarded click was sent there, the Steam
+surface remained active, and the state machine correctly emitted wait-closed,
+parking, and persistent-reuse errors without starting cycle 3. The root is not
+receipt evidence.
+
+The cycle-2 before/after screenshots isolate the defect. The pointer left by
+cycle 1 overlaps the bright upper Steam title row. Because the detector trusted
+the first qualifying row, the pointer joined that run and expanded only its
+right edge by 50 physical pixels; deeper rows and the visible panel still end at
+`2622`. Cycle 1's first row and all later rows ended at `2622`. The native host
+rectangle, 225% DPI scale, physical screenshot coordinate space, foreground,
+same-window guards, and successful `SendInput` dispatch did not change. This is
+a deterministic screenshot-boundary error, not a D3D11 presenter, persistent
+identity, lifecycle timing, or input-delivery regression.
+
+The bounded repair in `scripts/windows-overlay-matrix.ps1` collects qualifying
+left and right edges through the detected panel's upper band and selects their
+lower medians. The original top-row and average fallbacks remain, as do every
+foreground, physical-DPI, screenshot, point-owner, same-window, and input guard.
+Package smoke asserts this implementation shape and replays the observed
+cursor-expanded distribution. Exact replay against both new-root cycle images
+returns panel `834..2622` and target `(2586,430)`; replay against all three
+before-send images from the historical passing `2d2178c` root returns the same
+values. This validates the source repair against the failure and known-good
+evidence, not a new signed candidate.
+
+Despite the product-case failure, the wrapper deleted its Limited task,
+captured and emptied its runner tree, removed task files, restored launch
+environment state, left no package process, and preserved exact Steam PID/
+session/start continuity. Independent post-root verification retained the
+signed 114-file/398,125,830-byte candidate and content fingerprint, zero
+package-local `debug.log`, 4/4 valid required signatures, publisher agreement,
+the complete 115-file rollback with its unexpected file preserved, no rollback
+process, and no stage. Do not rerun `5a2ee54`: publish and verify the repair,
+produce and transactionally deploy its exact signed replacement, then spend
+one new persistent root with the proved single-call coordinator.
+
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
 In the already-running signed Smoke app, one genuine **Presenter Web Wait**
