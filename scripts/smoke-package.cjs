@@ -929,6 +929,18 @@ function runWindowsSmokeHelperStaticChecks() {
       matrixHelper.includes("smoke-process-cleanup-after-cases.json"),
     "Windows matrix must clean up package-owned smoke processes before and after live proof"
   );
+  const invokePreflightStart = matrixHelper.indexOf("function Invoke-Preflight");
+  const invokePreflightEnd = matrixHelper.indexOf("\nfunction Resolve-MatrixCaseTimeoutSeconds", invokePreflightStart);
+  const invokePreflightBlock = matrixHelper.slice(invokePreflightStart, invokePreflightEnd);
+  assert.ok(
+    invokePreflightStart >= 0 &&
+      invokePreflightEnd > invokePreflightStart &&
+      invokePreflightBlock.indexOf("Invoke-RenderHealthGate") <
+        invokePreflightBlock.indexOf("Stop-SmokePackageProcesses") &&
+      invokePreflightBlock.indexOf("Stop-SmokePackageProcesses") <
+        invokePreflightBlock.indexOf("Assert-CandidateBindingAfterRenderHealth"),
+    "Windows matrix must clean up render-health processes and rebind the signed candidate before live cases"
+  );
   const processCleanupStart = matrixHelper.indexOf("function Stop-SmokePackageProcesses");
   const processCleanupEnd = matrixHelper.indexOf("\nfunction Start-LaunchEnvRollbackTransaction", processCleanupStart);
   const processCleanupBlock = matrixHelper.slice(processCleanupStart, processCleanupEnd);
@@ -2585,6 +2597,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "TaskCleanupExpected",
     "CandidateAuditManifest",
     "Get-CandidateBinding",
+    "Assert-CandidateBindingAfterRenderHealth",
+    "candidate-integrity-after-render-health.json",
+    "candidate-binding-verification-failed",
     "STEAM_BRIDGE_WINDOWS_CANDIDATE_BINDING ",
     "candidateBinding = $candidateBinding",
     "candidatePathHasNoReparsePoints",
@@ -2862,7 +2877,7 @@ function runWindowsSmokeHelperStaticChecks() {
     '$electronLogArgument = "--log-file=`"$electronLogFile`""',
     "-ElectronLogFile $electronLogFile",
     "Invoke-WithSmokeEnvironment -EnvMap $envMap -Body {",
-    "Start-Process -FilePath $exe -ArgumentList $electronLogArgument -WorkingDirectory $AppDir -PassThru"
+    "Start-Process -FilePath $exe -ArgumentList $electronLogArgument -WorkingDirectory $caseDir -PassThru"
   ]) {
     assert.ok(
       renderHealthEnvironment.includes(expected) || renderHealthCase.includes(expected),

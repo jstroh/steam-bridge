@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-11
+Last updated: 2026-07-14
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -68,65 +68,54 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
-Exact signed `509f3fe` now has one valid receipt-bound persistent-reuse root, but
-public checkout is paused at an external foreground-controller boundary. The
-first checkout attempt passed preflight and prepare-only, then a coordinator
-validator left over from persistent reuse rejected the fresh approval marker;
-no click or acknowledgment occurred. A corrected action-bound coordinator
-validated the exact marker and package window in a fresh root, but Windows
-Computer Use returned `failed to activate captured window`; an explicit
-current-window activation failed identically. A third, focused
-`02-checkout-approval` root changed discovery to the documented app-first path,
-rehydrated the exact window, and attempted one activation, which failed with the
-same controller error. The corrected roots emitted zero foreground events,
-zero activation/close input, no acknowledgment, and exclusive fail-closed
-terminals, so they do not test checkout behavior and are not receipt evidence.
+Exact signed `509f3fe` has one valid receipt-bound persistent-reuse root and one
+focused public checkout approval pass. The focused root is
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-exacthwndv2-20260714-120845`.
+The exact source naturally launched foreground, took the transition-not-required
+branch, consumed one guarded renderer activation, attached D3D11 with 7/7
+presenter/native-host/renderer agreement, completed the checkout open/wait
+lifecycle, closed at `(2586,430)`, returned focus, authenticated quit, passed the
+semantic auditor, and completed task/process/environment/Steam cleanup. This is
+valid focused behavior evidence, not the canonical four-case checkout root.
 
-Official Microsoft documentation matches that live boundary. Windows may deny
-`SetForegroundWindow` even after its listed conditions are met and says a
-background application cannot force foreground while the user works elsewhere.
-`AllowSetForegroundWindow` is not a bootstrap mechanism because its caller must
-already be permitted to set foreground. `SetWindowPos` requires that same
-permission, and `FlashWindowEx` only notifies without activating. `SendInput`
-is injected input subject to UIPI, not independent hardware-user evidence.
-`UIAccess` would require a signed, securely installed assistive-technology
-application and Microsoft explicitly says not to use it merely to appear above
-other applications. The successful persistent root and failed checkout roots
-also bind matching enabled, non-iconic, same-session Electron source-window
-geometry, so window shape does not distinguish them. No standards-compliant
-autonomous repair applies to the immutable candidate and current controller;
-one physical marker-timed title-bar click or a materially changed natural-
-foreground launch topology remains the valid boundary.
+Three later four-case roots separated product behavior from external timing.
+`windows-509f3fe-checkout-20260714-121338` passed prepare-only; case 03 armed the
+exact observer, but a malformed external monitor command missed its 28-second
+window. `windows-509f3fe-checkout-20260714-121846` passed prepare-only; the next
+title-bar input arrived after the case-02 observer expired and also maximized the
+window. `windows-509f3fe-checkout-20260714-122304` passed prepare-only; one
+single title-bar input again arrived just after observer expiry. While the last
+control process was still alive, a passive exact capture proved the foreground
+handle equaled the Electron `MainWindowHandle`, its process equaled the control
+PID, its title and executable matched the exact package, and its root owner
+matched the source. The hook had already failed closed and sent zero activation
+or close input. Alternate-HWND topology and Parsec delivery are therefore no
+longer open explanations; chat/controller notification latency missed the
+unchanged product guardrail. Do not repeat timed chat click loops or lengthen the
+matrix timeout.
 
-The preserved roots are
-`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclick-20260714-103633`,
-`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclickv2-20260714-104254`,
-and
-`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-appfirst-20260714-104909`.
-One later changed-input root is
-`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-human-20260714-114513`.
-After its fresh marker, one user-driven Parsec title-bar click made a
-same-session, enabled, non-iconic window with the exact signed package
-executable and title foreground according to coordinator source SHA-256
-`40260edf35667c94657f8110703947b1114f9a91b489857f7f2728ebb3639eed`.
-The coordinator wrote the exact challenge acknowledgment 11.6 seconds after
-readiness. The matrix's independently pre-armed exact-`MainWindowHandle`
-WinEvent hook nevertheless observed zero matching foreground transitions for
-30 seconds and never consumed the acknowledgment. It sent zero activation and
-close input and failed closed. This does not test checkout or disprove the user
-click; it narrows the diagnostic to an alternate same-process foreground HWND
-versus Parsec delivery. Repeat once only with a pre-armed exact-main-window
-coordinator that records all target-process foreground events and classifies
-alternate root relationships without accepting them.
+All three Limited tasks deleted themselves, restored launch state, emptied
+runner/package processes, and preserved exact Steam PID/session/start
+continuity. The last independent deployment audit then found a new zero-byte
+top-level `debug.log` in the active package. The signed inventory is 114 files;
+the active directory now has 115 files with unchanged total bytes and a changed
+content hash. Its write time falls inside the `in-process-gpu-off` render-health
+launch, before checkout case 01. All four parent launches recorded external
+`ELECTRON_LOG_FILE` and `--log-file`, but still used the signed package as their
+working directory. This is a new fallback writer, not a checkout mutation.
+Preserve the invalid deployment and unexpected file; do not delete, exclude, or
+baseline it and do not run further receipt cases on `509f3fe`.
 
-Every Limited task deleted itself, restored launch state, emptied runner and
-package processes, and preserved exact Steam PID/session/start continuity.
-Independent post-run audits retained exact active and valid-rollback bindings,
-the preserved invalid rollback and unexpected file, 4/4 signatures, app/addon
-publisher agreement, zero active-package logs/processes, and no stage. Do not
-repeat unchanged Computer Use activation. First retry only the focused approval
-case when the controller can activate the exact window or a person can make one
-marker-timed title-bar click; only then collect the four-case root.
+The bounded offline repair starts every render-health Electron process in its
+external case-artifact directory while retaining both explicit external log
+controls. After render-health process cleanup, candidate-bound matrices now
+re-run the signed fingerprint and write a dedicated integrity-gate artifact;
+any drift stops before case 01. Windows PowerShell 5.1 parsing, the focused
+Windows smoke-helper static contract, JavaScript parsing, and diff checks pass.
+Full local package smoke still reaches the known Windows POSIX/macOS fixture
+mismatch before those Windows checks. A replacement must pass complete CI,
+Release, signing, transactional deployment, and a no-input immutable
+render-health boundary before live receipt collection resumes.
 
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained

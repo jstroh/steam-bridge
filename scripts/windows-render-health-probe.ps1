@@ -562,7 +562,7 @@ function Invoke-RenderHealthCase {
       -DiagnosticDir $diagnosticDir `
       -ElectronLogFile $electronLogFile
     $process = Invoke-WithSmokeEnvironment -EnvMap $envMap -Body {
-      Start-Process -FilePath $exe -ArgumentList $electronLogArgument -WorkingDirectory $AppDir -PassThru
+      Start-Process -FilePath $exe -ArgumentList $electronLogArgument -WorkingDirectory $caseDir -PassThru
     }
 
     $windowProcess = Wait-ForMainWindow -ProcessId $process.Id -TimeoutSeconds $FirstRenderTimeoutSeconds

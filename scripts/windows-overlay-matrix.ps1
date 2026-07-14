@@ -1584,6 +1584,51 @@ function Get-CandidateBinding {
     -Prefix "STEAM_BRIDGE_WINDOWS_CANDIDATE_BINDING "
 }
 
+function Assert-CandidateBindingAfterRenderHealth {
+  param(
+    [string]$PreflightDir,
+    $ExpectedBinding
+  )
+
+  if (-not $CandidateAuditManifest) {
+    return
+  }
+
+  $evidencePath = Join-Path $PreflightDir "candidate-integrity-after-render-health.json"
+  $observedBinding = $null
+  $verificationError = $null
+  try {
+    if (-not $ExpectedBinding) {
+      throw "The initial signed-candidate binding is unavailable."
+    }
+    $observedBinding = Get-CandidateBinding
+    if ([string]$observedBinding.bindingSha256 -cne [string]$ExpectedBinding.bindingSha256) {
+      throw "The signed-candidate binding changed during render-health preflight."
+    }
+  } catch {
+    $verificationError = $_.Exception.Message
+  }
+
+  Write-MatrixJsonFile -Path $evidencePath -Value ([PSCustomObject]@{
+    kind = "steam-bridge-windows-candidate-integrity-gate"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    phase = "after-render-health"
+    required = $true
+    passed = ($null -eq $verificationError)
+    expectedBindingSha256 = if ($ExpectedBinding) { $ExpectedBinding.bindingSha256 } else { $null }
+    observedBindingSha256 = if ($observedBinding) { $observedBinding.bindingSha256 } else { $null }
+    failure = if ($verificationError) { "candidate-binding-verification-failed" } else { $null }
+  }) -Depth 5
+
+  if ($verificationError) {
+    throw (
+      "Signed Windows candidate integrity failed immediately after render-health preflight. " +
+      "Preserve the deployment and stop before live overlay cases. See $evidencePath. " +
+      "Original error: $verificationError"
+    )
+  }
+}
+
 function ConvertTo-WindowsProcessArgument {
   param([AllowNull()][string]$Argument)
 
@@ -6881,6 +6926,7 @@ function Invoke-Preflight {
     Test-NativeLoadGate -PreflightDir $preflightDir -PreflightJson $preflightJson
     Invoke-RenderHealthGate -PreflightDir $preflightDir
     Stop-SmokePackageProcesses -DestinationFile (Join-Path $preflightDir "smoke-process-cleanup-after-render-health.json") -Phase "after-render-health"
+    Assert-CandidateBindingAfterRenderHealth -PreflightDir $preflightDir -ExpectedBinding $candidateBinding
   }
 }
 
