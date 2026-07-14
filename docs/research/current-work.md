@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `dfcd0e5` (`Protect Windows release candidates from runtime writes`).
+Review anchor: `9549f04` (`Record protected Windows candidate boundary`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -68,6 +68,24 @@ stages, or temporary tasks, byte-exact launch-environment restoration, and
 unchanged Steam PID `16720`, session `1`, and native start ticks
 `639195030301407830`.
 
+The first protected persistent attempt
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-persistent-reuse-20260714-151700`
+passed binding, ACL, readiness, native load, render health, and shortcut gates,
+then reached case 40 with the exact source window bound but nonforeground. Its
+30-second event observer saw no transition, so the probe sent zero activation
+and close input and wrote a terminal failure. Normal wrapper cleanup, the
+independent 114-file binding/ACL/signature/rollback audit, and exact Steam
+continuity pass. Do not rerun this natural-foreground premise unchanged.
+
+The main process is in the same active interactive Session 1 as Steam. The
+documented schema-3 contract permits an external interactive-desktop
+coordinator to validate the atomic ready marker, issue exactly one safe title-
+bar click, and atomically acknowledge the copied challenge. A new repository
+helper implements that bounded branch with exact executable, title, PID/start,
+session, nonforeground, DPI, title-bar point-owner/root, one-click, and atomic-
+ack guards. Its parser and marker/ack self-test pass; it has no live candidate
+claim until exact CI and one focused managed-web recovery pass.
+
 External working directories, `ELECTRON_LOG_FILE`, quoted `--log-file`, and
 explicit Electron logging all remain insufficient. A clean disposable signed
 copy survived the first explicit-logging pass but acquired the same 157-byte
@@ -115,20 +133,26 @@ evidence only.
   rename check, transactional protected deployment, and active ACL audit pass.
 - The protected no-input boundary and its independent post-run binding,
   signatures, rollback, cleanup, launch-environment, and Steam audits pass.
+- The protected persistent attempt reached a healthy case 40 but naturally
+  stayed nonforeground, sent zero input, and failed closed. Its post-profile
+  candidate, ACL, signatures, rollbacks, cleanup, and Steam audits pass.
 
 ## Next Actions
 
-1. Collect one exact protected `persistent-reuse` root and require the complete
-   three-cycle D3D11 lifecycle plus unchanged post-profile binding and ACL.
-2. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
+1. Finish static/package tests for the challenge-bound Windows-local foreground
+   coordinator, commit, push, and verify exact CI.
+2. Validate it once on focused managed-web case 11. Only after that distinct
+   lifecycle passes, collect one exact protected `persistent-reuse` root.
+3. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
    after each, then generate and validate the exact receipt.
 
 ## Exact Next Step
 
-Run one exact protected `persistent-reuse` profile. Prefer its natural-
-foreground branch, send no chat-timed or speculative input, require all three
-reuse cycles and three-way D3D11 agreement, then independently rebind and audit
-the protected candidate before any checkout work.
+Publish and verify the challenge-bound local coordinator, then use it once on
+focused managed-web case 11. It must observe a fresh exact ready marker, send
+one safe title-bar click, write the exact copied-challenge acknowledgment, and
+complete one guarded D3D11 open/close/park lifecycle with unchanged candidate
+binding and ACL before another persistent profile is eligible.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

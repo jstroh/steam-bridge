@@ -207,6 +207,27 @@ or replayed acknowledgment, wrong challenge, missing or duplicate event, wrong
 window, stale process identity, hook teardown error, marker-write failure, or
 lost foreground stops with zero activation and close input.
 
+For an unattended same-interactive-session run, start the repository's bounded
+coordinator before the matrix wrapper. Point it at the exact selected case and
+copy the selected action rather than inferring it from the route:
+
+```powershell
+.\scripts\windows-external-foreground-coordinator.ps1 `
+  -CaseDirectory C:\path\to\artifacts\windows-focused\11-managed-web-open-and-wait `
+  -ExpectedExecutable C:\path\to\SteamBridgeSmoke-win32-x64\SteamBridgeSmoke.exe `
+  -ExpectedWindowTitle "Steam Bridge Electron Smoke" `
+  -ExpectedAction presenter-web-open-and-wait
+```
+
+The coordinator waits for the atomic ready marker, requires exactly one matching
+window with stable executable/PID-start/session identity, verifies a physical
+nonclient title-bar point belongs to that window, sends one mouse move/down/up
+sequence, and only then atomically writes the copied-challenge acknowledgment.
+It records sanitized `external-foreground-coordinator.json` evidence in the case
+directory. It does not call a focus API, click twice, infer an action, or retry
+input. Run it only from the same active interactive Windows session as Steam and
+retain its process exit plus the matrix artifacts as the operational record.
+
 After the transition, the probe verifies the physical point's owner/root and
 exact foreground, confirms the gate is still unconsumed, and repeats the
 point/window check immediately before dispatch. It then requires the exact

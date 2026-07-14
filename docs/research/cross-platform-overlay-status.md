@@ -214,6 +214,30 @@ restoration, and unchanged Steam continuity. This settles the protected
 candidate immutability boundary; continue binding and ACL audits after every
 receipt profile.
 
+The first protected persistent profile at
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-persistent-reuse-20260714-151700`
+passed candidate binding, ACL, readiness, native load, all render-health
+comparisons, and stable-shortcut verification. Case 40 bound the exact Electron
+source window, process identity, Session 1, renderer DPI, and target geometry,
+but the source was nonforeground. Its armed 30-second event observer received no
+transition or acknowledgment, so the probe sent zero activation and close
+input, wrote terminal failure, and produced no case result. The wrapper deleted
+its Limited task, emptied package processes, restored launch-environment bytes,
+and retained exact Steam continuity. An independent post-profile audit reproved
+the 114-file binding, canonical ACL, 4/4 signatures, and all required rollback
+fingerprints. Do not rerun that natural-foreground premise unchanged.
+
+The controlling process is itself in the active interactive Session 1. The
+documented schema-3 contract permits an external desktop coordinator to act on
+the fresh atomic marker inside the existing observer. The new bounded helper
+validates the exact marker/action/challenge, executable, window title,
+PID/start identity, session, nonforeground state, DPI, physical title-bar
+geometry, point owner, and root window. It then sends exactly one mouse move/
+down/up sequence and writes the copied-challenge acknowledgment atomically; it
+contains no focus API or retry loop. Its parser and marker/ack self-test pass.
+Exact CI and one focused case-11 lifecycle must pass before it is used for the
+next persistent root.
+
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
 bundle, all 1,121 declared native methods, canonical tarball SHA-256
