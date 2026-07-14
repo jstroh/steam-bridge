@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `f748704` (`Record Windows coordinator deadline`). Reconcile this
+Review anchor: `509f3fe` (`Stabilize Windows overlay close targeting`). Reconcile this
 checkpoint with newer Git history and worktree changes before acting.
 
 ## Active Goal
@@ -18,19 +18,29 @@ and verify applicable GitHub CI for every meaningful slice.
 
 ## Current State
 
-Exact signed candidate `5a2ee54` is deployed at the stable package path. Its
-independent binding remains 114 files/398,125,830 bytes with content SHA-256
-`e08687e93eb2fdf73fcaf924bfabb2f01b00d21dd02380ab6a3b518635019c7f`,
+Exact signed candidate `509f3fe` is deployed at the stable package path. Its
+independent binding is 114 files/398,126,943 bytes with content SHA-256
+`ce36a7b0d9fad0def55de74ec94a64f682b623dcba2d86127fe29c5dce5f9c09`,
 4/4 valid required signatures, app/addon publisher agreement, zero package-local
-logs or processes, a preserved 115-file invalid `2d2178c` rollback, no stage,
-and exact Steam PID/session/start continuity. The signed archive SHA-256 is
-`0c34ca9197a933e585e39ae25460ff67e8ad6a1d78b287cf9863553ba02476a0`.
+logs or processes, no stage, and exact Steam PID/session/start continuity. The
+signed archive SHA-256 is
+`b95090b2de262b470c39571616adb6d310db119955abf3f0c5bac28d62d0dc0b`;
+audit SHA-256 is
+`01f9aaedf8e26656284c47813dd7120c70f702af4c3496622b5d1d1dabd7283b`;
+binding SHA-256 is
+`55f5ee927fd82781b1f5da0ee5d11295a56efc4f1cc13e431e0e25971b5a699e`.
 Do not expose signer identity details.
 
-Exact CI `29345092393` and Release `29345310464` passed for `5a2ee54`.
-Installed-certificate signing, transactional deployment, and an independent
-post-deployment audit passed. The repaired render-health preflight has now kept
-this candidate immutable through two replacement-bound persistent attempts.
+Exact CI `29350725095` and Release `29350937834` passed for `509f3fe`. Independent
+download verification bound the canonical tarball, Electron `43.1.0`, 114-file
+bundle, all 1,121 native methods, and exact commit/ref. The installed-certificate
+gate rebuilt that tarball with signing required and passed all package and
+publisher checks. Transactional deployment retained exact `5a2ee54` as
+`rollback-5a2ee54-20260714170053` and left the earlier invalid 115-file
+`2d2178c` rollback and its unexpected file intact. A separate post-transaction
+audit reproved source/active identity, both exact rollback bindings, all four
+signatures, publisher agreement, zero package logs/processes, absent stage, and
+exact Steam continuity.
 
 The first replacement attempt at
 `C:\Users\admin\steam-bridge-artifacts\windows-5a2ee54-persistent-reuse-prebound-20260714-085347`
@@ -72,7 +82,7 @@ with no `debug.log`, 4/4 valid signatures, publisher agreement, zero active or
 rollback processes, the complete 115-file rollback and preserved unexpected
 file, and no stage.
 
-The bounded worktree repair changes only screenshot panel-bound selection. It
+Commit `509f3fe` changes only screenshot panel-bound selection. It
 collects qualifying left/right edges from the detected panel's upper band and
 uses their lower medians, retaining the prior top-row and average fallbacks.
 This preserves the physical per-monitor-DPI, screenshot, foreground,
@@ -83,8 +93,8 @@ Exact replay against both new-root cycle images returns the real panel
 `834..2622` and original target `(2586,430)` for cycles 1 and 2. Replay against
 all three cycles from the historical passing root
 `C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-prebound-20260714-004205`
-also returns `834..2622` and `(2586,430)`. No currently deployed candidate
-contains this source repair, so do not rerun a live profile on `5a2ee54`.
+also returns `834..2622` and `(2586,430)`. The deployed `509f3fe` candidate now
+contains this exact repair and has not run a live profile.
 
 ## Last Verification
 
@@ -102,34 +112,33 @@ contains this source repair, so do not rerun a live profile on `5a2ee54`.
   path assertion because WSL is absent. Exact GitHub package smoke is mandatory.
 - Local `npm run native:check` remains environment-blocked because this host has
   no MSVC linker or Windows SDK libraries. No Rust file changed; exact Windows
-  GitHub CI is mandatory.
+  GitHub CI supplied the passing native check.
+- Exact GitHub CI `29350725095` passed package smoke plus Apple Silicon macOS,
+  Linux x64, and Windows MSVC jobs.
+- Exact Release `29350937834`, independent artifact verification, the local
+  installed-certificate gate, signed source binding, staged-copy binding,
+  transactional deployment, and an independent post-transaction audit pass.
 
 ## Next Actions
 
-1. Commit and push the screenshot-bound repair, smoke assertion, checkpoint,
-   ledger, and detailed evidence. Verify exact GitHub CI, including package
-   smoke and Windows native check.
-2. Run the exact Release workflow, independently verify its artifacts, rebuild
-   the exact Windows package with installed-certificate signing required, and
-   transactionally deploy it while preserving rollback, stage, process, package
-   fingerprint, signature, and exact Steam-continuity invariants.
-3. On that replacement only, collect one new `persistent-reuse` root with the
+1. On exact signed candidate `509f3fe`, collect one new `persistent-reuse` root with the
    proved single-call coordinator and unchanged 30-second hook. Require three
    shown/closed/parked cycles, six ordered callbacks, one D3D11 attach, stable
    identities, exact focus return, complete three-way renderer evidence,
    wrapper cleanup, and an unchanged post-profile candidate.
-4. If persistent reuse passes, collect `checkout`, `shortcut-routes`, and
+2. If persistent reuse passes, collect `checkout`, `shortcut-routes`, and
    `managed-routes` in order with a complete fingerprint/deployment/Steam audit
    after each. Stop on the first mutation or semantic failure.
-5. Generate and validate the exact 31-case/27-activation receipt and complete
+3. Generate and validate the exact 31-case/27-activation receipt and complete
    the final Windows production-readiness audit.
 
 ## Exact Next Step
 
-Do not launch another live root on `5a2ee54`. Finish source review and publish
-the bounded repair, then require exact green GitHub CI and a newly signed,
-verified, transactionally deployed replacement before the next single-call
-`persistent-reuse` root.
+Collect one candidate-bound `persistent-reuse` root on exact signed `509f3fe`
+using only the proved single-call coordinator and unchanged 30-second hook.
+Fingerprint and audit the active package, rollbacks, stage/process state,
+signatures, and exact Steam continuity immediately afterward. Do not advance to
+`checkout` unless all three cycles and every invariant pass.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

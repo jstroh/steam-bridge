@@ -373,6 +373,42 @@ process, and no stage. Do not rerun `5a2ee54`: publish and verify the repair,
 produce and transactionally deploy its exact signed replacement, then spend
 one new persistent root with the proved single-call coordinator.
 
+That replacement is now exact commit `509f3fe`. CI `29350725095` passed package
+smoke plus Apple Silicon macOS, Linux x64, and Windows MSVC checks. Release
+`29350937834` passed all three prebuilds, the unsigned Windows
+publish-tarball/ASAR gate, canonical-candidate verification, and artifact
+publication. Independent download verification bound commit/ref, Electron
+`43.1.0`, all 1,121 native methods, canonical tarball SHA-256
+`6ed619672dbf0a2130f520e8984664882a46de6b394eccf736a7fe7241b7ef38`,
+114 files/398,135,972 unsigned bytes, content SHA-256
+`a205e85ff766f726c1d940a85a10bddb6ea42d1b6bcb176022ffea1be57928de`,
+and unsigned archive SHA-256
+`7be33806984bc732608347dbd1ffd6a6289363de6c446a973f41bbcfd838c66a`.
+
+The installed-certificate gate regenerated the exact downloaded tarball with
+signing required. It passed 4/4 valid required signatures, app/addon publisher
+agreement, 114 files/398,126,943 bytes, all 1,121 methods, zero package-local
+logs, signed content SHA-256
+`ce36a7b0d9fad0def55de74ec94a64f682b623dcba2d86127fe29c5dce5f9c09`,
+and signed archive SHA-256
+`b95090b2de262b470c39571616adb6d310db119955abf3f0c5bac28d62d0dc0b`.
+The signed audit SHA-256 is
+`01f9aaedf8e26656284c47813dd7120c70f702af4c3496622b5d1d1dabd7283b`;
+its binding SHA-256 is
+`55f5ee927fd82781b1f5da0ee5d11295a56efc4f1cc13e431e0e25971b5a699e`.
+Signer identity is intentionally omitted.
+
+The signed package was copied to a unique stage and independently rebound
+before activation. Transactional same-volume renames retained exact `5a2ee54`
+as `rollback-5a2ee54-20260714170053`, activated exact `509f3fe`, removed the
+stage, and preserved the older 115-file invalid `2d2178c` rollback including
+its unexpected file. A fresh independent audit reproved signed source/active
+identity, exact prior-candidate rollback identity, 114 active files, 4/4 valid
+signatures, app/addon publisher agreement, zero active/rollback package
+processes, zero active-package `debug.log`, no stage, and exact Steam PID/
+session/start continuity. The exact replacement is therefore eligible for one
+new single-call `persistent-reuse` root; it has not yet produced live evidence.
+
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
 In the already-running signed Smoke app, one genuine **Presenter Web Wait**
