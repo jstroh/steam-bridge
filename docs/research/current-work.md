@@ -2,15 +2,14 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `3abcc3f` (`Contain Windows render-health package writes`).
+Review anchor: `cba9c7b` (`Record signed containment deployment`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
 ## Active Goal
 
 Complete Steam Bridge Windows x64 production readiness on exact signed D3D11
-candidate `3abcc3f`. First prove its render-health preflight cannot mutate the
-package. Then collect candidate-bound public App ID `480` `persistent-reuse`,
+candidate `3abcc3f`. Collect candidate-bound public App ID `480` `persistent-reuse`,
 `checkout`, `shortcut-routes`, and `managed-routes` roots and generate the exact
 31-case/27-activation receipt. Preserve fingerprints, signatures, rollback/stage
 state, three-way renderer agreement, cleanup, privacy, and exact Steam
@@ -57,8 +56,19 @@ Electron process starts in its external case-artifact directory while retaining
 external `ELECTRON_LOG_FILE` and `--log-file`. After render-health process
 cleanup, a candidate-bound matrix re-runs the signed fingerprint and stops
 before case 01 on any drift. Static ordering and a synthetic unchanged/changed
-binding test pass. The exact deployed candidate has not yet been launched; this
-is packaging and deployment proof, not live render-health proof.
+binding test pass.
+
+The exact no-input root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-immutability-20260714-143151`
+now closes the live immutability boundary. All four render-health comparisons
+rendered visible content without fatal lifecycle events, wrote Chromium logs
+under their external case roots, and cleaned up. The immediate post-render-
+health gate observed the expected binding
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`
+before the one no-modal presenter-ready case ran. The semantic summary, task and
+package cleanup, launch-env rollback, task deletion, exact Steam continuity,
+independent 114-file rebinding, no-package-log check, 4/4 signatures, preserved
+valid/invalid rollbacks, and no-stage/no-task audit all pass.
 
 Exact `509f3fe` remains valuable historical behavior evidence. Its canonical
 persistent-reuse root completed all three D3D11 cycles, and focused public
@@ -86,26 +96,25 @@ evidence only.
   local signing, source/stage/active rebinding, 4/4 required signatures,
   publisher agreement, rollback preservation, stage removal, zero package
   processes, and Steam continuity pass.
-- No live Steam or render-health launch was run while the user was away.
+- Exact no-input `managed / 10-presenter-ready` root passes native load, all four
+  render-health comparisons, the immediate integrity gate, lazy D3D11 readiness,
+  semantic audit, cleanup, independent post-run binding/signatures/rollback
+  audit, and exact Steam continuity.
 
 ## Next Actions
 
-1. When local live work resumes, run one no-input candidate-bound readiness case
-   on `3abcc3f`. Require all four render-health comparisons, external case
-   working directories/logs, process cleanup, the new immediate integrity gate,
-   the unchanged 114-file binding, signatures, rollbacks/stage, and Steam
-   continuity. Stop before any route on failure.
-2. If that boundary passes, collect one exact `persistent-reuse` root. Prefer a
+1. Collect one exact `persistent-reuse` root. Prefer a
    natural-foreground launch; do not ask the user to race a chat notification.
-3. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
+2. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
    after each, then generate and validate the exact receipt.
 
 ## Exact Next Step
 
-Do not launch another Windows UI while the user is away. The next eligible live
-action is the no-input `3abcc3f` readiness boundary above; it requires no route
-interaction and must finish with an unchanged signed binding before any receipt
-profile resumes.
+Run one complete exact-candidate `persistent-reuse` profile through the Limited
+interactive wrapper with the public App ID `480` defaults. Prefer natural
+foreground; do not repeat chat-timed coordination, synthesis, neutral probes,
+or longer waits. Audit the candidate, cleanup, rollbacks, signatures, and Steam
+identity immediately afterward before starting checkout.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

@@ -144,11 +144,25 @@ the stage without restarting Steam. Independent post-transaction checks rebound
 the active package and valid `5a2ee54` rollback, retained both invalid 115-file
 rollbacks and their zero-byte/157-byte unexpected files, reverified signatures
 and publisher agreement, found zero package processes or stages, and retained
-exact Steam PID/session/start continuity. No live Electron or Steam route was
-started. The valid `509f3fe` persistent and focused checkout roots remain
-behavior evidence, but their old candidate binding cannot enter the final
-`3abcc3f` receipt. One no-input immutable render-health boundary must pass before
-any `3abcc3f` receipt root is collected.
+exact Steam PID/session/start continuity. The valid `509f3fe` persistent and
+focused checkout roots remain behavior evidence, but their old candidate
+binding cannot enter the final `3abcc3f` receipt.
+
+The exact no-input root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-immutability-20260714-143151`
+then passed the Limited interactive wrapper with public App ID `480`, native
+load, all four render-health comparisons, stable-shortcut verification, lazy
+D3D11 presenter readiness, semantic audit, and every cleanup guard. Each render-
+health comparison rendered visible nonblank content without fatal lifecycle
+events and routed its Chromium log under its external case root. After cleanup,
+the new immediate gate observed binding SHA-256
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`
+before the presenter-ready case. Independent post-run checks retained the exact
+114-file/398,128,652-byte content fingerprint, no package-local `debug.log`, 4/4
+valid required signatures, the valid and both invalid rollbacks byte-for-byte,
+no stage/task/package process or launch-env backup, and the exact original Steam
+PID/session/start identity. This settles the `3abcc3f` immutability boundary;
+the next receipt profile is persistent reuse.
 
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
