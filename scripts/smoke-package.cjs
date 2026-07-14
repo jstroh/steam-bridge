@@ -135,6 +135,7 @@ if (windowsCleanupSelfTestOnly) {
   runElectronSmokeActionStaticChecks();
   runElectronPreloadUserGestureGateSelfTest();
   runWindowsSmokeHelperStaticChecks();
+  runWindowsCandidateProtectionSelfTest();
   runWindowsExactProcessStopSelfTest();
   runWindowsTaskTreeAncestrySelfTest();
 
@@ -471,6 +472,10 @@ function runWindowsSmokeHelperStaticChecks() {
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
   const taskWrapper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-task.ps1"), "utf8");
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
+  const candidateProtectionHelper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
+    "utf8"
+  );
   const steamAppLaunchOptionsHelper = fs.readFileSync(
     path.join(repoRoot, "scripts", "upsert-steam-app-launch-options.cjs"),
     "utf8"
@@ -2859,6 +2864,26 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(renderHealthHelper.includes(expected), `Windows render health helper missing ${expected}`);
   }
+  for (const expected of [
+    'ValidateSet("Apply", "Audit")',
+    '"*${currentSid}:(OI)(CI)(RX)"',
+    '"*S-1-5-18:(OI)(CI)(F)"',
+    '"*S-1-5-32-544:(OI)(CI)(F)"',
+    'rootInheritanceProtected',
+    'currentIdentityReadExecuteOnly',
+    'limitedLaunchRequired = $true',
+    'explicitChildRuleCount',
+    'steam-bridge-windows-candidate-write-protection',
+    'Candidate write protection requires zero running candidate processes.',
+    'Candidate directory does not have the packaged Windows smoke shape.',
+    'Evidence path must be outside the candidate directory.',
+    'Windows candidate write-protection self-test passed.'
+  ]) {
+    assert.ok(
+      candidateProtectionHelper.includes(expected),
+      `Windows candidate write-protection helper missing ${expected}`
+    );
+  }
   const renderHealthEnvironmentStart = renderHealthHelper.indexOf("function New-SmokeEnvironment {");
   const renderHealthCaseStart = renderHealthHelper.indexOf("function Invoke-RenderHealthCase {");
   const renderHealthSummaryStart = renderHealthHelper.indexOf("function New-RenderHealthSummary {");
@@ -3119,6 +3144,25 @@ function assertWindowsExpandableClickShape(sourceLine) {
     result.status,
     0,
     `Windows expandable click AST check failed: ${String(result.stderr || "").trim()}`
+  );
+}
+
+function runWindowsCandidateProtectionSelfTest() {
+  if (process.platform !== "win32") {
+    return;
+  }
+  run(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
+      "-SelfTest"
+    ],
+    { cwd: repoRoot }
   );
 }
 

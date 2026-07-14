@@ -152,17 +152,44 @@ The exact no-input root
 `C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-immutability-20260714-143151`
 then passed the Limited interactive wrapper with public App ID `480`, native
 load, all four render-health comparisons, stable-shortcut verification, lazy
-D3D11 presenter readiness, semantic audit, and every cleanup guard. Each render-
-health comparison rendered visible nonblank content without fatal lifecycle
-events and routed its Chromium log under its external case root. After cleanup,
-the new immediate gate observed binding SHA-256
-`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`
-before the presenter-ready case. Independent post-run checks retained the exact
-114-file/398,128,652-byte content fingerprint, no package-local `debug.log`, 4/4
-valid required signatures, the valid and both invalid rollbacks byte-for-byte,
-no stage/task/package process or launch-env backup, and the exact original Steam
-PID/session/start identity. This settles the `3abcc3f` immutability boundary;
-the next receipt profile is persistent reuse.
+D3D11 presenter readiness, semantic audit, every cleanup guard, and unchanged
+immediate/post-run binding. That one pass did not settle immutability.
+
+The next complete persistent profile at
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-persistent-reuse-20260714-144045`
+stopped before case 40 because its immediate post-render-health gate could not
+rebind the candidate. The active directory had gained one preserved 157-byte
+top-level `debug.log`. It contains one Crashpad registration error and was
+created 16 ms after `in-process-gpu-off` began. The active package is therefore
+invalid at 115 files/398,128,809 bytes with content SHA-256
+`7e790b7dd4821480bef5ce655b374122d07bb1fafa668d9a4aa7330aeb9f6b1a`.
+The task still deleted itself, emptied runner/package processes, restored the
+launch environment, and preserved exact Steam continuity. No persistent case,
+activation, or close input ran. Preserve the directory and file; do not launch,
+delete, exclude, or baseline them.
+
+A fresh 114-file disposable signed copy then tested explicit Electron logging,
+the remaining plausible log-routing change. Pass one survived, but pass two
+created the same 157-byte Crashpad fallback file at `in-process-gpu-off` despite
+nonempty external logs in all four cases. This rejects explicit logging and any
+single passing preflight as sufficient containment. Chromium's Windows logging
+source identifies application-directory `debug.log` as its uninitialized
+fallback and notes that an installed program directory may be nonwritable.
+
+A second fresh disposable signed copy was therefore assigned a canonical NTFS
+boundary: SYSTEM and Administrators retain inheritable full control; the exact
+interactive identity has inheritable read/execute only; every descendant
+inherits those rules and has no explicit ACL. A direct root-write probe was
+denied while full-tree reading, hashing, signature access, and Electron launch
+remained available. Two consecutive render-health runs then passed all eight
+comparisons, including two `in-process-gpu-off` launches, and the copy rebound
+to the exact 114-file signed fingerprint after each. The new repository helper
+applies and recursively audits this shape, rejects reparse points and live
+candidate processes, emits sanitized evidence outside the candidate, and passes
+its native self-test. This is disposable containment proof, not yet a repaired
+active deployment. Publish the helper, preserve/replace the invalid active
+directory, and prove one protected exact-candidate no-input root before receipt
+profiles resume.
 
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained

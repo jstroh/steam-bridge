@@ -70,6 +70,21 @@ exact Steam identity through each task cleanup and across profiles; and
 fingerprints the deployed candidate again after the live batch. The workflow
 must not fabricate this post-live record or run `--publish` automatically.
 
+Before any live Windows candidate launch from a user-writable deployment root,
+run `scripts/windows-protect-release-candidate.ps1 -Mode Apply` with an
+`-EvidencePath` outside the candidate. The helper removes inherited write access
+from the current interactive identity while retaining read/execute access and
+SYSTEM/Administrators maintenance access, resets descendants to inherit that
+canonical ACL, rejects reparse points and running candidate processes, and then
+audits the complete tree. Re-run `-Mode Audit` and the exact content fingerprint
+after transactional activation and after every live profile. Preserve and
+replace a mutated candidate; never delete, exclude, or baseline a runtime file.
+Launch protected live candidates only through the required Limited task; an
+elevated process intentionally retains Administrators maintenance access.
+An installer that already places immutable program bytes under a protected
+system location may use audit mode to prove an equivalent boundary, but the
+live release evidence still requires a successful sanitized protection record.
+
 GitHub Actions artifacts in this public repository are retained for 90 days;
 GitHub permits at most 90 days for public repositories. Before the first
 production publish, copy the exact `.tgz`, retained Windows bundle, audit JSON,

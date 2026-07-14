@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `cba9c7b` (`Record signed containment deployment`).
+Review anchor: `90b1601` (`Record Windows candidate immutability proof`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -51,24 +51,31 @@ audits pass with zero package processes, no stage, and unchanged Steam PID
 evidence is under
 `C:\Users\admin\steam-bridge-artifacts\release-3abcc3f-29363098329`.
 
-The repaired boundary has two independent controls. Every render-health
-Electron process starts in its external case-artifact directory while retaining
-external `ELECTRON_LOG_FILE` and `--log-file`. After render-health process
-cleanup, a candidate-bound matrix re-runs the signed fingerprint and stops
-before case 01 on any drift. Static ordering and a synthetic unchanged/changed
-binding test pass.
-
-The exact no-input root
+The first no-input root
 `C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-immutability-20260714-143151`
-now closes the live immutability boundary. All four render-health comparisons
-rendered visible content without fatal lifecycle events, wrote Chromium logs
-under their external case roots, and cleaned up. The immediate post-render-
-health gate observed the expected binding
-`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`
-before the one no-modal presenter-ready case ran. The semantic summary, task and
-package cleanup, launch-env rollback, task deletion, exact Steam continuity,
-independent 114-file rebinding, no-package-log check, 4/4 signatures, preserved
-valid/invalid rollbacks, and no-stage/no-task audit all pass.
+passed all four render-health comparisons and its immediate/post-run binding.
+The next complete persistent profile stopped before case 40 because the same
+gate found a new 157-byte top-level `debug.log`. Its timestamp and content bind
+the writer to a Crashpad registration error 16 ms into render-health
+`in-process-gpu-off`. The active directory is now an invalid preserved 115-file/
+398,128,809-byte package with content SHA-256
+`7e790b7dd4821480bef5ce655b374122d07bb1fafa668d9a4aa7330aeb9f6b1a`.
+Task/process/launch-env cleanup and exact Steam continuity still pass; no
+persistent case or route input ran. Do not delete or exclude the unexpected
+file and do not launch this active directory again.
+
+External working directories, `ELECTRON_LOG_FILE`, quoted `--log-file`, and
+explicit Electron logging all remain insufficient. A clean disposable signed
+copy survived the first explicit-logging pass but acquired the same 157-byte
+file on pass two. Chromium's Windows fallback uses application-directory
+`debug.log` and explicitly anticipates that installed application directories
+may be nonwritable. A second clean disposable copy was assigned a canonical
+protected NTFS ACL: SYSTEM and Administrators retain full control; the current
+interactive identity has inherited read/execute only; descendants have no
+explicit rules. It denied a root write, remained readable/executable, passed
+two consecutive eight-comparison render-health runs, and rebound to the exact
+114-file signed fingerprint after both. The new repository deployment helper
+applies and audits this ACL with sanitized evidence; its self-test passes.
 
 Exact `509f3fe` remains valuable historical behavior evidence. Its canonical
 persistent-reuse root completed all three D3D11 cycles, and focused public
@@ -96,25 +103,33 @@ evidence only.
   local signing, source/stage/active rebinding, 4/4 required signatures,
   publisher agreement, rollback preservation, stage removal, zero package
   processes, and Steam continuity pass.
-- Exact no-input `managed / 10-presenter-ready` root passes native load, all four
-  render-health comparisons, the immediate integrity gate, lazy D3D11 readiness,
-  semantic audit, cleanup, independent post-run binding/signatures/rollback
-  audit, and exact Steam continuity.
+- The first no-input boundary passed, but the next preflight disproved that one-
+  pass conclusion and the integrity gate stopped before case 40.
+- Explicit logging still mutated a clean disposable copy on pass two. The
+  canonical read/execute-only candidate passed two consecutive render-health
+  runs and both exact 114-file rebindings; the new helper self-test and audit
+  pass.
 
 ## Next Actions
 
-1. Collect one exact `persistent-reuse` root. Prefer a
-   natural-foreground launch; do not ask the user to race a chat notification.
-2. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
+1. Finish tests and review for the Windows candidate write-protection helper,
+   update the ledger, commit, push, and verify exact CI.
+2. Preserve the invalid active `3abcc3f` directory as a new rollback. Deploy a
+   fresh clean signed `3abcc3f` copy transactionally, apply the canonical ACL,
+   rebind it, and audit signatures, rollbacks, stage/process state, and Steam.
+3. Repeat one no-input boundary on the protected candidate, then collect one
+   exact `persistent-reuse` root only if it remains unchanged.
+4. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
    after each, then generate and validate the exact receipt.
 
 ## Exact Next Step
 
-Run one complete exact-candidate `persistent-reuse` profile through the Limited
-interactive wrapper with the public App ID `480` defaults. Prefer natural
-foreground; do not repeat chat-timed coordination, synthesis, neutral probes,
-or longer waits. Audit the candidate, cleanup, rollbacks, signatures, and Steam
-identity immediately afterward before starting checkout.
+Complete and publish the Windows candidate write-protection helper. Do not run
+another active-package process before the invalid active directory is preserved
+and replaced from the clean signed source. The replacement must bind at 114
+files before and after canonical ACL application, emit sanitized protection
+evidence outside the candidate, and pass signatures/rollback/stage/process/Steam
+audits before one protected no-input boundary is eligible.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
