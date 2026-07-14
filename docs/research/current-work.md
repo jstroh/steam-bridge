@@ -2,111 +2,110 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `491faf2` (`Record human Parsec foreground mismatch`).
+Review anchor: `3abcc3f` (`Contain Windows render-health package writes`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
 ## Active Goal
 
-Complete Steam Bridge Windows x64 production readiness on one exact signed
-D3D11 candidate. Preserve the valid public App ID `480` persistent-reuse root,
-replace the now-invalid active package, and collect the remaining candidate-
-bound `checkout`, `shortcut-routes`, and `managed-routes` roots before generating
-the exact 31-case/27-activation receipt. Keep package fingerprints, signatures,
-rollback/stage state, three-way renderer agreement, cleanup, privacy, and exact
-Steam continuity fail-closed throughout.
+Complete Steam Bridge Windows x64 production readiness on exact signed D3D11
+candidate `3abcc3f`. First prove its render-health preflight cannot mutate the
+package. Then collect candidate-bound public App ID `480` `persistent-reuse`,
+`checkout`, `shortcut-routes`, and `managed-routes` roots and generate the exact
+31-case/27-activation receipt. Preserve fingerprints, signatures, rollback/stage
+state, three-way renderer agreement, cleanup, privacy, and exact Steam
+continuity after every profile.
 
 ## Current State
 
-Exact signed commit `509f3fe` passed CI/Release, signing, transactional
-deployment, and one valid receipt-bound persistent-reuse root. That root remains
-canonical and must not be rerun:
-`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-persistent-reuse-singlecall-20260714-102001`.
+Commit `3abcc3f` is pushed. Exact CI `29362884310` passes package smoke plus
+Windows x64, Linux x64, and Apple Silicon checks. Candidate-only Release
+`29363098329` passes all three prebuilds, the unsigned Windows ASAR/package gate,
+canonical candidate verification, and artifact upload. Independent download
+verification binds the artifact to `3abcc3f`/`main`, Electron `43.1.0`, all 1,121
+native methods, a 114-file unsigned bundle, and canonical tarball SHA-256
+`4a5da4831975d627e7f4f629cc2053f20b32111f4a357a2e396bf9ba374350ef`.
 
-Public checkout behavior is also proved in the focused root
-`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-exacthwndv2-20260714-120845`.
-The exact source naturally launched foreground, consumed one trusted activation,
-attached the D3D11 presenter, completed the checkout open/wait lifecycle, closed
-at the guarded target, returned focus, authenticated quit, passed the semantic
-auditor, cleaned up, and retained exact Steam continuity. It is focused behavior
-evidence, not the required four-case receipt root.
+The installed-certificate gate regenerated that exact tarball with signing
+required. The signed bundle has 114 files/398,128,652 bytes, no package-local
+`debug.log`, 4/4 valid required signatures, app/addon publisher agreement,
+content SHA-256
+`f4b975e696bcdf0ab926db3ca7027b11402401f2c5d00f731bb62a9837959fce`,
+archive SHA-256
+`e86f1c11fe8ad311abad4f02b6165b58e40682e6cf2bb9bc9d0f2bf2dd4ecd84`,
+audit SHA-256
+`60d06deb9a5df907b65aeb9adc087067c65452700de8a3a23284a6f3f9c15766`,
+and binding SHA-256
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`.
+Signer identity is intentionally omitted.
 
-Three later four-case attempts are preserved but are not receipt evidence:
+Transactional deployment copied the signed package to a unique stage, rebound
+it, preserved the invalid active `509f3fe` directory byte-for-byte as
+`rollback-509f3fe-invalid-20260714125922`, activated `3abcc3f` through same-
+volume renames, and removed the stage. The preserved rollback has its exact
+115-file/398,126,943-byte fingerprint and zero-byte unexpected file. The valid
+114-file `rollback-5a2ee54-20260714170053` still binds to its signed audit; the
+older invalid 115-file `2d2178c` rollback still retains its 157-byte unexpected
+file. Independent active signature/binding, rollback, stage, process, and Steam
+audits pass with zero package processes, no stage, and unchanged Steam PID
+`16720`, session `1`, and native start ticks `639195030301407830`. Deployment
+evidence is under
+`C:\Users\admin\steam-bridge-artifacts\release-3abcc3f-29363098329`.
 
-- `windows-509f3fe-checkout-20260714-121338` passed prepare-only; its case-03
-  exact observer was missed because the external monitor command was malformed.
-- `windows-509f3fe-checkout-20260714-121846` passed prepare-only; the title-bar
-  input arrived after the exact observer expired and also maximized the window.
-- `windows-509f3fe-checkout-20260714-122304` passed prepare-only; one title-bar
-  input again arrived just after the observer expired. A passive capture while
-  the control process remained alive proved foreground, process, title,
-  executable, owner, and the bound Electron `MainWindowHandle` all agreed.
+The repaired boundary has two independent controls. Every render-health
+Electron process starts in its external case-artifact directory while retaining
+external `ELECTRON_LOG_FILE` and `--log-file`. After render-health process
+cleanup, a candidate-bound matrix re-runs the signed fingerprint and stops
+before case 01 on any drift. Static ordering and a synthetic unchanged/changed
+binding test pass. The exact deployed candidate has not yet been launched; this
+is packaging and deployment proof, not live render-health proof.
 
-These attempts settle alternate-HWND and Parsec-delivery theories. The repeated
-failure was chat/controller notification latency relative to the unchanged
-28-second observer, not checkout or package focus topology. Do not ask the user
-to babysit another timed click and do not lengthen the product timeout.
-
-The final attempt exposed the active blocker. Its independent deployment audit
-found a new zero-byte top-level `debug.log` in the active package: 115 files
-instead of the signed 114-file inventory, unchanged total bytes, and a different
-content hash. The file's write time falls inside the `in-process-gpu-off`
-render-health launch. All parent launches already supplied both external
-`ELECTRON_LOG_FILE` and `--log-file`, but their working directory was still the
-signed package. Preserve the entire mutated deployment; do not delete, exclude,
-or baseline the file and do not run more live cases on `509f3fe`.
-
-The offline repair now in the worktree adds two independent controls:
-
-- render-health Electron processes start in their external case-artifact
-  directory, containing any undocumented relative Chromium log fallback;
-- after render-health process cleanup, a candidate-bound matrix re-runs the
-  signed fingerprint and stops before case 01 if the package drifted.
-
-The valid rollback `rollback-5a2ee54-20260714170053` and the older preserved
-invalid `2d2178c` rollback remain part of the audit contract. Do not expose
-signer identity details.
+Exact `509f3fe` remains valuable historical behavior evidence. Its canonical
+persistent-reuse root completed all three D3D11 cycles, and focused public
+checkout approval completed activation, typed lifecycle, guarded close, park,
+focus return, semantic audit, cleanup, and Steam continuity. Three later suite
+attempts proved title-bar input reached the exact Electron `MainWindowHandle`
+but arrived after the observer, settling alternate-HWND/Parsec theories as
+notification latency. Do not repeat chat-timed click loops. Because the final
+receipt requires one exact candidate binding, neither `509f3fe` root can be
+included in a `3abcc3f` receipt; the product conclusions remain regression
+evidence only.
 
 ## Last Verification
 
-- Native Windows PowerShell 5.1 parses both changed PowerShell scripts;
-  `node --check scripts/smoke-package.cjs` and `git diff --check` pass.
-- The focused Windows smoke-helper static check passes, including the external
-  render-health working directory and post-render-health binding order.
-- A native PowerShell synthetic check proves the new candidate gate accepts an
-  unchanged binding and writes fail-closed evidence for a changed binding.
-- `npm test` passes 196/196; `npm run check:platform`, `npm run api:check`, and
-  `npm run native:fmt` pass.
-- `npm run package:smoke` reaches its known local Windows POSIX/macOS fixture
-  mismatch (`C:\...` versus `/tmp/...`) before the Windows static checks; the
-  focused Windows check was therefore run directly and passed.
-- Local `npm run native:check` remains environment-blocked because `link.exe`
-  and the MSVC SDK are absent; exact GitHub Windows CI supplies that gate.
-- Exact `509f3fe` cleanup after every latest root deleted the Limited task,
-  restored launch state, emptied runner/package processes, and preserved exact
-  Steam PID/session/start continuity.
-- The active package is intentionally invalid and preserved with its unexpected
-  zero-byte file. No repair claim has been made from a build or static check.
+- Native Windows PowerShell 5.1 parses both changed scripts; JavaScript parsing,
+  `git diff --check`, and the focused Windows smoke-helper static contract pass.
+- A native PowerShell synthetic test accepts an unchanged post-render-health
+  binding and writes fail-closed evidence for a changed binding.
+- `npm test` passes 196/196; platform, API, native formatting, Windows package-
+  gate self-tests, and privacy scans pass.
+- Local package smoke reaches its known Windows POSIX/macOS fixture mismatch;
+  exact CI package smoke passes. Local native check remains environment-blocked
+  by absent MSVC tools; exact Windows CI passes it.
+- Exact CI `29362884310`, Release `29363098329`, independent artifact binding,
+  local signing, source/stage/active rebinding, 4/4 required signatures,
+  publisher agreement, rollback preservation, stage removal, zero package
+  processes, and Steam continuity pass.
+- No live Steam or render-health launch was run while the user was away.
 
 ## Next Actions
 
-1. Review the exact diff and privacy boundary, then commit and push the offline
-   containment slice and verify GitHub CI.
-2. Publish, independently verify, sign, and transactionally deploy one exact
-   replacement candidate. Preserve the mutated `509f3fe` directory as rollback
-   evidence; never repair it in place.
-3. Prove the replacement's four render-health cases keep the package inventory
-   unchanged and that the new immediate candidate-integrity gate passes. This
-   can be the next no-input readiness boundary; do not start checkout while the
-   user is away.
-4. Resume the ordered receipt roots only with a local, timely foreground signal
-   or a naturally foreground launch. Do not repeat chat-timed click loops.
+1. When local live work resumes, run one no-input candidate-bound readiness case
+   on `3abcc3f`. Require all four render-health comparisons, external case
+   working directories/logs, process cleanup, the new immediate integrity gate,
+   the unchanged 114-file binding, signatures, rollbacks/stage, and Steam
+   continuity. Stop before any route on failure.
+2. If that boundary passes, collect one exact `persistent-reuse` root. Prefer a
+   natural-foreground launch; do not ask the user to race a chat notification.
+3. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
+   after each, then generate and validate the exact receipt.
 
 ## Exact Next Step
 
-Complete offline validation of the external-working-directory and immediate
-post-render-health candidate-binding repair, commit it intentionally, push it,
-and verify exact GitHub CI. No user interaction or live Steam route is required.
+Do not launch another Windows UI while the user is away. The next eligible live
+action is the no-input `3abcc3f` readiness boundary above; it requires no route
+interaction and must finish with an unchanged signed binding before any receipt
+profile resumes.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

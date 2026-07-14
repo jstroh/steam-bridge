@@ -117,6 +117,39 @@ mismatch before those Windows checks. A replacement must pass complete CI,
 Release, signing, transactional deployment, and a no-input immutable
 render-health boundary before live receipt collection resumes.
 
+That replacement is exact commit `3abcc3f`. CI `29362884310` passed package
+smoke plus Windows x64, Linux x64, and Apple Silicon checks. Release
+`29363098329` passed all three prebuilds, the unsigned Windows ASAR/package gate,
+canonical-candidate verification, and artifact upload. Independent download
+verification bound `3abcc3f`/`main`, Electron `43.1.0`, all 1,121 native methods,
+the 114-file unsigned bundle, and canonical tarball SHA-256
+`4a5da4831975d627e7f4f629cc2053f20b32111f4a357a2e396bf9ba374350ef`.
+
+The installed-certificate gate regenerated the exact tarball with signing
+required. It produced 114 files/398,128,652 bytes, no package-local `debug.log`,
+4/4 valid required signatures, app/addon publisher agreement, content SHA-256
+`f4b975e696bcdf0ab926db3ca7027b11402401f2c5d00f731bb62a9837959fce`,
+archive SHA-256
+`e86f1c11fe8ad311abad4f02b6165b58e40682e6cf2bb9bc9d0f2bf2dd4ecd84`,
+audit SHA-256
+`60d06deb9a5df907b65aeb9adc087067c65452700de8a3a23284a6f3f9c15766`,
+and binding SHA-256
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`.
+Signer identity remains omitted.
+
+Transactional same-volume activation rebound a unique stage, preserved the
+mutated `509f3fe` directory byte-for-byte as
+`rollback-509f3fe-invalid-20260714125922`, activated exact `3abcc3f`, and removed
+the stage without restarting Steam. Independent post-transaction checks rebound
+the active package and valid `5a2ee54` rollback, retained both invalid 115-file
+rollbacks and their zero-byte/157-byte unexpected files, reverified signatures
+and publisher agreement, found zero package processes or stages, and retained
+exact Steam PID/session/start continuity. No live Electron or Steam route was
+started. The valid `509f3fe` persistent and focused checkout roots remain
+behavior evidence, but their old candidate binding cannot enter the final
+`3abcc3f` receipt. One no-input immutable render-health boundary must pass before
+any `3abcc3f` receipt root is collected.
+
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
 bundle, all 1,121 declared native methods, canonical tarball SHA-256
