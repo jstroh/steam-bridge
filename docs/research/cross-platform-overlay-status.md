@@ -183,13 +183,36 @@ inherits those rules and has no explicit ACL. A direct root-write probe was
 denied while full-tree reading, hashing, signature access, and Electron launch
 remained available. Two consecutive render-health runs then passed all eight
 comparisons, including two `in-process-gpu-off` launches, and the copy rebound
-to the exact 114-file signed fingerprint after each. The new repository helper
+to the exact 114-file signed fingerprint after each. The repository helper
 applies and recursively audits this shape, rejects reparse points and live
 candidate processes, emits sanitized evidence outside the candidate, and passes
-its native self-test. This is disposable containment proof, not yet a repaired
-active deployment. Publish the helper, preserve/replace the invalid active
-directory, and prove one protected exact-candidate no-input root before receipt
-profiles resume.
+its native self-test. The protected disposable also retained its exact ACL and
+binding through a same-volume rename round trip. Commit `dfcd0e5` and exact CI
+`29371513100` pass package smoke plus Windows x64, Linux x64, and Apple Silicon
+checks.
+
+The clean signed source was then copied to a unique stage and rebound before
+and after canonical protection. All 4 required signatures remained valid. A
+first activation attempt encountered an error only in the independent rollback-
+fingerprint inspection command; its transaction restored the invalid active and
+protected stage without deleting or launching either. The corrected retry
+preserved the invalid 115-file package and 157-byte Crashpad file byte-for-byte
+as `rollback-3abcc3f-invalid-20260714150345`, activated the protected 114-file
+copy, removed the stage, and retained every earlier required rollback and exact
+Steam PID/session/start identity. The active binding remains
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`.
+
+The protected candidate-bound no-input root is
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-immutability-20260714-150700`.
+Its Limited interactive task passed public App ID `480` readiness, native load,
+all four render-health comparisons, stable-shortcut verification, lazy D3D11
+presenter readiness, the bundled semantic audit, and every cleanup guard. The
+independent post-run audit reproved the exact 114-file fingerprint, canonical
+ACL, 4/4 signatures, all required rollback fingerprints, zero package
+processes, stages, or matching temporary tasks, byte-exact launch-environment
+restoration, and unchanged Steam continuity. This settles the protected
+candidate immutability boundary; continue binding and ACL audits after every
+receipt profile.
 
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `90b1601` (`Record Windows candidate immutability proof`).
+Review anchor: `dfcd0e5` (`Protect Windows release candidates from runtime writes`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -38,31 +38,35 @@ and binding SHA-256
 `65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`.
 Signer identity is intentionally omitted.
 
-Transactional deployment copied the signed package to a unique stage, rebound
-it, preserved the invalid active `509f3fe` directory byte-for-byte as
-`rollback-509f3fe-invalid-20260714125922`, activated `3abcc3f` through same-
-volume renames, and removed the stage. The preserved rollback has its exact
-115-file/398,126,943-byte fingerprint and zero-byte unexpected file. The valid
-114-file `rollback-5a2ee54-20260714170053` still binds to its signed audit; the
-older invalid 115-file `2d2178c` rollback still retains its 157-byte unexpected
-file. Independent active signature/binding, rollback, stage, process, and Steam
-audits pass with zero package processes, no stage, and unchanged Steam PID
-`16720`, session `1`, and native start ticks `639195030301407830`. Deployment
-evidence is under
-`C:\Users\admin\steam-bridge-artifacts\release-3abcc3f-29363098329`.
+The first no-input root passed, but the next persistent preflight created a
+157-byte Crashpad `debug.log` and stopped before case 40. Commit `dfcd0e5`
+therefore added a canonical NTFS candidate-protection helper; exact CI
+`29371513100` passes package smoke plus Windows x64, Linux x64, and Apple
+Silicon checks. A disposable protected copy denied writes, remained executable,
+survived two consecutive eight-comparison render-health runs, retained its
+exact binding, and also retained its ACL and binding through a same-volume
+rename round trip.
 
-The first no-input root
-`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-immutability-20260714-143151`
-passed all four render-health comparisons and its immediate/post-run binding.
-The next complete persistent profile stopped before case 40 because the same
-gate found a new 157-byte top-level `debug.log`. Its timestamp and content bind
-the writer to a Crashpad registration error 16 ms into render-health
-`in-process-gpu-off`. The active directory is now an invalid preserved 115-file/
-398,128,809-byte package with content SHA-256
-`7e790b7dd4821480bef5ce655b374122d07bb1fafa668d9a4aa7330aeb9f6b1a`.
-Task/process/launch-env cleanup and exact Steam continuity still pass; no
-persistent case or route input ran. Do not delete or exclude the unexpected
-file and do not launch this active directory again.
+Transactional redeployment copied the clean signed source to a unique stage,
+rebound it before and after protection, verified 4/4 signatures, and activated
+it through same-volume renames. The invalid 115-file/398,128,809-byte directory
+and its 157-byte file are preserved byte-for-byte as
+`rollback-3abcc3f-invalid-20260714150345`; the stage is gone. The active package
+is protected and again binds to the exact 114-file signed fingerprint and
+binding SHA-256. The earlier invalid `509f3fe` and `2d2178c` rollbacks and valid
+`5a2ee54` rollback also retain their exact fingerprints. Deployment evidence is
+under
+`C:\Users\admin\steam-bridge-artifacts\release-3abcc3f-29363098329\protected-redeployment-20260714150345`.
+
+The protected no-input root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-immutability-20260714-150700`
+passes native load, all four render-health comparisons, stable-shortcut audit,
+lazy D3D11 presenter readiness, semantic audit, and every cleanup guard. Its
+independent post-run audit reproves the exact 114-file binding, canonical ACL,
+4/4 signatures, all required rollback fingerprints, zero package processes,
+stages, or temporary tasks, byte-exact launch-environment restoration, and
+unchanged Steam PID `16720`, session `1`, and native start ticks
+`639195030301407830`.
 
 External working directories, `ELECTRON_LOG_FILE`, quoted `--log-file`, and
 explicit Electron logging all remain insufficient. A clean disposable signed
@@ -74,8 +78,9 @@ protected NTFS ACL: SYSTEM and Administrators retain full control; the current
 interactive identity has inherited read/execute only; descendants have no
 explicit rules. It denied a root write, remained readable/executable, passed
 two consecutive eight-comparison render-health runs, and rebound to the exact
-114-file signed fingerprint after both. The new repository deployment helper
-applies and audits this ACL with sanitized evidence; its self-test passes.
+114-file signed fingerprint after both. The published repository deployment
+helper applies and audits this ACL with sanitized evidence; its self-test and
+exact CI pass.
 
 Exact `509f3fe` remains valuable historical behavior evidence. Its canonical
 persistent-reuse root completed all three D3D11 cycles, and focused public
@@ -99,37 +104,31 @@ evidence only.
 - Local package smoke reaches its known Windows POSIX/macOS fixture mismatch;
   exact CI package smoke passes. Local native check remains environment-blocked
   by absent MSVC tools; exact Windows CI passes it.
-- Exact CI `29362884310`, Release `29363098329`, independent artifact binding,
+- Exact CI `29362884310`, Release `29363098329`, helper CI `29371513100`,
+  independent artifact binding,
   local signing, source/stage/active rebinding, 4/4 required signatures,
   publisher agreement, rollback preservation, stage removal, zero package
   processes, and Steam continuity pass.
-- The first no-input boundary passed, but the next preflight disproved that one-
-  pass conclusion and the integrity gate stopped before case 40.
 - Explicit logging still mutated a clean disposable copy on pass two. The
   canonical read/execute-only candidate passed two consecutive render-health
-  runs and both exact 114-file rebindings; the new helper self-test and audit
-  pass.
+  runs and both exact 114-file rebindings; the helper self-test, same-volume
+  rename check, transactional protected deployment, and active ACL audit pass.
+- The protected no-input boundary and its independent post-run binding,
+  signatures, rollback, cleanup, launch-environment, and Steam audits pass.
 
 ## Next Actions
 
-1. Finish tests and review for the Windows candidate write-protection helper,
-   update the ledger, commit, push, and verify exact CI.
-2. Preserve the invalid active `3abcc3f` directory as a new rollback. Deploy a
-   fresh clean signed `3abcc3f` copy transactionally, apply the canonical ACL,
-   rebind it, and audit signatures, rollbacks, stage/process state, and Steam.
-3. Repeat one no-input boundary on the protected candidate, then collect one
-   exact `persistent-reuse` root only if it remains unchanged.
-4. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
+1. Collect one exact protected `persistent-reuse` root and require the complete
+   three-cycle D3D11 lifecycle plus unchanged post-profile binding and ACL.
+2. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
    after each, then generate and validate the exact receipt.
 
 ## Exact Next Step
 
-Complete and publish the Windows candidate write-protection helper. Do not run
-another active-package process before the invalid active directory is preserved
-and replaced from the clean signed source. The replacement must bind at 114
-files before and after canonical ACL application, emit sanitized protection
-evidence outside the candidate, and pass signatures/rollback/stage/process/Steam
-audits before one protected no-input boundary is eligible.
+Run one exact protected `persistent-reuse` profile. Prefer its natural-
+foreground branch, send no chat-timed or speculative input, require all three
+reuse cycles and three-way D3D11 agreement, then independently rebind and audit
+the protected candidate before any checkout work.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
