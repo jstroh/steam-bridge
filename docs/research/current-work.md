@@ -20,13 +20,11 @@ macOS parity, then do one final Windows parity pass.
 
 ## Current State
 
-`origin/main` remains at evidence checkpoint `d9f7713`; its exact CI
-`29228168945` passed package smoke plus Linux x64, Windows x64, and Apple
-Silicon macOS. Local `main` is one documentation-only evidence commit ahead.
-Its push is pending because this Windows checkout has no usable Git credential
-session and the required authenticated GitHub CLI is unavailable. No product
-code, deployed package, or Steam state changed. The deployed release candidate
-remains receipt-
+`origin/main` contains Windows evidence checkpoint `73d1467`. That
+documentation-only push triggered no GitHub workflow, so the latest applicable
+exact CI remains `29228168945`; it passed package smoke plus Linux x64, Windows
+x64, and Apple Silicon macOS. No product code, deployed package, or Steam state
+changed. The deployed release candidate remains receipt-
 contract repair `2d2178c`. Its exact CI `29223818759` passed package smoke plus
 Linux x64, Windows x64, and Apple Silicon macOS. Release `29223856071` passed all
 three prebuilds, the Windows
@@ -322,19 +320,17 @@ Detailed live evidence is in
 
 ## Exact Next Step
 
-First push the local documentation-only evidence commit after an authenticated
-GitHub CLI becomes available; do not alter the evidence or credentials to work
-around that environment blocker. Then do not run another product profile.
-Prepare a disposable neutral task whose window appears only after the
-coordinator is already polling Computer Use and the exact marker watcher is
-armed. Resolve and snapshot the exact PID/HWND/session-bound window without
-activation before or immediately when its marker appears, then perform exactly
-one title-bar click and one atomic post-click acknowledgment. Measure marker-to-
-click and marker-to-ack latency and require comfortable headroom inside the
-unchanged 30-second contract, exact foreground-event causality, and complete
-hook/task/process/window/Steam cleanup. Only then update the ledger and decide
-whether one fresh `persistent-reuse` root is eligible. Do not lengthen waits,
-reuse the late acknowledgment, or repeat any settled input topology.
+Do not run another product profile. Prepare a disposable neutral task whose
+window appears only after the coordinator is already polling Computer Use and
+the exact marker watcher is armed. Resolve and snapshot the exact PID/HWND/
+session-bound window without activation before or immediately when its marker
+appears, then perform exactly one title-bar click and one atomic post-click
+acknowledgment. Measure marker-to-click and marker-to-ack latency and require
+comfortable headroom inside the unchanged 30-second contract, exact foreground
+event causality, and complete hook/task/process/window/Steam cleanup. Only then
+update the ledger and decide whether one fresh `persistent-reuse` root is
+eligible. Do not lengthen waits, reuse the late acknowledgment, or repeat any
+settled input topology.
 
 ## Focused Same-Process Exact-Host Gate Is Proved
 
