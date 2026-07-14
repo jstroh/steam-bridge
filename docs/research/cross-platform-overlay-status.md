@@ -103,6 +103,22 @@ The preserved roots are
 `C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclickv2-20260714-104254`,
 and
 `C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-appfirst-20260714-104909`.
+One later changed-input root is
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-human-20260714-114513`.
+After its fresh marker, one user-driven Parsec title-bar click made a
+same-session, enabled, non-iconic window with the exact signed package
+executable and title foreground according to coordinator source SHA-256
+`40260edf35667c94657f8110703947b1114f9a91b489857f7f2728ebb3639eed`.
+The coordinator wrote the exact challenge acknowledgment 11.6 seconds after
+readiness. The matrix's independently pre-armed exact-`MainWindowHandle`
+WinEvent hook nevertheless observed zero matching foreground transitions for
+30 seconds and never consumed the acknowledgment. It sent zero activation and
+close input and failed closed. This does not test checkout or disprove the user
+click; it narrows the diagnostic to an alternate same-process foreground HWND
+versus Parsec delivery. Repeat once only with a pre-armed exact-main-window
+coordinator that records all target-process foreground events and classifies
+alternate root relationships without accepting them.
+
 Every Limited task deleted itself, restored launch state, emptied runner and
 package processes, and preserved exact Steam PID/session/start continuity.
 Independent post-run audits retained exact active and valid-rollback bindings,

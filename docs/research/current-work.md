@@ -69,6 +69,19 @@ Computer Use foreground controller, not by Steam Bridge checkout behavior:
   one explicit activation. Computer Use again returned `failed to activate
   captured window`; it sent no click or acknowledgment and the hook failed
   closed. This settles stale flat-list discovery as not the cause.
+- `C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-human-20260714-114513`
+  changed the input premise to one user-driven Parsec title-bar click after the
+  fresh marker. Coordinator source SHA-256
+  `40260edf35667c94657f8110703947b1114f9a91b489857f7f2728ebb3639eed`
+  validated the marker, then observed a same-session, enabled, non-iconic
+  foreground window with the exact package executable and title and wrote the
+  matching acknowledgment 11.6 seconds after readiness. The matrix's separately
+  armed exact-`MainWindowHandle` WinEvent hook nevertheless observed zero
+  matching foreground transitions for its full 30-second boundary and never
+  consumed the acknowledgment. No activation or close input was sent. This
+  proves broad same-process/title foreground observation is insufficient; it
+  does not yet distinguish an alternate same-process HWND from a Parsec input
+  limitation and does not test checkout behavior.
 
 Official Win32 documentation closes the remaining autonomous activation
 alternatives. `SetForegroundWindow` can still be denied after its listed
@@ -83,7 +96,7 @@ There is therefore no evidence-backed package or window-shape repair for exact
 `509f3fe`; topmost, injected ALT/click, retry, broker, and `UIAccess` variants
 would weaken the trusted-input proof or violate the settled rerun contract.
 
-All three failed tasks deleted their Limited tasks, emptied runner/package/task
+All four failed tasks deleted their Limited tasks, emptied runner/package/task
 processes, restored launch environment state, removed task files, and preserved
 exact Steam PID `16720`, session `1`, and native start ticks
 `639195030301407830`. Independent audits after the full attempts and focused
@@ -117,12 +130,13 @@ failures, and none of these roots is receipt evidence.
 
 ## Next Actions
 
-1. Do not repeat the unchanged Computer Use activation experiment. Resume only
-   when the Windows controller can activate the exact smoke window, or when a
-   person is ready to perform the one physical title-bar click after the fresh
-   challenge marker appears. First repeat only focused public
-   `02-checkout-approval`; require one foreground event, one accepted
-   challenge-bound acknowledgment, and complete lifecycle/cleanup.
+1. Do not repeat the unchanged Computer Use or broad same-process/title human
+   activation experiments. One focused diagnostic repeat is eligible only with
+   a pre-armed coordinator that binds the exact Electron `MainWindowHandle`,
+   counts every target-process foreground event, classifies alternate HWND root
+   relationships without accepting them, and writes acknowledgment only for the
+   exact bound handle. Require one exact event or a conclusive alternate-event
+   classification plus complete fail-closed cleanup.
 2. If the focused approval passes, collect all four public checkout cases in one
    fresh root on exact `509f3fe`, then run the full immutable deployment audit.
 3. Collect `shortcut-routes` and `managed-routes` in order, auditing after each;
@@ -130,12 +144,14 @@ failures, and none of these roots is receipt evidence.
 
 ## Exact Next Step
 
-Have the user present at the Windows desktop for one narrowly timed physical
-click. Arm the focused `02-checkout-approval` task and fresh marker first; when
-the `Steam Bridge Electron Smoke` window appears nonforeground, instruct the
-user to click its title bar once. Do not click inside checkout content, send a
-second input, pre-acknowledge, lengthen the hook, or run the four-case suite
-until the focused handoff and cleanup pass.
+Arm one exact-`MainWindowHandle` diagnostic coordinator before focused
+`02-checkout-approval`. After it validates the fresh marker, target process,
+exact main window, and its own foreground hook, instruct the user to click the
+`Steam Bridge Electron Smoke` title bar once. Accept only the exact bound-window
+event; preserve but do not accept any alternate same-process event. Do not click
+inside checkout content, send a second input, pre-acknowledge, lengthen the
+matrix hook, or run the four-case suite until the focused handoff and cleanup
+pass.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
