@@ -163,6 +163,23 @@ binding and content fingerprint, 4/4 required signatures with app/addon
 publisher agreement, zero package-local `debug.log`, retained rollback, absent
 stage, and exact Steam PID/session/start identity.
 
+The materially changed pre-bound coordinator then passed one new neutral proof
+at
+`C:\Users\admin\steam-bridge-artifacts\windows-local-input-probe-prebound-20260714-003026`.
+Its Computer Use app and marker polling began before the Limited task launched
+the unchanged reviewed probe. The exact window was discovered and passively
+snapshotted 542 ms after its marker; the one title-bar click completed at 1,017
+ms and the atomic post-click acknowledgment was written at 2,225 ms, leaving
+more than 27 seconds of headroom inside the unchanged product contract. The
+result retained exact PID/HWND/session binding, one event 671 ms after the
+acceptance boundary, a valid acknowledgment 1,297 native-tick milliseconds
+later, target foreground, clean final hook teardown, and zero product activity.
+The task returned zero and was deleted; exactly marker/ack/result remained with
+no temporary file, process, or window; no Smoke process ran; and Steam retained
+its exact PID/session/start identity. This satisfies the updated ledger
+condition for at most one fresh pre-bound `persistent-reuse` root. It does not
+prove product behavior and must not itself be repeated unchanged.
+
 Immutable-package repair `6bdca68` CI
 `29222269182` passed package smoke plus Linux x64, Windows x64, and Apple Silicon
 macOS. Its Release `29222377196` passed all three prebuilds and the Windows
@@ -283,28 +300,33 @@ Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
   had already stopped at zero events/input before the late acknowledgment was
   written; no cycle ran and the root is not receipt evidence. Every cleanup,
   candidate/signature/rollback/stage, and Steam-continuity check remained green.
+- The materially changed pre-bound neutral coordinator started Computer Use
+  polling before task launch, snapshotted the exact window 542 ms after its
+  marker, completed one click at 1,017 ms, and wrote the later acknowledgment at
+  2,225 ms. Its exact event/ack/tick binding, three-file boundary, final hook/
+  task/process/window cleanup, zero product activity, and Steam continuity all
+  passed.
 
 The exact signed replacement is deployed, independently verified, and unchanged
 after its candidate-bound no-modal and successful managed-web gates. The
 managed-web recovery is closed on its natural-foreground branch. The neutral
-Windows-local input technology is proved, but the first product coordinator was
-not pre-bound and missed the fixed hook window. Receipt collection remains
-blocked at `persistent-reuse`; no Parsec variant or unchanged product retry is
+Windows-local input technology and the materially changed pre-bound coordinator
+are now proved. The first non-pre-bound product coordinator remains a settled
+deadline failure with no product input. Receipt collection is still blocked at
+`persistent-reuse`, but the updated ledger permits at most one fresh root using
+the proved pre-bound topology; no Parsec variant or old coordinator retry is
 eligible.
 
 ## Next Actions
 
-1. Build and neutrally prove a materially changed Windows-local coordinator that
-   discovers and snapshots the exact target window while the product task is
-   still reaching its marker, then completes one click and acknowledgment well
-   inside the unchanged 30-second hook window. Do not lengthen the timeout or
-   run another product root during this step.
-2. Reassess one fresh exact `2d2178c` `persistent-reuse` root only after that
-   end-to-end coordinator proof and an updated ledger condition.
-3. Collect the remaining roots in receipt order: `checkout`,
+1. Run at most one fresh exact `2d2178c` `persistent-reuse` root with Computer
+   Use discovery already polling before the task starts. Preserve the unchanged
+   30-second hook and automatic close contract; if nonforeground, permit only
+   one exact marker-bound title-bar click and later atomic acknowledgment.
+2. Collect the remaining roots in receipt order: `checkout`,
    `shortcut-routes`, `managed-routes`; fingerprint after each.
-4. Generate the combined exact 31-case/27-activation receipt.
-5. Perform the final Windows package, D3D11, native API-shape, lifecycle,
+3. Generate the combined exact 31-case/27-activation receipt.
+4. Perform the final Windows package, D3D11, native API-shape, lifecycle,
    cleanup/crash, rollback, Steam-continuity, privacy, and support-boundary
    audit.
 
@@ -320,17 +342,21 @@ Detailed live evidence is in
 
 ## Exact Next Step
 
-Do not run another product profile. Prepare a disposable neutral task whose
-window appears only after the coordinator is already polling Computer Use and
-the exact marker watcher is armed. Resolve and snapshot the exact PID/HWND/
-session-bound window without activation before or immediately when its marker
-appears, then perform exactly one title-bar click and one atomic post-click
-acknowledgment. Measure marker-to-click and marker-to-ack latency and require
-comfortable headroom inside the unchanged 30-second contract, exact foreground
-event causality, and complete hook/task/process/window/Steam cleanup. Only then
-update the ledger and decide whether one fresh `persistent-reuse` root is
-eligible. Do not lengthen waits, reuse the late acknowledgment, or repeat any
-settled input topology.
+Run exactly one fresh candidate-bound `persistent-reuse` root with Computer Use
+app discovery and marker polling already active before the Limited product task
+starts. Preserve the existing public App ID `480`, exact signed `2d2178c`
+binding, assumed shortcut, `steam-launch`, unchanged 30-second hook, and `auto`
+close contract. If the source launches nonforeground, passively resolve and
+snapshot the one exact marker-bound window, issue exactly one title-bar click,
+and write one atomic acknowledgment only after click completion on a later
+native tick. Require three ordered shown/closed/parked cycles, six active/
+inactive callbacks, one D3D11 attach, stable presenter/controller/lease/native-
+instance/host identity, exact focus return, final detach/stable state, clean
+semantic/crash/task/process/environment evidence, unchanged fingerprint and
+signatures/rollback/stage, and exact Steam continuity. If any binding, input,
+timing, lifecycle, or cleanup result is ambiguous, preserve the root and do not
+retry. Do not repeat the neutral proof, lengthen waits, reuse any acknowledgment,
+or use a settled input topology.
 
 ## Focused Same-Process Exact-Host Gate Is Proved
 

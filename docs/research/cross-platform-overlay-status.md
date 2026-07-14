@@ -215,6 +215,22 @@ product root is ineligible until a materially changed, pre-bound local
 coordinator first proves neutral marker-to-click and marker-to-ack latency with
 comfortable headroom inside the unchanged 30-second contract.
 
+That changed-coordinator condition is now proved once at
+`C:\Users\admin\steam-bridge-artifacts\windows-local-input-probe-prebound-20260714-003026`.
+Computer Use app and marker polling began before the Limited task launched the
+unchanged reviewed neutral probe. The exact window was discovered and passively
+snapshotted 542 ms after its marker; one title-bar click completed at 1,017 ms,
+and the atomic post-click acknowledgment was written at 2,225 ms. The result
+retained exact PID/HWND/session binding, one event 671 ms after the marker's
+acceptance boundary, one valid acknowledgment 1,297 native-tick milliseconds
+later, target foreground, clean final hook teardown, and zero product activity.
+The task returned zero and was deleted; exactly the three intended JSON files
+remained with no temporary file; the probe process and window exited; no Smoke
+process ran; and Steam retained its exact PID/session/start identity. This
+provides more than 27 seconds of measured headroom and satisfies the ledger
+condition for at most one fresh pre-bound exact-candidate `persistent-reuse`
+root. It does not prove presenter behavior and must not be repeated unchanged.
+
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
 In the already-running signed Smoke app, one genuine **Presenter Web Wait**
