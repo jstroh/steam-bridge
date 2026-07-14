@@ -1,452 +1,347 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-10
+Last reviewed: 2026-07-14
 
-Implementation anchor: `f863242` (`Fix Windows ASAR package verification`).
-Always inspect Git history and the worktree before trusting this checkpoint.
-
-This is the canonical, short, replace-in-place operational checkpoint for fast
-recovery. It is not an append-only history and does not replace code, tests,
-the detailed platform evidence log, or the presenter design plan.
-
-## Current Workspace State
-
-At review, `main` and `origin/main` are at `f863242`; all four CI jobs and the
-fresh unsigned Release package gate pass. Separate workspace-continuity changes
-remain uncommitted; preserve them and do not mix them into the product result.
+Implementation anchor: `d9f7713` (`Record exact Windows candidate recovery gate`).
+Always reconcile this checkpoint with Git history and the worktree.
 
 ## Active Goal
 
-Make the supported Windows x64 managed-overlay path production-ready using only
-public App ID `480` for generic live proof. Preserve D3D11 as the default and
-finish current-package evidence for foreground/user activation, managed routes,
-raw-native observe controls, shortcuts, passive notifications, synthetic
-checkout routing, close/back-to-app, native renderer identity, high-DPI input,
-render health, signing/rollback, and crash cleanup. Then close the remaining
-Windows release-claim, persistent-reuse, packaging, and support-boundary gaps
-identified by the final production-readiness audit before calling the path
-ready.
+Close the exact signed Windows x64 D3D11 production-candidate lane on deployed
+commit `2d2178c`: preserve the now-green managed-web recovery; collect complete
+candidate-bound public App ID `480` roots in order (`persistent-reuse`,
+`checkout`, `shortcut-routes`, `managed-routes`); generate the exact
+31-case/27-activation receipt; and complete the Windows production-readiness
+audit while requiring an unchanged fingerprint, cleanup, renderer agreement,
+and Steam continuity after every profile. Preserve private-purchase, App
+Control, full semantic-API, publication-authority, rollback, privacy, and
+provenance boundaries. After Windows, return to Steam Deck/Linux desktop and
+macOS parity, then do one final Windows parity pass.
 
-Do not run another private `InitTxn` suite. Real purchase proof remains paused
-until its separate prerequisites exist; it is not part of the active Windows
-matrix work.
+## Current State
 
-The authorized owner-process handoff goal is complete at its stop condition.
-One focused public run exercised the materially changed mechanism and
-established that the existing native-show call still does not reacquire OS
-foreground in this automated environment; commit `943dfad` records the result
-and its CI is green. Official Valve, Microsoft, and Electron research now
-provides the permitted next experiment: a genuine click in the existing visible
-Smoke window makes the same Electron main process eligible to activate its
-owned presenter. A separate foreground broker is only a fallback if that
-same-process path is disproved.
+`origin/main` remains at evidence checkpoint `d9f7713`; its exact CI
+`29228168945` passed package smoke plus Linux x64, Windows x64, and Apple
+Silicon macOS. Local `main` is one documentation-only evidence commit ahead.
+Its push is pending because this Windows checkout has no usable Git credential
+session and the required authenticated GitHub CLI is unavailable. No product
+code, deployed package, or Steam state changed. The deployed release candidate
+remains receipt-
+contract repair `2d2178c`. Its exact CI `29223818759` passed package smoke plus
+Linux x64, Windows x64, and Apple Silicon macOS. Release `29223856071` passed all
+three prebuilds, the Windows
+publish-tarball/ASAR gate, canonical-candidate verification, and artifact
+publication. Independent verification confirmed commit
+`2d2178c6f0e728d4d34be784bf493c165518a75f`, Electron `43.1.0`, 114 files,
+all 1,121 native methods, canonical tarball SHA-256
+`e2d42550d879327b0e2d64eb05b6db0598723baedff28545fb0ebb453bffafaa`, and
+bundle-archive SHA-256
+`3efa5ce3ddd5af26ad6c2012c22a0c65631461f50768bf692f9a30296a8dd576`.
+The installed-certificate gate then regenerated the exact package with signing
+required, 4/4 valid required signatures, app/addon publisher agreement, 114
+files, all 1,121 native methods, and zero package-local logs. The replacement
+was transactionally deployed with retained rollback and preserved Steam
+identity. Independent post-deployment verification proved source/active byte
+identity, audit binding, 4/4 signatures, matched rollback inventory, removed
+stage, zero package-local logs, zero active-package processes, and exact Steam
+PID/session/start continuity.
 
-The unchanged signed package and stable Steam shortcut have been verified and
-launched in the interactive Windows session with public App ID `480`, autorun
-disabled, a fixed diagnostic directory, and the prior launch env preserved by
-rename. Steam initialization and first render completed; no overlay action or
-synthetic input has run. The app is waiting for one genuine **Presenter Web
-Wait** click and a manual overlay close. Duplicate-open and the broad public
-suites remain gated behind that complete focused close pass.
+The exact deployed candidate then passed the complete candidate-bound no-modal
+`managed / 10-presenter-ready` task with public App ID `480`, Limited run level,
+full native-load and render-health gates, assumed stable shortcut, semantic
+summary, all wrapper cleanup guards, and matching pre/post candidate
+fingerprints. A second independent post-run verification still found exactly
+114 source/active-identical files, 4/4 signatures, matched rollback, no stage,
+zero package-local logs or processes, and exact Steam continuity.
 
-## Proven Baseline
+Two exact candidate-bound active `managed /
+11-managed-web-open-and-wait` attempts first entered the schema-3 nonforeground
+branch and failed closed because Parsec input was unavailable: both emitted a
+valid source-bound marker but zero acknowledgment, foreground-transition,
+activation, or close input. A neutral disposable-window probe then established
+the missing coordinator condition: Parsec must be on its full-screen macOS
+Space and frontmost for an ordinary client click to reach Windows. After that
+condition was restored, one fresh exact-candidate recovery naturally launched
+already foreground and took the mutually exclusive schema-3 not-required
+branch. It consumed one trusted isolated-preload gesture, dispatched exactly
+one activation and one web-panel close, observed shown/inactive/closed/parked/
+complete lifecycle and exact source-window focus return, and passed three-way
+`windows-d3d11`, semantic summary, crash, task/process/environment cleanup,
+candidate fingerprint, rollback, signature, and Steam-continuity gates. The
+authoritative artifact is
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-managed-web-recovery-20260713-065944`.
+No marker or acknowledgment was required or created on this successful branch.
+Do not rerun managed-web recovery unless its candidate, input, foreground,
+lifecycle, or backend contract changes or a later parity run regresses.
 
-- Public App ID `480` proves generic Steam initialization and overlay plumbing,
-  not real purchase authorization.
-- Explicit Windows D3D11 runs have broad passing managed evidence. A fresh
-  CI-built addon from `da632f8` proves the unset/default renderer is actually
-  D3D11 in the top-level presenter, native host, and renderer diagnostics on one
-  attached public route. The `c880d51` package also passed the strict physical
-  high-DPI target, screenshot, and input-delivery evidence contract.
-- macOS Apple Silicon and Steam Deck managed presenter coverage is broad and
-  green for generic routes. Intel/Rosetta/universal macOS remains unsupported.
-- Private purchase work is paused and out of scope. Its prerequisite and rerun
-  rules remain in `WIN-CHECKOUT-CLIENT-001` and `WIN-CLIENTQUERY-001`.
+The first authorized `persistent-reuse` root reached a fresh exact case-40
+marker with zero activation and zero close input, but its 30-second external
+foreground hook expired while coordination was still being inspected. The
+probe failed closed, the case emitted no result, and the wrapper completed all
+task/process/environment/Steam cleanup guards. Its post-run binding and
+independent deployment audit still passed at 114 byte-identical files, 4/4
+signatures, matched rollback, zero package logs/processes, and exact Steam
+continuity. Preserve
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-20260714-030944`;
+do not treat it as product behavior or rerun the old coordination process.
 
-## Current Findings and Open Questions
+An initial disposable Notepad dry probe reported a foreground transition 1,608
+ms after a synthetic Parsec click, but it did not isolate that click from the
+task's own asynchronous launch/show lifecycle and is superseded. In exact retry
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-20260714-033636`,
+the pre-armed coordinator wrote an action/ordinal/challenge-matching
+acknowledgment 2,823 ms after the fresh marker. The exact Windows hook remained
+armed for 30 seconds, observed zero foreground events, and left the source
+nonforeground, so the gate accepted no acknowledgment, sent zero activation or
+close input, and ended incomplete at zero of three closes. A subsequent
+calibrated, raised, atomic desktop-control neutral test also produced no Windows
+foreground transition and removed its disposable task, process, and evidence.
+Current synthetic macOS and desktop-control Parsec input are therefore settled
+negatives in this topology; do not spend another product root on them. The
+second exact root again preserved every cleanup guard, candidate binding,
+independent deployment/rollback/signature audit, and Steam continuity, but it is
+not receipt evidence and does not test persistent presenter reuse.
 
-### D3D11 and high-DPI targeting are proved; owner-process focus remains blocked
+A zero-input disposable launch A/B then changed only the Limited interactive
+task's PowerShell window style. Both normal and hidden task actions launched a
+direct-child Notepad window naturally foreground in 5 ms, while the task itself
+was never foreground; both cleaned their task, process, and temporary evidence.
+Dropping `-WindowStyle Hidden` is therefore not causal and must not be used via
+an external wrapper. The remaining material difference is Steam's indirect URI
+launch. The materially different Windows-local Computer Use path is now proved
+by the neutral exact-HWND gate below.
 
-The signed `c880d51` package passed interactive Session 1 readiness, native
-load, shortcut validation, default render health, and current Steam-client
-health without a Steam restart. Its focused public managed-web run proved all
-three `windows-d3d11` fields, process/thread per-monitor-v2 awareness, readable
-physical-resolution captures, a window-DPI scale that agreed with independent
-presenter geometry, a scale-aware close target inside the detected panel, and
-all three expected pointer inputs with no API error. This settles the coordinate
-and target evidence; it does not prove close/back-to-app.
+The first Windows-local Computer Use setup did not produce a valid input
+verdict. A command-host foreground hook ran in a different Windows desktop from
+the interactive UI and is discarded. A follow-up Limited interactive neutral
+task correctly bound and armed an exact Character Map HWND, but its target
+closed at the coordination deadline before Computer Use dispatched input; it
+recorded zero events and zero product activity, then the task and every
+disposable window were removed. Calculator never launched. Do not treat either
+setup result as a Computer Use negative or repeat either topology.
 
-Both that click run and one independent Escape comparison left the overlay
-active until the managed wait timed out. In every close-probe sample, an
-unrelated zero-area window owned foreground and lifecycle diagnostics reported
-the native presenter was not foreground. Both runs kept render health, crash
-diagnostics, and cleanup clean. Commit `a58280c` focuses the exact valid
-lifecycle native-host window once, verifies it is foreground, rechecks the same
-handle immediately before dispatch, logs only sanitized focus evidence, and
-refuses to send close input when either verification fails.
+The untracked purpose-built **Steam Bridge Input Probe** was repaired through
+three hash-pinned independent reviews before use. Its final source and compiled
+Windows x64 GUI executable bind the exact PID/HWND/session, publish an atomic
+challenge plus future native-event acceptance boundary, require a strictly
+post-event closed-schema acknowledgment, report final hook teardown only after
+form close, and fail closed on publication, timing, schema, or cleanup errors.
+Do not commit the temporary source or executable.
 
-That exact commit was packaged around the verified Windows addon, deployed and
-signed with all 12 signable files valid, and exercised after the interactive
-remote desktop was reconnected. The public managed-web surface rendered visibly
-and all three backend fields remained `windows-d3d11`. The sanitized focus event
-proved that the lifecycle handle was present, well formed, and a valid window,
-but `SetForegroundWindow` was not accepted and the exact host still was not
-foreground. The new guard correctly emitted a skip event and sent no close
-input. The overlay then timed out active as expected, while readiness, default
-render health, crash diagnostics, process/task cleanup, and the preserved Steam
-session stayed clean without a Steam restart.
+One Limited interactive run at
+`C:\Users\admin\steam-bridge-artifacts\windows-local-input-probe-20260714-063655`
+then passed. The exact reviewed window showed without activation; one local
+Computer Use title-bar click created exactly one challenge-bound foreground
+event, followed by one atomic acknowledgment on a later native tick. The result
+reported the same PID/HWND/session, valid acknowledgment, target foreground,
+one event, successful hook teardown, no hook error, and zero product activity.
+The probe/window/process exited, its task returned zero and was deleted, the
+root contained only marker/ack/result JSON, no Smoke process ran, and the exact
+Steam PID/session/start identity remained unchanged. Do not repeat this neutral
+proof unless the Computer Use mechanism or probe contract changes. Its pass
+satisfied the ledger prerequisite for the single candidate-bound
+`persistent-reuse` root below; it did not itself prove presenter behavior.
 
-This proves the focus guard fails closed; it still does not prove
-close/back-to-app. Reconnecting the remote desktop alone is not a meaningful
-rerun condition. Do not repeat the unchanged `SetForegroundWindow` attempt, add
-a second close input, or lengthen the wait.
+That one root is preserved at
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-20260714-064941`.
+It passed exact candidate binding, public App ID `480`, assumed shortcut,
+interactive readiness, native load, default render health, and every pre-case
+package/Steam gate. Case 40 published a valid exact-source marker at
+06:53:29 UTC. Its hook then expired cleanly 30 seconds later with zero events,
+no acknowledgment present, zero activation input, zero close input, and
+incomplete zero of three. Computer Use target discovery and its required fresh
+window-state capture completed too late; the atomic acknowledgment was written
+at 06:55:07 UTC, after hook teardown, and was never observed or consumed. The
+case produced no Smoke result, and the semantic summary correctly rejects it as
+`windows-steam-launch-no-result`. This is a coordinator deadline failure, not
+product behavior, presenter-reuse evidence, or receipt evidence. Preserve the
+late acknowledgment and the complete root; do not retry this topology.
 
-Commit `53b4ab3` materially changed that precondition without changing the
-verified addon. It resolves the close target first, binds the exact lifecycle
-HWND to the Smoke process/session, sends that HWND only inside one authenticated
-handoff-only loopback request, and has the owning process call its existing
-native show/activation path at most once. Both sides retain only sanitized
-match/state booleans and counts. The probe revalidates the same owner,
-enabled/non-iconic state, and exact foreground immediately before one
-`SendInput` close call; any failure produces one skip branch and no input.
+The failed root still completed all ownership-safe cleanup. Its Limited task
+was deleted, runner/package/task-file/launch-environment guards passed, no
+Smoke or task process remains, and exact Steam continuity passed. Independent
+post-run verification reproduced the signed 114-file, 398,165,772-byte active
+binding and content fingerprint, 4/4 required signatures with app/addon
+publisher agreement, zero package-local `debug.log`, retained rollback, absent
+stage, and exact Steam PID/session/start identity.
 
-The signed package then ran exactly one focused public managed-web case. Target,
-owner, control-process, and interactive-session relationships matched; one
-authenticated request received one valid response; the requested window stayed
-the same; and one native-show call completed. Windows still left the exact host
-non-foreground, the owning process reported no focus, and native focus/activation
-message deltas remained zero. The schema-2 guard emitted one skip event, sent
-zero close input, and the active wait timed out without close, park, completion,
-or app-focus return. Visible rendering, physical-DPI target and screenshot
-evidence, all three D3D11 fields, readiness, render health, zero-crash evidence,
-process/task cleanup, rollback, and the existing Steam session remained clean.
+Immutable-package repair `6bdca68` CI
+`29222269182` passed package smoke plus Linux x64, Windows x64, and Apple Silicon
+macOS. Its Release `29222377196` passed all three prebuilds and the Windows
+publish-tarball/ASAR gate. Independent verification confirmed commit
+`6bdca68262cdd00192a3b26309292038efa4b440`, Electron `43.1.0`, 114 files, all
+1,121 native methods, canonical tarball SHA-256
+`cda2ae81d4443746d3c3f50d7c2aaea2b6be8499e4c7e5ee20b8f80b92a2f02c`, and
+bundle-archive SHA-256
+`00bd923693eee86694a3471118c3ffed5e4c9da7a5d550cdaac515e328542d03`.
+The canonical local installed-certificate gate regenerated the exact package
+with signing required, 4/4 valid required signatures, app/addon publisher
+agreement, 114 files, all 1,121 native methods, and zero package-local runtime
+logs.
 
-This disproves the existing owner-process native-show call as an unattended
-foreground-reacquisition mechanism in this environment. It does not prove that
-a focus-delivered click or Escape fails, and it does not prove
-close/back-to-app. Repackaging either existing focus call, reconnecting remote
-desktop, retrying focus, adding another input, or lengthening the wait is not a
-meaningful experiment.
+The signed `6bdca68` replacement is now transactionally deployed. A durable
+post-transaction verifier independently confirmed source and active binding to
+the signed audit, byte-identical 114-file inventories, 4/4 valid signatures,
+app/addon publisher and deployment-record agreement, zero package-local logs,
+zero active-package processes, a removed staging directory, retained and
+inventory-matched rollback, complete deployment fingerprint logs, and exact
+Steam PID/session/start continuity.
 
-Do not use the legacy raw `full` baseline as the product gate; use `managed`,
-`shortcut-routes`, and public synthetic `checkout`.
+A pre-profile static contract audit found one mandatory release-tool repair.
+At `6bdca68`, the packaged live-proof receipt generator still required attached
+host/renderer agreement from both the native-load `presenter-ready` gate and
+the `10-presenter-ready` route case. Since `fe7d989`, those deliberately lazy
+checks prove D3D11 selection and host availability without attaching a
+renderer; the matrix summarizer correctly accepts that selection-only shape,
+while the old receipt self-test fabricated attachment. No live profile was
+started on `6bdca68` after this finding. Commit `2d2178c` updates
+`scripts/windows-live-proof-receipt.cjs`, its package-smoke assertions, public
+Windows proof guidance, and the detailed evidence/ledger. Its real-shaped lazy
+fixture plus fake-attachment and incomplete-attached-route adversarial checks
+pass. Collect final evidence only on the resulting replacement.
 
-### Windows needs-present polling is aligned in `a75ad43`; live proof is pending
+The older `e6c0de9` candidate had
+114 files and all 1,121 native methods, passed 4/4 required installed-certificate
+signatures with app/addon publisher agreement, deployed transactionally with
+rollback, and preserved Steam continuity.
 
-The committed presenter slice changes the persistent Windows default from a
-250 ms full-diagnostics loop to a 30 ms lightweight
-`BOverlayNeedsPresent()` signal poll while rate-limiting the full diagnostics
-snapshot to at least 250 ms. Windows polling disabled by policy stays on the
-slow safe path, non-Windows defaults are unchanged, lightweight cache updates
-replace the diagnostics object only on signal transitions between normal full
-refreshes, and closing the presenter cancels further polls. Unchanged
-lightweight ticks stay silent, managed readiness uses the cheap
-`IsOverlayEnabled()` signal rather than forcing full diagnostics, and the smoke
-app no longer overrides the library default. All 179 unit tests, package smoke,
-API/platform checks, native formatting/checks, syntax checks, and diff checks
-pass; one public passive-notification exact-package proof remains pending.
+That deployment is invalid for further receipt work. A checkout recovery
+attempt created a 157-byte top-level `debug.log` during preflight's direct
+`in-process-gpu-on` render-health comparison, raising the active package to 115
+files. Preserve the unexpected file; do not delete, exclude, or run more receipt
+profiles against that deployment.
 
-The current evidence-harness slice adds optional successful lightweight/full
-poll counters and timestamps without changing unsupported adapter shapes. A
-failed full read advances only a private attempt timestamp, so the public count
-invariant remains exact and failures cannot create a hot retry loop. The
-passive-notification proof now requires an audited false-to-true-to-false
-transition, 30 ms lightweight cadence, rate-limited full diagnostics, D3D11
-agreement, clean close/park completion, and a final zero-FPS state. Unit and
-summary fixtures are green; the exact-package live proof remains pending.
+Commit `6bdca68` contains one comprehensive immutable-package repair:
 
-The same committed documentation slice corrects the stale claim that Windows
-uses only Electron's direct hook, limits the supported topology to one presenter
-per process/main game window, distinguishes historical artifacts from
-exact-package release proof, and records the current D3D11 device-loss,
-Electron-range, and unpacked-ASAR evidence boundaries. These corrections do not
-depend on the pending manual foreground result.
+- every default packaged Electron launch routes Chromium logging outside the
+  candidate;
+- the final ASAR executable probe compares the complete bundle immediately
+  before and after execution;
+- packaged smoke no longer rewrites its bundled `steam_appid.txt`;
+- generated native-control files default outside the package;
+- matrix artifacts must resolve outside the candidate; and
+- standalone and matrix launch artifacts remain outside the candidate.
 
-### Windows unsigned Release package gate is green; signed-tag proof is open
+The exact product/evidence files are `README.md`,
+`examples/electron-basic/{README.md,main.js}`,
+`scripts/{package-electron-example.cjs,smoke-package.cjs,windows-electron-builder-asar-gate.cjs,windows-electron-smoke.ps1,windows-native-overlay-control.ps1,windows-overlay-matrix.ps1,windows-render-health-probe.ps1}`, and
+`docs/research/{test-findings-ledger.md,cross-platform-overlay-status.md}`.
+Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
 
-The first two fresh runs exposed and bounded the Windows npm invocation and
-host-separator ASAR-verifier failures recorded in `WIN-PACKAGE-001`. Commit
-`f863242` fixes the latter without weakening the package contract and preserves
-a fatal nonzero exit even if electron-builder resets `process.exitCode`. Its CI
-run `29091117114` passed package smoke plus all three platform jobs. Release run
-`29091123792` passed all three fresh prebuilds, exact release assembly, the
-unsigned Windows package gate, canonical-candidate verification, and artifact
-upload.
+## Last Verification
 
-The downloaded output contains exactly the npm tarball, retained `win-unpacked`
-archive, audit, and executable-probe result. Independent checks matched every
-recorded tarball/archive hash and all 112 retained files; found all public
-JavaScript entrypoints archived with no package-input leak; found exactly the
-addon and two Steam DLLs in the physical ASAR-unpacked package mirror; verified
-AMD64 PE32+, N-API and static-CRT import evidence; preserved both valid Valve
-DLL signatures and bytes; and matched a no-override packaged Electron native
-load, checkout-validator tree, and public App ID `480` live-smoke protocol. The
-privacy scan found no private runtime data.
+- `npm run package:smoke`: passed.
+- `npm test`: 196/196 passed.
+- `npm run check:platform`: passed.
+- `npm run api:check`: passed with all 1,121 required native methods accounted
+  for.
+- `npm run native:fmt`: passed.
+- `npm run native:check`: passed.
+- `git diff --check`: passed.
+- Native Windows PowerShell 5.1 parsed every changed PowerShell helper with zero
+  errors.
+- A focused interactive Windows regression ran all four render-health cases on
+  a disposable 114-file copy. Default health passed, all four cases recorded
+  external Electron-log routing, no package-local runtime logs appeared, and
+  the complete file/hash inventory stayed identical at 114 files. The final
+  candidate-bound matrix will separately enforce exact process cleanup.
+- The signed replacement deployment's durable post-transaction verification
+  passed every source/active/record/rollback/signature/process/Steam-continuity
+  check at exactly 114 files and zero package-local logs.
+- Static comparison of the receipt generator against the settled matrix
+  summarizer confirmed that `6bdca68` carried stale lazy `presenter-ready`
+  expectations; the worktree repair now passes its focused and full checks.
+- The focused receipt self-test, `npm run package:smoke`, all 196 tests,
+  platform/API checks, Rust format/check, and `git diff --check` pass for the
+  repair worktree.
+- Exact `2d2178c` CI `29223818759` passed all four jobs.
+- Exact `2d2178c` Release `29223856071`, independent artifact verification,
+  installed-certificate signing, transactional deployment, independent
+  post-deployment audit, and candidate-bound no-modal immutability gate passed.
+- The prepared marker watcher and atomic acknowledgment scripts parse under
+  native PowerShell 5.1; the acknowledgment correctly rejects the expired
+  failed attempt when no exact active probe exists.
+- Exact evidence checkpoint `d9f7713` CI `29228168945` passed all four jobs.
+- Exact candidate-bound `managed / 11-managed-web-open-and-wait` recovery passed
+  with one activation, one automatic panel close, exact focus return, complete
+  lifecycle, three-way `windows-d3d11`, clean wrapper/semantic/crash evidence,
+  and unchanged post-run package, rollback, signature, and Steam state.
+- The first exact `persistent-reuse` root failed closed at its coordinator
+  deadline with zero activation/close input; all cleanup guards, the post-run
+  candidate binding, and the independent package/rollback/signature/Steam audit
+  remained green.
+- The initial 1,608 ms disposable coordinator result was superseded because it
+  did not isolate click causality. The pre-armed exact retry and a calibrated
+  atomic neutral desktop-control test both observed zero Windows foreground
+  events; all disposable and exact-run cleanup guards remained green.
+- Matched normal/hidden Limited-task direct-child launch diagnostics both made
+  Notepad naturally foreground in 5 ms with zero input and complete cleanup,
+  disproving task-window visibility as the missing product condition.
+- The final hash-pinned neutral Windows-local Computer Use probe passed with one
+  exact HWND foreground event, one later atomic acknowledgment, final hook/task/
+  process/window cleanup, zero product activity, and exact Steam continuity.
+- The one authorized exact-candidate `persistent-reuse` root reached a valid
+  marker but the local coordinator missed its 30-second hook window. The hook
+  had already stopped at zero events/input before the late acknowledgment was
+  written; no cycle ran and the root is not receipt evidence. Every cleanup,
+  candidate/signature/rollback/stage, and Steam-continuity check remained green.
 
-This settles the unsigned production-like packaging, layout, native-load,
-integrity, and retained-bundle diagnostic. It does not prove configured-publisher
-signing, exact-tag publishability, reputation/App Control behavior, or live
-overlay behavior. The app executable and addon are intentionally `NotSigned`;
-the Valve DLL signatures remain `Valid`. The repository currently has no
-Actions signing secrets, publisher-identity variables, tags, or releases, so a
-signed tag run is a prerequisite-bound next experiment rather than a justified
-retry of the green unsigned diagnostic.
+The exact signed replacement is deployed, independently verified, and unchanged
+after its candidate-bound no-modal and successful managed-web gates. The
+managed-web recovery is closed on its natural-foreground branch. The neutral
+Windows-local input technology is proved, but the first product coordinator was
+not pre-bound and missed the fixed hook window. Receipt collection remains
+blocked at `persistent-reuse`; no Parsec variant or unchanged product retry is
+eligible.
 
-The final release-operations audit also confirmed that the workflow is
-candidate-only: it neither publishes npm nor creates a GitHub Release. This is
-a public repository with Actions retention set to the public maximum of 90
-days, so the retained candidate is not durable rollback material by itself.
-Public and contributor guidance now requires a protected exact-version tag for
-the signed candidate, the exact four candidate files in durable immutable
-release storage before publication, and an approved provenance-emitting npm
-publication path only after the exact candidate passes live gates. Because the
-package does not yet exist on npm, its first publish needs an approved CI
-bootstrap before later versions can use trusted publishing. Rollback means
-building, signing, packaging, and live-validating a higher corrected candidate,
-then publishing it, deprecating the bad immutable version, and moving dist-tags
-as applicable. Enabling publication remains an explicit release-authority
-decision; it was not inferred from the package-readiness goal.
+## Next Actions
 
-### Native surface ownership and terminal failure handling are hardened in `57c458f`
+1. Build and neutrally prove a materially changed Windows-local coordinator that
+   discovers and snapshots the exact target window while the product task is
+   still reaching its marker, then completes one click and acknowledgment well
+   inside the unchanged 30-second hook window. Do not lengthen the timeout or
+   run another product root during this step.
+2. Reassess one fresh exact `2d2178c` `persistent-reuse` root only after that
+   end-to-end coordinator proof and an updated ledger condition.
+3. Collect the remaining roots in receipt order: `checkout`,
+   `shortcut-routes`, `managed-routes`; fingerprint after each.
+4. Generate the combined exact 31-case/27-activation receipt.
+5. Perform the final Windows package, D3D11, native API-shape, lifecycle,
+   cleanup/crash, rollback, Steam-continuity, privacy, and support-boundary
+   audit.
 
-An independent production audit found process-global lifecycle hazards that do
-not require another Steam launch to fix: concurrent or duplicate-module
-presenters could detach one another's native surface, partial controller setup
-could leak listeners/leases, raw mismatched closes could orphan a host, and an
-attach or scheduled D3D11 present failure could escape without completing
-managed cleanup. The committed slice now permits one managed Electron controller
-and one presenter/session/raw surface owner per process, shares that registry
-across package evaluations, rejects `worker_threads` overlay control at the
-main-thread boundary, and rejects collisions before environment or listener
-side effects, rolls back partial setup, assigns monotonically increasing
-controller/surface-lease generations, and prevents stale handles or callbacks
-from mutating or reporting a later owner.
+Do not repeat the settled managed-web recovery, macOS/Parsec title-bar
+synthesis, task-window-style comparison, or any unchanged foreground
+experiment. Windows-local Computer Use is now proved only for the neutral exact-
+HWND path; do not generalize that proof to product coordination.
 
-Windows native `Present`, render-target recreation, and `ResizeBuffers`
-failures now remove and destroy the Rust surface before returning the original
-error. The JavaScript presenter records that error with `closeReason: "error"`,
-stops timers, disconnects callbacks, best-effort detaches without replacing the
-primary error, closes the managed controller, removes Electron listeners,
-wakes pending lifecycle waits with a closed error, and releases ownership for a
-clean new instance. All 194 unit tests, native formatting/checks, and package
-smoke pass locally. No live suite was run; the genuine foreground click remains
-the next Windows runtime experiment.
-
-The Windows activation path also now reactivates a parked host in place instead
-of calling the native attach path again. Native diagnostics expose
-`surfaceInstanceGeneration` and `hwnd` as actual HWND/D3D11 reuse evidence;
-`nativeSurfaceLeaseGeneration` remains ownership evidence only. The focused
-three-cycle harness is now implemented as one readiness-gated process and one
-controller. It requires exact ordered handoff ordinals, stable controller,
-lease, native instance, and salted HWND identities, D3D11 agreement, one attach
-and no detach before completion, owned/open/attached/nonterminal state in every
-shown and parked snapshot, and fail-first/no-retry behavior. Its final shutdown
-must record one detach and a fully closed, unowned, unattached, backend-free
-snapshot. Unit, package, and summary fixtures are green; the live reuse proof
-is still gated behind the genuine-click close pass.
-
-### Windows harness cleanup and rollback are fail-closed locally
-
-The live matrix now wraps shortcut installation and launch-environment changes
-in nested transactions, restores the original launch-environment bytes exactly,
-and records only sanitized boolean/count/status evidence. The scheduled-task
-wrapper resolves one explicit redacted launch-env input, tracks the exact runner
-identity and descendant process tree, terminates that tree on timeout or
-missing completion, requires two empty scans for both runner and package-owned
-Smoke processes, verifies task deletion, and removes raw runner/config/done/
-transcript files unless `-KeepTask` was explicitly requested. Closed-set failure
-classes preserve diagnostic meaning without retaining raw exception text,
-commands, private paths, or launch-env contents.
-
-The matrix also guarantees ordinary-failure cleanup and rollback, stores raw
-shortcut backup material outside the artifact root, sanitizes shortcut/install
-evidence, and audits the final post-close presenter snapshot. Package smoke
-statically checks these contracts, and the Windows package gate now parses
-`windows-overlay-task.ps1` with native PowerShell. All local checks and
-independent reviews are green; Windows CI and live evidence remain the next
-distinct proofs.
-
-### Duplicate-open coverage is packaged; live proof is open
-
-The public `presenter-duplicate-open-guard` smoke action exists and has live
-coverage on other supported platforms, but the Windows managed suite before
-`c880d51` did not contain a case for it. Commit `c880d51` adds a complete
-managed case and audits every named direct/wait helper, generic helper,
-shortcut helper, and checkout-operation suppression. Historical Windows route
-matrices still do not prove that behavior; one focused public live pass is
-required after the web close/focus gate passes. It was not run in this slice.
-
-### Freshness
-
-- The smoke app is pinned to Electron `43.0.0`; on 2026-07-09,
-  `npm run check:electron:latest` reported `43.1.0`.
-- A fresh CI-built Windows addon from `da632f8` was loaded successfully by the
-  `a58280c` package. Its pre-sign hash matched the verified Release artifact;
-  another native Release build is not justified for the current blocker.
-- There are no Git tags or GitHub releases yet; package version is `0.1.0`.
+Detailed live evidence is in
+`docs/research/cross-platform-overlay-status.md`; rerun contracts are in
+`docs/research/test-findings-ledger.md`; architecture is in
+`docs/research/native-overlay-presenter-plan.md`.
 
 ## Exact Next Step
 
-Do not synthesize the missing gesture. In the already-running interactive Smoke
-window, click **Presenter Web Wait** once, manually close the public Steam web
-overlay, and leave Smoke open while its lifecycle evidence is collected. Then
-close Smoke and atomically restore the preserved launch env. If the natural
-flow passes, classify the current blocker as unattended-harness focus and add
-the smallest state-driven same-process click/exact-host gate needed for one
-repeatable schema-2 proof. If it fails after the real click, do not build a
-broker; investigate native-host ownership/activation and input forwarding.
+First push the local documentation-only evidence commit after an authenticated
+GitHub CLI becomes available; do not alter the evidence or credentials to work
+around that environment blocker. Then do not run another product profile.
+Prepare a disposable neutral task whose window appears only after the
+coordinator is already polling Computer Use and the exact marker watcher is
+armed. Resolve and snapshot the exact PID/HWND/session-bound window without
+activation before or immediately when its marker appears, then perform exactly
+one title-bar click and one atomic post-click acknowledgment. Measure marker-to-
+click and marker-to-ack latency and require comfortable headroom inside the
+unchanged 30-second contract, exact foreground-event causality, and complete
+hook/task/process/window/Steam cleanup. Only then update the ledger and decide
+whether one fresh `persistent-reuse` root is eligible. Do not lengthen waits,
+reuse the late acknowledgment, or repeat any settled input topology.
 
-## Subsequent Actions
+## Focused Same-Process Exact-Host Gate Is Proved
 
-1. Complete the current natural user-click diagnostic. On a pass, implement and
-   test the smallest same-process exact-host gate, then run one focused managed
-   web proof requiring one successful pre-dispatch foreground recheck before
-   the single close input, all three D3D11 fields, strict physical-DPI evidence,
-   inactive callback, close/back-to-app, parking, focus return, and clean
-   crashes. Stop without input if any binding or focus check fails.
-2. Run the new duplicate-open case and require the named suppression evidence,
-   no checkout operation invocation, close/back-to-app, parking, and clean
-   crashes.
-3. If both focused gates pass, run the broad public `managed`,
-   `shortcut-routes`, and synthetic `checkout` suites. Do not use the unchanged
-   raw `full` baseline as the product gate.
-4. Run one public passive exact-package case for the committed Windows
-   `BOverlayNeedsPresent()` cadence and require the audited false-to-true-to-false
-   transition, D3D11 renderer agreement, close/park completion, 30 ms
-   lightweight polling, and no hot full-diagnostics loop.
-5. Run the implemented persistent-reuse suite and require three exact ordered
-   close ordinals, stable controller/lease/native-instance/HWND identities, one
-   attach with no pre-completion detach, the final detach/closed snapshot, and
-   complete process/task/file/launch-env cleanup. Then verify the documented
-   one-window, recovery/compatibility, and production-like Windows native-addon
-   packaging boundaries.
-6. Do not repeat the green unsigned package diagnostic unchanged. When signing
-   credentials, expected publisher identity, and a protected exact-version tag
-   exist, run one signed tag gate. Require app/addon publisher agreement, both
-   Valve DLLs `Valid` with preserved bytes, retained archive/audit provenance,
-   and canonical publish-candidate verification before exact-candidate live
-   proof. Retain those exact four files durably before publication; require an
-   approved provenance-emitting npm bootstrap/publishing authority only after
-   the exact candidate passes the live gates.
-7. Record results in the existing ledger/detailed evidence, run final checks,
-   scan for private data, commit, push, verify CI, and complete the final
-   production-readiness audit.
+That settled historical evidence remains in the detailed cross-platform status
+and ledger; it is not the current rerun target.
 
-## Last Reported Verification
+## Duplicate Open and Passive Polling Live Proof Are Settled
 
-Against owner-process handoff commit `53b4ab3` and its single focused run:
-
-- `npm run package:smoke` passed after both independent reviews and includes
-  schema-1 compatibility plus schema-2 positive, already-foreground, ordering,
-  binding, privacy, one-shot, terminal-branch, pointer, and focus-return fixtures.
-- `npm test` passed all 175 tests. `npm run check:platform`,
-  `npm run native:fmt`, `npm run native:check`, and `npm run api:check` passed;
-  `native:check` retained only the known transitive `block 0.1.6` warning.
-- `node --check` passed for the changed JavaScript files, the Windows summary
-  self-test passed directly, and `git diff --check` passed.
-- `53b4ab3` was pushed to `origin/main`; its package-smoke, macOS arm64,
-  Windows x64, and Linux x64 CI jobs all passed.
-- Result-recording commit `943dfad` was pushed to `origin/main`; its same four
-  CI jobs all passed.
-- The Windows package reused the verified addon without a native rebuild,
-  matched the current app/matrix/task/summary sources before signing, deployed
-  with all 12 signable files `Valid`, preserved rollback, and did not restart
-  Steam.
-- The one public `11-managed-web-open-and-wait` case passed interactive
-  readiness, native load, shortcut verification, default render health,
-  visible Steam web rendering, all three D3D11 fields, and clean crash/process/
-  task evidence. Its exact-bound owner-process handoff completed once but did
-  not acquire foreground or produce new focus/activation messages. The guard
-  sent zero input and the managed wait timed out active. No duplicate-open or
-  broad suite ran.
-
-Against the focus-gate slice now committed as `a58280c` on 2026-07-10:
-
-- `npm run package:smoke` passed.
-- `npm test` passed all 175 tests.
-- `npm run api:check`, `npm run check:platform`, `npm run native:fmt`, and
-  `npm run native:check` passed. `native:check` reported only the existing
-  future-incompatibility warning for transitive `block 0.1.6`.
-- `git diff --check` passed; `a58280c` was pushed to `origin/main`, and its CI
-  run passed every job.
-- The manual Release workflow for `da632f8` produced the Windows addon used by
-  the `a58280c` package. Its pre-sign hash matched, the deployed bundle retained
-  the exact current matrix/task/summary scripts, all 12 signable files verified
-  `Valid`, rollback was preserved, and Steam was not restarted.
-- The single `a58280c` focused managed-web run passed interactive readiness,
-  native load, shortcut verification, default render health, visible Steam web
-  rendering, all three D3D11 backend fields, zero crash dumps, and cleanup. Its
-  exact valid native host could not become foreground; the guard sent no input
-  and the managed close wait timed out. No duplicate-open or broad suite ran.
-- `npm run check:electron:latest` failed only on the intentional/latest-version
-  comparison described above; it is not part of normal `npm test`.
-
-Against polling and release-guidance commit `a75ad43` on 2026-07-10:
-
-- `npm test` passed all 179 tests, including Windows default-cadence,
-  false-to-true transition, disabled-policy, dynamic native-guard, cache,
-  readiness, and timer-cleanup coverage.
-- `npm run package:smoke`, `npm run api:check`, `npm run check:platform`,
-  `npm run native:fmt`, and `npm run native:check` passed; `native:check`
-  retained only the known transitive `block 0.1.6` warning.
-- Syntax checks, the added-line private-data scan, `git diff --check`, and an
-  independent final implementation/documentation review passed.
-- `a75ad43` was pushed to `origin/main`; package smoke, Linux x64, Windows x64,
-  and macOS arm64 CI jobs all passed.
-- No live suite was run. One public passive exact-package proof and the genuine
-  foreground user-click diagnostic remain pending.
-
-Against ownership/reuse implementation commit `57c458f` on 2026-07-10:
-
-- `npm test` passed all 194 tests, including module-reload and worker-thread
-  ownership boundaries, raw-subtype and no-surface behavior, transactional
-  controller rollback, stale callback containment, session/presenter terminal
-  failure, closed-wait ordering, and three-cycle Windows native-instance reuse.
-- `npm run package:smoke`, `npm run api:check`, `npm run check:platform`,
-  `npm run native:fmt`, and `npm run native:check` passed; `native:check`
-  retained only the known transitive `block 0.1.6` warning.
-- Syntax checks, the added-line private-data scan, `git diff --check`, and three
-  independent implementation reviews passed. A local cross-target Rust attempt
-  reached the Windows C++ bridge but could not compile it without MSVC C++
-  headers; the native Windows CI job then compiled the exact commit successfully.
-- `57c458f` was pushed to `origin/main`; package smoke, Linux x64, Windows x64,
-  and macOS arm64 CI jobs all passed. No live Steam suite was run; the existing
-  genuine-click experiment remains untouched and pending.
-
-Against the current Windows evidence-harness and release-operations slice on
-2026-07-10:
-
-- `npm test` passed all 196 tests, including successful/failed split-poll
-  accounting, optional adapter capability shape, strict focus/show/activation
-  ordering, three-cycle reuse, and terminal detach evidence.
-- `npm run package:smoke`, `npm run api:check`, `npm run check:platform`,
-  `npm run native:fmt`, and `npm run native:check` passed; `native:check`
-  retained only the known transitive `block 0.1.6` warning.
-- Syntax checks passed for every changed JavaScript file, the summary fixture
-  suite passed through package smoke, and `git diff --check` passed.
-- Independent runtime, harness, release, privacy, cleanup, and packaging reviews
-  closed their findings; the final packaging review found no remaining blocker.
-- No live Steam suite was run. Windows CI validation and the existing genuine
-  foreground click remain the next distinct proofs.
-
-Live Windows review on 2026-07-10 UTC is summarized under Current Findings;
-detailed sanitized chronology lives in the platform evidence log and ledger.
-
-Reverify these claims after newer commits. Branch cleanliness and CI status are
-live facts and must always be checked rather than inferred from this checkpoint.
-
-## Detailed Sources
-
-- [Test findings and rerun gates](test-findings-ledger.md)
-- [Cross-platform live evidence](cross-platform-overlay-status.md)
-- [Native presenter architecture](native-overlay-presenter-plan.md)
-- [Windows smoke and matrix runbook](../../examples/electron-basic/README.md)
-- [Public project guidance](../../README.md)
-- [Package consumer guidance](../../packages/steam-bridge/README.md)
-
-## Update Contract
-
-Keep this file short and current. Replace stale goal/finding/next-step text
-rather than accumulating session history. Put durable live results in the test
-ledger and cross-platform evidence log, architecture decisions in the presenter
-plan, and public recommendations in the READMEs.
+Those settled historical results remain in the detailed cross-platform status
+and ledger; do not repeat them for the immutable-package repair.

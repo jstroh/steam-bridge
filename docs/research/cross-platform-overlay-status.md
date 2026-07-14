@@ -92,18 +92,128 @@ all passed. A second independent audit still found the exact 114-file candidate
 with no package-local logs or processes. This settles the current package-
 immutability boundary.
 
-The first focused active `11-managed-web-open-and-wait` recovery on that exact
-candidate naturally launched its authenticated source nonforeground. The
-schema-3 probe wrote exactly one valid atomic source-ready marker with the
-foreground transition hook armed and zero activation/close input. No real
-post-marker local/Parsec title-bar click or copied-challenge acknowledgment was
-available, so the branch correctly emitted zero controller-ack, transition,
-activation, or close events and failed closed before writing a Smoke result.
-There was no App Control or Steam-process policy block; all wrapper cleanup,
-the strict post-run fingerprint, rollback/signature audit, and Steam continuity
-remained green. Repeat only once when a real coordinator is ready to click the
-exact Smoke title bar after the fresh marker and acknowledge only after click
-success. Do not synthesize or loop that acceptance input.
+The first two focused active `11-managed-web-open-and-wait` recoveries on that
+exact candidate naturally launched their authenticated source nonforeground.
+Each schema-3 probe wrote one valid atomic source-ready marker with the
+foreground transition hook armed and zero activation/close input. Parsec was
+unavailable or inactive, so no challenge acknowledgment was written and both
+branches correctly failed closed with zero transition, activation, or close
+events. A disposable Notepad probe then established the coordinator condition
+without touching Steam Bridge: with Parsec on its actual full-screen macOS Space
+and `parsecd` frontmost, an ordinary client click reached Windows and minimized
+the probe. The disposable task and process were removed before product testing.
+
+One fresh candidate-bound recovery then naturally launched already foreground
+and took schema 3's mutually exclusive not-required branch. It created no
+marker or acknowledgment. The isolated-preload gate was armed, ready, and
+consumed exactly once; its scale-aware activation sent the expected three input
+records with error zero. The attached native host was foreground, the detected
+Steam web panel supplied a safe close target, and one scale-aware automatic
+close sent the expected three input records with error zero. The lifecycle
+proved shown, inactive, closed, parked, complete, and exact source-window focus
+return. The presenter, native host, and renderer agreed on `windows-d3d11`; the
+semantic summary, crash diagnostics, authenticated quit, Limited task/process/
+environment cleanup, strict post-run fingerprint, rollback/signature audit,
+and exact Steam continuity all passed. The authoritative root is
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-managed-web-recovery-20260713-065944`.
+The separate marker-oriented diagnostic script reports failure for this
+successful no-marker branch by construction; the driver, matrix summarizer,
+raw result, close probe, completion record, and package audit are authoritative.
+Do not rerun this recovery unless its candidate, input/foreground state machine,
+lifecycle/backend contract, or later parity evidence changes.
+
+The first authorized exact-candidate `persistent-reuse` root then exposed a
+coordination-process failure rather than a product result. Case 40 emitted one
+valid fresh marker with zero activation and zero close input, but the 30-second
+external foreground hook expired while the coordinator was still being
+inspected. It correctly recorded transition timeout, activation skipped, close
+skipped, and incomplete with expected close count three; no Smoke result was
+written. The Limited wrapper still deleted its task, emptied runner and package
+processes, restored launch state, and preserved exact Steam identity. Both the
+post-run candidate binding and independent deployment audit passed at 114
+source/active-identical files, 4/4 signatures, matched rollback, no stage,
+zero package logs/processes, and unchanged Steam continuity. Preserve
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-20260714-030944`;
+it does not test persistent presenter behavior.
+
+The initial disposable Notepad dry probe reported a foreground transition
+1,608 ms after a synthetic Parsec click, but it did not isolate that click from
+the task's own asynchronous launch/show lifecycle and is superseded. In exact
+retry
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-20260714-033636`,
+the pre-armed coordinator detected the title bar and wrote a marker-bound
+acknowledgment after 2,823 ms. The exact Windows foreground hook nevertheless
+observed zero events for 30 seconds and the source stayed nonforeground. By
+contract, the probe did not consume the acknowledgment, sent zero activation or
+close input, and ended incomplete at zero of three closes. A subsequent
+calibrated, raised, atomic desktop-control neutral test also produced no Windows
+foreground transition. Current macOS CGEvent and desktop-control events are not
+forwarded through this Parsec topology; do not spend another product root on
+them. This does not disprove physical Parsec input, a Windows-local UI action,
+natural-foreground launch, or presenter behavior. The exact retry again passed
+all guard-level cleanup, post-run binding, deployment, rollback, signature, and
+Steam-continuity checks.
+
+A final zero-input disposable launch A/B changed only the Limited interactive
+task's PowerShell window style. Both normal and hidden task actions launched a
+direct-child Notepad window naturally foreground in 5 ms, with the task itself
+never foreground and complete task/process/evidence cleanup. Dropping
+`-WindowStyle Hidden` is therefore not causal even for the simpler direct-child
+case and would not justify an external wrapper or candidate change. The product
+path remains materially different because the hidden task asks the already-
+running Steam process to launch Smoke through a URI.
+
+Two early Windows-local Computer Use setups produced no input verdict and are
+discarded: one hook ran on a different desktop from the interactive UI, while a
+Limited Character Map target closed before input dispatch. A purpose-built
+self-closing **Steam Bridge Input Probe** replaced both topologies. Three
+hash-pinned read-only reviews closed marker/event linearization, acknowledgment
+ordering/schema, transient read, result-publication, hook-teardown, and cleanup
+races before the executable was used.
+
+The single authorized neutral run at
+`C:\Users\admin\steam-bridge-artifacts\windows-local-input-probe-20260714-063655`
+then passed from Session 1. The reviewed window showed without activation and
+published one exact PID/HWND/session-bound atomic marker. One Windows-local
+Computer Use title-bar click produced exactly one foreground event after the
+marker-advertised acceptance boundary; one closed-schema atomic acknowledgment
+followed on a later native tick. The result retained exact binding, foreground,
+valid acknowledgment, one event, successful final hook teardown, no hook error,
+and zero product activity. The window and process exited, the Limited task
+returned zero and was deleted, only the three intended JSON files remained, no
+Smoke process ran, and Steam retained the exact PID/session/start identity.
+This proves the changed local-input technology can produce a genuine neutral
+Windows event and satisfied the rerun condition for the single pre-armed exact-
+candidate `persistent-reuse` root below. It does not prove Steam Bridge
+presenter behavior and must not be repeated unless the probe or Computer Use
+mechanism changes.
+
+That single authorized product root is preserved at
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-20260714-064941`.
+It passed exact candidate binding, public App ID `480`, assumed shortcut,
+interactive readiness, native load, render health, and every pre-case package
+and Steam gate. Case 40 published a valid exact-source marker at 06:53:29 UTC,
+but its unchanged 30-second hook expired cleanly at 06:53:59 UTC while the
+Windows-local coordinator was still discovering the application and obtaining
+the required fresh window-state capture. It observed zero foreground events,
+no acknowledgment, zero activation input, and zero close input, then ended
+incomplete at zero of three closes. The atomic acknowledgment arrived only at
+06:55:07 UTC, after hook teardown, and was never observed or consumed. No Smoke
+result was written, so the semantic summary correctly rejected the root as
+`windows-steam-launch-no-result`. This is coordinator non-receipt, not product
+behavior, persistent-presenter evidence, or receipt evidence. Preserve the
+late acknowledgment and do not retry this topology.
+
+The failed root nevertheless completed all ownership-safe cleanup. Its Limited
+task was deleted, runner/package/task-file/launch-environment guards passed, no
+Smoke or task process remained, and Steam retained its exact PID/session/start
+identity. Independent post-run verification reproduced the signed 114-file,
+398,165,772-byte active binding and content fingerprint, 4/4 required
+signatures with app/addon publisher agreement, zero package-local `debug.log`,
+retained rollback, absent stage, and unchanged Steam continuity. A further
+product root is ineligible until a materially changed, pre-bound local
+coordinator first proves neutral marker-to-click and marker-to-ack latency with
+comfortable headroom inside the unchanged 30-second contract.
 
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
