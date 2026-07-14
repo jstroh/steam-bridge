@@ -68,6 +68,34 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+Exact signed `509f3fe` now has one valid receipt-bound persistent-reuse root, but
+public checkout is paused at an external foreground-controller boundary. The
+first checkout attempt passed preflight and prepare-only, then a coordinator
+validator left over from persistent reuse rejected the fresh approval marker;
+no click or acknowledgment occurred. A corrected action-bound coordinator
+validated the exact marker and package window in a fresh root, but Windows
+Computer Use returned `failed to activate captured window`; an explicit
+current-window activation failed identically. A third, focused
+`02-checkout-approval` root changed discovery to the documented app-first path,
+rehydrated the exact window, and attempted one activation, which failed with the
+same controller error. The corrected roots emitted zero foreground events,
+zero activation/close input, no acknowledgment, and exclusive fail-closed
+terminals, so they do not test checkout behavior and are not receipt evidence.
+
+The preserved roots are
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclick-20260714-103633`,
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclickv2-20260714-104254`,
+and
+`C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-appfirst-20260714-104909`.
+Every Limited task deleted itself, restored launch state, emptied runner and
+package processes, and preserved exact Steam PID/session/start continuity.
+Independent post-run audits retained exact active and valid-rollback bindings,
+the preserved invalid rollback and unexpected file, 4/4 signatures, app/addon
+publisher agreement, zero active-package logs/processes, and no stage. Do not
+repeat unchanged Computer Use activation. First retry only the focused approval
+case when the controller can activate the exact window or a person can make one
+marker-timed title-bar click; only then collect the four-case root.
+
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
 bundle, all 1,121 declared native methods, canonical tarball SHA-256
