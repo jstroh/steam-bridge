@@ -2,13 +2,13 @@
 
 Last reviewed: 2026-07-14
 
-Implementation anchor: `d9f7713` (`Record exact Windows candidate recovery gate`).
+Implementation anchor: `5a2ee54` (`Route Windows render-health logs externally`).
 Always reconcile this checkpoint with Git history and the worktree.
 
 ## Active Goal
 
 Close the exact signed Windows x64 D3D11 production-candidate lane on deployed
-commit `2d2178c`: preserve the now-green managed-web recovery; collect complete
+commit `5a2ee54`: preserve the now-green managed-web recovery; collect complete
 candidate-bound public App ID `480` roots in order (`persistent-reuse`,
 `checkout`, `shortcut-routes`, `managed-routes`); generate the exact
 31-case/27-activation receipt; and complete the Windows production-readiness
@@ -20,31 +20,32 @@ macOS parity, then do one final Windows parity pass.
 
 ## Current State
 
-`origin/main` contains Windows evidence checkpoint `73d1467`. That
-documentation-only push triggered no GitHub workflow, so the latest applicable
-exact CI remains `29228168945`; it passed package smoke plus Linux x64, Windows
-x64, and Apple Silicon macOS. No product code, deployed package, or Steam state
-changed. The deployed release candidate remains receipt-
-contract repair `2d2178c`. Its exact CI `29223818759` passed package smoke plus
-Linux x64, Windows x64, and Apple Silicon macOS. Release `29223856071` passed all
-three prebuilds, the Windows
+`origin/main` now contains explicit render-health log repair `5a2ee54`. Exact CI
+`29345092393` passed package smoke plus Linux x64, Windows x64, and Apple Silicon
+macOS. Release `29345310464` passed all three prebuilds, the unsigned Windows
 publish-tarball/ASAR gate, canonical-candidate verification, and artifact
-publication. Independent verification confirmed commit
-`2d2178c6f0e728d4d34be784bf493c165518a75f`, Electron `43.1.0`, 114 files,
-all 1,121 native methods, canonical tarball SHA-256
-`e2d42550d879327b0e2d64eb05b6db0598723baedff28545fb0ebb453bffafaa`, and
-bundle-archive SHA-256
-`3efa5ce3ddd5af26ad6c2012c22a0c65631461f50768bf692f9a30296a8dd576`.
-The installed-certificate gate then regenerated the exact package with signing
-required, 4/4 valid required signatures, app/addon publisher agreement, 114
-files, all 1,121 native methods, and zero package-local logs. The replacement
-was transactionally deployed with retained rollback and preserved Steam
-identity. Independent post-deployment verification proved source/active byte
-identity, audit binding, 4/4 signatures, matched rollback inventory, removed
-stage, zero package-local logs, zero active-package processes, and exact Steam
-PID/session/start continuity.
+publication. Independent download verification bound commit
+`5a2ee54562785c9cd274fbf55034f36a2dc9ab5a`, `main`, Electron `43.1.0`, 114
+files, all 1,121 native methods, canonical tarball SHA-256
+`94bd677794435c371c7580a0269c4421950a8091e2823f48026d752b95515cb5`, and
+unsigned bundle-archive SHA-256
+`80d66431ab68e8614845daa26b8bc26997885460b4014fb5cc94aecf4eeb17d5`.
 
-The exact deployed candidate then passed the complete candidate-bound no-modal
+The installed-certificate gate regenerated the exact candidate with signing
+required. It passed 4/4 valid required signatures, app/addon publisher
+agreement, 114 files/398,125,830 bytes, all 1,121 native methods, zero package-
+local logs/processes, content fingerprint
+`e08687e93eb2fdf73fcaf924bfabb2f01b00d21dd02380ab6a3b518635019c7f`, and
+signed bundle-archive SHA-256
+`0c34ca9197a933e585e39ae25460ff67e8ad6a1d78b287cf9863553ba02476a0`.
+Transactional deployment preserved the entire mutated 115-file `2d2178c`
+directory as rollback, including its unexpected file, and removed the stage.
+A separate post-transaction verifier reproved source/active audit binding, 4/4
+signatures, app/addon publisher agreement, zero active/rollback package
+processes, zero active-package logs, the 115-file rollback and preserved
+unexpected file, absent stage, and exact Steam PID/session/start continuity.
+
+The prior exact `2d2178c` candidate passed the complete candidate-bound no-modal
 `managed / 10-presenter-ready` task with public App ID `480`, Limited run level,
 full native-load and render-health gates, assumed stable shortcut, semantic
 summary, all wrapper cleanup guards, and matching pre/post candidate
@@ -275,6 +276,18 @@ Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
 
 ## Last Verification
 
+- Exact `5a2ee54` CI `29345092393` passed all four jobs, including package smoke
+  and the Windows MSVC native check unavailable on this control host.
+- Exact `5a2ee54` Release `29345310464` passed all three native prebuilds, the
+  Windows ASAR gate, canonical verification, and artifact upload.
+- Independent download and installed-certificate gates passed the canonical
+  tarball, unsigned and signed bundle archives, 114-file content binding, all
+  1,121 native methods, 4/4 signatures, publisher agreement, and zero package-
+  local logs/processes.
+- Transactional deployment and a separate post-transaction audit passed exact
+  source/active binding, a byte-preserved 115-file `2d2178c` rollback with its
+  unexpected file intact, removed stage, zero active/rollback processes, and
+  exact Steam continuity.
 - The current explicit-log repair passes its focused source assertion, and
   native Windows PowerShell 5.1 parses the changed helper with zero errors.
 - Current-worktree `npm test` passes 196/196; `npm run check:platform` and
@@ -350,25 +363,20 @@ Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
   package-local logs and the exact 114-file fingerprint, removed its task/
   processes, and preserved Steam identity.
 
-The exact signed `2d2178c` deployment is now immutable-invalid and must not run
-another profile. Its pre-bound persistent behavior passed, so input and
-presenter reuse are not the blocker; the preflight logging writer is. The
-unexpected file is preserved. Receipt collection is paused until the bounded
-explicit-log repair passes full checks, exact CI/Release, installed-certificate
-signing, transactional replacement, and independent 114-file deployment audit.
+The immutable-invalid `2d2178c` deployment is now a retained rollback and must
+not run another profile. Its unexpected file remains preserved. Exact signed
+replacement `5a2ee54` is active, independently verified, process-free, and
+unchanged at 114 files. Receipt collection may resume from `persistent-reuse`;
+input and presenter behavior are already proved, while the next root must prove
+the repaired preflight keeps this replacement immutable.
 
 ## Next Actions
 
-1. Restore dependencies and run focused, full, platform, API, Rust, PowerShell,
-   package-smoke, and diff/privacy validation for the explicit-log repair.
-2. Commit and push the repair, require exact CI and Release, independently
-   verify and sign the resulting 114-file Windows candidate, transactionally
-   deploy it with rollback, and prove exact Steam continuity.
-3. Re-run the four receipt roots from the replacement candidate in order:
+1. Run the four receipt roots on exact signed `5a2ee54` in order:
    `persistent-reuse`, `checkout`,
    `shortcut-routes`, `managed-routes`; fingerprint after each.
-4. Generate the combined exact 31-case/27-activation receipt.
-5. Perform the final Windows package, D3D11, native API-shape, lifecycle,
+2. Generate the combined exact 31-case/27-activation receipt.
+3. Perform the final Windows package, D3D11, native API-shape, lifecycle,
    cleanup/crash, rollback, Steam-continuity, privacy, and support-boundary
    audit.
 
@@ -384,16 +392,16 @@ Detailed live evidence is in
 
 ## Exact Next Step
 
-Do not launch the active candidate again. The focused source assertion,
-PowerShell 5.1 parse, JavaScript/type/platform/API checks, Rust format, diff
-check, disposable forced-writer proof, detailed evidence, and ledger are
-current. Commit and push the minimal code/test/docs slice, then require exact
-GitHub package smoke plus Linux x64, Windows x64, and Apple Silicon macOS CI;
-the Windows job must supply the locally missing MSVC/SDK native-check proof. Do
-not trigger Release or deploy until that source checkpoint is green. The next
-live product root belongs only to a newly built, independently verified,
-installed-certificate-signed, transactionally deployed 114-file replacement
-whose pre/post deployment audits and Steam identity all agree.
+Run exactly one fresh candidate-bound `persistent-reuse` root on signed
+`5a2ee54` with Computer Use discovery and marker polling active before the
+Limited task starts. Preserve public App ID `480`, the assumed shortcut,
+`steam-launch`, the unchanged 30-second hook, and `auto` close. If the source
+launches nonforeground, permit only one exact marker-bound title-bar click and
+one later atomic acknowledgment. Require three ordered shown/closed/parked
+cycles, six active/inactive callbacks, one D3D11 attach, stable identities,
+exact focus return, final completion, semantic/crash/task/process/environment
+cleanup, unchanged 114-file fingerprint and signatures/rollback/stage, and
+exact Steam continuity. Preserve any ambiguity or mutation and do not retry.
 
 ## Focused Same-Process Exact-Host Gate Is Proved
 

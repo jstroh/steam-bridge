@@ -261,6 +261,30 @@ processes were absent afterward and Steam identity was unchanged. This proves
 the bounded source route and quoting on a disposable copy, not a signed
 replacement candidate.
 
+Commit `5a2ee54`, exact CI `29345092393`, and Release `29345310464` then
+passed. Independent download verification bound `main`, Electron `43.1.0`, 114
+files, all 1,121 native methods, canonical tarball SHA-256
+`94bd677794435c371c7580a0269c4421950a8091e2823f48026d752b95515cb5`, and
+unsigned archive SHA-256
+`80d66431ab68e8614845daa26b8bc26997885460b4014fb5cc94aecf4eeb17d5`.
+The installed-certificate gate regenerated the exact signed candidate at 114
+files/398,125,830 bytes with content fingerprint
+`e08687e93eb2fdf73fcaf924bfabb2f01b00d21dd02380ab6a3b518635019c7f`,
+signed archive SHA-256
+`0c34ca9197a933e585e39ae25460ff67e8ad6a1d78b287cf9863553ba02476a0`,
+4/4 valid required signatures, app/addon publisher agreement, zero package-
+local logs/processes, and unchanged Steam identity.
+
+Transactional deployment retained the entire mutated 115-file `2d2178c`
+directory as rollback, including the preserved unexpected file, and activated
+the signed 114-file replacement. A separate post-transaction verifier reproved
+source/active audit binding, all signatures and publisher agreement, zero
+active/rollback package processes, zero active-package logs, exact rollback
+inventory and unexpected-file retention, absent stage, and exact Steam PID/
+session/start continuity. The next eligible live action is one pre-bound
+replacement-bound `persistent-reuse` root, followed by the remaining receipt
+roots only if the 114-file fingerprint remains exact.
+
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
 In the already-running signed Smoke app, one genuine **Presenter Web Wait**
