@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `bfc28e2` (`Add challenge-bound Windows foreground coordinator`).
+Review anchor: `6bd3e9a` (`Reject autonomous Windows foreground synthesis`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -143,26 +143,26 @@ evidence only.
 - Coordinator CI `29373540650` passes. Its focused case-11 live run produced a
   timely exact challenge-bound click but no foreground event; the zero-area OEM
   helper remained foreground. The case sent zero route input and all post-run
-  integrity, cleanup, and Steam audits pass.
+  integrity, cleanup, and Steam audits pass. Commit `6bd3e9a` removes the
+  rejected coordinator while retaining its negative evidence; exact CI
+  `29374176178` passes package smoke plus Windows x64, Linux x64, and Apple
+  Silicon checks.
 
 ## Next Actions
 
-1. Remove the rejected coordinator and its guidance, retain the negative live
-   conclusion in the ledger, commit, push, and verify exact CI.
-2. Resume active route profiles only after either a genuine challenge-bound
+1. Resume active route profiles only after either a genuine challenge-bound
    physical click is available inside the existing observer or a separately
    authorized safe-state test changes the zero-area OEM foreground owner.
-3. Then collect `persistent-reuse`, `checkout`, `shortcut-routes`, and
+2. Then collect `persistent-reuse`, `checkout`, `shortcut-routes`, and
    `managed-routes` in order and generate the exact receipt.
 
 ## Exact Next Step
 
-Publish the coordinator rejection and remove its implementation. Do not run
-another synthetic-input, focus-API, timeout, or unchanged natural-foreground
-profile. Further live progress requires a genuine physical click during the
-existing challenge window or explicit authority plus a safe-state plan to test
-the OEM foreground owner; stopping or suspending that display/hotplug-related
-process is not currently authorized.
+Do not run another synthetic-input, focus-API, timeout, or unchanged natural-
+foreground profile. Further live progress requires a genuine physical click
+during the existing challenge window or explicit authority plus a safe-state
+plan to test the OEM foreground owner; stopping or suspending that display/
+hotplug-related process is not currently authorized.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
