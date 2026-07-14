@@ -2820,9 +2820,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "ELECTRON_LOG_FILE = $ElectronLogFile",
     "$caseDir = Join-Path $ArtifactRoot $Case.name",
     '$electronLogFile = Join-Path $caseDir "electron-debug.log"',
+    '$electronLogArgument = "--log-file=`"$electronLogFile`""',
     "-ElectronLogFile $electronLogFile",
     "Invoke-WithSmokeEnvironment -EnvMap $envMap -Body {",
-    "Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru"
+    "Start-Process -FilePath $exe -ArgumentList $electronLogArgument -WorkingDirectory $AppDir -PassThru"
   ]) {
     assert.ok(
       renderHealthEnvironment.includes(expected) || renderHealthCase.includes(expected),

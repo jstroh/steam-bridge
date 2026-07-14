@@ -540,6 +540,7 @@ function Invoke-RenderHealthCase {
   $diagnosticDir = Join-Path $caseDir "diagnostics"
   $resultFile = Join-Path $caseDir "result.log"
   $electronLogFile = Join-Path $caseDir "electron-debug.log"
+  $electronLogArgument = "--log-file=`"$electronLogFile`""
   $lifecyclePath = Join-Path $diagnosticDir "lifecycle.jsonl"
   $desktopScreenshotPath = Join-Path $caseDir "desktop.png"
   $clientScreenshotPath = Join-Path $caseDir "client.png"
@@ -561,7 +562,7 @@ function Invoke-RenderHealthCase {
       -DiagnosticDir $diagnosticDir `
       -ElectronLogFile $electronLogFile
     $process = Invoke-WithSmokeEnvironment -EnvMap $envMap -Body {
-      Start-Process -FilePath $exe -WorkingDirectory $AppDir -PassThru
+      Start-Process -FilePath $exe -ArgumentList $electronLogArgument -WorkingDirectory $AppDir -PassThru
     }
 
     $windowProcess = Wait-ForMainWindow -ProcessId $process.Id -TimeoutSeconds $FirstRenderTimeoutSeconds

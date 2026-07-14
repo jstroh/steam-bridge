@@ -180,6 +180,36 @@ its exact PID/session/start identity. This satisfies the updated ledger
 condition for at most one fresh pre-bound `persistent-reuse` root. It does not
 prove product behavior and must not itself be repeated unchanged.
 
+That authorized root is preserved at
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-prebound-20260714-004205`.
+The pre-bound coordinator retained the current exact window before case 40's
+marker, began its single click 125 ms after publication, completed it at 538 ms,
+and atomically acknowledged at 644 ms. The semantic auditor passed all three
+shown/closed/parked cycles, six ordered active/inactive callbacks, one D3D11
+attach, stable persistent identities, exact focus return, 17/17 three-way
+D3D11 lifecycle snapshots, final completion, zero crashes, authenticated
+cleanup, and every wrapper/Steam-continuity guard.
+
+The root is not receipt evidence because the independent post-profile
+fingerprint found a new 157-byte top-level `debug.log`, raising the active
+candidate from 114 files/398,165,772 bytes to 115 files/398,165,929 bytes. Its
+07:44:15 UTC write time falls immediately after the final render-health summary
+and before the product marker, so the presenter case did not create it. Preserve
+the file and the complete root; do not delete, exclude, or run another profile
+on deployed `2d2178c`. Signatures, task/process/environment cleanup, absent
+stage, retained rollback, and exact Steam identity remain healthy, but the
+candidate is immutable-invalid.
+
+The bounded source repair retains per-case `ELECTRON_LOG_FILE` and adds the
+explicit `--log-file` argument that every other packaged launch class already
+uses. A Limited diagnostic against a clean signed 114-file copy in a path with
+spaces passed all four render-health cases. A second pass deliberately enabled
+Electron logging: four external per-case targets were created, the active
+writer produced a non-empty external log, the package produced no `debug.log`,
+and its exact 114-file fingerprint remained unchanged after teardown. No task
+or product process remained and Steam identity was unchanged. This validates
+the writer route and quoting on a disposable copy, not a replacement candidate.
+
 Immutable-package repair `6bdca68` CI
 `29222269182` passed package smoke plus Linux x64, Windows x64, and Apple Silicon
 macOS. Its Release `29222377196` passed all three prebuilds and the Windows
@@ -245,16 +275,18 @@ Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
 
 ## Last Verification
 
-- `npm run package:smoke`: passed.
-- `npm test`: 196/196 passed.
-- `npm run check:platform`: passed.
-- `npm run api:check`: passed with all 1,121 required native methods accounted
-  for.
-- `npm run native:fmt`: passed.
-- `npm run native:check`: passed.
-- `git diff --check`: passed.
-- Native Windows PowerShell 5.1 parsed every changed PowerShell helper with zero
-  errors.
+- The current explicit-log repair passes its focused source assertion, and
+  native Windows PowerShell 5.1 parses the changed helper with zero errors.
+- Current-worktree `npm test` passes 196/196; `npm run check:platform` and
+  `npm run api:check` pass with all 1,121 required native methods accounted for.
+- Current-worktree `npm run native:fmt` and `git diff --check` pass.
+- This Windows control host cannot complete the repository's POSIX package-
+  smoke self-tests because WSL is absent; the direct Windows run reaches the
+  hard-coded macOS POSIX-path assertion after packaging and consumer checks.
+  Exact GitHub package smoke is mandatory before Release.
+- Current-worktree `npm run native:check` is locally environment-blocked because
+  this control host has neither the MSVC linker nor Windows SDK libraries. No
+  Rust file changed; exact Windows GitHub CI is mandatory before Release.
 - A focused interactive Windows regression ran all four render-health cases on
   a disposable 114-file copy. Default health passed, all four cases recorded
   external Electron-log routing, no package-local runtime logs appeared, and
@@ -306,27 +338,37 @@ Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
   2,225 ms. Its exact event/ack/tick binding, three-file boundary, final hook/
   task/process/window cleanup, zero product activity, and Steam continuity all
   passed.
+- The pre-bound exact-candidate persistent-reuse behavior root passed its one
+  marker-bound click at 644 ms, all three cycles, six callbacks, one attach,
+  stable identities, 17/17 D3D11 snapshots, semantic/crash/wrapper cleanup, and
+  Steam continuity. Independent fingerprinting then found a new 157-byte top-
+  level `debug.log` written during render-health preflight, invalidating the
+  candidate before the product case and the root for receipt use.
+- The explicit render-health `--log-file` repair parses and passes its focused
+  package-smoke source assertion. A Limited path-with-spaces disposable pass
+  with forced Electron logging produced only external logs, retained zero
+  package-local logs and the exact 114-file fingerprint, removed its task/
+  processes, and preserved Steam identity.
 
-The exact signed replacement is deployed, independently verified, and unchanged
-after its candidate-bound no-modal and successful managed-web gates. The
-managed-web recovery is closed on its natural-foreground branch. The neutral
-Windows-local input technology and the materially changed pre-bound coordinator
-are now proved. The first non-pre-bound product coordinator remains a settled
-deadline failure with no product input. Receipt collection is still blocked at
-`persistent-reuse`, but the updated ledger permits at most one fresh root using
-the proved pre-bound topology; no Parsec variant or old coordinator retry is
-eligible.
+The exact signed `2d2178c` deployment is now immutable-invalid and must not run
+another profile. Its pre-bound persistent behavior passed, so input and
+presenter reuse are not the blocker; the preflight logging writer is. The
+unexpected file is preserved. Receipt collection is paused until the bounded
+explicit-log repair passes full checks, exact CI/Release, installed-certificate
+signing, transactional replacement, and independent 114-file deployment audit.
 
 ## Next Actions
 
-1. Run at most one fresh exact `2d2178c` `persistent-reuse` root with Computer
-   Use discovery already polling before the task starts. Preserve the unchanged
-   30-second hook and automatic close contract; if nonforeground, permit only
-   one exact marker-bound title-bar click and later atomic acknowledgment.
-2. Collect the remaining roots in receipt order: `checkout`,
+1. Restore dependencies and run focused, full, platform, API, Rust, PowerShell,
+   package-smoke, and diff/privacy validation for the explicit-log repair.
+2. Commit and push the repair, require exact CI and Release, independently
+   verify and sign the resulting 114-file Windows candidate, transactionally
+   deploy it with rollback, and prove exact Steam continuity.
+3. Re-run the four receipt roots from the replacement candidate in order:
+   `persistent-reuse`, `checkout`,
    `shortcut-routes`, `managed-routes`; fingerprint after each.
-3. Generate the combined exact 31-case/27-activation receipt.
-4. Perform the final Windows package, D3D11, native API-shape, lifecycle,
+4. Generate the combined exact 31-case/27-activation receipt.
+5. Perform the final Windows package, D3D11, native API-shape, lifecycle,
    cleanup/crash, rollback, Steam-continuity, privacy, and support-boundary
    audit.
 
@@ -342,21 +384,16 @@ Detailed live evidence is in
 
 ## Exact Next Step
 
-Run exactly one fresh candidate-bound `persistent-reuse` root with Computer Use
-app discovery and marker polling already active before the Limited product task
-starts. Preserve the existing public App ID `480`, exact signed `2d2178c`
-binding, assumed shortcut, `steam-launch`, unchanged 30-second hook, and `auto`
-close contract. If the source launches nonforeground, passively resolve and
-snapshot the one exact marker-bound window, issue exactly one title-bar click,
-and write one atomic acknowledgment only after click completion on a later
-native tick. Require three ordered shown/closed/parked cycles, six active/
-inactive callbacks, one D3D11 attach, stable presenter/controller/lease/native-
-instance/host identity, exact focus return, final detach/stable state, clean
-semantic/crash/task/process/environment evidence, unchanged fingerprint and
-signatures/rollback/stage, and exact Steam continuity. If any binding, input,
-timing, lifecycle, or cleanup result is ambiguous, preserve the root and do not
-retry. Do not repeat the neutral proof, lengthen waits, reuse any acknowledgment,
-or use a settled input topology.
+Do not launch the active candidate again. The focused source assertion,
+PowerShell 5.1 parse, JavaScript/type/platform/API checks, Rust format, diff
+check, disposable forced-writer proof, detailed evidence, and ledger are
+current. Commit and push the minimal code/test/docs slice, then require exact
+GitHub package smoke plus Linux x64, Windows x64, and Apple Silicon macOS CI;
+the Windows job must supply the locally missing MSVC/SDK native-check proof. Do
+not trigger Release or deploy until that source checkpoint is green. The next
+live product root belongs only to a newly built, independently verified,
+installed-certificate-signed, transactionally deployed 114-file replacement
+whose pre/post deployment audits and Steam identity all agree.
 
 ## Focused Same-Process Exact-Host Gate Is Proved
 

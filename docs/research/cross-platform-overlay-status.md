@@ -231,6 +231,36 @@ provides more than 27 seconds of measured headroom and satisfies the ledger
 condition for at most one fresh pre-bound exact-candidate `persistent-reuse`
 root. It does not prove presenter behavior and must not be repeated unchanged.
 
+The resulting authorized product root at
+`C:\Users\admin\steam-bridge-artifacts\windows-2d2178c-persistent-reuse-prebound-20260714-004205`
+proved the coordinator and presenter behavior but invalidated the deployed
+package. The coordinator already retained the current exact window when case
+40 published its marker, began one title-bar click after 125 ms, completed it
+after 538 ms, and wrote the atomic matching acknowledgment after 644 ms. The
+semantic auditor passed three shown/closed/parked cycles, six ordered active/
+inactive callbacks, one D3D11 attach, stable persistent identities, exact focus
+return, 17/17 three-way D3D11 lifecycle snapshots, completion, zero crashes,
+and every wrapper/Steam-continuity guard.
+
+Independent post-profile fingerprinting then found 115 files and 398,165,929
+bytes instead of the signed 114-file/398,165,772-byte inventory. The added file
+is a preserved 157-byte top-level `debug.log`. Its 07:44:15 UTC write time is
+immediately after the final render-health summary and before the product marker,
+isolating the writer to preflight rather than presenter reuse. The active
+`2d2178c` deployment and otherwise-green product root are therefore invalid for
+receipt work. Do not delete or exclude the file and do not run another profile.
+
+The bounded repair keeps the per-case `ELECTRON_LOG_FILE` target and adds an
+explicit quoted `--log-file` to render health's one direct packaged launch. A
+Limited task then ran all four render-health cases against a clean signed copy
+whose path contained spaces. A second pass deliberately enabled Electron
+logging: all four per-case external targets appeared, the active writer wrote a
+non-empty external log, no package-local `debug.log` appeared, and the exact
+114-file fingerprint survived teardown. The diagnostic task and product
+processes were absent afterward and Steam identity was unchanged. This proves
+the bounded source route and quoting on a disposable copy, not a signed
+replacement candidate.
+
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.
 In the already-running signed Smoke app, one genuine **Presenter Web Wait**
