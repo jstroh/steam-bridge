@@ -82,6 +82,22 @@ same controller error. The corrected roots emitted zero foreground events,
 zero activation/close input, no acknowledgment, and exclusive fail-closed
 terminals, so they do not test checkout behavior and are not receipt evidence.
 
+Official Microsoft documentation matches that live boundary. Windows may deny
+`SetForegroundWindow` even after its listed conditions are met and says a
+background application cannot force foreground while the user works elsewhere.
+`AllowSetForegroundWindow` is not a bootstrap mechanism because its caller must
+already be permitted to set foreground. `SetWindowPos` requires that same
+permission, and `FlashWindowEx` only notifies without activating. `SendInput`
+is injected input subject to UIPI, not independent hardware-user evidence.
+`UIAccess` would require a signed, securely installed assistive-technology
+application and Microsoft explicitly says not to use it merely to appear above
+other applications. The successful persistent root and failed checkout roots
+also bind matching enabled, non-iconic, same-session Electron source-window
+geometry, so window shape does not distinguish them. No standards-compliant
+autonomous repair applies to the immutable candidate and current controller;
+one physical marker-timed title-bar click or a materially changed natural-
+foreground launch topology remains the valid boundary.
+
 The preserved roots are
 `C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclick-20260714-103633`,
 `C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-singleclickv2-20260714-104254`,

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `e20284b` (`Record signed Windows persistent receipt root`).
+Review anchor: `e67cde9` (`Record Windows checkout controller blocker`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -70,6 +70,19 @@ Computer Use foreground controller, not by Steam Bridge checkout behavior:
   captured window`; it sent no click or acknowledgment and the hook failed
   closed. This settles stale flat-list discovery as not the cause.
 
+Official Win32 documentation closes the remaining autonomous activation
+alternatives. `SetForegroundWindow` can still be denied after its listed
+conditions are met and directs background applications to notify rather than
+force foreground. `AllowSetForegroundWindow` requires a caller that already
+has foreground permission; `SetWindowPos` cannot bypass that permission;
+`FlashWindowEx` does not activate; and `UIAccess` is restricted to assistive
+technology and explicitly not for applications that merely want foreground.
+The successful persistent coordinator and failed checkout coordinators bound
+the same enabled, non-iconic, same-session Electron window shape and geometry.
+There is therefore no evidence-backed package or window-shape repair for exact
+`509f3fe`; topmost, injected ALT/click, retry, broker, and `UIAccess` variants
+would weaken the trusted-input proof or violate the settled rerun contract.
+
 All three failed tasks deleted their Limited tasks, emptied runner/package/task
 processes, restored launch environment state, removed task files, and preserved
 exact Steam PID `16720`, session `1`, and native start ticks
@@ -98,6 +111,9 @@ failures, and none of these roots is receipt evidence.
 - Each checkout-controller failure has an exclusive zero-input fail-closed
   terminal, complete wrapper cleanup, and a matching post-run immutable
   candidate/rollback/signature/stage/process/Steam audit.
+- Microsoft foreground, delegation, z-order, notification, injected-input, and
+  `UIAccess` documentation agrees with the observed controller boundary; no
+  compliant autonomous activation mechanism applies to this exact launch.
 
 ## Next Actions
 
