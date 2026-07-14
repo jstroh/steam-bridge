@@ -281,9 +281,36 @@ the signed 114-file replacement. A separate post-transaction verifier reproved
 source/active audit binding, all signatures and publisher agreement, zero
 active/rollback package processes, zero active-package logs, exact rollback
 inventory and unexpected-file retention, absent stage, and exact Steam PID/
-session/start continuity. The next eligible live action is one pre-bound
-replacement-bound `persistent-reuse` root, followed by the remaining receipt
-roots only if the 114-file fingerprint remains exact.
+session/start continuity.
+
+The first replacement-bound root is preserved at
+`C:\Users\admin\steam-bridge-artifacts\windows-5a2ee54-persistent-reuse-prebound-20260714-085347`.
+It passed candidate binding, public App ID `480`, native load, all four repaired
+render-health cases, readiness, and the assumed shortcut. The pre-bound watcher
+observed case 40's exact-source marker 186 ms after publication. Computer Use
+then required multiple model/tool round trips for window discovery, snapshot,
+one title-bar click, and post-click state. The unchanged Windows hook stopped 30
+seconds after marker publication with zero foreground events, no acknowledgment
+present, and zero activation/close input. The challenge-matching atomic
+acknowledgment landed 38.6 seconds after hook teardown and was never observed or
+consumed. The Smoke result remained absent and the helper correctly reported
+`windows-steam-launch-no-result`. This root does not test a presenter cycle and
+is not receipt evidence.
+
+The failed root still completed its ownership-safe cleanup. The Limited task
+was deleted; runner, package, task-file, and launch-environment guards passed;
+no package process remained; and exact Steam PID/session/start continuity
+passed. Independent post-run verification retained the signed 114-file,
+398,125,830-byte content fingerprint, zero package-local `debug.log`, 4/4 valid
+required signatures, app/addon publisher agreement, the complete 115-file
+rollback including its preserved unexpected file, and zero stage or rollback
+processes. This proves the explicit render-health log repair under the live
+preflight, not full post-profile immutability. Do not run later receipt roots or
+repeat the multi-call coordinator. Another persistent root is eligible only
+after an explicitly authorized, materially different path can deliver the one
+real exact-window click and later atomic acknowledgment inside the existing
+30-second hook without extra input or longer waits; a user-coordinated physical
+local/Parsec click is the direct eligible path.
 
 A 2026-07-10 UTC interactive public App ID `480` diagnostic changed the
 foreground interpretation without changing the supported D3D11 architecture.

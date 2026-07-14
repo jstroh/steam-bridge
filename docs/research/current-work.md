@@ -362,23 +362,45 @@ Do not stage `AGENTS.md`, this checkpoint, or `.codex/` with that slice.
   with forced Electron logging produced only external logs, retained zero
   package-local logs and the exact 114-file fingerprint, removed its task/
   processes, and preserved Steam identity.
+- The first replacement-bound `5a2ee54` persistent root preserved at
+  `C:\Users\admin\steam-bridge-artifacts\windows-5a2ee54-persistent-reuse-prebound-20260714-085347`
+  passed the signed candidate, native-load, render-health, readiness, and
+  assumed-shortcut gates. Its pre-bound watcher observed the fresh marker 186
+  ms after publication, but the multi-call Computer Use dispatch produced no
+  exact-window foreground event during the unchanged 30-second hook. The hook
+  stopped cleanly at zero events/input; the acknowledgment landed 38.6 seconds
+  after hook teardown and was never consumed. The Smoke result correctly
+  remained absent, so this is coordinator failure rather than presenter or
+  receipt evidence.
+- That failed root still completed task deletion, runner/package/process and
+  launch-environment cleanup, and exact Steam continuity. Independent post-run
+  verification retained the signed 114-file/398,125,830-byte fingerprint, no
+  package-local `debug.log`, 4/4 signatures, publisher agreement, the complete
+  115-file rollback including its preserved unexpected file, zero stage or
+  package processes, and exact Steam identity.
 
 The immutable-invalid `2d2178c` deployment is now a retained rollback and must
 not run another profile. Its unexpected file remains preserved. Exact signed
 replacement `5a2ee54` is active, independently verified, process-free, and
-unchanged at 114 files. Receipt collection may resume from `persistent-reuse`;
-input and presenter behavior are already proved, while the next root must prove
-the repaired preflight keeps this replacement immutable.
+unchanged at 114 files. The failed `5a2ee54` root proves that the repaired
+preflight kept this replacement immutable, but it did not activate or close the
+presenter and cannot satisfy the receipt. Do not advance to `checkout` or spend
+another product root with the same multi-call coordinator.
 
 ## Next Actions
 
-1. Run the four receipt roots on exact signed `5a2ee54` in order:
-   `persistent-reuse`, `checkout`,
-   `shortcut-routes`, `managed-routes`; fingerprint after each.
-2. Generate the combined exact 31-case/27-activation receipt.
-3. Perform the final Windows package, D3D11, native API-shape, lifecycle,
-   cleanup/crash, rollback, Steam-continuity, privacy, and support-boundary
-   audit.
+1. Hold exact signed `5a2ee54` unchanged. Do not run `checkout`,
+   `shortcut-routes`, or `managed-routes` while its required persistent receipt
+   root is absent.
+2. Permit another `persistent-reuse` root only after a materially different
+   coordinator can deliver the one real exact-window click and later atomic
+   acknowledgment inside the unchanged 30-second hook without multiple model/
+   tool round trips. A user-coordinated physical local/Parsec click is eligible;
+   longer waits, extra input, forged acknowledgment, and the current multi-call
+   Computer Use sequence are not.
+3. If that gate becomes available and is explicitly authorized, collect the
+   four roots in order with a fingerprint after each, generate the exact
+   31-case/27-activation receipt, and complete the final Windows audit.
 
 Do not repeat the settled managed-web recovery, macOS/Parsec title-bar
 synthesis, task-window-style comparison, or any unchanged foreground
@@ -392,16 +414,15 @@ Detailed live evidence is in
 
 ## Exact Next Step
 
-Run exactly one fresh candidate-bound `persistent-reuse` root on signed
-`5a2ee54` with Computer Use discovery and marker polling active before the
-Limited task starts. Preserve public App ID `480`, the assumed shortcut,
-`steam-launch`, the unchanged 30-second hook, and `auto` close. If the source
-launches nonforeground, permit only one exact marker-bound title-bar click and
-one later atomic acknowledgment. Require three ordered shown/closed/parked
-cycles, six active/inactive callbacks, one D3D11 attach, stable identities,
-exact focus return, final completion, semantic/crash/task/process/environment
-cleanup, unchanged 114-file fingerprint and signatures/rollback/stage, and
-exact Steam continuity. Preserve any ambiguity or mutation and do not retry.
+Do not launch another live root. Preserve the failed `5a2ee54` artifact and the
+unchanged active candidate while obtaining explicit coordination for a
+materially different one-click path that can complete inside the existing
+30-second hook. The most direct eligible path is a user ready at the Windows or
+Parsec desktop to click the exact Smoke title bar immediately after the marker;
+the agent can retain marker polling and write the later challenge-bound atomic
+acknowledgment. Once that condition is available and a new run is authorized,
+retain every original public App ID `480`, candidate, lifecycle, cleanup,
+fingerprint, signature, rollback/stage, and Steam-continuity requirement.
 
 ## Focused Same-Process Exact-Host Gate Is Proved
 
