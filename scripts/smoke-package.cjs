@@ -69,7 +69,6 @@ const WINDOWS_USER_GESTURE_CASE_ACTIONS = Object.freeze({
 if (windowsCleanupSelfTestOnly) {
   try {
     assert.equal(process.platform, "win32", "Windows cleanup native self-test requires Windows");
-    runWindowsExternalForegroundCoordinatorSelfTest();
     runWindowsExactProcessStopSelfTest();
     runWindowsTaskTreeAncestrySelfTest();
     runWindowsSteamContinuitySelfTest();
@@ -137,7 +136,6 @@ if (windowsCleanupSelfTestOnly) {
   runElectronPreloadUserGestureGateSelfTest();
   runWindowsSmokeHelperStaticChecks();
   runWindowsCandidateProtectionSelfTest();
-  runWindowsExternalForegroundCoordinatorSelfTest();
   runWindowsExactProcessStopSelfTest();
   runWindowsTaskTreeAncestrySelfTest();
 
@@ -476,10 +474,6 @@ function runWindowsSmokeHelperStaticChecks() {
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
   const candidateProtectionHelper = fs.readFileSync(
     path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
-    "utf8"
-  );
-  const externalForegroundCoordinator = fs.readFileSync(
-    path.join(repoRoot, "scripts", "windows-external-foreground-coordinator.ps1"),
     "utf8"
   );
   const steamAppLaunchOptionsHelper = fs.readFileSync(
@@ -2890,35 +2884,6 @@ function runWindowsSmokeHelperStaticChecks() {
       `Windows candidate write-protection helper missing ${expected}`
     );
   }
-  for (const expected of [
-    'steam-bridge-windows-external-foreground-ready',
-    'steam-bridge-windows-external-foreground-ack',
-    'external-foreground-event-v1',
-    'Expected exactly one eligible source window.',
-    'sourceInitiallyNotForeground',
-    'processIdentityStable',
-    'titleBarGeometryValid',
-    'pointOwnerMatches',
-    'pointRootMatches',
-    'GetForegroundWindow()',
-    'WindowFromPoint',
-    'GetAncestor',
-    'SendSingleClick',
-    'sendInputCount = 0',
-    'acknowledgmentWritten',
-    '[System.IO.File]::Move($temporary, $fullPath)',
-    'Windows external foreground coordinator self-test passed.'
-  ]) {
-    assert.ok(
-      externalForegroundCoordinator.includes(expected),
-      `Windows external foreground coordinator missing ${expected}`
-    );
-  }
-  assert.doesNotMatch(
-    externalForegroundCoordinator,
-    /SetForegroundWindow|ShowWindowAsync|mouse_event/,
-    "Windows external foreground coordinator must use one guarded click without focus APIs or legacy input"
-  );
   const renderHealthEnvironmentStart = renderHealthHelper.indexOf("function New-SmokeEnvironment {");
   const renderHealthCaseStart = renderHealthHelper.indexOf("function Invoke-RenderHealthCase {");
   const renderHealthSummaryStart = renderHealthHelper.indexOf("function New-RenderHealthSummary {");
@@ -3195,25 +3160,6 @@ function runWindowsCandidateProtectionSelfTest() {
       "Bypass",
       "-File",
       path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
-      "-SelfTest"
-    ],
-    { cwd: repoRoot }
-  );
-}
-
-function runWindowsExternalForegroundCoordinatorSelfTest() {
-  if (process.platform !== "win32") {
-    return;
-  }
-  run(
-    "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      path.join(repoRoot, "scripts", "windows-external-foreground-coordinator.ps1"),
       "-SelfTest"
     ],
     { cwd: repoRoot }

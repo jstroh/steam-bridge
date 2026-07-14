@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `9549f04` (`Record protected Windows candidate boundary`).
+Review anchor: `bfc28e2` (`Add challenge-bound Windows foreground coordinator`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -77,14 +77,18 @@ and close input and wrote a terminal failure. Normal wrapper cleanup, the
 independent 114-file binding/ACL/signature/rollback audit, and exact Steam
 continuity pass. Do not rerun this natural-foreground premise unchanged.
 
-The main process is in the same active interactive Session 1 as Steam. The
-documented schema-3 contract permits an external interactive-desktop
-coordinator to validate the atomic ready marker, issue exactly one safe title-
-bar click, and atomically acknowledge the copied challenge. A new repository
-helper implements that bounded branch with exact executable, title, PID/start,
-session, nonforeground, DPI, title-bar point-owner/root, one-click, and atomic-
-ack guards. Its parser and marker/ack self-test pass; it has no live candidate
-claim until exact CI and one focused managed-web recovery pass.
+Commit `bfc28e2` and exact CI `29373540650` tested the remaining autonomous
+premise: a same-session coordinator validated a fresh focused case-11 marker,
+the exact executable/title/PID-start/session, 225% DPI, and a physical title-bar
+point owned by the exact root window. It queued exactly one move/down/up and
+wrote the copied-challenge acknowledgment 447 ms after source readiness.
+Windows still emitted no foreground event and the source remained
+nonforeground, so the matrix sent zero activation/close input and failed
+closed. Passive evidence identified the unchanged foreground owner as a
+Session-1 `AsHotplugCtrl` window with a zero-area rectangle. The active
+candidate, ACL, signatures, rollbacks, cleanup, and Steam continuity remain
+exact. The failed helper is removed rather than retained as product guidance;
+do not repeat synthetic-input or focus variants.
 
 External working directories, `ELECTRON_LOG_FILE`, quoted `--log-file`, and
 explicit Electron logging all remain insufficient. A clean disposable signed
@@ -136,23 +140,29 @@ evidence only.
 - The protected persistent attempt reached a healthy case 40 but naturally
   stayed nonforeground, sent zero input, and failed closed. Its post-profile
   candidate, ACL, signatures, rollbacks, cleanup, and Steam audits pass.
+- Coordinator CI `29373540650` passes. Its focused case-11 live run produced a
+  timely exact challenge-bound click but no foreground event; the zero-area OEM
+  helper remained foreground. The case sent zero route input and all post-run
+  integrity, cleanup, and Steam audits pass.
 
 ## Next Actions
 
-1. Finish static/package tests for the challenge-bound Windows-local foreground
-   coordinator, commit, push, and verify exact CI.
-2. Validate it once on focused managed-web case 11. Only after that distinct
-   lifecycle passes, collect one exact protected `persistent-reuse` root.
-3. Collect `checkout`, `shortcut-routes`, and `managed-routes` in order, auditing
-   after each, then generate and validate the exact receipt.
+1. Remove the rejected coordinator and its guidance, retain the negative live
+   conclusion in the ledger, commit, push, and verify exact CI.
+2. Resume active route profiles only after either a genuine challenge-bound
+   physical click is available inside the existing observer or a separately
+   authorized safe-state test changes the zero-area OEM foreground owner.
+3. Then collect `persistent-reuse`, `checkout`, `shortcut-routes`, and
+   `managed-routes` in order and generate the exact receipt.
 
 ## Exact Next Step
 
-Publish and verify the challenge-bound local coordinator, then use it once on
-focused managed-web case 11. It must observe a fresh exact ready marker, send
-one safe title-bar click, write the exact copied-challenge acknowledgment, and
-complete one guarded D3D11 open/close/park lifecycle with unchanged candidate
-binding and ACL before another persistent profile is eligible.
+Publish the coordinator rejection and remove its implementation. Do not run
+another synthetic-input, focus-API, timeout, or unchanged natural-foreground
+profile. Further live progress requires a genuine physical click during the
+existing challenge window or explicit authority plus a safe-state plan to test
+the OEM foreground owner; stopping or suspending that display/hotplug-related
+process is not currently authorized.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

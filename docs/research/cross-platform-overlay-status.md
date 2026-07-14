@@ -227,16 +227,30 @@ and retained exact Steam continuity. An independent post-profile audit reproved
 the 114-file binding, canonical ACL, 4/4 signatures, and all required rollback
 fingerprints. Do not rerun that natural-foreground premise unchanged.
 
-The controlling process is itself in the active interactive Session 1. The
-documented schema-3 contract permits an external desktop coordinator to act on
-the fresh atomic marker inside the existing observer. The new bounded helper
-validates the exact marker/action/challenge, executable, window title,
-PID/start identity, session, nonforeground state, DPI, physical title-bar
-geometry, point owner, and root window. It then sends exactly one mouse move/
-down/up sequence and writes the copied-challenge acknowledgment atomically; it
-contains no focus API or retry loop. Its parser and marker/ack self-test pass.
-Exact CI and one focused case-11 lifecycle must pass before it is used for the
-next persistent root.
+The controlling process is itself in the active interactive Session 1, so
+commit `bfc28e2` tested the remaining autonomous premise without chat timing.
+Exact CI `29373540650` passed, including the helper's native compile and closed-
+shape marker/ack self-test. In the distinct focused root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-coordinator-web-20260714-153900`,
+the coordinator validated the fresh case-11 marker/action/challenge, exact
+executable, title, PID/start identity, session, nonforeground state, 225% DPI,
+and a physical title-bar point owned by the exact root window. It queued one
+move/down/up sequence and atomically acknowledged the copied challenge 447 ms
+after source readiness. Windows still emitted no foreground event and the
+source remained nonforeground, so the matrix sent zero activation/close input,
+wrote terminal failure, and produced no result.
+
+A passive capture during that same interval and the independent post-run audit
+identified the foreground owner as a Session-1 `AsHotplugCtrl` window with a
+zero-area rectangle. Task deletion, process cleanup, launch-environment restore,
+the exact 114-file binding, canonical ACL, 4/4 signatures, required rollbacks,
+and Steam continuity all pass. This rejects autonomous `SendInput`, not the
+product route. The failed helper is removed rather than retained as guidance.
+Do not repeat synthetic input, focus APIs, longer waits, or the unchanged
+natural-foreground profile. Another active route is eligible only with a
+genuine challenge-bound physical click or after a separately authorized safe-
+state change proves the OEM foreground owner no longer blocks the focused
+lifecycle.
 
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
