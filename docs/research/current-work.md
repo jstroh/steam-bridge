@@ -2,18 +2,19 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `6bd3e9a` (`Reject autonomous Windows foreground synthesis`).
+Review anchor: `f0a0214` (`Refresh Windows readiness checkpoint`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
 ## Active Goal
 
-Complete Steam Bridge Windows x64 production readiness on exact signed D3D11
-candidate `3abcc3f`. Collect candidate-bound public App ID `480` `persistent-reuse`,
-`checkout`, `shortcut-routes`, and `managed-routes` roots and generate the exact
-31-case/27-activation receipt. Preserve fingerprints, signatures, rollback/stage
-state, three-way renderer agreement, cleanup, privacy, and exact Steam
-continuity after every profile.
+Complete every Steam Bridge Windows x64 production-readiness check that can run
+unattended on exact signed D3D11 candidate `3abcc3f`. Preserve the valid public
+App ID `480` persistent-reuse root and all package, renderer, cleanup, privacy,
+and Steam-continuity invariants. Do not require more user clicks. Defer the
+three remaining exact receipt roots until the environment can launch their
+source windows naturally foreground, and defer real `InitTxn` proof until the
+configured game and complete private runtime handoff are available.
 
 ## Current State
 
@@ -90,6 +91,29 @@ candidate, ACL, signatures, rollbacks, cleanup, and Steam continuity remain
 exact. The failed helper is removed rather than retained as product guidance;
 do not repeat synthetic-input or focus variants.
 
+A genuine desktop focus change then displaced the zero-area OEM foreground
+owner before the next exact profile. The protected persistent-reuse root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-persistent-reuse-physical-flash-20260714-162159`
+launched naturally foreground without an external acknowledgment or cue. Its
+one guarded renderer activation completed all three shown/closed/parked cycles,
+six ordered callbacks, stable identities, exact focus return, and 17/17
+presenter/native-host/renderer `windows-d3d11` snapshots at 225% scale. The
+semantic auditor, authenticated quit, task/process/environment cleanup, exact
+Steam continuity, post-profile canonical ACL, 114-file binding, 4/4 required
+signatures, and required rollback fingerprints all pass. This is the canonical
+exact `persistent-reuse` receipt root; do not rerun it.
+
+The next exact checkout root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-checkout-20260714-162922`
+passed case 01 prepare-only and the complete case 02 approval lifecycle with
+7/7 D3D11 agreement. Case 03 again launched nonforeground. Its exact source
+observer remained armed for 30 seconds but received zero foreground events, so
+the probe sent zero activation or close input and the matrix failed closed
+before case 04. The wrapper still verified task deletion, empty runner/package
+processes, launch-environment restoration, and unchanged Steam identity. This
+is diagnostic partial evidence, not a checkout receipt root. Do not rerun this
+or other title-bar-dependent profiles unattended in the unchanged topology.
+
 External working directories, `ELECTRON_LOG_FILE`, quoted `--log-file`, and
 explicit Electron logging all remain insufficient. A clean disposable signed
 copy survived the first explicit-logging pass but acquired the same 157-byte
@@ -117,15 +141,13 @@ evidence only.
 
 ## Last Verification
 
-- Native Windows PowerShell 5.1 parses both changed scripts; JavaScript parsing,
-  `git diff --check`, and the focused Windows smoke-helper static contract pass.
-- A native PowerShell synthetic test accepts an unchanged post-render-health
-  binding and writes fail-closed evidence for a changed binding.
-- `npm test` passes 196/196; platform, API, native formatting, Windows package-
-  gate self-tests, and privacy scans pass.
-- Local package smoke reaches its known Windows POSIX/macOS fixture mismatch;
-  exact CI package smoke passes. Local native check remains environment-blocked
-  by absent MSVC tools; exact Windows CI passes it.
+- `npm test` passes 196/196; supported-target, API-coverage, native-formatting,
+  Windows package-gate, candidate-fingerprint, live-receipt, overlay-summary,
+  native-cleanup, and candidate-protection checks pass.
+- Local package smoke reaches only its known Windows POSIX/macOS fixture path
+  mismatch; exact CI package smoke passes. Visual Studio Build Tools 2022 with
+  the x64 C++ toolset is installed, and `npm run native:check` passes locally
+  from its developer environment.
 - Exact CI `29362884310`, Release `29363098329`, helper CI `29371513100`,
   independent artifact binding,
   local signing, source/stage/active rebinding, 4/4 required signatures,
@@ -137,32 +159,40 @@ evidence only.
   rename check, transactional protected deployment, and active ACL audit pass.
 - The protected no-input boundary and its independent post-run binding,
   signatures, rollback, cleanup, launch-environment, and Steam audits pass.
-- The protected persistent attempt reached a healthy case 40 but naturally
-  stayed nonforeground, sent zero input, and failed closed. Its post-profile
-  candidate, ACL, signatures, rollbacks, cleanup, and Steam audits pass.
+- The canonical protected persistent root completes all three cycles with
+  17/17 D3D11 agreement and passes semantic, cleanup, candidate, ACL, signature,
+  rollback, and Steam audits.
+- The exact checkout attempt passes cases 01 and 02, then case 03 receives zero
+  foreground events, sends zero input, and fails closed. Its wrapper cleanup
+  and exact Steam continuity pass; the root is not receipt-eligible.
 - Coordinator CI `29373540650` passes. Its focused case-11 live run produced a
   timely exact challenge-bound click but no foreground event; the zero-area OEM
   helper remained foreground. The case sent zero route input and all post-run
   integrity, cleanup, and Steam audits pass. Commit `6bd3e9a` removes the
   rejected coordinator while retaining its negative evidence; exact CI
   `29374176178` passes package smoke plus Windows x64, Linux x64, and Apple
-  Silicon checks.
+  Silicon checks. Checkpoint commit `f0a0214` exact CI `29374351382` passes the
+  same matrix.
 
 ## Next Actions
 
-1. Resume active route profiles only after either a genuine challenge-bound
-   physical click is available inside the existing observer or a separately
-   authorized safe-state test changes the zero-area OEM foreground owner.
-2. Then collect `persistent-reuse`, `checkout`, `shortcut-routes`, and
-   `managed-routes` in order and generate the exact receipt.
+1. Preserve the canonical persistent root. Collect exact `checkout`,
+   `shortcut-routes`, and `managed-routes` only on a materially different
+   foreground topology that launches the exact source naturally foreground;
+   do not resume human-click coordination loops.
+2. Generate the 31-case/27-activation receipt only after those three roots
+   exist. App ID `480` remains synthetic public routing coverage, not a real
+   product purchase lane.
+3. Run one private client-session purchase proof only when the configured game,
+   `InitTxn`-capable application/backend path, and complete non-empty private
+   request handoff are all available.
 
 ## Exact Next Step
 
-Do not run another synthetic-input, focus-API, timeout, or unchanged natural-
-foreground profile. Further live progress requires a genuine physical click
-during the existing challenge window or explicit authority plus a safe-state
-plan to test the OEM foreground owner; stopping or suspending that display/
-hotplug-related process is not currently authorized.
+Do not run another synthetic-input, focus-API, timeout, chat-timed click, or
+unchanged nonforeground profile. The remaining public roots wait for a
+naturally foreground-capable topology; the private purchase track waits for the
+configured game and complete handoff.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

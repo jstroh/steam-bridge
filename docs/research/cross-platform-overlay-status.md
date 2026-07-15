@@ -252,6 +252,51 @@ genuine challenge-bound physical click or after a separately authorized safe-
 state change proves the OEM foreground owner no longer blocks the focused
 lifecycle.
 
+A later genuine desktop focus change displaced that zero-area OEM window before
+the protected exact persistent profile. Root
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-persistent-reuse-physical-flash-20260714-162159`
+therefore launched the source naturally foreground and took the matrix's
+not-required external-ack branch; no external cue or acknowledgment fired. The
+one guarded renderer activation completed all three persistent reuse cycles,
+six ordered active/inactive callbacks, three close/park/focus-return cycles,
+one stable D3D11 attachment, and 17/17 lifecycle snapshots with top-level
+presenter, native host, and renderer all reporting `windows-d3d11`. All 12
+physical close-probe screenshots were detailed and contained the host; the
+225% renderer and per-monitor window scale agreed, all three target points were
+inside the detected panel and owned by the expected window, and the persistent
+identities remained stable. The case authenticated quit, the semantic summary
+passed, and the Limited wrapper deleted its task, emptied runner/package
+processes, restored launch-environment bytes, and preserved the exact Steam
+PID/session/start identity.
+
+Independent post-profile checks then re-audited the canonical read/execute-only
+ACL, rebound the active package to the exact 114-file/398,128,652-byte content
+fingerprint and binding SHA-256
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`,
+verified 4/4 required signatures, and reproduced the four required rollback
+fingerprints. This is the canonical candidate-bound `persistent-reuse` root;
+do not rerun it.
+
+The next exact checkout attempt is
+`C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-protected-checkout-20260714-162922`.
+Case 01 prepare-only passed without overlay activation. Case 02 synthetic
+approval passed its complete active/inactive, guarded close, park, focus-return,
+clean-crash, and 7/7 three-way D3D11 lifecycle. Case 03 shortcut checkout bound
+the exact source process/window/session/DPI but launched nonforeground. Its
+external foreground hook was armed for 30 seconds, reported no hook error, saw
+zero events, received no valid acknowledgment, and therefore sent zero
+activation or close input before writing terminal failure. Case 04 never ran,
+so this root is intentionally not receipt-eligible. The wrapper still deleted
+the task, verified empty runner/package process trees, restored launch state,
+and retained the same Steam identity. Preserve it as partial diagnostic evidence
+and do not resume title-bar or synthetic-focus loops.
+
+Public App ID `480` has no configured product or real `InitTxn` purchase lane.
+Its checkout cases remain synthetic routing coverage. Real client-session
+purchase proof must wait for the configured game, an `InitTxn`-capable
+application/backend path, and a complete non-empty private runtime handoff; no
+private identifiers belong in these artifacts or repository notes.
+
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
 bundle, all 1,121 declared native methods, canonical tarball SHA-256
