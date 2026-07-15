@@ -2,18 +2,15 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `37705e1` (`Record completed Windows autonomous proof`).
+Review anchor: `ffcbeec` (`Complete Steam Deck mode readiness proof`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
 ## Active Goal
 
-Complete and publish a fresh Steam Deck production-readiness pass across
-Desktop Mode and Game Mode. Verify the current package, Steam launch identity,
-managed X11/GLX presenter, rendering, input, close/back-to-app, focus return,
-persistent/passive lifecycle, crash evidence, and cleanup. Diagnose and fix
-regressions, update the evidence ledger in place, run proportionate repository
-checks, commit intentionally, push, and verify exact CI.
+The fresh Steam Deck production-readiness pass across Desktop Mode and Game Mode
+is complete and published through `ffcbeec`. Preserve its separate
+mode-appropriate contracts and rerun only under the ledger conditions.
 
 Public App ID `480` remains generic overlay plumbing only. Do not claim or run
 real configured-product purchase proof without the separate complete private
@@ -24,6 +21,10 @@ runtime handoff and configured-game path.
 The Windows x64 public release slice remains settled through `37705e1`; exact
 CI `29389716034` passed Windows, Linux, macOS Apple Silicon, and package smoke.
 Do not rerun its live profiles for this Deck goal.
+
+The Deck implementation/evidence commit is `ffcbeec`. Exact CI `29400961875`
+passes Windows x64, Linux x64, macOS Apple Silicon, and full Linux package
+smoke.
 
 The fresh current-package Deck pass now has separate mode-appropriate
 completion contracts. Desktop Mode passes the full 26-case managed X11/GLX
@@ -169,17 +170,22 @@ the known non-activating Desktop web matrix from running in Game Mode.
   resolves it as `C:\\tmp\\...`. This is the unchanged
   `WIN-PACKAGE-SMOKE-HOST-001` blocker; exact Linux CI remains the supported
   complete package-smoke gate.
+- Exact implementation CI `29400961875` passes all four required jobs:
+  Windows x64, Linux x64, macOS Apple Silicon, and package smoke.
 
 ## Next Actions
 
-1. Finish the privacy/diff review, then stage only the intentional Deck slice.
-2. Commit, push, and verify the exact GitHub CI and Linux package-smoke jobs.
+1. No further public Deck action is required. Rerun a mode contract only when
+   its ledger entry says the relevant implementation, SteamOS/Steam client, or
+   evidence contract changed or a gate regressed.
+2. Keep real configured-product purchase proof separate until the actual game,
+   capable `InitTxn` path, and complete private runtime handoff exist.
 
 ## Exact Next Step
 
-Finish the privacy scan, stage the intentional Deck files without the unrelated
-`AGENTS.md`, `.codex`, or input-probe changes, then commit, push, and verify the
-exact GitHub CI run.
+No further public Steam Deck work is required. The next meaningful purchase
+proof is the private configured-game flow, and only after its documented
+`InitTxn` prerequisites exist; App ID `480` must not be used to claim it.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
