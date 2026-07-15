@@ -53,6 +53,83 @@ const PASSIVE_NOTIFICATION_ACTIONS = new Map([
   ]
 ]);
 const EXPECTED_STEAM_OVERLAY_SCRUBBED_ENV_KEYS = new Set(["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]);
+const CASE_IDS_BY_SUITE = new Map([
+  [
+    "game",
+    [
+      "01-presenter-ready",
+      "02-store"
+    ]
+  ],
+  [
+    "minimal",
+    [
+      "01-web-modal",
+      "02-friends",
+      "03-friends-open-and-wait",
+      "04-shortcut-friends",
+      "05-checkout-prepare",
+      "06-passive-toast"
+    ]
+  ],
+  [
+    "core",
+    [
+      "01-web-modal",
+      "02-friends",
+      "03-friends-open-and-wait",
+      "04-shortcut-friends",
+      "05-checkout-prepare",
+      "06-checkout-approval-route",
+      "07-passive-toast",
+      "08-passive-unlock-toast",
+      "09-store",
+      "10-profile",
+      "11-players",
+      "12-community",
+      "13-stats",
+      "14-achievements",
+      "15-user-steamid",
+      "16-user-chat",
+      "17-dialog-officialgamegroup",
+      "18-web-open-and-wait",
+      "19-shortcut-web",
+      "20-store-open-and-wait",
+      "21-dialog-auto-open-and-wait"
+    ]
+  ],
+  [
+    "full",
+    [
+      "01-web-modal",
+      "02-friends",
+      "03-friends-open-and-wait",
+      "04-shortcut-friends",
+      "05-checkout-prepare",
+      "06-checkout-approval-route",
+      "07-passive-toast",
+      "08-passive-unlock-toast",
+      "09-store",
+      "10-profile",
+      "11-players",
+      "12-community",
+      "13-stats",
+      "14-achievements",
+      "15-user-steamid",
+      "16-user-chat",
+      "17-dialog-officialgamegroup",
+      "18-web-open-and-wait",
+      "19-shortcut-web",
+      "20-store-open-and-wait",
+      "21-dialog-auto-open-and-wait",
+      "22-dialog-friends",
+      "23-dialog-players",
+      "24-dialog-community",
+      "25-dialog-stats",
+      "26-dialog-achievements"
+    ]
+  ]
+]);
 
 main();
 
@@ -128,12 +205,18 @@ counts.
 `);
 }
 
-function summarizeMatrixArtifacts(root) {
+function summarizeMatrixArtifacts(root, options = {}) {
   const diagnosticsRoot = path.join(root, "diagnostics");
   const screenshotsRoot = path.join(root, "screens");
   const failures = [];
   const caseSummaries = [];
+  const matrixManifest = readMatrixManifest(
+    path.join(root, "matrix-manifest.json"),
+    failures,
+    options.contractOverride
+  );
   const caseManifest = readCaseManifest(path.join(root, "matrix-cases.jsonl"), failures);
+  const cleanupEvidence = readCleanupEvidence(path.join(root, "matrix-cleanup.json"), failures, matrixManifest);
 
   if (!fs.existsSync(root)) {
     failures.push(`missing artifact root: ${root}`);
@@ -153,6 +236,7 @@ function summarizeMatrixArtifacts(root) {
   if (caseNames.length === 0) {
     failures.push(`no case diagnostics found under ${diagnosticsRoot}`);
   }
+  verifyMatrixCompleteness(matrixManifest, caseManifest, caseNames, failures);
 
   for (const caseName of caseNames) {
     const caseDir = path.join(diagnosticsRoot, caseName);
@@ -171,6 +255,7 @@ function summarizeMatrixArtifacts(root) {
     }
 
     const snapshot = objectOrEmpty(result.snapshot);
+    const launch = objectOrEmpty(snapshot.launch);
     const steam = objectOrEmpty(snapshot.steam);
     const app = objectOrEmpty(snapshot.app);
     const processInfo = objectOrEmpty(snapshot.process);
@@ -191,6 +276,23 @@ function summarizeMatrixArtifacts(root) {
     expect(steam.initialized === true, `${caseName}: Steam initialized`, resultFailures);
     expect(readOkValue(steam.running) === true, `${caseName}: Steam running`, resultFailures);
     expect(readOkValue(steam.appId) === app.appId, `${caseName}: Steam App ID matches app config`, resultFailures);
+    if (matrixManifest.valid) {
+      expect(app.appId === matrixManifest.appId, `${caseName}: app identity matches matrix App ID`, resultFailures);
+      expect(
+        readOkValue(steam.appId) === matrixManifest.appId,
+        `${caseName}: Steam identity matches matrix App ID`,
+        resultFailures
+      );
+      expect(readOkValue(steam.steamDeck) === true, `${caseName}: Steam Deck identity is true`, resultFailures);
+      expect(
+        readOkValue(steam.bigPicture) === (matrixManifest.mode === "game"),
+        `${caseName}: Big Picture identity matches matrix mode ${matrixManifest.mode}`,
+        resultFailures
+      );
+      expect(launch.steamLaunch === true, `${caseName}: Steam launch identity is true`, resultFailures);
+      expect(launch.overlayInjection === true, `${caseName}: overlay injection identity is true`, resultFailures);
+      expect(readOkValue(steam.overlayEnabled) === true, `${caseName}: Steam overlay is enabled`, resultFailures);
+    }
     expect(processInfo.platform === "linux", `${caseName}: platform is linux`, resultFailures);
     expect(processInfo.arch === "x64", `${caseName}: arch is x64`, resultFailures);
 
@@ -261,7 +363,7 @@ function summarizeMatrixArtifacts(root) {
     if (overlayTargetCount > 1) {
       resultFailures.push(`${caseName}: duplicate gameoverlayui targets detected (${overlayTargetCount})`);
     }
-    verifyCaseMetadata(caseName, caseManifest, action, resultFailures);
+    verifyCaseMetadata(caseName, caseManifest, matrixManifest, action, resultFailures);
 
     const lifecycle = readLifecycle(caseDir);
     if (!lifecycle.found) {
@@ -284,17 +386,39 @@ function summarizeMatrixArtifacts(root) {
     const passiveNotification = verifyPassiveNotificationAction(
       caseName,
       action.action,
+      result.wait,
       events,
       lifecycle.entries,
       nativePresenter,
       overlayTargetCount,
       resultFailures
     );
-    const parking = verifyLifecycleParking(caseName, lifecycle.entries, resultFailures);
+    if (matrixManifest.mode === "game" && action.action === "store") {
+      expect(overlayActivated, `${caseName}: Game Mode store emitted active=true`, resultFailures);
+      expect(
+        lifecycle.entries.some(isLifecycleOverlayActiveEvent),
+        `${caseName}: Game Mode store lifecycle recorded active=true`,
+        resultFailures
+      );
+      expect(
+        lifecycle.entries.some(isLifecycleOverlayInactiveEvent),
+        `${caseName}: Game Mode store lifecycle recorded active=false`,
+        resultFailures
+      );
+    }
+    const parking = verifyLifecycleParking(caseName, action.action, lifecycle.entries, resultFailures);
     const managedWaits = verifyManagedLifecycleWaits(caseName, action.action, lifecycle.entries, resultFailures);
     const openAndWait = verifyOpenAndWaitCompletion(caseName, action.action, lifecycle.entries, resultFailures);
     const checkoutWait = verifyCheckoutOpenAndWait(caseName, action.action, lifecycle.entries, resultFailures);
     const microTxnCallback = verifyMicroTxnCallbackPresenterSnapshots(caseName, lifecycle.entries, resultFailures);
+
+    const screenshotCount = countScreenshots(path.join(screenshotsRoot, caseName));
+    const minimumScreenshots = minimumScreenshotCount(caseMetadata, action.action);
+    expect(
+      screenshotCount >= minimumScreenshots,
+      `${caseName}: screenshot count ${screenshotCount} is below required minimum ${minimumScreenshots}`,
+      resultFailures
+    );
 
     failures.push(...resultFailures);
     caseSummaries.push({
@@ -324,14 +448,15 @@ function summarizeMatrixArtifacts(root) {
       microTxnCallback: microTxnCallback.required ? microTxnCallback.ok : "n/a",
       crashOk: crashDiagnostics.ok === true,
       overlayTargets: overlayTargetCount,
-      screenshots: countScreenshots(path.join(screenshotsRoot, caseName))
+      screenshots: screenshotCount
     });
   }
 
-  console.log("Steam Deck overlay matrix artifact summary:");
-  for (const item of caseSummaries) {
-    console.log(
-      [
+  if (!options.quiet) {
+    console.log("Steam Deck overlay matrix artifact summary:");
+    for (const item of caseSummaries) {
+      console.log(
+        [
         `  ${item.caseName}:`,
         `action=${item.action}`,
         `ok=${item.resultOk && item.actionOk}`,
@@ -352,13 +477,19 @@ function summarizeMatrixArtifacts(root) {
         `overlayTargets=${item.overlayTargets}`,
         `crashOk=${item.crashOk}`,
         `screenshots=${item.screenshots}`
-      ].join(" ")
-    );
+        ].join(" ")
+      );
+    }
   }
 
   const totalScreenshots = caseSummaries.reduce((sum, item) => sum + item.screenshots, 0);
 
   if (failures.length > 0) {
+    if (options.throwOnFailure) {
+      const error = new Error(failures.join("\n"));
+      error.failures = failures;
+      throw error;
+    }
     console.error("Steam Deck overlay matrix summary failed:");
     for (const failure of failures) {
       console.error(`  - ${failure}`);
@@ -366,17 +497,31 @@ function summarizeMatrixArtifacts(root) {
     process.exit(1);
   }
 
-  console.log(`Steam Deck overlay matrix summary passed: cases=${caseSummaries.length} screenshots=${totalScreenshots}`);
-  return { caseSummaries, totalScreenshots };
+  if (!options.quiet) {
+    console.log(`Steam Deck overlay matrix summary passed: cases=${caseSummaries.length} screenshots=${totalScreenshots}`);
+  }
+  return { caseSummaries, totalScreenshots, matrixManifest, cleanupEvidence };
 }
 
 function runSelfTest() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-deck-matrix-summary."));
   try {
     createSelfTestFixture(fixtureRoot);
-    const summary = summarizeMatrixArtifacts(fixtureRoot);
+    const contractOverride = {
+      expectedCaseIds: [
+        "01-web-modal",
+        "02-shortcut-friends",
+        "03-passive-unlock-toast",
+        "04-session-web",
+        "05-checkout-approval-route",
+        "06-friends-open-and-wait",
+        "07-store-open-and-wait",
+        "08-dialog-auto-open-and-wait"
+      ]
+    };
+    const summary = summarizeMatrixArtifacts(fixtureRoot, { contractOverride, throwOnFailure: true, quiet: true });
     assert(summary.caseSummaries.length === 8, "summary self-test should include eight cases");
-    assert(summary.totalScreenshots === 11, "summary self-test should count eleven screenshots");
+    assert(summary.totalScreenshots === 17, "summary self-test should count seventeen screenshots");
     assert(
       summary.caseSummaries.every((item) => !String(item.action).startsWith("presenter-") || item.managedIsolation === true),
       "summary self-test should report managed overlay isolation for presenter cases"
@@ -387,10 +532,38 @@ function runSelfTest() {
       ),
       "summary self-test should report stable idle presenters for closed active-overlay cases"
     );
+    const manifestFile = path.join(fixtureRoot, "matrix-manifest.json");
+    const originalManifest = fs.readFileSync(manifestFile, "utf8");
+    const wrongModeManifest = JSON.parse(originalManifest);
+    wrongModeManifest.mode = "game";
+    fs.writeFileSync(manifestFile, `${JSON.stringify(wrongModeManifest, null, 2)}\n`);
+    assertSummaryFailure(fixtureRoot, contractOverride, "Big Picture identity matches matrix mode game");
+    fs.writeFileSync(manifestFile, originalManifest);
+
+    const caseManifestFile = path.join(fixtureRoot, "matrix-cases.jsonl");
+    const originalCaseManifest = fs.readFileSync(caseManifestFile, "utf8");
+    fs.writeFileSync(caseManifestFile, `${originalCaseManifest.trim().split(/\r?\n/).slice(0, -1).join("\n")}\n`);
+    assertSummaryFailure(fixtureRoot, contractOverride, "matrix case metadata count expected 8, got 7");
+    fs.writeFileSync(caseManifestFile, originalCaseManifest);
+
+    const requiredScreenshot = path.join(fixtureRoot, "screens", "01-web-modal", "after-close.png");
+    fs.rmSync(requiredScreenshot);
+    assertSummaryFailure(fixtureRoot, contractOverride, "screenshot count 1 is below required minimum 2");
+    fs.writeFileSync(requiredScreenshot, "");
     console.log("Steam Deck overlay matrix summary self-test passed.");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
+}
+
+function assertSummaryFailure(root, contractOverride, expectedFailure) {
+  try {
+    summarizeMatrixArtifacts(root, { contractOverride, throwOnFailure: true, quiet: true });
+  } catch (error) {
+    assert(String(error.message).includes(expectedFailure), `summary self-test expected failure: ${expectedFailure}`);
+    return;
+  }
+  throw new Error(`summary self-test should reject: ${expectedFailure}`);
 }
 
 function createSelfTestFixture(root) {
@@ -424,6 +597,8 @@ function createSelfTestFixture(root) {
         initialized: true,
         running: { ok: true, value: true },
         appId: { ok: true, value: 480 },
+        steamDeck: { ok: true, value: true },
+        bigPicture: { ok: true, value: false },
         overlayEnabled: { ok: true, value: true }
       },
       events: [{ type: "callback:overlay-activated", payload: { active: true } }]
@@ -449,6 +624,7 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(screensDir, "after-open.png"), "");
+  fs.writeFileSync(path.join(screensDir, "after-close.png"), "");
 
   const shortcutCaseId = "02-shortcut-friends";
   const shortcutDiagnosticsDir = path.join(root, "diagnostics", shortcutCaseId);
@@ -500,11 +676,25 @@ function createSelfTestFixture(root) {
   const passivePresenter = passiveNotificationPresenterFixture(14);
 
   unlockResult.action.action = "presenter-achievement-unlock";
+  unlockResult.wait = {
+    ok: true,
+    action: "presenter-achievement-unlock",
+    passiveNotificationNeedsPresentTransition: false,
+    passiveNotificationParked: true
+  };
   unlockResult.snapshot.overlay.nativePresenter.value = passivePresenter;
   unlockResult.snapshot.events = [
     { type: "achievement:unlock", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM", presenter: passivePresenter } },
     { type: "callback:user-stats-stored", payload: { gameId: "480" } },
-    { type: "callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM" } }
+    { type: "callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM" } },
+    {
+      type: "overlay:passive-notification-parked",
+      payload: {
+        passiveNotificationNeedsPresentTransition: false,
+        renderPath: "steam-overlay-target",
+        presenter: passivePresenter
+      }
+    }
   ];
 
   fs.mkdirSync(unlockRunDiagnosticsDir, { recursive: true });
@@ -521,7 +711,15 @@ function createSelfTestFixture(root) {
         payload: { achievement: "ACH_TRAVEL_FAR_ACCUM", presenter: passivePresenter }
       },
       { type: "event:callback:user-stats-stored", payload: { gameId: "480" } },
-      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM" } }
+      { type: "event:callback:achievement-stored", payload: { achievement: "ACH_TRAVEL_FAR_ACCUM" } },
+      {
+        type: "event:overlay:passive-notification-parked",
+        payload: {
+          passiveNotificationNeedsPresentTransition: false,
+          renderPath: "steam-overlay-target",
+          presenter: passivePresenter
+        }
+      }
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n"
@@ -557,6 +755,7 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(sessionScreensDir, "overlay-open.png"), "");
+  fs.writeFileSync(path.join(sessionScreensDir, "after-close.png"), "");
 
   const checkoutCaseId = "05-checkout-approval-route";
   const checkoutDiagnosticsDir = path.join(root, "diagnostics", checkoutCaseId);
@@ -606,6 +805,7 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(checkoutScreensDir, "overlay-open.png"), "");
+  fs.writeFileSync(path.join(checkoutScreensDir, "after-close.png"), "");
 
   const friendsOpenWaitCaseId = "06-friends-open-and-wait";
   const friendsOpenWaitDiagnosticsDir = path.join(root, "diagnostics", friendsOpenWaitCaseId);
@@ -652,6 +852,7 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(friendsOpenWaitScreensDir, "overlay-open.png"), "");
+  fs.writeFileSync(path.join(friendsOpenWaitScreensDir, "after-close.png"), "");
 
   const storeOpenWaitCaseId = "07-store-open-and-wait";
   const storeOpenWaitDiagnosticsDir = path.join(root, "diagnostics", storeOpenWaitCaseId);
@@ -700,6 +901,7 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(storeOpenWaitScreensDir, "overlay-open.png"), "");
+  fs.writeFileSync(path.join(storeOpenWaitScreensDir, "after-close.png"), "");
 
   const dialogOpenWaitCaseId = "08-dialog-auto-open-and-wait";
   const dialogOpenWaitDiagnosticsDir = path.join(root, "diagnostics", dialogOpenWaitCaseId);
@@ -756,6 +958,7 @@ function createSelfTestFixture(root) {
       .join("\n") + "\n"
   );
   fs.writeFileSync(path.join(dialogOpenWaitScreensDir, "overlay-open.png"), "");
+  fs.writeFileSync(path.join(dialogOpenWaitScreensDir, "after-close.png"), "");
 
   fs.writeFileSync(
     path.join(root, "matrix-cases.jsonl"),
@@ -817,8 +1020,44 @@ function createSelfTestFixture(root) {
         visualToggleInput: null
       }
     ]
-      .map((entry) => JSON.stringify(entry))
+      .map((entry) => JSON.stringify({ ...entry, mode: "desktop", appId: "480" }))
       .join("\n") + "\n"
+  );
+  const expectedCaseIds = [
+    caseId,
+    shortcutCaseId,
+    unlockCaseId,
+    sessionCaseId,
+    checkoutCaseId,
+    friendsOpenWaitCaseId,
+    storeOpenWaitCaseId,
+    dialogOpenWaitCaseId
+  ];
+  fs.writeFileSync(
+    path.join(root, "matrix-manifest.json"),
+    `${JSON.stringify({
+      kind: "steam-bridge-deck-overlay-matrix",
+      schemaVersion: 1,
+      mode: "desktop",
+      suite: "self-test",
+      appId: 480,
+      expectedCaseCount: expectedCaseIds.length,
+      expectedCaseIds
+    }, null, 2)}\n`
+  );
+  fs.writeFileSync(
+    path.join(root, "matrix-cleanup.json"),
+    `${JSON.stringify({
+      kind: "steam-bridge-deck-overlay-matrix-cleanup",
+      schemaVersion: 1,
+      mode: "desktop",
+      ok: true,
+      smokeProcesses: 0,
+      sleepInhibitors: 0,
+      gameOverlayProcesses: 0,
+      steamProcesses: 1,
+      plasmaProcesses: 1
+    }, null, 2)}\n`
   );
 }
 
@@ -900,6 +1139,7 @@ function electronOverlayFixture() {
 function verifyPassiveNotificationAction(
   caseName,
   action,
+  wait,
   resultEvents,
   lifecycleEntries,
   nativePresenter,
@@ -936,6 +1176,34 @@ function verifyPassiveNotificationAction(
     const lifecycleType = lifecycleEventType(eventType);
     if (!findEvent(lifecycleEntries, lifecycleType)) {
       failures.push(`${caseName}: missing ${lifecycleType} in lifecycle log`);
+    }
+  }
+
+  const parkedResultEvent = findEvent(resultEvents, "overlay:passive-notification-parked");
+  const parkedLifecycleEvent = findEvent(lifecycleEntries, "event:overlay:passive-notification-parked");
+  if (!parkedResultEvent) {
+    failures.push(`${caseName}: missing overlay:passive-notification-parked in result snapshot events`);
+  }
+  if (!parkedLifecycleEvent) {
+    failures.push(`${caseName}: missing event:overlay:passive-notification-parked in lifecycle log`);
+  }
+  const waitResult = objectOrEmpty(wait);
+  if (waitResult.ok !== true) {
+    failures.push(`${caseName}: passive notification wait did not succeed`);
+  }
+  if (waitResult.passiveNotificationParked !== true) {
+    failures.push(`${caseName}: passive notification wait did not report presenter parking`);
+  }
+  if (typeof waitResult.passiveNotificationNeedsPresentTransition !== "boolean") {
+    failures.push(`${caseName}: passive notification wait did not report needs-present transition state`);
+  }
+  for (const parkedEvent of [parkedResultEvent, parkedLifecycleEvent].filter(Boolean)) {
+    const renderPath = parkedEvent.payload?.renderPath;
+    if (!new Set(["needs-present", "steam-overlay-target"]).has(renderPath)) {
+      failures.push(`${caseName}: passive notification parked event has invalid render path ${formatValue(renderPath)}`);
+    }
+    if (!presenterPayload(parkedEvent)) {
+      failures.push(`${caseName}: passive notification parked event lacks presenter diagnostics`);
     }
   }
 
@@ -1214,6 +1482,125 @@ function readSmokeResult(file) {
   return JSON.parse(line.slice(RESULT_PREFIX.length));
 }
 
+function readMatrixManifest(file, failures, contractOverride) {
+  if (!fs.existsSync(file)) {
+    failures.push(`missing matrix manifest: ${file}`);
+    return { valid: false, mode: "unknown", suite: "unknown", appId: undefined, expectedCaseIds: [] };
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    failures.push(`invalid matrix manifest JSON in ${file}: ${error.message}`);
+    return { valid: false, mode: "unknown", suite: "unknown", appId: undefined, expectedCaseIds: [] };
+  }
+
+  const expectedCaseIds = contractOverride?.expectedCaseIds || CASE_IDS_BY_SUITE.get(manifest.suite);
+  let valid = true;
+  const fail = (message) => {
+    valid = false;
+    failures.push(message);
+  };
+
+  if (manifest.kind !== "steam-bridge-deck-overlay-matrix") {
+    fail(`matrix manifest kind is invalid: ${formatValue(manifest.kind)}`);
+  }
+  if (manifest.schemaVersion !== 1) {
+    fail(`matrix manifest schemaVersion expected 1, got ${formatValue(manifest.schemaVersion)}`);
+  }
+  if (!new Set(["desktop", "game"]).has(manifest.mode)) {
+    fail(`matrix manifest mode is invalid: ${formatValue(manifest.mode)}`);
+  }
+  if (!expectedCaseIds) {
+    fail(`matrix manifest suite is invalid: ${formatValue(manifest.suite)}`);
+  }
+  if (!Number.isSafeInteger(manifest.appId) || manifest.appId <= 0) {
+    fail(`matrix manifest appId is invalid: ${formatValue(manifest.appId)}`);
+  }
+  if (!Array.isArray(manifest.expectedCaseIds)) {
+    fail("matrix manifest expectedCaseIds must be an array");
+  } else if (expectedCaseIds && !sameStringArray(manifest.expectedCaseIds, expectedCaseIds)) {
+    fail(
+      `matrix manifest expectedCaseIds do not match suite contract: expected ${JSON.stringify(expectedCaseIds)}, got ${JSON.stringify(manifest.expectedCaseIds)}`
+    );
+  }
+  if (manifest.expectedCaseCount !== expectedCaseIds?.length) {
+    fail(
+      `matrix manifest expectedCaseCount expected ${expectedCaseIds?.length ?? "unknown"}, got ${formatValue(manifest.expectedCaseCount)}`
+    );
+  }
+
+  return {
+    ...manifest,
+    valid,
+    expectedCaseIds: expectedCaseIds || []
+  };
+}
+
+function readCleanupEvidence(file, failures, matrixManifest) {
+  if (!fs.existsSync(file)) {
+    failures.push(`missing matrix cleanup evidence: ${file}`);
+    return { valid: false };
+  }
+
+  let evidence;
+  try {
+    evidence = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    failures.push(`invalid matrix cleanup JSON in ${file}: ${error.message}`);
+    return { valid: false };
+  }
+
+  const checks = [
+    [evidence.kind === "steam-bridge-deck-overlay-matrix-cleanup", "cleanup evidence kind is valid"],
+    [evidence.schemaVersion === 1, "cleanup evidence schemaVersion is 1"],
+    [evidence.mode === matrixManifest.mode, "cleanup evidence mode matches matrix mode"],
+    [evidence.ok === true, "cleanup evidence reports success"],
+    [evidence.smokeProcesses === 0, "cleanup left no smoke processes"],
+    [evidence.sleepInhibitors === 0, "cleanup left no smoke sleep inhibitors"],
+    [evidence.gameOverlayProcesses === 0, "cleanup left no gameoverlayui processes"],
+    [Number.isSafeInteger(evidence.steamProcesses) && evidence.steamProcesses >= 1, "Steam remains running after cleanup"]
+  ];
+  let valid = true;
+  for (const [condition, message] of checks) {
+    if (!condition) {
+      valid = false;
+      failures.push(message);
+    }
+  }
+  if (matrixManifest.mode === "desktop" && !(Number.isSafeInteger(evidence.plasmaProcesses) && evidence.plasmaProcesses >= 1)) {
+    valid = false;
+    failures.push("Plasma remains running after Desktop matrix cleanup");
+  }
+  return { ...evidence, valid };
+}
+
+function verifyMatrixCompleteness(matrixManifest, caseManifest, caseNames, failures) {
+  if (!matrixManifest.valid) {
+    return;
+  }
+  const expected = matrixManifest.expectedCaseIds;
+  if (!caseManifest.found) {
+    failures.push("missing matrix case manifest");
+    return;
+  }
+  if (caseManifest.byCase.size !== expected.length) {
+    failures.push(`matrix case metadata count expected ${expected.length}, got ${caseManifest.byCase.size}`);
+  }
+  if (!sameStringArray(caseNames, [...expected].sort())) {
+    failures.push(`matrix diagnostics case set expected ${JSON.stringify([...expected].sort())}, got ${JSON.stringify(caseNames)}`);
+  }
+  const metadataIds = [...caseManifest.byCase.keys()].sort();
+  if (!sameStringArray(metadataIds, [...expected].sort())) {
+    failures.push(`matrix metadata case set expected ${JSON.stringify([...expected].sort())}, got ${JSON.stringify(metadataIds)}`);
+  }
+}
+
+function sameStringArray(left, right) {
+  return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function readCaseManifest(file, failures) {
   const byCase = new Map();
   if (!fs.existsSync(file)) {
@@ -1250,7 +1637,7 @@ function readCaseManifest(file, failures) {
   return { found: true, byCase };
 }
 
-function verifyCaseMetadata(caseName, caseManifest, action, failures) {
+function verifyCaseMetadata(caseName, caseManifest, matrixManifest, action, failures) {
   const metadata = caseManifest.byCase.get(caseName);
   if (!metadata) {
     if (caseManifest.found) {
@@ -1265,6 +1652,18 @@ function verifyCaseMetadata(caseName, caseManifest, action, failures) {
       `${caseName}: matrix metadata action expected ${formatValue(actionName)}, got ${formatValue(metadata.action)}`
     );
   }
+  if (matrixManifest.valid) {
+    if (metadata.mode !== matrixManifest.mode) {
+      failures.push(
+        `${caseName}: matrix metadata mode expected ${formatValue(matrixManifest.mode)}, got ${formatValue(metadata.mode)}`
+      );
+    }
+    if (Number(metadata.appId) !== matrixManifest.appId) {
+      failures.push(
+        `${caseName}: matrix metadata App ID expected ${matrixManifest.appId}, got ${formatValue(metadata.appId)}`
+      );
+    }
+  }
 
   if (actionName === "presenter-shortcut") {
     if (metadata.visualToggleInput !== "keyboard") {
@@ -1278,6 +1677,28 @@ function verifyCaseMetadata(caseName, caseManifest, action, failures) {
       );
     }
   }
+  if (matrixManifest.mode === "game" && actionName === "store" && metadata.visualCloseInput !== "escape") {
+    failures.push(
+      `${caseName}: Game Mode store metadata visualCloseInput expected "escape", got ${formatValue(metadata.visualCloseInput)}`
+    );
+  }
+}
+
+function minimumScreenshotCount(metadata, actionName) {
+  if (metadata?.visualToggleInput === "keyboard") {
+    return 4;
+  }
+  if (
+    metadata?.visualCloseInput === "web" ||
+    metadata?.visualCloseInput === "toggle" ||
+    metadata?.visualCloseInput === "escape"
+  ) {
+    return 2;
+  }
+  if (PASSIVE_NOTIFICATION_ACTIONS.has(actionName)) {
+    return 1;
+  }
+  return 0;
 }
 
 function readLifecycle(caseDir) {
@@ -1312,7 +1733,10 @@ function readLifecycle(caseDir) {
   return { found: true, rawText, entries, errors };
 }
 
-function verifyLifecycleParking(caseName, entries, failures) {
+function verifyLifecycleParking(caseName, action, entries, failures) {
+  if (!String(action || "").startsWith("presenter-")) {
+    return { required: false, ok: true, idleStable: "n/a" };
+  }
   const firstActiveIndex = entries.findIndex(isLifecycleOverlayActiveEvent);
   if (firstActiveIndex === -1) {
     return { required: false, ok: true, idleStable: "n/a" };

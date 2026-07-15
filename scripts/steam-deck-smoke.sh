@@ -70,6 +70,7 @@ Modes:
   --mode game                   Run the Steam-launched Game Mode gate.
   --mode desktop                Run the Steam-launched Desktop Mode gate.
   --mode direct                 Run the app directly on the Deck and verify init.
+  --mode cleanup                Retire the exact smoke runtime and orphaned overlay.
   --mode discover               Scan a local /24 for Steam Deck SSH candidates.
   --mode preflight              Check SSH, remote package, Steam, and shortcuts.
   --mode print-shortcuts        Print matching Deck Steam shortcuts.
@@ -132,9 +133,10 @@ Options:
   --visual-capture-dir PATH     Capture Deck screenshots to this local path after the run returns.
   --visual-close-probe          With --visual-capture-dir and --keep-open-after-result, send a
                                 close probe and capture the result.
-  --visual-close-input MODE     Close input for --visual-close-probe: keyboard, toggle, web, or both.
+  --visual-close-input MODE     Close input for --visual-close-probe: keyboard, toggle, escape, web, or both.
                                 keyboard sends Shift+Tab then Escape. toggle sends Shift+Tab only.
-                                web clicks the Steam web overlay close control. Defaults to keyboard.
+                                escape sends Escape to SteamUI's Xwayland display. web clicks the Steam
+                                web overlay close control. Defaults to keyboard.
   --require-close-deactivated   After --visual-close-probe, require active=false, app focus, and no crash evidence.
   --visual-toggle-probe         With --visual-capture-dir and --keep-open-after-result, capture
                                 before toggling, after opening, and after closing the overlay.
@@ -421,7 +423,7 @@ case "$visual_toggle_input" in
 esac
 
 case "$visual_close_input" in
-  keyboard|toggle|web|both)
+  keyboard|toggle|escape|web|both)
     ;;
   *)
     echo "Unknown --visual-close-input: $visual_close_input" >&2
@@ -504,7 +506,21 @@ capture_deck_screenshot() {
 
   mkdir -p "$visual_capture_dir"
   echo "Capturing Deck screenshot: $label"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; if command -v spectacle >/dev/null 2>&1; then spectacle -b -n -o $remote_path_q >/dev/null 2>&1; elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f $remote_path_q; else echo 'No screenshot tool found on Deck.' >&2; exit 127; fi"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; rm -f $remote_path_q; if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null && command -v gamescopectl >/dev/null 2>&1; then
+  gamescopectl screenshot $remote_path_q
+  for attempt in \$(seq 1 50); do
+    [ -s $remote_path_q ] && break
+    sleep 0.1
+  done
+  [ -s $remote_path_q ] || { echo 'Gamescope screenshot was not written.' >&2; exit 1; }
+elif command -v spectacle >/dev/null 2>&1; then
+  spectacle -b -n -o $remote_path_q >/dev/null 2>&1
+elif command -v gnome-screenshot >/dev/null 2>&1; then
+  gnome-screenshot -f $remote_path_q
+else
+  echo 'No screenshot tool found on Deck.' >&2
+  exit 127
+fi"
   scp -q -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host:$remote_path" "$local_path"
   echo "Screenshot saved: $local_path"
 }
@@ -521,6 +537,10 @@ capture_deck_overlay_state() {
   mkdir -p "$visual_capture_dir"
   echo "Capturing Deck overlay state: $label"
   remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"
+if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null &&
+  DISPLAY=:1 xdotool getdisplaygeometry >/dev/null 2>&1; then
+  export DISPLAY=:1
+fi
 if [ -z \"\${XAUTHORITY:-}\" ]; then
   XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"
   export XAUTHORITY
@@ -559,14 +579,20 @@ fi
 echo
 
 echo '== overlay-processes =='
-pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true
+for pid in \$(pgrep -f '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true); do
+  comm=\"\$(cat \"/proc/\$pid/comm\" 2>/dev/null || printf unknown)\"
+  ppid=\"\$(awk '/^PPid:/ { print \$2 }' \"/proc/\$pid/status\" 2>/dev/null || true)\"
+  printf 'pid=%s ppid=%s comm=%s\n' \"\$pid\" \"\${ppid:-unknown}\" \"\$comm\"
+done
 echo
 
 echo '== overlay-env =='
 for pid in \$(pgrep -f '[S]teamBridgeSmoke|[g]ameoverlayui' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true); do
   if [ -r \"/proc/\$pid/environ\" ]; then
     echo \"-- pid \$pid --\"
-    tr '\\000' '\\n' < \"/proc/\$pid/environ\" 2>/dev/null | grep -E '^(SteamAppId|SteamGameId|SteamOverlayGameId|LD_PRELOAD|STEAM_BRIDGE_|DISPLAY=)' || true
+    tr '\\000' '\\n' < \"/proc/\$pid/environ\" 2>/dev/null |
+      grep -E '^(SteamAppId|SteamGameId|SteamOverlayGameId|LD_PRELOAD|STEAM_BRIDGE_|DISPLAY=)' |
+      sed 's/=.*$/=<redacted>/' || true
   fi
 done
 echo
@@ -593,7 +619,7 @@ focus_deck_smoke_window() {
   local app_name_q
   app_name_q="$(quote_arg "$app_name")"
   echo "Focusing Deck smoke app window before visual probe"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; if command -v xdotool >/dev/null 2>&1; then
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null && DISPLAY=:1 xdotool getdisplaygeometry >/dev/null 2>&1; then export DISPLAY=:1; fi; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; if command -v xdotool >/dev/null 2>&1; then
   xdotool key Escape >/dev/null 2>&1 || true
   sleep 0.2
   app_name=$app_name_q
@@ -613,9 +639,73 @@ fi"
 
 clear_deck_transient_shells() {
   echo "Clearing Deck transient desktop shell state"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; if command -v xdotool >/dev/null 2>&1; then
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null && DISPLAY=:1 xdotool getdisplaygeometry >/dev/null 2>&1; then export DISPLAY=:1; fi; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; if command -v xdotool >/dev/null 2>&1; then
   xdotool key Escape >/dev/null 2>&1 || true
 fi"
+}
+
+cleanup_deck_smoke_runtime() {
+  local remote_q inhibit_pid_q
+  remote_q="$(quote_arg "$remote_app_dir")"
+  inhibit_pid_q="$(quote_arg "$remote_inhibit_pid_file")"
+  check_ssh
+  echo "Cleaning previous Deck smoke runtime"
+  remote_exec "app_dir=$remote_q
+inhibit_pid_file=$inhibit_pid_q
+target_process_live() {
+  [ -r \"/proc/\$1/stat\" ] || return 1
+  target_stat=\"\$(cat \"/proc/\$1/stat\" 2>/dev/null || true)\"
+  target_state=\"\${target_stat##*) }\"
+  target_state=\"\${target_state%% *}\"
+  case \"\$target_state\" in
+    Z|X|'') return 1 ;;
+    *) return 0 ;;
+  esac
+}
+for attempt in \$(seq 1 20); do
+  for process_dir in /proc/[0-9]*; do
+    executable=\"\$(readlink \"\$process_dir/exe\" 2>/dev/null || true)\"
+    executable=\"\${executable% (deleted)}\"
+    [ \"\$executable\" = \"\$app_dir/SteamBridgeSmoke\" ] || continue
+    kill \"\${process_dir##*/}\" >/dev/null 2>&1 || true
+  done
+  if [ -f \"\$inhibit_pid_file\" ]; then
+    inhibit_pid=\"\$(cat \"\$inhibit_pid_file\" 2>/dev/null || true)\"
+    case \"\$inhibit_pid\" in
+      *[!0-9]*|'') ;;
+      *) kill \"\$inhibit_pid\" >/dev/null 2>&1 || true ;;
+    esac
+    rm -f \"\$inhibit_pid_file\"
+  fi
+  for overlay_pid in \$(pgrep -x gameoverlayui 2>/dev/null || true); do
+    target_pid=\"\$(tr '\\000' '\\n' < \"/proc/\$overlay_pid/cmdline\" 2>/dev/null | awk 'previous == \"-pid\" { print; exit } { previous = \$0 }')\"
+    case \"\$target_pid\" in
+      *[!0-9]*|'') ;;
+      *) target_process_live \"\$target_pid\" || kill \"\$overlay_pid\" >/dev/null 2>&1 || true ;;
+    esac
+  done
+  smoke_count=0
+  for process_dir in /proc/[0-9]*; do
+    executable=\"\$(readlink \"\$process_dir/exe\" 2>/dev/null || true)\"
+    executable=\"\${executable% (deleted)}\"
+    [ \"\$executable\" = \"\$app_dir/SteamBridgeSmoke\" ] && smoke_count=\$((smoke_count + 1))
+  done
+  orphan_overlay_count=0
+  for overlay_pid in \$(pgrep -x gameoverlayui 2>/dev/null || true); do
+    target_pid=\"\$(tr '\\000' '\\n' < \"/proc/\$overlay_pid/cmdline\" 2>/dev/null | awk 'previous == \"-pid\" { print; exit } { previous = \$0 }')\"
+    case \"\$target_pid\" in
+      *[!0-9]*|'') ;;
+      *) target_process_live \"\$target_pid\" || { target_process_live \"\$overlay_pid\" && orphan_overlay_count=\$((orphan_overlay_count + 1)); } ;;
+    esac
+  done
+  if [ \"\$smoke_count\" -eq 0 ] && [ \"\$orphan_overlay_count\" -eq 0 ]; then
+    echo 'Previous Deck smoke runtime cleaned.'
+    exit 0
+  fi
+  sleep 0.5
+done
+echo 'Timed out cleaning previous Deck smoke runtime.' >&2
+exit 1"
 }
 
 send_deck_overlay_close_probe() {
@@ -754,15 +844,87 @@ set -- \$(xdotool getdisplaygeometry)
 display_width=\"\${1:-1280}\"
 display_height=\"\${2:-800}\"
 host_window=\"\$(xdotool search --name 'Steam Bridge Native Overlay' 2>/dev/null | tail -n 1 || true)\"
-if [ -n \"\$host_window\" ]; then
-  eval \"\$(xdotool getwindowgeometry --shell \"\$host_window\" 2>/dev/null || true)\"
+if [ -z \"\$host_window\" ]; then
+  echo 'Steam web close probe could not find the native overlay host.' >&2
+  exit 1
 fi
+eval \"\$(xdotool getwindowgeometry --shell \"\$host_window\" 2>/dev/null || true)\"
 host_x=\"\${X:-0}\"
 host_y=\"\${Y:-0}\"
 host_width=\"\${WIDTH:-\$display_width}\"
 host_height=\"\${HEIGHT:-\$display_height}\"
-click_x=\$((host_x + host_width * 86 / 100))
-click_y=\$((host_y + host_height * 15 / 100))
+close_image=/tmp/steam-bridge-smoke-web-close.png
+close_gray=/tmp/steam-bridge-smoke-web-close.gray
+rm -f \"\$close_image\" \"\$close_gray\"
+if ! command -v spectacle >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1; then
+  echo 'Steam web close probe requires spectacle and ffmpeg.' >&2
+  exit 127
+fi
+spectacle -b -n -o \"\$close_image\" >/dev/null 2>&1
+ffmpeg -v error -y -i \"\$close_image\" -f rawvideo -pix_fmt gray \"\$close_gray\"
+close_point=\"\$(python3 - \"\$close_gray\" \"\$display_width\" \"\$display_height\" \"\$host_x\" \"\$host_y\" \"\$host_width\" \"\$host_height\" <<'PY'
+import sys
+from pathlib import Path
+
+gray_path = Path(sys.argv[1])
+display_width, display_height, host_x, host_y, host_width, host_height = map(int, sys.argv[2:])
+pixels = gray_path.read_bytes()
+if len(pixels) != display_width * display_height:
+    print('Steam web close probe received an unexpected screenshot size.', file=sys.stderr)
+    sys.exit(1)
+
+minimum_x = max(8, host_x + host_width * 75 // 100)
+maximum_x = min(display_width - 9, host_x + host_width * 90 // 100)
+minimum_y = max(8, host_y + host_height * 7 // 100)
+maximum_y = min(display_height - 9, host_y + host_height * 20 // 100)
+
+def pixel(x, y):
+    return pixels[y * display_width + x]
+
+best = None
+for y in range(minimum_y, maximum_y + 1):
+    for x in range(minimum_x, maximum_x + 1):
+        diagonal = []
+        off_axis = []
+        for offset in range(-5, 6):
+            diagonal.extend((pixel(x + offset, y + offset), pixel(x - offset, y + offset)))
+            if abs(offset) >= 3:
+                off_axis.extend((pixel(x, y + offset), pixel(x + offset, y)))
+        if max(diagonal) - min(diagonal) < 50:
+            continue
+        local = sorted(
+            pixel(x + offset_x, y + offset_y)
+            for offset_y in range(-8, 9)
+            for offset_x in range(-8, 9)
+        )
+        background = local[len(local) // 2]
+        if background >= 60:
+            continue
+        score_threshold = background + 28
+        bright_threshold = background + 53
+        score = sum(max(0, value - score_threshold) for value in diagonal)
+        score -= sum(max(0, value - score_threshold) for value in off_axis)
+        bright = sum(value >= bright_threshold for value in diagonal)
+        if score < 900 or bright < 20:
+            continue
+        candidate = (score, bright, x, y)
+        if best is None or candidate > best:
+            best = candidate
+
+if best is None:
+    print('Steam web close probe could not detect the close glyph.', file=sys.stderr)
+    sys.exit(1)
+
+score, _bright, click_x, click_y = best
+print(f'{click_x} {click_y} {score}')
+PY
+)\"
+rm -f \"\$close_image\" \"\$close_gray\"
+set -- \$close_point
+click_x=\"\$1\"
+click_y=\"\$2\"
+close_score=\"\$3\"
+echo \"Detected Steam web close control (score=\$close_score).\"
 xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
 wait_for_web_overlay_closed 3.0 || true"
 }
@@ -1039,7 +1201,6 @@ if process_check.returncode != 0 or not process_check.stdout.strip():
     failures.append('SteamBridgeSmoke process is not running after close probe')
 
 focus_env = os.environ.copy()
-focus_env.setdefault('DISPLAY', ':0')
 if not focus_env.get('XAUTHORITY'):
     xauth_candidates = glob.glob('/run/user/1000/xauth_*')
     if xauth_candidates:
@@ -1048,35 +1209,52 @@ if not focus_env.get('XAUTHORITY'):
 if shutil.which('xdotool') is None:
     failures.append('could not read focused X11 window after close probe')
 else:
-    focus_id = subprocess.run(
-        ['xdotool', 'getwindowfocus'],
-        env=focus_env,
-        text=True,
-        stdout=subprocess.PIPE,
+    game_mode = subprocess.run(
+        ['systemctl', '--user', 'is-active', '--quiet', 'gamescope-session.service'],
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-    )
-    if focus_id.returncode != 0 or not focus_id.stdout.strip():
-        failures.append('could not read focused X11 window after close probe')
-    else:
-        focus_name_result = subprocess.run(
-            ['xdotool', 'getwindowname', focus_id.stdout.strip()],
-            env=focus_env,
+    ).returncode == 0
+    display_candidates = [':1', ':0'] if game_mode else [focus_env.get('DISPLAY') or ':0', ':0']
+    expected = [app_name.lower(), 'steam bridge electron smoke', 'steambridgesmoke']
+    focused_window_read = False
+    smoke_app_focused = False
+    for display in dict.fromkeys(display_candidates):
+        display_env = focus_env.copy()
+        display_env['DISPLAY'] = display
+        focus_id = subprocess.run(
+            ['xdotool', 'getwindowfocus'],
+            env=display_env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        focus_name = focus_name_result.stdout.strip()
-        focus_name_lower = focus_name.lower()
-        expected = [app_name.lower(), 'steam bridge electron smoke', 'steambridgesmoke']
-        if focus_name_result.returncode != 0 or not any(name and name in focus_name_lower for name in expected):
-            failures.append(f'focused window after close probe is not the smoke app: {focus_name!r}')
+        if focus_id.returncode != 0 or not focus_id.stdout.strip():
+            continue
+        focus_name_result = subprocess.run(
+            ['xdotool', 'getwindowname', focus_id.stdout.strip()],
+            env=display_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        if focus_name_result.returncode != 0:
+            continue
+        focused_window_read = True
+        focus_name_lower = focus_name_result.stdout.strip().lower()
+        if any(name and name in focus_name_lower for name in expected):
+            smoke_app_focused = True
+            break
+    if not focused_window_read:
+        failures.append('could not read focused X11 window after close probe')
+    elif not smoke_app_focused:
+        failures.append('focused window after close probe is not the smoke app')
 
 if failures:
     for failure in failures:
         print(f'Deck close verification failed: {failure}', file=sys.stderr)
     raise SystemExit(1)
 
-print('Deck overlay close verified: active=false observed, presenter parked idle without pumping, app focused, no crash evidence.')
+print('Deck overlay close verified: active=false observed, managed presenter parking verified when required, app focused, no crash evidence.')
 PY"
 }
 
@@ -1254,6 +1432,20 @@ else
 fi"
 }
 
+send_deck_overlay_escape_probe() {
+  echo "Sending Deck overlay SteamUI Escape probe"
+  remote_exec "if ! command -v xdotool >/dev/null 2>&1; then
+  echo 'SteamUI Escape probe requires xdotool.' >&2
+  exit 127
+fi
+escape_display=\"\${DISPLAY:-:0}\"
+if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null &&
+  DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1; then
+  escape_display=:0
+fi
+DISPLAY=\"\$escape_display\" xdotool key Escape"
+}
+
 run_visual_capture() {
   local status=0
   if [ -z "$visual_capture_dir" ]; then
@@ -1285,6 +1477,8 @@ run_visual_capture() {
       send_deck_overlay_close_probe || status=$?
     elif [ "$visual_close_input" = "toggle" ]; then
       send_deck_overlay_keyboard_toggle_probe || status=$?
+    elif [ "$visual_close_input" = "escape" ]; then
+      send_deck_overlay_escape_probe || status=$?
     elif [ "$visual_close_input" = "web" ]; then
       send_deck_web_overlay_close_probe || status=$?
     else
@@ -1543,17 +1737,14 @@ run_discover() {
 }
 
 assert_local_app() {
-  if [ ! -x "$local_app_dir/SteamBridgeSmoke" ]; then
-    echo "Missing Linux smoke executable: $local_app_dir/SteamBridgeSmoke" >&2
-    echo "Run npm run example:package:linux before using this runner." >&2
-    exit 1
-  fi
-
-  if [ ! -x "$local_app_dir/linux-electron-smoke.sh" ]; then
-    echo "Missing packaged Deck helper: $local_app_dir/linux-electron-smoke.sh" >&2
-    echo "Run npm run example:package:linux before using this runner." >&2
-    exit 1
-  fi
+  local required_file
+  for required_file in SteamBridgeSmoke linux-electron-smoke.sh chrome_crashpad_handler chrome-sandbox; do
+    if [ ! -f "$local_app_dir/$required_file" ] || [ ! -r "$local_app_dir/$required_file" ]; then
+      echo "Missing packaged Linux runtime file: $local_app_dir/$required_file" >&2
+      echo "Run npm run example:package:linux before using this runner." >&2
+      exit 1
+    fi
+  done
 }
 
 copy_to_deck() {
@@ -1562,7 +1753,7 @@ copy_to_deck() {
   assert_local_app
   check_ssh
   echo "Copying $local_app_dir to $host:$remote_app_dir"
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$local_app_dir" -czf - . | remote_exec "mkdir -p $remote_q && tar -xzf - -C $remote_q && chmod +x $remote_q/SteamBridgeSmoke $remote_q/linux-electron-smoke.sh"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$local_app_dir" -czf - . | remote_exec "mkdir -p $remote_q && tar -xzf - -C $remote_q && chmod +x $remote_q/SteamBridgeSmoke $remote_q/linux-electron-smoke.sh $remote_q/chrome_crashpad_handler $remote_q/chrome-sandbox"
 }
 
 start_keep_awake() {
@@ -1621,7 +1812,7 @@ resolved_shortcut_target() {
 }
 
 persistent_presenter_parking_required() {
-  if uses_persistent_presenter; then
+  if is_presenter_product_action && uses_persistent_presenter; then
     printf '%s\n' "1"
   else
     printf '%s\n' "0"
@@ -2118,7 +2309,7 @@ run_helper() {
   local remote_q
   remote_q="$(quote_arg "$remote_app_dir")"
   args="$(quote_args "$@")"
-  remote_exec "cd $remote_q && ./linux-electron-smoke.sh $args"
+  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; cd $remote_q && ./linux-electron-smoke.sh $args"
 }
 
 run_helper_with_artifacts() {
@@ -2138,7 +2329,7 @@ run_helper_with_artifacts() {
 }
 
 run_preflight() {
-  local remote_q matches
+  local remote_q matches match_count overlay_enabled_count
   remote_q="$(quote_arg "$remote_app_dir")"
 
   echo "Steam Deck smoke preflight"
@@ -2154,10 +2345,10 @@ run_preflight() {
 
   check_ssh
 
-  remote_exec "set -e; echo \"Remote host: \$(uname -n 2>/dev/null || printf unknown)\"; echo \"Remote kernel: \$(uname -srmo 2>/dev/null || uname -a)\"; if [ -x $remote_q/SteamBridgeSmoke ] && [ -x $remote_q/linux-electron-smoke.sh ]; then echo \"Remote package: present\"; else echo \"Remote package: missing at $remote_app_dir\"; fi; if command -v steam >/dev/null 2>&1; then echo \"Steam command: \$(command -v steam)\"; elif [ -x \"\$HOME/.steam/root/ubuntu12_32/steam\" ]; then echo \"Steam command: \$HOME/.steam/root/ubuntu12_32/steam\"; else echo \"Steam command: missing\"; fi; if command -v systemd-inhibit >/dev/null 2>&1; then echo \"Sleep inhibitor: available\"; else echo \"Sleep inhibitor: missing\"; fi; if ls \"\$HOME/.local/share/Steam/userdata\"/*/config/shortcuts.vdf >/dev/null 2>&1; then echo \"Shortcut files: present\"; else echo \"Shortcut files: missing\"; fi"
+  remote_exec "set -e; echo \"Remote host: \$(uname -n 2>/dev/null || printf unknown)\"; echo \"Remote kernel: \$(uname -srmo 2>/dev/null || uname -a)\"; if [ -x $remote_q/SteamBridgeSmoke ] && [ -x $remote_q/linux-electron-smoke.sh ] && [ -x $remote_q/chrome_crashpad_handler ] && [ -x $remote_q/chrome-sandbox ]; then echo \"Remote package: present\"; else echo \"Remote package: incomplete or non-executable at $remote_app_dir\"; fi; if command -v steam >/dev/null 2>&1; then echo \"Steam command: \$(command -v steam)\"; elif [ -x \"\$HOME/.steam/root/ubuntu12_32/steam\" ]; then echo \"Steam command: \$HOME/.steam/root/ubuntu12_32/steam\"; else echo \"Steam command: missing\"; fi; if command -v systemd-inhibit >/dev/null 2>&1; then echo \"Sleep inhibitor: available\"; else echo \"Sleep inhibitor: missing\"; fi; if ls \"\$HOME/.local/share/Steam/userdata\"/*/config/shortcuts.vdf >/dev/null 2>&1; then echo \"Shortcut files: present\"; else echo \"Shortcut files: missing\"; fi"
 
   if [ "$copy_app" = "0" ]; then
-    remote_exec "test -x $remote_q/SteamBridgeSmoke && test -x $remote_q/linux-electron-smoke.sh" || {
+    remote_exec "test -x $remote_q/SteamBridgeSmoke && test -x $remote_q/linux-electron-smoke.sh && test -x $remote_q/chrome_crashpad_handler && test -x $remote_q/chrome-sandbox" || {
       echo "Remote package is required when --skip-copy is used." >&2
       return 1
     }
@@ -2166,11 +2357,12 @@ run_preflight() {
   if remote_exec "test -x $remote_q/linux-electron-smoke.sh" >/dev/null 2>&1; then
     build_print_shortcuts_args
     matches="$(run_helper "${helper_args[@]}")"
-    echo "Matching shortcuts:"
     if [ -n "$matches" ]; then
-      printf '%s\n' "$matches"
+      match_count="$(printf '%s\n' "$matches" | awk 'NF { count += 1 } END { print count + 0 }')"
+      overlay_enabled_count="$(printf '%s\n' "$matches" | grep -Ec '"allowOverlay"[[:space:]]*:[[:space:]]*1' || true)"
+      echo "Matching shortcuts: $match_count (overlay-enabled: $overlay_enabled_count)"
     else
-      echo "(none)"
+      echo "Matching shortcuts: 0"
     fi
   else
     echo "Matching shortcuts: skipped until the package is copied"
@@ -2180,6 +2372,7 @@ run_preflight() {
 run_remote_mode() {
   case "$mode" in
     game|desktop)
+      cleanup_deck_smoke_runtime
       if [ "$copy_app" = "1" ]; then
         copy_to_deck
       fi
@@ -2191,6 +2384,7 @@ run_remote_mode() {
       run_helper_with_artifacts "${helper_args[@]}"
       ;;
     direct)
+      cleanup_deck_smoke_runtime
       if [ "$copy_app" = "1" ]; then
         copy_to_deck
       fi
@@ -2199,6 +2393,9 @@ run_remote_mode() {
       trap stop_keep_awake EXIT
       build_direct_args
       run_helper_with_artifacts "${helper_args[@]}"
+      ;;
+    cleanup)
+      cleanup_deck_smoke_runtime
       ;;
     discover)
       run_discover
@@ -2223,7 +2420,19 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args dialog_args friends_args open_wait_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check
+  local game_args desktop_args dialog_args friends_args open_wait_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check original_local_app_dir package_fixture
+  original_local_app_dir="$local_app_dir"
+  package_fixture="$(mktemp -d)"
+  printf '%s\n' smoke >"$package_fixture/SteamBridgeSmoke"
+  printf '%s\n' helper >"$package_fixture/linux-electron-smoke.sh"
+  printf '%s\n' crashpad >"$package_fixture/chrome_crashpad_handler"
+  printf '%s\n' sandbox >"$package_fixture/chrome-sandbox"
+  chmod 0644 "$package_fixture/SteamBridgeSmoke" "$package_fixture/linux-electron-smoke.sh" "$package_fixture/chrome_crashpad_handler" "$package_fixture/chrome-sandbox"
+  local_app_dir="$package_fixture"
+  assert_local_app
+  local_app_dir="$original_local_app_dir"
+  rm -rf "$package_fixture"
+
   mode="game"
   build_steam_launch_args
   game_args="$(quote_args "${helper_args[@]}")"
@@ -2277,6 +2486,18 @@ run_self_test() {
     echo "Self-test failed: Visual toggle probes must capture Deck overlay state." >&2
     exit 1
   fi
+  if sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -Fq "pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper'"; then
+    echo "Self-test failed: Deck overlay state must not retain full process command lines." >&2
+    exit 1
+  fi
+  if ! sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -Fq "sed 's/=.*$/=<redacted>/'"; then
+    echo "Self-test failed: Deck overlay state must redact captured environment values." >&2
+    exit 1
+  fi
+  if ! sed -n '/^run_helper()/,/^}/p' "$0" | grep -Fq 'export DISPLAY=\"\${DISPLAY:-:0}\"'; then
+    echo "Self-test failed: Deck helper runs must inherit the graphical session environment." >&2
+    exit 1
+  fi
   if ! grep -Fq 'verify_deck_overlay_closed_after_probe "1"' "$0"; then
     echo "Self-test failed: Managed shortcut toggle probes must verify close/deactivation evidence." >&2
     exit 1
@@ -2305,8 +2526,60 @@ run_self_test() {
     echo "Self-test failed: Web close probe must clear KWin overview before clicking the Steam web close control." >&2
     exit 1
   fi
+  if ! awk '/^send_deck_web_overlay_close_probe[(][)]/ { inside=1 } /^verify_deck_overlay_closed_after_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'Detected Steam web close control'; then
+    echo "Self-test failed: Web close probe must detect the Steam close glyph before clicking." >&2
+    exit 1
+  fi
+  if awk '/^send_deck_web_overlay_close_probe[(][)]/ { inside=1 } /^verify_deck_overlay_closed_after_probe[(][)]/ { inside=0 } inside' "$0" | grep -Eq 'host_(width|height) \* [0-9]+ / 100'; then
+    echo "Self-test failed: Web close probe must not use a fixed percentage click target." >&2
+    exit 1
+  fi
   if ! grep -Fq "clear_deck_transient_shells" "$0"; then
     echo "Self-test failed: Deck launch path must clear transient desktop shell state before visual proofs." >&2
+    exit 1
+  fi
+  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'gamescopectl screenshot'; then
+    echo "Self-test failed: Game Mode screenshots must use Gamescope capture." >&2
+    exit 1
+  fi
+  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'gamescope-session.service'; then
+    echo "Self-test failed: Screenshot capture must select its tool from the active Deck session." >&2
+    exit 1
+  fi
+  if ! awk '/^run_visual_capture[(][)]/ { inside=1 } /^wait_for_deck_shortcut_overlay_open[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'send_deck_overlay_escape_probe'; then
+    echo "Self-test failed: Game Mode close capture must support SteamUI Escape input." >&2
+    exit 1
+  fi
+  if ! sed -n '/^persistent_presenter_parking_required()/,/^}/p' "$0" | grep -Fq 'is_presenter_product_action && uses_persistent_presenter'; then
+    echo "Self-test failed: Raw Game Mode routes must not require managed presenter parking events." >&2
+    exit 1
+  fi
+  if [ "$(sed -n '/^run_remote_mode()/,/^}/p' "$0" | grep -c '^[[:space:]]*cleanup_deck_smoke_runtime$')" != "3" ]; then
+    echo "Self-test failed: Deck launch paths and explicit cleanup mode must share exact runtime cleanup." >&2
+    exit 1
+  fi
+  if ! awk '/^cleanup_deck_smoke_runtime[(][)]/ { inside=1 } /^send_deck_overlay_close_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'target_process_live'; then
+    echo "Self-test failed: Deck runtime cleanup must classify process state." >&2
+    exit 1
+  fi
+  if ! awk '/^cleanup_deck_smoke_runtime[(][)]/ { inside=1 } /^send_deck_overlay_close_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fq "Z|X|'') return 1"; then
+    echo "Self-test failed: Deck runtime cleanup must treat zombie and exited targets as non-live." >&2
+    exit 1
+  fi
+  if [ "$(awk '/^cleanup_deck_smoke_runtime[(][)]/ { inside=1 } /^send_deck_overlay_close_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fc 'executable=\"\${executable% (deleted)}\"')" != "2" ]; then
+    echo "Self-test failed: Deck runtime cleanup must recognize replaced executable images." >&2
+    exit 1
+  fi
+  if ! sed -n '/^run_remote_mode()/,/^}/p' "$0" | awk '
+    /^[[:space:]]*cleanup_deck_smoke_runtime$/ { cleanup = NR; next }
+    /^[[:space:]]*copy_to_deck$/ {
+      copies += 1
+      if (!cleanup || cleanup > NR) exit 1
+      cleanup = 0
+    }
+    END { if (copies != 2) exit 1 }
+  '; then
+    echo "Self-test failed: Deck launch paths must clean the previous runtime before copying the package." >&2
     exit 1
   fi
   if ! grep -Fq "event:overlay:presenter-wait-shown" "$0"; then

@@ -567,6 +567,14 @@ Reviewed on 2026-07-02 while investigating Windows Electron overlay failures:
   attachment, active/inactive callbacks where expected, focus return, parked
   presenter state at `currentFps=0`, no post-close `pumpCount` increase for
   persistent presenter routes, and clean crash diagnostics.
+- A fresh 2026-07-15 Deck pass keeps Game Mode as a separate bounded contract.
+  The X11/GLX presenter attaches passively and parks at 0 FPS, while Steam's
+  compositor-native store route emits active/inactive callbacks, captures
+  through `gamescopectl`, closes through exact SteamUI Escape, and returns focus
+  to the app with clean crash and cleanup evidence. A managed-web control still
+  creates the host without an active callback or overlay target, so the Desktop
+  presenter-backed route matrix remains Desktop-only unless that Game Mode
+  boundary changes.
 - A generic `steam://open/overlay` URI is not a reliable shortcut around the
   unresolved raw social/toggle path. On Deck Desktop Mode it can emit an overlay
   activation callback while leaving the native presenter black and crashing the
@@ -738,6 +746,11 @@ Primary backend: X11/GLX.
 
 Current evidence:
 
+- Deck Game Mode has a dedicated readiness/lifecycle contract rather than the
+  Desktop managed-route matrix: passive X11/GLX attachment is verified, and the
+  compositor-native store path proves activation, Gamescope capture,
+  Escape/back-to-app, focus return, crash health, and exact cleanup. Managed web
+  remains a known non-activating Game Mode boundary.
 - Deck Desktop Mode can display and close a modal Steam web overlay over the
   bridge-owned GLX presenter.
 - Deck Desktop Mode can do the same through the reusable app-facing presenter

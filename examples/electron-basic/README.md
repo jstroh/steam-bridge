@@ -1562,16 +1562,22 @@ overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
 verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
 current; then rerun `--mode discover`.
 
-To repeat the Deck Desktop product overlay matrix, run:
+To repeat the mode-appropriate Deck overlay matrices, run:
 
 ```sh
 npm run steam-deck:overlay-matrix -- \
   --host deck@<deck-host-or-ip> \
+  --mode desktop \
   --suite core
+
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --mode game \
+  --suite game
 ```
 
-This packages the Linux x64 smoke app, runs preflight, then drives the managed
-presenter routes for managed readiness, modal web, store, Friends, profile,
+The Desktop command packages the Linux x64 smoke app, runs preflight, then
+drives the managed presenter routes for managed readiness, modal web, store, Friends, profile,
 community, stats, achievements, user, dialog equivalents, checkout readiness,
 synthetic checkout approval-route plumbing, Shift+Tab shortcut routing, and
 passive achievement progress/unlock toasts.
@@ -1582,8 +1588,15 @@ missing managed wait-helper shown/closed/parked lifecycle evidence. It
 writes per-case diagnostics and screenshots under
 `/tmp/steam-bridge-deck-overlay-matrix-*` plus `matrix-cases.jsonl`, which lets
 the summary print and audit each case's close/toggle input. Use `--suite
-minimal` for the shortest product smoke pass or `--suite full` to include every
-known dialog-equivalent route.
+minimal` for the shortest Desktop product smoke pass or `--suite full` to
+include every known Desktop dialog-equivalent route.
+
+The separate Game Mode suite deliberately stays bounded to passive managed
+presenter readiness plus Steam's compositor-native store lifecycle. It requires
+active/inactive callbacks, Gamescope screenshots, Escape back-to-app, focus
+return, clean crash evidence, and exact cleanup; it does not run the Desktop
+managed-web matrix. Both suites use public App ID `480` for generic overlay
+plumbing only, not real configured-product purchase proof.
 
 For the current Desktop Mode visual proof of the reusable presenter path, use the
 presenter web action with a modal web overlay and leave the app open after the

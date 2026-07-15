@@ -876,7 +876,7 @@ launch_steam_shortcut() {
     steam_args+=("-steamdeck" "-pipewire")
   fi
 
-  echo "Launching steam://rungameid/$game_id"
+  echo "Launching configured Steam shortcut"
   "$steam_bin" "${steam_args[@]}" "steam://rungameid/$game_id" >/tmp/steam-bridge-smoke-rungameid.out 2>/tmp/steam-bridge-smoke-rungameid.err &
   wait_for_result_file
   verify_result
@@ -893,7 +893,7 @@ cleanup_self_test() {
 }
 
 run_self_test() {
-  local expected_game_id shortcut_file matches resolved
+  local expected_game_id shortcut_file matches resolved redacted_output
   self_test_temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-linux-helper.XXXXXX")"
   self_test_old_home="$HOME"
   self_test_previous_result_file="$result_file"
@@ -1037,6 +1037,16 @@ EOF
     exit 1
   fi
 
+  redacted_output="$(printf '%s\n' 'SteamInternal_SetMinidumpSteamID: 76561198000000000' | sed -E 's/(^|[^0-9])[0-9]{17}([^0-9]|$)/\1[redacted-steam-id]\2/g')"
+  if [ "$redacted_output" != 'SteamInternal_SetMinidumpSteamID: [redacted-steam-id]' ]; then
+    echo "Self-test failed: Direct runtime output must redact Steam identifiers." >&2
+    exit 1
+  fi
+  if sed -n '/^launch_steam_shortcut()/,/^}/p' "$0" | grep -Fq 'echo "Launching steam://rungameid/$game_id"'; then
+    echo "Self-test failed: Steam launch status must not print the local shortcut game ID." >&2
+    exit 1
+  fi
+
   echo "Linux Electron smoke helper self-test passed."
 }
 
@@ -1060,7 +1070,7 @@ case "$mode" in
     rm -f "$result_file"
     rm -rf "$diagnostic_dir"
     mapfile -t args < <(smoke_args)
-    (cd "$app_dir" && "$smoke_exe" "${args[@]}")
+    (cd "$app_dir" && "$smoke_exe" "${args[@]}" 2>&1) | sed -E 's/(^|[^0-9])[0-9]{17}([^0-9]|$)/\1[redacted-steam-id]\2/g'
     wait_for_result_file
     verify_result
     ;;

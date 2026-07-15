@@ -675,11 +675,25 @@ Run platform matrix checks:
 ```sh
 npm run steam-deck:overlay-matrix -- \
   --host deck@<deck-host-or-ip> \
+  --mode desktop \
   --suite core
+
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --mode game \
+  --suite game
 
 npm run macos:steam-client-health
 npm run macos:overlay-matrix -- --suite core
 ```
+
+The Deck Game Mode suite is a separate bounded contract: it verifies passive
+managed-presenter readiness, then uses Steam's compositor-native store route to
+prove active/inactive callbacks, Gamescope capture, Escape back-to-app, focus
+return, crash health, and exact cleanup. It does not project the Desktop managed
+web matrix into Game Mode. Both Deck suites use public App ID `480` for generic
+overlay plumbing only; real purchase proof requires a configured app and
+product.
 
 `npm run macos:steam-client-health` does not launch the smoke app or touch the
 Steam shortcut. Its artifact records the running Steam PID/helper state, current

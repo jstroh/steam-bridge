@@ -1711,6 +1711,10 @@ async function waitForPassiveNotificationResult(action, durationMs) {
   const startedAt = Date.now();
   const deadline = startedAt + durationMs;
   const eventType = action === "presenter-achievement-progress" ? "achievement:progress" : "achievement:unlock";
+  const callbackTypes =
+    action === "presenter-achievement-progress"
+      ? ["callback:achievement-stored"]
+      : ["callback:user-stats-stored", "callback:achievement-stored"];
   let pumps = 0;
 
   while (Date.now() < deadline) {
@@ -1731,17 +1735,25 @@ async function waitForPassiveNotificationResult(action, durationMs) {
 
     const presenter = safeOverlaySnapshot(electronSteamOverlay);
     const eventSeen = eventLog.some((entry) => entry.type === eventType);
+    const callbacksSeen = callbackTypes.every((type) => eventLog.some((entry) => entry.type === type));
     const transitionObserved =
       passiveNotificationNeedsPresentState?.action === action &&
       passiveNotificationNeedsPresentState.observed === true;
-    if (eventSeen && transitionObserved && isParkedPassivePresenter(presenter)) {
+    if (eventSeen && callbacksSeen && isParkedPassivePresenter(presenter)) {
       const elapsedMs = Date.now() - startedAt;
-      recordEvent("overlay:passive-notification-parked", { action, pumps, durationMs: elapsedMs, presenter });
+      recordEvent("overlay:passive-notification-parked", {
+        action,
+        pumps,
+        durationMs: elapsedMs,
+        passiveNotificationNeedsPresentTransition: transitionObserved,
+        renderPath: transitionObserved ? "needs-present" : "steam-overlay-target",
+        presenter
+      });
       return finishPassiveNotificationNeedsPresentWait({
         ok: true,
         action,
         pumps,
-        passiveNotificationNeedsPresentTransition: true,
+        passiveNotificationNeedsPresentTransition: transitionObserved,
         passiveNotificationParked: true,
         durationMs: elapsedMs,
         presenter
@@ -1752,7 +1764,7 @@ async function waitForPassiveNotificationResult(action, durationMs) {
   }
 
   const presenter = safeOverlaySnapshot(electronSteamOverlay);
-  const error = { message: "Timed out waiting for passive notification presenter to park." };
+  const error = { message: "Timed out waiting for passive notification callbacks and presenter parking." };
   recordEvent("overlay:passive-notification-timeout", { action, pumps, durationMs: Date.now() - startedAt, presenter });
   return finishPassiveNotificationNeedsPresentWait({
     ok: false,
@@ -1761,7 +1773,7 @@ async function waitForPassiveNotificationResult(action, durationMs) {
     passiveNotificationNeedsPresentTransition:
       passiveNotificationNeedsPresentState?.action === action &&
       passiveNotificationNeedsPresentState.observed === true,
-    passiveNotificationParked: false,
+    passiveNotificationParked: isParkedPassivePresenter(presenter),
     durationMs: Date.now() - startedAt,
     error,
     presenter

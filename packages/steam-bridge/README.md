@@ -1782,16 +1782,22 @@ copy:
 npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>
 ```
 
-Use the repository-level matrix runner when you need to repeat the full Deck
-Desktop product proof instead of hand-running each case:
+Use the repository-level matrix runner when you need to repeat the Deck
+mode-appropriate proof instead of hand-running each case:
 
 ```sh
 npm run steam-deck:overlay-matrix -- \
   --host deck@<deck-host-or-ip> \
+  --mode desktop \
   --suite core
+
+npm run steam-deck:overlay-matrix -- \
+  --host deck@<deck-host-or-ip> \
+  --mode game \
+  --suite game
 ```
 
-The matrix collects per-case screenshots and diagnostics for the managed
+The Desktop matrix collects per-case screenshots and diagnostics for the managed
 presenter routes: modal web, store, Friends, profile, community, stats,
 achievements, user, dialog equivalents, checkout readiness, synthetic checkout
 approval-route plumbing, Shift+Tab shortcut routing, and passive
@@ -1805,6 +1811,13 @@ validated from a real configured Steam app. Live runs also write
 `matrix-cases.jsonl` so summaries can print and audit the close/toggle input
 used for each case. To audit an existing artifact root, run
 `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
+
+The separate Game Mode suite verifies passive managed-presenter readiness and a
+compositor-native Steam store lifecycle: active/inactive callbacks, Gamescope
+screenshots, Escape back-to-app, focus return, crash health, and exact cleanup.
+The Desktop managed web route is not treated as Game Mode product proof. Both
+suites use public App ID `480`, so neither proves real configured-product
+purchase behavior.
 
 Add
 `--overlay-game-id shortcut` when investigating whether raw Steam overlay

@@ -23,20 +23,24 @@ dry_run="0"
 local_app_dir=""
 presenter_mode=""
 overlay_profile=""
+resume_from=""
+resume_case_index="0"
 
 usage() {
   cat <<'EOF'
 Usage:
   steam-deck-overlay-matrix.sh [options]
 
-Runs the Steam Deck Desktop Mode product overlay proof matrix with the packaged
-Electron smoke app and SpaceWar App ID 480 by default.
+Runs the Steam Deck Desktop Mode managed product overlay matrix or the bounded
+Game Mode compositor-native proof with the packaged Electron smoke app and
+SpaceWar App ID 480 by default.
 
 Options:
   --host USER@HOST             Steam Deck SSH target. Defaults to deck@steamdeck.local.
   --mode desktop|game|self-test|summarize
                                Steam launch mode. Defaults to desktop.
-  --suite core|full|minimal    Matrix size. Defaults to core.
+  --suite core|full|minimal|game
+                               Matrix contract. Defaults to core.
   --app-id ID                  Steam App ID inside the smoke app. Defaults to 480.
   --window-mode MODE           Smoke app window mode. Defaults to fullscreen.
   --artifact-root PATH         Local root for screenshots and diagnostics.
@@ -50,6 +54,7 @@ Options:
   --skip-preflight             Do not run the Deck preflight before the matrix.
   --skip-summary               Do not summarize collected artifacts after the matrix.
   --copy-each-case             Re-copy the package before every case.
+  --resume-from CASE_ID        Retain the exact validated prefix before CASE_ID and rerun from it.
   --dry-run                    Print commands without running them.
   --help                       Show this help.
 
@@ -59,6 +64,8 @@ Suites:
            user profile dialog, OfficialGameGroup dialog equivalent, checkout approval-route
            plumbing, and web shortcut.
   full     core plus all known high-level dialog-equivalent routes.
+  game     Game Mode managed presenter readiness plus compositor-native store
+           activation, Gamescope capture, Escape back-to-app, and cleanup.
 EOF
 }
 
@@ -132,6 +139,10 @@ while [ "$#" -gt 0 ]; do
       copy_each_case="1"
       shift
       ;;
+    --resume-from)
+      resume_from="${2:?missing --resume-from value}"
+      shift 2
+      ;;
     --dry-run)
       dry_run="1"
       shift
@@ -155,7 +166,7 @@ case "$mode" in
 esac
 
 case "$suite" in
-  minimal|core|full)
+  minimal|core|full|game)
     ;;
   *)
     echo "Unknown --suite: $suite" >&2
@@ -163,6 +174,115 @@ case "$suite" in
     exit 2
     ;;
 esac
+
+if [ "$mode" = "game" ] && [ "$suite" != "game" ]; then
+  echo "Game Mode requires --suite game; Desktop managed suites do not activate through Gamescope." >&2
+  exit 2
+fi
+if [ "$suite" = "game" ] && [ "$mode" != "game" ]; then
+  echo "--suite game requires --mode game." >&2
+  exit 2
+fi
+
+expected_case_ids=()
+case "$suite" in
+  game)
+    expected_case_ids=(
+      01-presenter-ready
+      02-store
+    )
+    ;;
+  minimal)
+    expected_case_ids=(
+      01-web-modal
+      02-friends
+      03-friends-open-and-wait
+      04-shortcut-friends
+      05-checkout-prepare
+      06-passive-toast
+    )
+    ;;
+  core)
+    expected_case_ids=(
+      01-web-modal
+      02-friends
+      03-friends-open-and-wait
+      04-shortcut-friends
+      05-checkout-prepare
+      06-checkout-approval-route
+      07-passive-toast
+      08-passive-unlock-toast
+      09-store
+      10-profile
+      11-players
+      12-community
+      13-stats
+      14-achievements
+      15-user-steamid
+      16-user-chat
+      17-dialog-officialgamegroup
+      18-web-open-and-wait
+      19-shortcut-web
+      20-store-open-and-wait
+      21-dialog-auto-open-and-wait
+    )
+    ;;
+  full)
+    expected_case_ids=(
+      01-web-modal
+      02-friends
+      03-friends-open-and-wait
+      04-shortcut-friends
+      05-checkout-prepare
+      06-checkout-approval-route
+      07-passive-toast
+      08-passive-unlock-toast
+      09-store
+      10-profile
+      11-players
+      12-community
+      13-stats
+      14-achievements
+      15-user-steamid
+      16-user-chat
+      17-dialog-officialgamegroup
+      18-web-open-and-wait
+      19-shortcut-web
+      20-store-open-and-wait
+      21-dialog-auto-open-and-wait
+      22-dialog-friends
+      23-dialog-players
+      24-dialog-community
+      25-dialog-stats
+      26-dialog-achievements
+    )
+    ;;
+esac
+
+if [ -n "$resume_from" ]; then
+  for expected_index in "${!expected_case_ids[@]}"; do
+    if [ "${expected_case_ids[$expected_index]}" = "$resume_from" ]; then
+      resume_case_index=$((expected_index + 1))
+      break
+    fi
+  done
+  if [ "$resume_case_index" -eq 0 ]; then
+    echo "Unknown --resume-from case for $suite suite: $resume_from" >&2
+    exit 2
+  fi
+  if [ "$skip_package" != "1" ]; then
+    echo "--resume-from requires --skip-package so the retained prefix stays bound to the same package." >&2
+    exit 2
+  fi
+  if [ "$skip_preflight" = "1" ]; then
+    echo "--resume-from requires preflight to validate the retained remote package before continuing." >&2
+    exit 2
+  fi
+  if [ "$copy_each_case" = "1" ]; then
+    echo "--resume-from cannot be combined with --copy-each-case." >&2
+    exit 2
+  fi
+fi
 
 quote_command() {
   local arg
@@ -182,18 +302,143 @@ run_or_print() {
 }
 
 cleanup_remote_smoke() {
-  local cleanup_cmd
-  cleanup_cmd="pkill -f '/home/deck/steam-bridge-smoke/.*/[S]teamBridgeSmoke' >/dev/null 2>&1 || true; pkill -f '[s]ystemd-inhibit --what=sleep --why=Steam Bridge smoke' >/dev/null 2>&1 || true"
-  if [ "$dry_run" = "1" ]; then
-    quote_command ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$cleanup_cmd"
-    return 0
-  fi
-  ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$cleanup_cmd" >/dev/null 2>&1 || true
+  run_or_print bash "$deck_runner" \
+    --host "$host" \
+    --mode cleanup \
+    --connect-timeout "$connect_timeout"
 }
 
 summarize_matrix_artifacts() {
   local root="$1"
   node "$summary_runner" --artifact-root "$root"
+}
+
+write_matrix_manifest() {
+  if [ "$dry_run" = "1" ]; then
+    echo "Matrix contract: mode=$mode suite=$suite expectedCases=${#expected_case_ids[@]}"
+    return 0
+  fi
+
+  node - "$matrix_manifest" "$mode" "$suite" "$app_id" "${expected_case_ids[@]}" <<'NODE'
+const fs = require("node:fs");
+
+const [file, mode, suite, appIdText, ...expectedCaseIds] = process.argv.slice(2);
+const appId = Number(appIdText);
+if (!Number.isSafeInteger(appId) || appId <= 0) {
+  throw new Error(`Invalid matrix App ID: ${appIdText}`);
+}
+fs.writeFileSync(
+  file,
+  `${JSON.stringify({
+    kind: "steam-bridge-deck-overlay-matrix",
+    schemaVersion: 1,
+    mode,
+    suite,
+    appId,
+    expectedCaseCount: expectedCaseIds.length,
+    expectedCaseIds
+  }, null, 2)}\n`
+);
+NODE
+}
+
+prepare_matrix_artifacts() {
+  mkdir -p "$artifact_root"
+  node - "$matrix_manifest" "$case_manifest" "$cleanup_evidence" "$mode" "$suite" "$app_id" "$resume_from" "${expected_case_ids[@]}" <<'NODE'
+const fs = require("node:fs");
+
+const [manifestFile, casesFile, cleanupFile, mode, suite, appIdText, resumeFrom, ...expectedCaseIds] =
+  process.argv.slice(2);
+const appId = Number(appIdText);
+if (!Number.isSafeInteger(appId) || appId <= 0) {
+  throw new Error(`Invalid matrix App ID: ${appIdText}`);
+}
+const contract = {
+  kind: "steam-bridge-deck-overlay-matrix",
+  schemaVersion: 1,
+  mode,
+  suite,
+  appId,
+  expectedCaseCount: expectedCaseIds.length,
+  expectedCaseIds
+};
+
+if (!resumeFrom) {
+  fs.writeFileSync(manifestFile, `${JSON.stringify(contract, null, 2)}\n`);
+  fs.writeFileSync(casesFile, "");
+  fs.rmSync(cleanupFile, { force: true });
+  process.exit(0);
+}
+
+if (!fs.existsSync(manifestFile) || !fs.existsSync(casesFile)) {
+  throw new Error("Deck matrix resume requires an existing manifest and case metadata file.");
+}
+const existingContract = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+if (JSON.stringify(existingContract) !== JSON.stringify(contract)) {
+  throw new Error("Deck matrix resume contract does not match the existing artifact root.");
+}
+const resumeIndex = expectedCaseIds.indexOf(resumeFrom);
+if (resumeIndex < 0) {
+  throw new Error(`Unknown Deck matrix resume case: ${resumeFrom}`);
+}
+const lines = fs
+  .readFileSync(casesFile, "utf8")
+  .split(/\r?\n/)
+  .filter((line) => line.trim())
+  .map((line) => ({ line, metadata: JSON.parse(line) }));
+const retained = lines.slice(0, resumeIndex);
+const retainedIds = retained.map(({ metadata }) => metadata.caseId);
+const expectedPrefix = expectedCaseIds.slice(0, resumeIndex);
+if (JSON.stringify(retainedIds) !== JSON.stringify(expectedPrefix)) {
+  throw new Error(
+    `Deck matrix resume prefix mismatch: expected ${expectedPrefix.join(",")}, got ${retainedIds.join(",")}`
+  );
+}
+if (new Set(retainedIds).size !== retainedIds.length) {
+  throw new Error("Deck matrix resume prefix contains duplicate case metadata.");
+}
+fs.writeFileSync(casesFile, retained.length ? `${retained.map(({ line }) => line).join("\n")}\n` : "");
+fs.rmSync(cleanupFile, { force: true });
+NODE
+}
+
+write_cleanup_evidence() {
+  local state smoke_processes inhibitor_processes overlay_processes steam_processes plasma_processes
+  if [ "$dry_run" = "1" ]; then
+    echo "Cleanup evidence: dry-run"
+    return 0
+  fi
+
+  cleanup_remote_smoke
+  state="$(ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" 'process_live() { [ -r "/proc/$1/stat" ] || return 1; process_stat=$(cat "/proc/$1/stat" 2>/dev/null || true); process_state=${process_stat##*) }; process_state=${process_state%% *}; case "$process_state" in Z|X|"") return 1 ;; *) return 0 ;; esac; }; count_matching() { count=0; match_mode=$1; pattern=$2; for pid in $(pgrep "$match_mode" "$pattern" 2>/dev/null || true); do process_live "$pid" && count=$((count + 1)); done; printf "%s" "$count"; }; smoke=$(count_matching -f "/home/deck/steam-bridge-smoke/.*/[S]teamBridgeSmoke"); inhibitor=$(count_matching -f "[s]ystemd-inhibit --what=sleep --why=Steam Bridge smoke"); overlay=$(count_matching -x gameoverlayui); steam=$(count_matching -x steam); plasma=$(count_matching -x plasmashell); printf "%s %s %s %s %s\n" "$smoke" "$inhibitor" "$overlay" "$steam" "$plasma"')"
+  read -r smoke_processes inhibitor_processes overlay_processes steam_processes plasma_processes <<<"$state"
+  node - "$cleanup_evidence" "$mode" "$smoke_processes" "$inhibitor_processes" "$overlay_processes" "$steam_processes" "$plasma_processes" <<'NODE'
+const fs = require("node:fs");
+
+const [file, mode, ...counts] = process.argv.slice(2);
+const [smokeProcesses, sleepInhibitors, gameOverlayProcesses, steamProcesses, plasmaProcesses] = counts.map(Number);
+if ([smokeProcesses, sleepInhibitors, gameOverlayProcesses, steamProcesses, plasmaProcesses].some((value) => !Number.isSafeInteger(value) || value < 0)) {
+  throw new Error(`Invalid Deck cleanup counts: ${counts.join(" ")}`);
+}
+const ok = smokeProcesses === 0 && sleepInhibitors === 0 && gameOverlayProcesses === 0 && steamProcesses >= 1;
+fs.writeFileSync(
+  file,
+  `${JSON.stringify({
+    kind: "steam-bridge-deck-overlay-matrix-cleanup",
+    schemaVersion: 1,
+    mode,
+    ok,
+    smokeProcesses,
+    sleepInhibitors,
+    gameOverlayProcesses,
+    steamProcesses,
+    plasmaProcesses
+  }, null, 2)}\n`
+);
+if (!ok) {
+  throw new Error(`Deck cleanup evidence failed: smoke=${smokeProcesses} inhibitors=${sleepInhibitors} overlay=${gameOverlayProcesses} steam=${steamProcesses}`);
+}
+NODE
 }
 
 write_case_metadata() {
@@ -257,6 +502,13 @@ run_deck_case() {
   case_index=$((case_index + 1))
   local case_id
   case_id="$(printf '%02d-%s' "$case_index" "$name")"
+
+  if [ "$resume_case_index" -gt 0 ] && [ "$case_index" -lt "$resume_case_index" ]; then
+    echo
+    echo "== Deck overlay matrix: $case_id (retained validated prefix) =="
+    copy_done="1"
+    return 0
+  fi
 
   local cmd=(
     bash "$deck_runner"
@@ -418,7 +670,7 @@ run_summary_self_test() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case user_case user_chat_case shortcut_web_case
+  local self_path minimal_output core_output full_output game_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case user_case user_chat_case shortcut_web_case store_open_wait_case game_presenter_case game_store_case
   self_path="${BASH_SOURCE[0]}"
 
   minimal_output="$(
@@ -448,10 +700,31 @@ run_self_test() {
       --dry-run \
       --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
   )"
+  game_output="$(
+    bash "$self_path" \
+      --host deck@example.invalid \
+      --mode game \
+      --suite game \
+      --skip-package \
+      --skip-preflight \
+      --dry-run \
+      --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
+  )"
 
   require_case_count "$minimal_output" "6" "minimal matrix"
   require_case_count "$core_output" "21" "core matrix"
   require_case_count "$full_output" "26" "full matrix"
+  require_case_count "$game_output" "2" "Game Mode matrix"
+  require_contains "$minimal_output" "Matrix contract: mode=desktop suite=minimal expectedCases=6" "minimal matrix must declare its completion contract."
+  require_contains "$core_output" "Matrix contract: mode=desktop suite=core expectedCases=21" "core matrix must declare its completion contract."
+  require_contains "$full_output" "Matrix contract: mode=desktop suite=full expectedCases=26" "full matrix must declare its completion contract."
+  require_contains "$game_output" "Matrix contract: mode=game suite=game expectedCases=2" "Game Mode matrix must declare its completion contract."
+  require_contains "$core_output" "Cleanup evidence: dry-run" "matrix must produce final cleanup evidence."
+  require_contains "$core_output" "--mode cleanup" "matrix cleanup must delegate to the Deck runner."
+  if sed -n '/^cleanup_remote_smoke()/,/^}/p' "$self_path" | grep -Fq 'pkill -f'; then
+    echo "Self-test failed: Matrix cleanup must not duplicate runtime ownership logic." >&2
+    exit 1
+  fi
 
   require_contains "$core_output" "--action presenter-web" "core matrix must include presenter web."
   require_contains "$core_output" "--require-zero-managed-overlay-timing" "core matrix must require zero managed overlay timing."
@@ -492,6 +765,9 @@ run_self_test() {
   user_case="$(matrix_case_command "$core_output" "15-user-steamid")"
   user_chat_case="$(matrix_case_command "$core_output" "16-user-chat")"
   shortcut_web_case="$(matrix_case_command "$core_output" "19-shortcut-web")"
+  store_open_wait_case="$(matrix_case_command "$core_output" "20-store-open-and-wait")"
+  game_presenter_case="$(matrix_case_command "$game_output" "01-presenter-ready")"
+  game_store_case="$(matrix_case_command "$game_output" "02-store")"
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
@@ -503,6 +779,13 @@ run_self_test() {
   require_contains "$user_chat_case" "--user-dialog chat" "user chat proof should pass the chat dialog name."
   require_not_contains "$shortcut_web_case" "--visual-toggle-open-delay" "web shortcut proof should use lifecycle evidence instead of a fixed open delay."
   require_contains "$shortcut_web_case" "--visual-close-input toggle" "web shortcut proof should close with Shift+Tab-only toggle input."
+  require_contains "$store_open_wait_case" "--visual-close-input toggle" "store openAndWait proof should close through Steam's Shift+Tab toggle."
+  require_not_contains "$store_open_wait_case" "--visual-close-input web" "store openAndWait proof must not use its unreliable visible web close control."
+  require_contains "$game_presenter_case" "--action presenter-ready" "Game Mode must prove managed presenter readiness without opening a web route."
+  require_contains "$game_store_case" "--action store" "Game Mode must use its compositor-native store activation route."
+  require_contains "$game_store_case" "--visual-close-input escape" "Game Mode store proof must return through SteamUI Escape."
+  require_contains "$game_store_case" "--require-close-deactivated" "Game Mode store proof must require active=false and app focus return."
+  require_not_contains "$game_output" "--action presenter-web" "Game Mode must not run the known non-activating managed web route."
   run_summary_self_test
 
   echo "Steam Deck overlay matrix self-test passed."
@@ -519,10 +802,13 @@ if [ "$mode" = "summarize" ]; then
 fi
 
 case_manifest="$artifact_root/matrix-cases.jsonl"
+matrix_manifest="$artifact_root/matrix-manifest.json"
+cleanup_evidence="$artifact_root/matrix-cleanup.json"
 
-if [ "$dry_run" != "1" ]; then
-  mkdir -p "$artifact_root"
-  : > "$case_manifest"
+if [ "$dry_run" = "1" ]; then
+  write_matrix_manifest
+else
+  prepare_matrix_artifacts
 fi
 
 echo "Steam Deck overlay matrix"
@@ -554,6 +840,18 @@ if [ "$skip_preflight" != "1" ]; then
   run_or_print "${preflight_cmd[@]}"
 fi
 
+if [ "$suite" = "game" ]; then
+  run_deck_case "presenter-ready" \
+    --action presenter-ready
+
+  run_deck_case "store" \
+    --keep-open-after-result \
+    --visual-close-probe \
+    --visual-close-input escape \
+    --require-close-deactivated \
+    --require-no-crashes \
+    --action store
+else
 run_web_surface_case "web-modal" \
   --action presenter-web \
   --web-url "https://store.steampowered.com/app/$app_id/" \
@@ -625,7 +923,10 @@ if [ "$suite" = "core" ] || [ "$suite" = "full" ]; then
     --web-modal true \
     --web-url "https://store.steampowered.com/app/$app_id/"
 
-  run_web_surface_case "store-open-and-wait" \
+  run_deck_case "store-open-and-wait" \
+    --keep-open-after-result \
+    --visual-close-probe \
+    --visual-close-input toggle \
     --action presenter-store-open-and-wait
 
   run_web_surface_case "dialog-auto-open-and-wait" \
@@ -640,6 +941,9 @@ if [ "$suite" = "full" ]; then
   run_dialog_auto_case "Stats"
   run_dialog_auto_case "Achievements"
 fi
+fi
+
+write_cleanup_evidence
 
 echo
 echo "Steam Deck overlay matrix passed."
