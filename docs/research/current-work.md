@@ -2,18 +2,17 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `1e6224f` (`Record Windows clean-environment boundary`).
+Review anchor: `39f7e82` (`Align Windows lifecycle smoke assertions`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
 ## Active Goal
 
-Finish and publish the autonomous Windows x64 production-readiness slice for
-exact signed candidate `3abcc3f`. The public App ID `480` release contract is
-complete locally. Run the remaining repository checks, commit intentionally,
-push, and verify exact CI. Keep the separate real client-session `InitTxn`
-proof deferred until the configured game, capable backend/application path,
-and complete private runtime request handoff are available.
+The autonomous Windows x64 public release slice for exact signed candidate
+`3abcc3f` is complete and published through `39f7e82`. Preserve that settled
+proof and keep the separate real client-session `InitTxn` proof deferred until
+the configured game, capable backend/application path, and complete private
+runtime request handoff are available.
 
 ## Current State
 
@@ -85,6 +84,11 @@ shortcut approval, and open-and-wait routing only. Do not run a private proof
 until the complete non-empty request handoff and an `InitTxn`-capable configured
 game path exist.
 
+Commits `dd89b0b`, `0d755ef`, and `39f7e82` publish the broker, close-glyph and
+receipt contracts, documentation, and aligned package-smoke assertions. Exact
+CI run `29389571866` passes Windows x64, Linux x64, macOS Apple Silicon, and the
+full Linux package smoke.
+
 ## Last Verification
 
 - Receipt generator self-test and strict Windows matrix summary self-test pass.
@@ -110,22 +114,24 @@ game path exist.
   assertion because Node resolves that fixture as `C:\\tmp\\...`. Git Bash and
   bundled Python do not supply full Unix fixture semantics; exact Linux CI is
   the supported full package-smoke gate.
-- Exact post-push CI is still pending for this worktree slice.
+- Exact post-push CI `29389571866` passes all four jobs: Windows x64, Linux x64,
+  macOS Apple Silicon, and package smoke. The package-smoke job includes the
+  complete Windows helper static contract and matrix-summary self-test.
 
 ## Next Actions
 
-1. Complete the tracked privacy scan and final exact diff review.
-2. Preserve unrelated user changes, stage only this slice, commit, push, and
-   verify GitHub CI, including the full Linux package smoke.
-3. Leave real client-session purchase proof blocked until the configured game,
+1. Leave real client-session purchase proof blocked until the configured game,
    capable `InitTxn` path, and complete private runtime handoff exist.
+2. Rerun the public Windows profiles only under their ledger conditions, not
+   for additional confidence.
 
 ## Exact Next Step
 
-Review and publish the exact slice, then verify post-push GitHub CI. Do not
-rerun the four live profiles unless Steam, candidate binding, broker protocol,
-close-glyph evidence, presenter lifecycle, or receipt semantics materially
-changes or a later audit regresses.
+No further public Windows action is required. The next meaningful live action
+is the private configured-game purchase proof, and only after its documented
+`InitTxn` prerequisites exist. Do not rerun the four public profiles unless
+Steam, candidate binding, broker protocol, close-glyph evidence, presenter
+lifecycle, or receipt semantics materially changes or a later audit regresses.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
