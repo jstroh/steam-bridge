@@ -141,6 +141,19 @@ close target first, binds the exact lifecycle native-host window to the Smoke
 process and interactive session, then makes one authenticated loopback request
 for that owning process to run its existing native-host activation path.
 
+Current web-close evidence searches the physical per-monitor-DPI screenshot
+around the scale-aware panel target and requires the Steam close glyph's
+16-sample diagonal score, search bounds, coordinate, panel, and host geometry.
+Persistent reuse binds cycle one directly to that glyph; later verify-only
+cycles may reuse only the exact cycle-one coordinate on the reconfirmed same
+host when the cursor obscures the glyph. Fixed points and extra pointer input
+remain rejected.
+
+For unattended current release proof, use the challenge-bound foreground
+broker described below. The external title-bar/acknowledgement protocol in the
+next paragraphs is retained only to interpret historical diagnostic artifacts;
+do not use it for new release evidence.
+
 The single-cycle active managed, shortcut-route, and public synthetic-checkout
 cases use schema-3 `same-process-user-gesture-v1`. The historical managed web
 and duplicate-open cases retain their dedicated **Presenter Web Wait** and
@@ -160,9 +173,9 @@ listener for
 and its exact PID and HWND, records one sanitized source-ready event, arms the
 listener, and atomically writes the actionable case-local
 `external-foreground-ready.json`. The marker
-contains a fresh non-secret challenge. An external interactive-desktop
-coordinator may then perform exactly one safe title-bar click in that Smoke
-window. Only after that click call succeeds, it must copy the challenge into an
+contains a fresh non-secret challenge. The historical interactive-desktop
+coordinator then performed exactly one title-bar click in that Smoke window.
+Only after that click returned did it copy the challenge into an
 atomic `external-foreground-ack.json` with this closed shape (the example is
 the managed-web action):
 
@@ -199,9 +212,10 @@ The WinEvent proves the exact foreground state transition; it does not by
 itself identify the physical input that caused it. Together, the artifacts
 prove that one controller click completed and one exact-window foreground event
 occurred during the armed interval; they do not prove strict causality between
-those facts. Live proof must retain the operational record that the coordinator
-sent one Parsec/local title-bar click only after the atomic marker appeared and
-wrote the acknowledgment only after the click returned success. All waits are
+those facts. Historical proof retained the operational record that the
+coordinator sent one Parsec/local title-bar click only after the atomic marker
+appeared and wrote the acknowledgment only after the click returned success.
+All waits are
 bounded by the case deadline as failure guardrails, not focus retries. A missing
 or replayed acknowledgment, wrong challenge, missing or duplicate event, wrong
 window, stale process identity, hook teardown error, marker-write failure, or
@@ -239,9 +253,41 @@ broader diagnostic artifact retains its established process and foreground
 snapshots. A missing, duplicated, pre-consumed, mismatched, occluded, or
 focus-lost gate sends no close input. Web close uses one three-event
 `SendInput` call; a partial result fails evidence instead of falling back to a
-second pointer mechanism. A separate foreground broker is not part of this
-path; consider one only if the same-process mechanism is disproved by a focused
-current-package run.
+second pointer mechanism.
+
+Current unattended release proof uses a separate broker window. Build it once
+from the repository with:
+
+```powershell
+.\scripts\windows-foreground-grant-broker.ps1
+```
+
+Start the returned executable in Steam's interactive desktop session, then pass
+`-RequireForegroundGrantBeforeLaunch` and its exact path through
+`-ForegroundGrantBrokerExe`. The matrix writes `request.json` beside that
+binary. One deliberate click on **Grant foreground launch** calls
+`AllowSetForegroundWindow(ASFW_ANY)` and writes a fresh acknowledgement. The
+matrix accepts it only when the challenge, case, broker hash, PID, start time,
+session, visible foreground window, on-monitor rectangle, input target, and
+acknowledgement age all agree. The broker records that it sent no candidate
+input; the matrix sends no input during this grant and rejects candidate input.
+Use the task wrapper so the matrix remains in Steam's interactive session:
+
+```json
+[
+  "-Suite", "managed-routes",
+  "-CandidateAuditManifest", "C:\\path\\to\\steam-bridge-windows-package-audit.json",
+  "-AssumeShortcutConfigured",
+  "-CloseProbe",
+  "-RequireForegroundGrantBeforeLaunch",
+  "-ForegroundGrantBrokerExe", "C:\\path\\to\\SteamBridgeForegroundGrantBroker.exe",
+  "-TaskCleanupExpected"
+]
+```
+
+The same broker contract covers `persistent-reuse`, `checkout`,
+`shortcut-routes`, and `managed-routes`. Do not combine it with title-bar click
+coordination, candidate-directed input, focus APIs, or timing retries.
 The Windows matrix also has explicit managed profile, players, community,
 stats, achievements, and user cases. Current D3D11 managed-route artifacts prove
 those Steam Community-style routes with close/back-to-app behavior and clean

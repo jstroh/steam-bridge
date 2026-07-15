@@ -48,6 +48,9 @@ param(
   [switch]$CleanStaleOverlayHelpers,
   [switch]$AllowUnhealthySteamClientLogs,
   [int]$SteamClientHealthRecentMinutes = 30,
+  [switch]$RequireForegroundGrantBeforeLaunch,
+  [string]$ForegroundGrantBrokerExe = "",
+  [int]$ForegroundGrantTimeoutSeconds = 120,
   [switch]$PrivateEnvImported,
   [switch]$CloseProbe,
   [ValidateSet("auto", "toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput")]
@@ -66,6 +69,44 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not ("SteamBridgeForegroundGrantGateNative" -as [type])) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class SteamBridgeForegroundGrantGateNative {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct RECT {
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
+  }
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  public static extern bool IsWindowVisible(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  public static extern bool IsIconic(IntPtr hWnd);
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
+}
+"@
+}
 
 if (-not ("SteamBridgeExactProcessStop" -as [type])) {
   Add-Type -TypeDefinition @"
@@ -257,6 +298,7 @@ $ExternalForegroundTransition = "external-foreground-event-v1"
 $AutorunUserGestureGatePolicy = "single-cycle-active-v1"
 $PersistentReuseGatePolicy = "initial-user-gesture-verify-only-v1"
 $PersistentReuseEvidenceSchema = 1
+$ForegroundGrantEvidenceSchema = 1
 
 function Test-PathAncestorChainHasReparsePoint {
   param([string]$Path)
@@ -365,6 +407,35 @@ if ($LaunchMode -eq "steam-app" -and ($InstallShortcut -or $AssumeShortcutConfig
 
 if ($LaunchMode -eq "steam-app" -and $AppId -eq 480) {
   throw "-LaunchMode steam-app requires your configured Steam app ID; use the non-Steam shortcut mode for public App ID 480 smoke proof."
+}
+
+if ($ForegroundGrantBrokerExe) {
+  $ForegroundGrantBrokerExe = [System.IO.Path]::GetFullPath($ForegroundGrantBrokerExe)
+}
+
+if ($RequireForegroundGrantBeforeLaunch -and (
+  $LaunchMode -ne "steam-launch" -or
+  $Suite -notin @("managed", "managed-routes", "shortcut-routes", "checkout", "persistent-reuse", "full")
+)) {
+  throw (
+    "-RequireForegroundGrantBeforeLaunch is limited to Steam-shortcut live route suites. " +
+    "It challenge-binds a local foreground grant before launch and does not apply to setup, readiness, or direct modes."
+  )
+}
+
+if ($RequireForegroundGrantBeforeLaunch -and (
+  -not $ForegroundGrantBrokerExe -or
+  -not (Test-Path -LiteralPath $ForegroundGrantBrokerExe -PathType Leaf)
+)) {
+  throw "-RequireForegroundGrantBeforeLaunch requires an existing -ForegroundGrantBrokerExe."
+}
+
+if (-not $RequireForegroundGrantBeforeLaunch -and $ForegroundGrantBrokerExe) {
+  throw "-ForegroundGrantBrokerExe requires -RequireForegroundGrantBeforeLaunch."
+}
+
+if ($ForegroundGrantTimeoutSeconds -lt 1 -or $ForegroundGrantTimeoutSeconds -gt 300) {
+  throw "-ForegroundGrantTimeoutSeconds must be between 1 and 300."
 }
 
 function Resolve-HelperPath {
@@ -3213,6 +3284,11 @@ function Write-MatrixManifest {
   param([object[]]$Cases)
 
   $expectedNativeHostBackend = Resolve-ExpectedWindowsNativeHostBackend
+  $foregroundGrantBrokerSha256 = if ($ForegroundGrantBrokerExe) {
+    (Get-FileHash -LiteralPath $ForegroundGrantBrokerExe -Algorithm SHA256).Hash.ToLowerInvariant()
+  } else {
+    ""
+  }
   $publicSyntheticCheckout = (
     $Suite -eq "checkout" -and
     $AppId -eq 480 -and
@@ -3333,6 +3409,16 @@ function Write-MatrixManifest {
     allowUnhealthySteamClientLogs = [bool]$AllowUnhealthySteamClientLogs
     cleanStaleOverlayHelpers = [bool]$CleanStaleOverlayHelpers
     steamClientHealthRecentMinutes = [int]$SteamClientHealthRecentMinutes
+    foregroundGrantGate = [PSCustomObject]@{
+      required = [bool]$RequireForegroundGrantBeforeLaunch
+      schemaVersion = $ForegroundGrantEvidenceSchema
+      timeoutSeconds = [int]$ForegroundGrantTimeoutSeconds
+      brokerConfigured = [bool]$ForegroundGrantBrokerExe
+      brokerSha256 = $foregroundGrantBrokerSha256
+      matrixInputSent = $false
+      candidateInputAllowed = $false
+    }
+    webCloseTargetEvidence = "screenshot-close-glyph-v1"
     privateEnvImported = [bool]$PrivateEnvImported
     timeoutSeconds = [int]$TimeoutSeconds
     closeProbeSettleMs = [int]$CloseProbeSettleMs
@@ -3509,10 +3595,10 @@ function Start-WindowsOverlayCloseProbe {
     $userGestureAction = [string]$userGestureCase.action
     $userGestureTargetId = [string]$userGestureCase.targetId
   }
-  $userGestureLifecycleCompleteEvent = if ($userGestureAction -eq "presenter-checkout") {
-    "overlay:presenter-checkout-open-and-wait-complete"
-  } else {
-    "overlay:presenter-open-and-wait-complete"
+  $userGestureLifecycleCompleteEvent = switch ($userGestureAction) {
+    "presenter-checkout" { "overlay:presenter-checkout-open-and-wait-complete"; break }
+    "presenter-shortcut" { "overlay:presenter-parked"; break }
+    default { "overlay:presenter-open-and-wait-complete" }
   }
   if (-not (Test-CaseUsesCloseProbe -Case $Case)) {
     return $null
@@ -4995,6 +5081,92 @@ function Get-WebClosePanelRect {
   return `$null
 }
 
+function Find-WebCloseGlyphFromScreenshot {
+  param(
+    [object]`$Screenshot,
+    [int]`$CandidateX,
+    [int]`$CandidateY
+  )
+
+  if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$Screenshot.bounds) {
+    return `$null
+  }
+
+  `$bitmap = `$null
+  try {
+    `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
+    `$bounds = `$Screenshot.bounds
+    `$searchLeft = [int][Math]::Max(`$bounds.left, `$CandidateX - 80)
+    `$searchTop = [int][Math]::Max(`$bounds.top, `$CandidateY - 50)
+    `$searchRight = [int][Math]::Min(`$bounds.left + `$bounds.width - 1, `$CandidateX + 80)
+    `$searchBottom = [int][Math]::Min(`$bounds.top + `$bounds.height - 1, `$CandidateY + 50)
+    if ((`$searchLeft % 2) -ne 0) {
+      `$searchLeft += 1
+    }
+    if ((`$searchTop % 2) -ne 0) {
+      `$searchTop += 1
+    }
+
+    `$best = `$null
+    foreach (`$y in (`$searchTop..`$searchBottom | Where-Object { (`$_ % 2) -eq 0 })) {
+      foreach (`$x in (`$searchLeft..`$searchRight | Where-Object { (`$_ % 2) -eq 0 })) {
+        `$score = 0
+        foreach (`$distance in @(4, 7, 10, 13)) {
+          foreach (`$offset in @(
+            @(-`$distance, -`$distance),
+            @(`$distance, -`$distance),
+            @(-`$distance, `$distance),
+            @(`$distance, `$distance)
+          )) {
+            `$bitmapX = [int](`$x + `$offset[0] - `$bounds.left)
+            `$bitmapY = [int](`$y + `$offset[1] - `$bounds.top)
+            if (`$bitmapX -lt 0 -or `$bitmapY -lt 0 -or `$bitmapX -ge `$bitmap.Width -or `$bitmapY -ge `$bitmap.Height) {
+              continue
+            }
+            `$pixel = `$bitmap.GetPixel(`$bitmapX, `$bitmapY)
+            `$pixelMax = [Math]::Max(`$pixel.R, [Math]::Max(`$pixel.G, `$pixel.B))
+            `$pixelMin = [Math]::Min(`$pixel.R, [Math]::Min(`$pixel.G, `$pixel.B))
+            if (`$pixelMax -ge 80 -and (`$pixelMax - `$pixelMin) -le 55) {
+              `$score += 1
+            }
+          }
+        }
+        if (`$score -lt 10) {
+          continue
+        }
+        if (
+          -not `$best -or
+          `$score -gt `$best.score -or
+          (`$score -eq `$best.score -and `$y -lt `$best.y) -or
+          (`$score -eq `$best.score -and `$y -eq `$best.y -and `$x -lt `$best.x)
+        ) {
+          `$best = [PSCustomObject]@{
+            schema = 1
+            x = [int]`$x
+            y = [int]`$y
+            score = [int]`$score
+            sampleCount = 16
+            minimumScore = 10
+            search = [PSCustomObject]@{
+              left = `$searchLeft
+              top = `$searchTop
+              right = `$searchRight
+              bottom = `$searchBottom
+            }
+          }
+        }
+      }
+    }
+    return `$best
+  } catch {
+    return `$null
+  } finally {
+    if (`$bitmap) {
+      `$bitmap.Dispose()
+    }
+  }
+}
+
 function Focus-SmokeWindowForShortcutProbe {
   `$candidate = Get-Process SteamBridgeSmoke -ErrorAction SilentlyContinue |
     Where-Object { `$_.MainWindowHandle -and `$_.MainWindowHandle -ne [IntPtr]::Zero } |
@@ -5113,21 +5285,64 @@ function Get-WebCloseClickTarget {
   }
 
   `$rect = `$panel.rect
+  # The Steam close glyph is 16x18 logical pixels from the panel corner.
+  # Resolve its physical inset from live DPI, with presenter geometry fallback.
+  `$scaleEvidence = Get-WebCloseDpiScale
+  `$scale = [double]`$scaleEvidence.value
+  `$rightInset = [int]([Math]::Min(
+    [Math]::Max(1, `$rect.width - 1),
+    [Math]::Max(1, [Math]::Round(16 * `$scale))
+  ))
+  `$topInset = [int]([Math]::Min(
+    [Math]::Max(1, `$rect.height - 1),
+    [Math]::Max(1, [Math]::Round(18 * `$scale))
+  ))
+  `$targetX = if (`$panel.source -eq "screenshot-steam-web-panel") {
+    [int]([Math]::Round(`$rect.right - `$rightInset))
+  } else {
+    [int]([Math]::Round(`$rect.left + (`$rect.width * 0.847)))
+  }
+  `$targetY = if (`$panel.source -eq "screenshot-steam-web-panel") {
+    [int]([Math]::Round(`$rect.top + `$topInset))
+  } else {
+    [int]([Math]::Round(`$rect.top + (`$rect.height * 0.142)))
+  }
+  `$glyph = Find-WebCloseGlyphFromScreenshot -Screenshot `$Screenshot -CandidateX `$targetX -CandidateY `$targetY
+  if (`$glyph) {
+    `$correctedRight = [int][Math]::Min(`$Foreground.rect.right, `$glyph.x + `$rightInset)
+    `$correctedTop = [int][Math]::Max(`$Foreground.rect.top, `$glyph.y - `$topInset)
+    `$correctedRect = [PSCustomObject]@{
+      left = [int]`$rect.left
+      top = `$correctedTop
+      right = `$correctedRight
+      bottom = [int]`$rect.bottom
+      width = [int](`$correctedRight - `$rect.left)
+      height = [int](`$rect.bottom - `$correctedTop)
+    }
+    `$approachDistance = [int][Math]::Max(1, [Math]::Round(32 * `$scale))
+    `$approachX = [int][Math]::Max(`$correctedRect.left + 1, `$glyph.x - `$approachDistance)
+    return [PSCustomObject]@{
+      x = `$glyph.x
+      y = `$glyph.y
+      source = "screenshot-steam-web-close-glyph"
+      panel = `$correctedRect
+      scale = `$scaleEvidence
+      approach = [PSCustomObject]@{
+        x = `$approachX
+        y = `$glyph.y
+        logicalDistance = 32
+      }
+      insets = [PSCustomObject]@{
+        right = `$rightInset
+        top = `$topInset
+        logicalRight = 16
+        logicalTop = 18
+      }
+      glyph = `$glyph
+    }
+  }
+
   if (`$panel.source -eq "screenshot-steam-web-panel") {
-    # The Steam close glyph is 16x18 logical pixels from the panel corner.
-    # Resolve its physical inset from live DPI, with presenter geometry fallback.
-    `$scaleEvidence = Get-WebCloseDpiScale
-    `$scale = [double]`$scaleEvidence.value
-    `$rightInset = [int]([Math]::Min(
-      [Math]::Max(1, `$rect.width - 1),
-      [Math]::Max(1, [Math]::Round(16 * `$scale))
-    ))
-    `$topInset = [int]([Math]::Min(
-      [Math]::Max(1, `$rect.height - 1),
-      [Math]::Max(1, [Math]::Round(18 * `$scale))
-    ))
-    `$targetX = [int]([Math]::Round(`$rect.right - `$rightInset))
-    `$targetY = [int]([Math]::Round(`$rect.top + `$topInset))
     `$approachDistance = [int][Math]::Max(1, [Math]::Round(32 * `$scale))
     `$approachX = [int][Math]::Max(`$rect.left + 1, `$targetX - `$approachDistance)
     return [PSCustomObject]@{
@@ -7070,6 +7285,212 @@ function Minimize-DesktopWindowsForSteamLaunch {
   Write-MatrixJsonFile -Path $evidencePath -Value $evidence -Depth 4
 }
 
+function Get-ForegroundGrantHandshakePaths {
+  $directory = Split-Path -Parent ([System.IO.Path]::GetFullPath($ForegroundGrantBrokerExe))
+  return [PSCustomObject]@{
+    directory = $directory
+    request = Join-Path $directory "request.json"
+    acknowledgement = Join-Path $directory "ack.json"
+  }
+}
+
+function Remove-ForegroundGrantHandshakeFiles {
+  if (-not $RequireForegroundGrantBeforeLaunch) {
+    return
+  }
+  $paths = Get-ForegroundGrantHandshakePaths
+  Remove-Item -LiteralPath $paths.request,$paths.acknowledgement -Force -ErrorAction SilentlyContinue
+}
+
+function Wait-ForegroundGrantBeforeLaunch {
+  param($Case, [string]$CaseDir)
+
+  if (-not $RequireForegroundGrantBeforeLaunch) {
+    return
+  }
+
+  $paths = Get-ForegroundGrantHandshakePaths
+  New-Item -ItemType Directory -Force -Path $paths.directory | Out-Null
+  Remove-ForegroundGrantHandshakeFiles
+
+  $caseRequestPath = Join-Path $CaseDir "foreground-grant-request.json"
+  $caseAckPath = Join-Path $CaseDir "foreground-grant-ack.json"
+  $gatePath = Join-Path $CaseDir "foreground-grant-gate.json"
+  $brokerSha256 = (Get-FileHash -LiteralPath $ForegroundGrantBrokerExe -Algorithm SHA256).Hash.ToLowerInvariant()
+  $challenge = [Guid]::NewGuid().ToString("N")
+  $requestedAt = (Get-Date).ToUniversalTime()
+  $expiresAt = $requestedAt.AddSeconds($ForegroundGrantTimeoutSeconds)
+  $request = [PSCustomObject]@{
+    kind = "steam-bridge-windows-foreground-grant-request"
+    schemaVersion = $ForegroundGrantEvidenceSchema
+    challenge = $challenge
+    caseId = [string]$Case.id
+    requestedAt = $requestedAt.ToString("o")
+    expiresAt = $expiresAt.ToString("o")
+    currentSessionId = Get-CurrentWindowsSessionId
+    brokerSha256 = $brokerSha256
+    inputTarget = "broker-button"
+    candidateInputAllowed = $false
+  }
+  Write-MatrixJsonFile -Path $caseRequestPath -Value $request -Depth 5
+  Write-MatrixJsonFile -Path $paths.request -Value $request -Depth 5
+  Write-Host ("Waiting for a challenge-bound foreground grant before case {0}. Request: {1}" -f $Case.id, $caseRequestPath)
+
+  $acknowledgement = $null
+  $observation = $null
+  $lastFailure = "acknowledgement-missing"
+  while ((Get-Date).ToUniversalTime() -lt $expiresAt) {
+    $candidateAck = $null
+    if (Test-Path -LiteralPath $paths.acknowledgement) {
+      try {
+        $candidateAck = Read-MatrixJsonFile -Path $paths.acknowledgement
+      } catch {
+        $candidateAck = $null
+      }
+    }
+    if (
+      $candidateAck -and
+      [string]$candidateAck.kind -ceq "steam-bridge-windows-foreground-grant-ack" -and
+      [int]$candidateAck.schemaVersion -eq $ForegroundGrantEvidenceSchema -and
+      [string]$candidateAck.challenge -ceq $challenge -and
+      [string]$candidateAck.caseId -ceq [string]$Case.id
+    ) {
+      $brokerProcess = Get-Process -Id ([int]$candidateAck.brokerPid) -ErrorAction SilentlyContinue
+      $brokerStartTicks = [int64]0
+      $brokerSessionId = -1
+      $brokerPath = ""
+      if ($brokerProcess) {
+        try {
+          $brokerStartTicks = [int64]$brokerProcess.StartTime.ToUniversalTime().Ticks
+          $brokerSessionId = [int]$brokerProcess.SessionId
+          $brokerPath = [string]$brokerProcess.Path
+        } catch {}
+      }
+      $pathMatches = [bool](
+        $brokerPath -and
+        [System.IO.Path]::GetFullPath($brokerPath).Equals(
+          [System.IO.Path]::GetFullPath($ForegroundGrantBrokerExe),
+          [System.StringComparison]::OrdinalIgnoreCase
+        )
+      )
+      $ackAt = [DateTime]::MinValue
+      [void][DateTime]::TryParse([string]$candidateAck.acknowledgedAt, [ref]$ackAt)
+      $ackAt = $ackAt.ToUniversalTime()
+
+      $foregroundHandle = [SteamBridgeForegroundGrantGateNative]::GetForegroundWindow()
+      [uint32]$foregroundOwnerPid = 0
+      $foregroundOwnerThread = if ($foregroundHandle -ne [IntPtr]::Zero) {
+        [SteamBridgeForegroundGrantGateNative]::GetWindowThreadProcessId(
+          $foregroundHandle,
+          [ref]$foregroundOwnerPid
+        )
+      } else {
+        0
+      }
+      $rect = [SteamBridgeForegroundGrantGateNative+RECT]::new()
+      $hasRect = if ($foregroundHandle -ne [IntPtr]::Zero) {
+        [SteamBridgeForegroundGrantGateNative]::GetWindowRect($foregroundHandle, [ref]$rect)
+      } else {
+        $false
+      }
+      $width = if ($hasRect) { [int]($rect.Right - $rect.Left) } else { 0 }
+      $height = if ($hasRect) { [int]($rect.Bottom - $rect.Top) } else { 0 }
+      $visible = [bool](
+        $foregroundHandle -ne [IntPtr]::Zero -and
+        [SteamBridgeForegroundGrantGateNative]::IsWindowVisible($foregroundHandle)
+      )
+      $notIconic = [bool](
+        $foregroundHandle -ne [IntPtr]::Zero -and
+        -not [SteamBridgeForegroundGrantGateNative]::IsIconic($foregroundHandle)
+      )
+      $onMonitor = [bool](
+        $foregroundHandle -ne [IntPtr]::Zero -and
+        [SteamBridgeForegroundGrantGateNative]::MonitorFromWindow($foregroundHandle, 0) -ne [IntPtr]::Zero
+      )
+      $observedAt = (Get-Date).ToUniversalTime()
+      $ok = [bool](
+        $brokerProcess -and
+        $pathMatches -and
+        $brokerSessionId -eq (Get-CurrentWindowsSessionId) -and
+        $brokerStartTicks -eq [int64]$candidateAck.brokerStartUtcTicks -and
+        [string]$candidateAck.brokerSha256 -ceq $brokerSha256 -and
+        $candidateAck.foregroundOwned -eq $true -and
+        $candidateAck.allowSetForegroundWindowResult -eq $true -and
+        [string]$candidateAck.inputTarget -ceq "broker-button" -and
+        $candidateAck.candidateInputSent -eq $false -and
+        $ackAt -ge $requestedAt -and
+        $ackAt -le $observedAt -and
+        ($observedAt - $ackAt).TotalSeconds -le 5 -and
+        $foregroundOwnerThread -gt 0 -and
+        [int]$foregroundOwnerPid -eq [int]$candidateAck.brokerPid -and
+        [int64]$foregroundHandle.ToInt64() -eq [int64]$candidateAck.foregroundHandle -and
+        $visible -and
+        $notIconic -and
+        $onMonitor -and
+        $width -ge 320 -and
+        $height -ge 120
+      )
+      $observation = [PSCustomObject]@{
+        observedAt = $observedAt.ToString("o")
+        brokerProcessPresent = [bool]$brokerProcess
+        brokerPathMatches = $pathMatches
+        brokerSessionId = $brokerSessionId
+        brokerStartUtcTicks = $brokerStartTicks
+        foregroundHandle = [int64]$foregroundHandle.ToInt64()
+        foregroundOwnerPid = [int]$foregroundOwnerPid
+        foregroundOwnerThreadId = [int64]$foregroundOwnerThread
+        visible = $visible
+        notIconic = $notIconic
+        onMonitor = $onMonitor
+        rect = [PSCustomObject]@{
+          left = [int]$rect.Left
+          top = [int]$rect.Top
+          right = [int]$rect.Right
+          bottom = [int]$rect.Bottom
+          width = $width
+          height = $height
+        }
+        ok = $ok
+      }
+      if ($ok) {
+        $acknowledgement = $candidateAck
+        break
+      }
+      $lastFailure = "acknowledgement-or-foreground-binding-invalid"
+    }
+    Start-Sleep -Milliseconds 50
+  }
+
+  $completedAt = (Get-Date).ToUniversalTime()
+  $ok = $null -ne $acknowledgement -and $observation.ok -eq $true
+  if ($acknowledgement) {
+    Write-MatrixJsonFile -Path $caseAckPath -Value $acknowledgement -Depth 6
+  }
+  Write-MatrixJsonFile -Path $gatePath -Value ([PSCustomObject]@{
+    kind = "steam-bridge-windows-foreground-grant-gate"
+    schemaVersion = $ForegroundGrantEvidenceSchema
+    challenge = $challenge
+    caseId = [string]$Case.id
+    required = $true
+    requestedAt = $requestedAt.ToString("o")
+    completedAt = $completedAt.ToString("o")
+    elapsedMilliseconds = [int][Math]::Max(0, ($completedAt - $requestedAt).TotalMilliseconds)
+    brokerSha256 = $brokerSha256
+    acknowledgement = $acknowledgement
+    observation = $observation
+    matrixInputSent = $false
+    candidateInputAllowed = $false
+    ok = $ok
+    failure = if ($ok) { $null } else { $lastFailure }
+  }) -Depth 8
+
+  Remove-ForegroundGrantHandshakeFiles
+  if (-not $ok) {
+    throw "Timed out waiting for a valid challenge-bound foreground grant before launch."
+  }
+  Write-Host ("Challenge-bound foreground grant passed for case {0}." -f $Case.id)
+}
+
 function Read-MatrixSmokeResult {
   param([string]$Path)
 
@@ -7454,6 +7875,7 @@ function Invoke-MatrixCase {
       -ControlHandoffOnly:([bool]$controlFile) `
       -KeepOpenAfterResult:$keepOpenForUserGestureCompletion
     Minimize-DesktopWindowsForSteamLaunch -CaseDir $caseDir
+    Wait-ForegroundGrantBeforeLaunch -Case $Case -CaseDir $caseDir
     if ($LaunchMode -eq "steam-launch") {
       if (-not $ShortcutGameId) {
         throw "Missing -ShortcutGameId for steam-launch matrix mode."
@@ -7711,6 +8133,11 @@ Write-Host ("  skipRenderHealthGate: {0}" -f $SkipRenderHealthGate)
 Write-Host ("  allowUnhealthyDefaultRender: {0}" -f $AllowUnhealthyDefaultRender)
 Write-Host ("  userDialog: {0}" -f $UserDialog)
 Write-Host ("  cleanStaleOverlayHelpers: {0}" -f $CleanStaleOverlayHelpers)
+Write-Host ("  requireForegroundGrantBeforeLaunch: {0}" -f $RequireForegroundGrantBeforeLaunch)
+if ($RequireForegroundGrantBeforeLaunch) {
+  Write-Host "  foregroundGrantBrokerExe: configured"
+  Write-Host ("  foregroundGrantTimeoutSeconds: {0}" -f $ForegroundGrantTimeoutSeconds)
+}
 Write-Host ("  checkoutJsonFile: {0}" -f $(if ($CheckoutJsonFile) { "present" } else { "" }))
 Write-Host ("  initTxnRequestFile: {0}" -f $(if ($InitTxnRequestFile) { "present" } else { "" }))
 Write-Host ("  initTxnResponseFile: {0}" -f $(if ($CheckoutJsonFile -and $InitTxnRequestFile) { "present" } else { "" }))

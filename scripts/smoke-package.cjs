@@ -471,6 +471,19 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   const matrixHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-matrix.ps1"), "utf8");
   const taskWrapper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-overlay-task.ps1"), "utf8");
+  const foregroundGrantBrokerBuilder = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-foreground-grant-broker.ps1"),
+    "utf8"
+  );
+  const foregroundGrantBrokerSource = fs.readFileSync(
+    path.join(
+      repoRoot,
+      "scripts",
+      "windows-foreground-grant-broker",
+      "SteamBridgeForegroundGrantBroker.cs"
+    ),
+    "utf8"
+  );
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
   const candidateProtectionHelper = fs.readFileSync(
     path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
@@ -651,6 +664,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "lazyPresenterReady",
     "rendererProofRequired",
     "sameSteamIdentityAcrossProfiles",
+    "validateForegroundGrantManifest",
     "verifyCandidateDirectory",
     "readAndValidateLiveProofReceipt"
   ]) {
@@ -670,6 +684,54 @@ function runWindowsSmokeHelperStaticChecks() {
     '$TaskRunLevel.ToUpperInvariant()'
   ]) {
     assert.ok(taskWrapper.includes(expected), `Windows overlay task wrapper missing ${expected}`);
+  }
+  assert.ok(
+    matrixHelper.includes('"presenter-shortcut" { "overlay:presenter-parked"; break }'),
+    "Windows keyboard shortcut close probe must accept its parked lifecycle completion event"
+  );
+  assert.ok(
+    taskWrapper.includes('"-ForegroundGrantBrokerExe"'),
+    "Windows overlay task wrapper must redact the local foreground-grant broker path"
+  );
+  assert.ok(
+    matrixHelper.includes('"checkout", "persistent-reuse", "full"'),
+    "Windows foreground-grant broker must cover the persistent-reuse release profile"
+  );
+  for (const expected of [
+    "Find-WebCloseGlyphFromScreenshot",
+    'source = "screenshot-steam-web-close-glyph"',
+    'webCloseTargetEvidence = "screenshot-close-glyph-v1"'
+  ]) {
+    assert.ok(matrixHelper.includes(expected), `Windows overlay matrix missing ${expected}`);
+  }
+  for (const expected of [
+    "WEB_CLOSE_TARGET_EVIDENCE",
+    "webCloseGlyphEvidenceValid",
+    "binds the click to a directly detected Steam close glyph"
+  ]) {
+    assert.ok(matrixSummary.includes(expected), `Windows overlay summary missing ${expected}`);
+  }
+  for (const expected of [
+    "Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+    "/target:winexe",
+    "SteamBridgeForegroundGrantBroker.cs"
+  ]) {
+    assert.ok(
+      foregroundGrantBrokerBuilder.includes(expected),
+      `Windows foreground-grant broker builder missing ${expected}`
+    );
+  }
+  for (const expected of [
+    "AllowSetForegroundWindow",
+    "AsfwAny",
+    "steam-bridge-windows-foreground-grant-request",
+    "steam-bridge-windows-foreground-grant-ack",
+    "candidateInputSent = false"
+  ]) {
+    assert.ok(
+      foregroundGrantBrokerSource.includes(expected),
+      `Windows foreground-grant broker source missing ${expected}`
+    );
   }
   const nativeExitCapture = taskWrapper.slice(
     taskWrapper.indexOf("function Invoke-NativeExitCode"),

@@ -1,6 +1,7 @@
 param(
   [string]$AppDir = "",
   [string]$ArtifactRoot = "",
+  [string]$MatrixScriptPath = "",
   [string[]]$MatrixArgs = @(),
   [string]$MatrixArgsFile = "",
   [string]$PrivateEnvFile = "",
@@ -306,6 +307,7 @@ function Format-RedactedMatrixArgs {
     "-CheckoutReturnUrl",
     "-CheckoutTransactionId",
     "-CheckoutUrl",
+    "-ForegroundGrantBrokerExe",
     "-InitTxnApiKeyEnv",
     "-InitTxnEndpoint",
     "-InitTxnRequestFile",
@@ -1086,9 +1088,13 @@ if (-not $AppDir) {
   $AppDir = Split-Path -Parent $PSCommandPath
 }
 $AppDir = Resolve-FullPath $AppDir
-$matrixScript = Join-Path $AppDir "windows-overlay-matrix.ps1"
+$matrixScript = if ($MatrixScriptPath) {
+  Resolve-FullPath $MatrixScriptPath
+} else {
+  Join-Path $AppDir "windows-overlay-matrix.ps1"
+}
 if (-not (Test-Path -LiteralPath $matrixScript)) {
-  throw "Missing windows-overlay-matrix.ps1 beside AppDir: $matrixScript"
+  throw "Missing Windows overlay matrix script."
 }
 
 if (-not $ArtifactRoot) {
@@ -1306,6 +1312,7 @@ Write-Host "Windows overlay interactive task:"
 Write-Host ("  taskName: {0}" -f $taskName)
 Write-Host ("  appDir: {0}" -f $AppDir)
 Write-Host ("  artifactRoot: {0}" -f $ArtifactRoot)
+Write-Host ("  matrixScriptPath: {0}" -f $(if ($MatrixScriptPath) { "configured" } else { "package-default" }))
 Write-Host ("  privateEnvFile: {0}" -f $(if ($PrivateEnvFile) { "present" } else { "" }))
 Write-Host ("  matrixArgsFile: {0}" -f $(if ($MatrixArgsFile) { "present" } else { "" }))
 Write-Host ("  matrixArgs: {0}" -f (Format-RedactedMatrixArgs $resolvedMatrixArgs))

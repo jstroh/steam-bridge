@@ -29,6 +29,17 @@ const SAME_PROCESS_HANDOFF = "same-process-user-gesture-v1";
 const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
 const USER_GESTURE_POLICY = "single-cycle-active-v1";
 const PERSISTENT_REUSE_POLICY = "initial-user-gesture-verify-only-v1";
+const WEB_CLOSE_TARGET_EVIDENCE = "screenshot-close-glyph-v1";
+const FOREGROUND_GRANT_EVIDENCE_SCHEMA = 1;
+const FOREGROUND_GRANT_KEYS = Object.freeze([
+  "brokerConfigured",
+  "brokerSha256",
+  "candidateInputAllowed",
+  "matrixInputSent",
+  "required",
+  "schemaVersion",
+  "timeoutSeconds"
+]);
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
 
 const WAIT_EVENTS = Object.freeze([
@@ -268,7 +279,14 @@ function generateLiveProofReceipt(options) {
 }
 
 function validatePublicManifest(manifest, contract, candidateBinding) {
-  assertExactKeys(manifest, MATRIX_MANIFEST_KEYS, "matrix manifest");
+  const manifestKeys = [...MATRIX_MANIFEST_KEYS];
+  if (manifest.webCloseTargetEvidence !== undefined) {
+    manifestKeys.push("webCloseTargetEvidence");
+  }
+  if (manifest.foregroundGrantGate !== undefined) {
+    manifestKeys.push("foregroundGrantGate");
+  }
+  assertExactKeys(manifest, manifestKeys, "matrix manifest");
   assert.equal(manifest.kind, "steam-bridge-windows-overlay-matrix-manifest");
   assertIsoTimestamp(manifest.generatedAt, "matrix manifest timestamp");
   assert.equal(manifest.suite, contract.suite);
@@ -282,6 +300,12 @@ function validatePublicManifest(manifest, contract, candidateBinding) {
   assert.equal(manifest.onlyCase, "");
   assert.equal(manifest.expectedCaseCount, contract.cases.length);
   assert.equal(manifest.webUrlUsesPublicDefault, true);
+  if (manifest.webCloseTargetEvidence !== undefined) {
+    assert.equal(manifest.webCloseTargetEvidence, WEB_CLOSE_TARGET_EVIDENCE);
+  }
+  if (manifest.foregroundGrantGate !== undefined) {
+    validateForegroundGrantManifest(manifest.foregroundGrantGate);
+  }
   assert.equal(manifest.shortcutNamePresent, true);
   assert.equal(manifest.shortcutExeConfigured, false);
   assert.equal(manifest.shortcutStartDirConfigured, false);
@@ -387,6 +411,23 @@ function validatePublicManifest(manifest, contract, candidateBinding) {
   assert.deepEqual(manifest.cases, contract.cases);
 }
 
+function validateForegroundGrantManifest(gate) {
+  assertExactKeys(gate, FOREGROUND_GRANT_KEYS, "foreground grant gate");
+  assert.equal(typeof gate.required, "boolean");
+  assert.equal(gate.schemaVersion, FOREGROUND_GRANT_EVIDENCE_SCHEMA);
+  assert.ok(Number.isInteger(gate.timeoutSeconds) && gate.timeoutSeconds >= 1 && gate.timeoutSeconds <= 300);
+  assert.equal(typeof gate.brokerConfigured, "boolean");
+  if (gate.required) {
+    assert.equal(gate.brokerConfigured, true);
+    assert.match(gate.brokerSha256 || "", /^[a-f0-9]{64}$/);
+  } else {
+    assert.equal(gate.brokerConfigured, false);
+    assert.equal(gate.brokerSha256, "");
+  }
+  assert.equal(gate.matrixInputSent, false);
+  assert.equal(gate.candidateInputAllowed, false);
+}
+
 function validateProfileSummary(summary, contract, candidateBinding) {
   assert.ok(summary && typeof summary === "object" && !Array.isArray(summary));
   assert.deepEqual(summary.failures, []);
@@ -464,7 +505,7 @@ function validateProfileSummary(summary, contract, candidateBinding) {
   assert.equal(nativeLoad.lifecycleCompleteCount, 0);
   assert.equal(nativeLoad.crashDumpCount, 0);
   assert.equal(nativeLoad.fatalLifecycleEventCount, 0);
-  validateRuntimeConfig(nativeLoad.runtimeConfig, candidateBinding.electronVersion, false);
+  validateRuntimeConfig(nativeLoad.runtimeConfig, candidateBinding.electronVersion, false, true);
 
   const cleanup = summary.cleanup;
   assert.ok(cleanup);
@@ -518,9 +559,9 @@ function validateProfileSummary(summary, contract, candidateBinding) {
       expected.requireManagedOverlayComplete ? "complete" : "shown"
     );
     assert.equal(row.steamLaunch, true);
-    assert.equal(row.overlayInjection, true);
+    assert.equal(row.overlayInjection, false);
     assert.equal(row.steamOverlayLaunchMarker, true);
-    assert.equal(row.overlayEnabled, true);
+    assert.equal(row.overlayEnabled, expected.action !== "presenter-ready");
     assert.equal(row.crashDumpCount, 0);
     assert.equal(row.fatalLifecycleEventCount, 0);
     assert.equal(row.initTxnRequestShapePresent, false);
@@ -530,7 +571,8 @@ function validateProfileSummary(summary, contract, candidateBinding) {
     validateRuntimeConfig(
       row.runtimeConfig,
       candidateBinding.electronVersion,
-      expected.hasCheckoutTransactionId
+      expected.hasCheckoutTransactionId,
+      expected.action === "presenter-ready"
     );
     validateBackendEvidence(row.presenterBackendEvidence, expected.action === "presenter-ready");
     assert.ok(row.steamRenderingHealth);
@@ -554,7 +596,7 @@ function validateProfileSummary(summary, contract, candidateBinding) {
   }
 }
 
-function validateRuntimeConfig(config, electronVersion, hasCheckoutTransactionId) {
+function validateRuntimeConfig(config, electronVersion, hasCheckoutTransactionId, selectionOnly = false) {
   assertExactKeys(
     config,
     [
@@ -590,7 +632,7 @@ function validateRuntimeConfig(config, electronVersion, hasCheckoutTransactionId
     "resolved runtime config"
   );
   assert.deepEqual(config, {
-    complete: true,
+    complete: !selectionOnly,
     authIdentityUsesPublicDefault: true,
     overlayProfile: "diagnostic",
     overlayScrubChildEnv: true,
@@ -599,7 +641,7 @@ function validateRuntimeConfig(config, electronVersion, hasCheckoutTransactionId
     overlayDisableDirectComposition: false,
     configuredNativeHostBackend: "",
     configuredNativeHostStyle: "",
-    actualNativeHostStyle: EXPECTED_HOST_STYLE,
+    actualNativeHostStyle: selectionOnly ? "" : EXPECTED_HOST_STYLE,
     nativePathOverride: false,
     presenterMode: "persistent",
     configuredPresenterMode: "",
@@ -1314,6 +1356,34 @@ function selfTest() {
     validatePublicManifest(createSelfTestManifest(contract, candidateBinding), contract, candidateBinding);
     validateProfileSummary(createSelfTestSummary(contract, candidateBinding), contract, candidateBinding);
   }
+  const glyphManifest = createSelfTestManifest(PROFILE_CONTRACTS[3], candidateBinding);
+  glyphManifest.webCloseTargetEvidence = WEB_CLOSE_TARGET_EVIDENCE;
+  validatePublicManifest(glyphManifest, PROFILE_CONTRACTS[3], candidateBinding);
+  glyphManifest.webCloseTargetEvidence = "screenshot-panel-v1";
+  assert.throws(() => validatePublicManifest(glyphManifest, PROFILE_CONTRACTS[3], candidateBinding));
+  const foregroundGrantManifest = createSelfTestManifest(PROFILE_CONTRACTS[0], candidateBinding);
+  foregroundGrantManifest.foregroundGrantGate = {
+    required: true,
+    schemaVersion: FOREGROUND_GRANT_EVIDENCE_SCHEMA,
+    timeoutSeconds: 120,
+    brokerConfigured: true,
+    brokerSha256: "a".repeat(64),
+    matrixInputSent: false,
+    candidateInputAllowed: false
+  };
+  validatePublicManifest(foregroundGrantManifest, PROFILE_CONTRACTS[0], candidateBinding);
+  foregroundGrantManifest.foregroundGrantGate.candidateInputAllowed = true;
+  assert.throws(() => validatePublicManifest(foregroundGrantManifest, PROFILE_CONTRACTS[0], candidateBinding));
+  foregroundGrantManifest.foregroundGrantGate = {
+    required: false,
+    schemaVersion: FOREGROUND_GRANT_EVIDENCE_SCHEMA,
+    timeoutSeconds: 120,
+    brokerConfigured: false,
+    brokerSha256: "",
+    matrixInputSent: false,
+    candidateInputAllowed: false
+  };
+  validatePublicManifest(foregroundGrantManifest, PROFILE_CONTRACTS[0], candidateBinding);
   const privateManifest = createSelfTestManifest(PROFILE_CONTRACTS[1], candidateBinding);
   privateManifest.privateEnvImported = true;
   assert.throws(() => validatePublicManifest(privateManifest, PROFILE_CONTRACTS[1], candidateBinding));
@@ -1545,8 +1615,8 @@ function createSelfTestManifest(contract, candidateBinding) {
 }
 
 function createSelfTestSummary(contract, candidateBinding) {
-  const runtimeConfig = (hasCheckoutTransactionId = false) => ({
-    complete: true,
+  const runtimeConfig = (hasCheckoutTransactionId = false, selectionOnly = false) => ({
+    complete: !selectionOnly,
     authIdentityUsesPublicDefault: true,
     overlayProfile: "diagnostic",
     overlayScrubChildEnv: true,
@@ -1555,7 +1625,7 @@ function createSelfTestSummary(contract, candidateBinding) {
     overlayDisableDirectComposition: false,
     configuredNativeHostBackend: "",
     configuredNativeHostStyle: "",
-    actualNativeHostStyle: EXPECTED_HOST_STYLE,
+    actualNativeHostStyle: selectionOnly ? "" : EXPECTED_HOST_STYLE,
     nativePathOverride: false,
     presenterMode: "persistent",
     configuredPresenterMode: "",
@@ -1614,9 +1684,9 @@ function createSelfTestSummary(contract, candidateBinding) {
     appId: PUBLIC_APP_ID,
     managedOverlayResultMode: expected.requireManagedOverlayComplete ? "complete" : "shown",
     steamLaunch: true,
-    overlayInjection: true,
+    overlayInjection: false,
     steamOverlayLaunchMarker: true,
-    overlayEnabled: true,
+    overlayEnabled: expected.action !== "presenter-ready",
     overlayActiveEvents: expected.requireOverlayActivated ? 1 : 0,
     crashDumpCount: 0,
     fatalLifecycleEventCount: 0,
@@ -1625,7 +1695,10 @@ function createSelfTestSummary(contract, candidateBinding) {
     clientSessionCheckoutCaptured: false,
     managedCheckoutOperationStarted: expected.id === "02-checkout-approval",
     microTxnCallbackCount: 0,
-    runtimeConfig: runtimeConfig(expected.hasCheckoutTransactionId),
+    runtimeConfig: runtimeConfig(
+      expected.hasCheckoutTransactionId,
+      expected.action === "presenter-ready"
+    ),
     presenterBackendEvidence: backendEvidence(expected.action === "presenter-ready"),
     steamRenderingHealth: {
       status: "healthy",
@@ -1712,7 +1785,7 @@ function createSelfTestSummary(contract, candidateBinding) {
       lazyPresenterReady: true,
       rendererProofRequired: false,
       lifecycleCompleteCount: 0,
-      runtimeConfig: runtimeConfig(),
+      runtimeConfig: runtimeConfig(false, true),
       crashDumpCount: 0,
       fatalLifecycleEventCount: 0
     },

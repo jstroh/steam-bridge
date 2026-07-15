@@ -68,6 +68,74 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+Exact signed protected candidate `3abcc3f` now has a complete local Windows
+release receipt. A separate foreground-grant broker replaced the rejected
+title-bar/chat-timed click loops. The broker exposes one deliberate button that
+calls documented `AllowSetForegroundWindow(ASFW_ANY)`. Before each candidate
+launch, the matrix writes a one-time challenge beside the exact broker binary
+and accepts only a fresh acknowledgement whose challenge, case, broker SHA-256,
+PID, session, start time, visible foreground window, on-monitor bounds, and
+input target all agree. The broker records `candidateInputSent=false`; the
+matrix records that it sent no input and allowed no candidate input. This path
+works for persistent-reuse as well as checkout, shortcut, and managed routes.
+
+The physical close probe also moved from an inferred panel inset to direct
+Steam close-glyph evidence. It searches around the scale-aware candidate point,
+samples four diagonal distances, requires at least 10 of 16 glyph samples, and
+binds the search box and score to the exact physical click. The existing
+per-monitor-DPI scale, panel/host containment, foreground, point-owner,
+pre-dispatch, screenshot, close, and park checks remain. Persistent reuse binds
+cycle one directly to the glyph; a later same-host cycle may reuse only that
+exact coordinate when the pointer obscures the glyph, while preserving all
+same-host and scale evidence.
+
+Four fresh roots were then collected in the receipt-required order against one
+unchanged Steam identity and the same protected candidate:
+
+- `C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-receipt-currentsteam-persistent-20260715-033700`
+- `C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-receipt-currentsteam-checkout-20260715-034000`
+- `C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-receipt-currentsteam-shortcut-20260715-034500`
+- `C:\Users\admin\steam-bridge-artifacts\windows-3abcc3f-receipt-currentsteam-managed-20260715-035200`
+
+Strict summaries pass 1/1 persistent-reuse, 4/4 public checkout, 10/10
+shortcut-routes, and 16/16 managed-routes cases: 31 clean Steam launches and 27
+active routes. Persistent reuse completes three shown/closed/parked cycles with
+17/17 presenter/native-host/renderer D3D11 snapshots. Every attached case has
+complete three-way `windows-d3d11` agreement, every required close returns to
+the app and parks, crash evidence is clean, and task/runner/package process,
+launch-environment, handoff-file, and Steam-continuity guards pass. No user
+click or Steam restart was used during the ordered four-profile sequence.
+
+The durable local record is
+`C:\Users\admin\steam-bridge-artifacts\release-3abcc3f-29363098329\windows-live-proof-receipt-20260715-041034.json`
+with receipt SHA-256
+`73ece31df4c6fc588299df88f2b79648983b2b8cf963f8a70b51a2b365b12517`.
+Independent receipt readback verifies four profiles, 31/31 clean cases, 27
+active cases, one candidate, and one Steam identity. Post-receipt audit rebinds
+the 114-file / 398,128,652-byte candidate to content SHA-256
+`f4b975e696bcdf0ab926db3ca7027b11402401f2c5d00f731bb62a9837959fce`
+and binding SHA-256
+`65469171fc83fa3e699e6ccb32db5ddf52659f6869006421e245b0a2f8375e7b`;
+the canonical read/execute ACL, all four required signatures and publisher
+comparisons, current Steam identity, and zero candidate processes/live overlay
+tasks/current-run stage directories also pass.
+
+Final receipt generation corrected stale validator assumptions without
+weakening attached-case proof. Native-load and route `10-presenter-ready`
+require selection-only D3D11 with no attached host/renderer/style and zero
+completed lifecycle. Every route that attaches still requires full
+presenter/native-host/renderer agreement. Native-presenter cases require the
+current exact `overlayInjection=false` diagnostic instead of the obsolete
+legacy-injection claim, while Steam launch markers, overlay-enabled state where
+applicable, activation callbacks, and lifecycle evidence remain mandatory.
+
+This closes the public App ID `480` Windows production-readiness contract only.
+App ID `480` has no configured products, so the checkout root proves synthetic
+prepare/approval/shortcut routing rather than a real purchase. The direct
+client-session proof remains blocked until the configured game, an
+`InitTxn`-capable application/backend lane, and a complete non-empty private
+runtime request handoff are available.
+
 Exact signed `509f3fe` has one valid receipt-bound persistent-reuse root and one
 focused public checkout approval pass. The focused root is
 `C:\Users\admin\steam-bridge-artifacts\windows-509f3fe-checkout-approval-exacthwndv2-20260714-120845`.

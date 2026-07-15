@@ -58,6 +58,11 @@ const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
 const USER_GESTURE_GATE_POLICY = "single-cycle-active-v1";
 const PERSISTENT_REUSE_GATE_POLICY = "initial-user-gesture-verify-only-v1";
 const PERSISTENT_REUSE_EVIDENCE_SCHEMA = 1;
+const FOREGROUND_GRANT_EVIDENCE_SCHEMA = 1;
+const FOREGROUND_GRANT_REQUEST_KIND = "steam-bridge-windows-foreground-grant-request";
+const FOREGROUND_GRANT_ACK_KIND = "steam-bridge-windows-foreground-grant-ack";
+const FOREGROUND_GRANT_GATE_KIND = "steam-bridge-windows-foreground-grant-gate";
+const WEB_CLOSE_TARGET_EVIDENCE = "screenshot-close-glyph-v1";
 const PERSISTENT_REUSE_CURRENT_ONLY_FIELDS = Object.freeze([
   "persistentReuseGate",
   "persistentReuseGatePolicy",
@@ -481,6 +486,7 @@ function summarizeWindowsOverlayMatrixArtifacts(root) {
 
   for (const caseName of findCaseDirectories(root)) {
     const caseDir = path.join(root, caseName);
+    validateForegroundGrantCaseEvidence(manifest, caseName, caseDir, failures);
     const caseAppControlBlocker = readJsonIfPresent(path.join(caseDir, "case-app-control-blocker.json"), failures);
     const steamLaunchBlocker = readJsonIfPresent(path.join(caseDir, "steam-launch-blocker.json"), failures);
     const resultLog = findResultLog(caseDir);
@@ -706,6 +712,7 @@ function validateManifest(manifest, failures) {
     failures
   );
   expect(Boolean(manifest.generatedAt), "matrix manifest generatedAt is present", failures);
+  validateForegroundGrantManifest(manifest, failures);
   if (manifest.candidateBinding !== undefined && manifest.candidateBinding !== null) {
     try {
       validateCandidateBinding(manifest.candidateBinding);
@@ -903,6 +910,13 @@ function validateManifest(manifest, failures) {
         );
       }
     }
+  }
+  if (manifest.webCloseTargetEvidence !== undefined) {
+    expect(
+      manifest.webCloseTargetEvidence === WEB_CLOSE_TARGET_EVIDENCE,
+      `matrix manifest webCloseTargetEvidence is ${WEB_CLOSE_TARGET_EVIDENCE}`,
+      failures
+    );
   }
   if (manifest.supportedCloseProbeEvidenceSchemas !== undefined) {
     expect(
@@ -1220,6 +1234,191 @@ function validateManifest(manifest, failures) {
       }
     }
   }
+}
+
+function validateForegroundGrantManifest(manifest, failures) {
+  if (!hasOwn(manifest, "foregroundGrantGate")) {
+    return;
+  }
+  const gate = objectOrEmpty(manifest.foregroundGrantGate);
+  expect(typeof gate.required === "boolean", "matrix foreground-grant required flag is boolean", failures);
+  expect(
+    gate.schemaVersion === FOREGROUND_GRANT_EVIDENCE_SCHEMA,
+    `matrix foreground-grant evidence schema is ${FOREGROUND_GRANT_EVIDENCE_SCHEMA}`,
+    failures
+  );
+  expect(
+    Number.isInteger(gate.timeoutSeconds) && gate.timeoutSeconds >= 1 && gate.timeoutSeconds <= 300,
+    "matrix foreground-grant timeout is bounded",
+    failures
+  );
+  expect(typeof gate.brokerConfigured === "boolean", "matrix foreground-grant broker flag is boolean", failures);
+  expect(gate.matrixInputSent === false, "matrix foreground-grant sends no matrix input", failures);
+  expect(gate.candidateInputAllowed === false, "matrix foreground-grant forbids candidate input", failures);
+  if (gate.required === true) {
+    expect(gate.brokerConfigured === true, "required matrix foreground-grant broker is configured", failures);
+    expect(
+      typeof gate.brokerSha256 === "string" && /^[a-f0-9]{64}$/.test(gate.brokerSha256),
+      "required matrix foreground-grant broker SHA-256 is present",
+      failures
+    );
+    expect(
+      ["steam-launch", "steam-app"].includes(manifest.launchMode),
+      "required matrix foreground-grant uses a Steam launch mode",
+      failures
+    );
+  } else if (gate.required === false) {
+    expect(gate.brokerConfigured === false, "unused matrix foreground-grant broker is not configured", failures);
+    expect(gate.brokerSha256 === "", "unused matrix foreground-grant broker SHA-256 is empty", failures);
+  }
+}
+
+function validateForegroundGrantCaseEvidence(manifest, caseName, caseDir, failures) {
+  const config = objectOrEmpty(manifest?.foregroundGrantGate);
+  if (config.required !== true) {
+    return;
+  }
+  const requestPath = path.join(caseDir, "foreground-grant-request.json");
+  const acknowledgementPath = path.join(caseDir, "foreground-grant-ack.json");
+  const gatePath = path.join(caseDir, "foreground-grant-gate.json");
+  const request = readJsonIfPresent(requestPath, failures);
+  const acknowledgement = readJsonIfPresent(acknowledgementPath, failures);
+  const gate = readJsonIfPresent(gatePath, failures);
+  expect(Boolean(request), `${caseName}: foreground-grant request evidence is present`, failures);
+  expect(Boolean(acknowledgement), `${caseName}: foreground-grant acknowledgement evidence is present`, failures);
+  expect(Boolean(gate), `${caseName}: foreground-grant gate evidence is present`, failures);
+  if (!request || !acknowledgement || !gate) {
+    return;
+  }
+
+  const challengeValid = typeof request.challenge === "string" && /^[a-f0-9]{32}$/.test(request.challenge);
+  const requestedAt = Date.parse(request.requestedAt);
+  const expiresAt = Date.parse(request.expiresAt);
+  const acknowledgedAt = Date.parse(acknowledgement.acknowledgedAt);
+  const completedAt = Date.parse(gate.completedAt);
+  expect(
+    request.kind === FOREGROUND_GRANT_REQUEST_KIND && request.schemaVersion === FOREGROUND_GRANT_EVIDENCE_SCHEMA,
+    `${caseName}: foreground-grant request kind and schema are exact`,
+    failures
+  );
+  expect(challengeValid, `${caseName}: foreground-grant request has a one-time challenge`, failures);
+  expect(request.caseId === caseName, `${caseName}: foreground-grant request binds the exact case`, failures);
+  expect(
+    Number.isFinite(requestedAt) && Number.isFinite(expiresAt) && expiresAt > requestedAt,
+    `${caseName}: foreground-grant request window is valid`,
+    failures
+  );
+  expect(
+    Number.isInteger(request.currentSessionId) && request.currentSessionId > 0,
+    `${caseName}: foreground-grant request binds an interactive session`,
+    failures
+  );
+  expect(
+    request.brokerSha256 === config.brokerSha256 &&
+      request.inputTarget === "broker-button" &&
+      request.candidateInputAllowed === false,
+    `${caseName}: foreground-grant request binds the broker and forbids candidate input`,
+    failures
+  );
+
+  expect(
+    acknowledgement.kind === FOREGROUND_GRANT_ACK_KIND &&
+      acknowledgement.schemaVersion === FOREGROUND_GRANT_EVIDENCE_SCHEMA,
+    `${caseName}: foreground-grant acknowledgement kind and schema are exact`,
+    failures
+  );
+  expect(
+    challengeValid && acknowledgement.challenge === request.challenge && acknowledgement.caseId === caseName,
+    `${caseName}: foreground-grant acknowledgement matches the exact challenge and case`,
+    failures
+  );
+  expect(
+    Number.isFinite(acknowledgedAt) && acknowledgedAt >= requestedAt && acknowledgedAt <= expiresAt,
+    `${caseName}: foreground-grant acknowledgement is timely`,
+    failures
+  );
+  expect(
+    Number.isInteger(acknowledgement.brokerPid) &&
+      acknowledgement.brokerPid > 0 &&
+      acknowledgement.brokerSessionId === request.currentSessionId &&
+      Number.isFinite(acknowledgement.brokerStartUtcTicks) &&
+      acknowledgement.brokerStartUtcTicks > 0 &&
+      acknowledgement.brokerSha256 === config.brokerSha256,
+    `${caseName}: foreground-grant acknowledgement binds the broker identity`,
+    failures
+  );
+  expect(
+    Number.isFinite(acknowledgement.foregroundHandle) &&
+      acknowledgement.foregroundHandle > 0 &&
+      acknowledgement.foregroundOwned === true &&
+      acknowledgement.allowSetForegroundWindowResult === true &&
+      acknowledgement.lastError === 0,
+    `${caseName}: foreground-grant acknowledgement proves a foreground broker grant`,
+    failures
+  );
+  expect(
+    acknowledgement.inputTarget === "broker-button" && acknowledgement.candidateInputSent === false,
+    `${caseName}: foreground-grant acknowledgement records broker-only input`,
+    failures
+  );
+
+  const observation = objectOrEmpty(gate.observation);
+  const rect = objectOrEmpty(observation.rect);
+  expect(
+    gate.kind === FOREGROUND_GRANT_GATE_KIND && gate.schemaVersion === FOREGROUND_GRANT_EVIDENCE_SCHEMA,
+    `${caseName}: foreground-grant gate kind and schema are exact`,
+    failures
+  );
+  expect(
+    gate.challenge === request.challenge && gate.caseId === caseName && gate.required === true,
+    `${caseName}: foreground-grant gate binds the exact challenge and case`,
+    failures
+  );
+  expect(
+    gate.requestedAt === request.requestedAt &&
+      Number.isFinite(completedAt) &&
+      completedAt >= acknowledgedAt &&
+      Number.isFinite(gate.elapsedMilliseconds) &&
+      gate.elapsedMilliseconds >= 0 &&
+      gate.elapsedMilliseconds <= config.timeoutSeconds * 1000 + 5000,
+    `${caseName}: foreground-grant gate timing is bounded`,
+    failures
+  );
+  expect(
+    gate.brokerSha256 === config.brokerSha256 && isDeepStrictEqual(gate.acknowledgement, acknowledgement),
+    `${caseName}: foreground-grant gate embeds the exact acknowledgement`,
+    failures
+  );
+  expect(
+    observation.brokerProcessPresent === true &&
+      observation.brokerPathMatches === true &&
+      observation.brokerSessionId === acknowledgement.brokerSessionId &&
+      observation.brokerStartUtcTicks === acknowledgement.brokerStartUtcTicks &&
+      observation.foregroundHandle === acknowledgement.foregroundHandle &&
+      observation.foregroundOwnerPid === acknowledgement.brokerPid,
+    `${caseName}: foreground-grant gate observes the exact broker foreground identity`,
+    failures
+  );
+  expect(
+    observation.visible === true &&
+      observation.notIconic === true &&
+      observation.onMonitor === true &&
+      Number.isFinite(rect.width) &&
+      rect.width >= 320 &&
+      Number.isFinite(rect.height) &&
+      rect.height >= 120 &&
+      observation.ok === true,
+    `${caseName}: foreground-grant broker window is visible and on-monitor`,
+    failures
+  );
+  expect(
+    gate.matrixInputSent === false &&
+      gate.candidateInputAllowed === false &&
+      gate.ok === true &&
+      gate.failure === null,
+    `${caseName}: foreground-grant gate passes without matrix or candidate input`,
+    failures
+  );
 }
 
 function validateCleanupArtifacts(
@@ -2155,6 +2354,13 @@ function validateManifestCoverage(
         `matrix manifest case ${expected.id} close probe scale agrees with independent presenter geometry`,
         failures
       );
+      if (manifest.webCloseTargetEvidence === WEB_CLOSE_TARGET_EVIDENCE) {
+        expect(
+          row.closeProbe.webCloseGlyphEvidenceValid === true,
+          `matrix manifest case ${expected.id} binds the click to a directly detected Steam close glyph`,
+          failures
+        );
+      }
       expect(
         row.closeProbe.nativeHostRectPresent === true,
         `matrix manifest case ${expected.id} close probe includes a native host rect`,
@@ -4059,6 +4265,7 @@ function verifyPersistentReuseProof(
     caseName,
     closeProbeEvents,
     currentPersistentGate,
+    manifest.webCloseTargetEvidence === WEB_CLOSE_TARGET_EVIDENCE,
     manifestCase,
     caseDir,
     nativePresenter,
@@ -4081,6 +4288,7 @@ function verifyPersistentCloseProbe(
   caseName,
   events,
   currentPersistentGate,
+  webCloseGlyphEvidenceRequired,
   manifestCase,
   caseDir,
   nativePresenter,
@@ -4364,6 +4572,7 @@ function verifyPersistentCloseProbe(
       const targetInsets = objectOrEmpty(target.insets);
       const scale = Number(targetScale.value);
       const expectedTarget = expectedWebCloseTarget(panel, objectOrEmpty(target.panel), scale);
+      const directGlyphTargetValid = isValidWebCloseGlyphTarget(target);
       const pointer = objectOrEmpty(payload.nativePointerSent);
       const pointerApproach = objectOrEmpty(pointer.approach);
       const approachExpected = ordinal > 1;
@@ -4556,7 +4765,7 @@ function verifyPersistentCloseProbe(
           scale >= 0.5 &&
           scale <= 8 &&
           expectedTarget &&
-          target.source === "screenshot-steam-web-panel" &&
+          (target.source === "screenshot-steam-web-panel" || directGlyphTargetValid) &&
           Number(target.x) === expectedTarget.x &&
           Number(target.y) === expectedTarget.y &&
           Number(target.x) >= panel.left &&
@@ -4658,6 +4867,25 @@ function verifyPersistentCloseProbe(
     }
   });
   if (currentPersistentGate) {
+    if (webCloseGlyphEvidenceRequired) {
+      const baselineTarget = objectOrEmpty(objectOrEmpty(targets[0]?.payload).target);
+      expect(
+        isValidWebCloseGlyphTarget(baselineTarget),
+        `${caseName}: persistent cycle 1 directly detects the Steam close glyph`,
+        failures
+      );
+      for (let index = 1; index < targets.length; index += 1) {
+        const target = objectOrEmpty(objectOrEmpty(targets[index]?.payload).target);
+        expect(
+          isValidWebCloseGlyphTarget(target) ||
+            (target.source === "screenshot-steam-web-panel" &&
+              Number(target.x) === Number(baselineTarget.x) &&
+              Number(target.y) === Number(baselineTarget.y)),
+          `${caseName}: persistent cycle ${index + 1} directly detects or reuses the cycle-one close glyph coordinate`,
+          failures
+        );
+      }
+    }
     const seenScreenshotPaths = new Set();
     let screenshotsDisjoint =
       persistentScreenshotPathSets.length === WINDOWS_PERSISTENT_REUSE_CYCLES;
@@ -4980,7 +5208,7 @@ function summarizeCaseResult(
   expect(result.ok === true, `${caseName}: smoke result ok`, failures);
   expect(action.ok === true, `${caseName}: autorun action succeeded`, failures);
   expect(steam.initialized === true, `${caseName}: Steam initialized`, failures);
-  expect(readOkValue(steam.running) === true, `${caseName}: Steam running`, failures);
+  validateSteamRunningEvidence(caseName, steam, failures);
   expect(readOkValue(steam.appId) === app.appId, `${caseName}: Steam App ID matches app config`, failures);
   expect(processInfo.platform === "win32", `${caseName}: platform is win32`, failures);
   expect(processInfo.arch === "x64", `${caseName}: arch is x64`, failures);
@@ -5204,6 +5432,15 @@ function summarizeCaseResult(
   };
 }
 
+function validateSteamRunningEvidence(caseName, steam, failures) {
+  const running = readOkValue(objectOrEmpty(steam).running);
+  if (caseName === "native-load-gate") {
+    expect(typeof running === "boolean", `${caseName}: Steam running state captured`, failures);
+    return;
+  }
+  expect(running === true, `${caseName}: Steam running`, failures);
+}
+
 function printSummary(summary) {
   console.log(`Windows overlay matrix summary: ${summary.root}`);
   if (summary.manifest) {
@@ -5218,6 +5455,8 @@ function printSummary(summary) {
         `nativePathOverride=${formatValue(summary.manifest.nativePathOverride)} ` +
         `closeProbeEvidenceSchema=${formatValue(summary.manifest.closeProbeEvidenceSchema)} ` +
         `closeProbeForegroundHandoff=${formatValue(summary.manifest.closeProbeForegroundHandoff)} ` +
+        `foregroundGrant=${formatValue(summary.manifest.foregroundGrantGate?.required)}/` +
+          `${formatValue(summary.manifest.foregroundGrantGate?.schemaVersion)} ` +
         `requireMicroTxnCallback=${formatValue(summary.manifest.requireMicroTxnCallback)}`
     );
   }
@@ -5474,6 +5713,7 @@ function summarizeInitTxnRequestShapePreflight(shape) {
 
 function summarizeManifest(manifest) {
   const cleanupContract = objectOrEmpty(manifest.cleanupContract);
+  const foregroundGrantGate = objectOrEmpty(manifest.foregroundGrantGate);
   const initTxnCapture = objectOrEmpty(manifest.initTxnCapture);
   return {
     suite: manifest.suite || "",
@@ -5526,6 +5766,16 @@ function summarizeManifest(manifest) {
     assumeShortcutConfigured: manifest.assumeShortcutConfigured === true,
     autorunUserGestureGatePolicy: String(manifest.autorunUserGestureGatePolicy || ""),
     persistentReuseGatePolicy: String(manifest.persistentReuseGatePolicy || ""),
+    foregroundGrantGate: hasOwn(manifest, "foregroundGrantGate")
+      ? {
+          required: foregroundGrantGate.required === true,
+          schemaVersion: Number(foregroundGrantGate.schemaVersion || 0),
+          timeoutSeconds: Number(foregroundGrantGate.timeoutSeconds || 0),
+          brokerConfigured: foregroundGrantGate.brokerConfigured === true,
+          matrixInputSent: foregroundGrantGate.matrixInputSent === true,
+          candidateInputAllowed: foregroundGrantGate.candidateInputAllowed === true
+        }
+      : null,
     closeProbeEvidenceSchema: Number(manifest.closeProbeEvidenceSchema || 0),
     closeProbeForegroundHandoff: String(manifest.closeProbeForegroundHandoff || ""),
     requireMicroTxnCallback: manifest.requireMicroTxnCallback === true,
@@ -5757,6 +6007,8 @@ function summarizeCloseProbe(
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
   const webCloseTarget = objectOrEmpty(targetPayload.target);
+  const webCloseGlyph = objectOrEmpty(webCloseTarget.glyph);
+  const webCloseGlyphSearch = objectOrEmpty(webCloseGlyph.search);
   const loggedPanel = objectOrEmpty(webCloseTarget.panel);
   const loggedInsets = objectOrEmpty(webCloseTarget.insets);
   const loggedScale = objectOrEmpty(webCloseTarget.scale);
@@ -5797,6 +6049,20 @@ function summarizeCloseProbe(
       Number(loggedInsets.logicalTop) === 18 &&
       targetX === expectedTarget.x &&
       targetY === expectedTarget.y
+  );
+  const webCloseGlyphEvidenceValid = Boolean(
+    webCloseTarget.source === "screenshot-steam-web-close-glyph" &&
+      Number(webCloseGlyph.schema) === 1 &&
+      Number(webCloseGlyph.x) === targetX &&
+      Number(webCloseGlyph.y) === targetY &&
+      Number(webCloseGlyph.sampleCount) === 16 &&
+      Number(webCloseGlyph.minimumScore) === 10 &&
+      Number(webCloseGlyph.score) >= Number(webCloseGlyph.minimumScore) &&
+      Number(webCloseGlyph.score) <= Number(webCloseGlyph.sampleCount) &&
+      Number(webCloseGlyphSearch.left) <= targetX &&
+      Number(webCloseGlyphSearch.right) >= targetX &&
+      Number(webCloseGlyphSearch.top) <= targetY &&
+      Number(webCloseGlyphSearch.bottom) >= targetY
   );
   const dpiAwareness = String(startPayload.dpiAwareness || "");
   const foregroundSamples = normalizedEvents
@@ -5936,6 +6202,11 @@ function summarizeCloseProbe(
       targetEventIndex >= 0 && nativePresenterFocusIndex > targetEventIndex,
     webCloseTargetInsidePanel: targetInsidePanel,
     webCloseTargetUsesScaleAwareInsets: targetUsesScaleAwareInsets,
+    webCloseTargetSource: String(webCloseTarget.source || ""),
+    webCloseGlyphEvidenceValid,
+    webCloseGlyphScore: Number.isFinite(Number(webCloseGlyph.score))
+      ? Number(webCloseGlyph.score)
+      : null,
     webCloseScaleSource: String(loggedScale.source || ""),
     webCloseLoggedScale: Number.isFinite(loggedScaleValue) ? loggedScaleValue : null,
     webCloseDerivedScale: Number.isFinite(derivedScale) ? derivedScale : null,
@@ -7392,6 +7663,28 @@ function expectedWebCloseTarget(panel, loggedPanel, scale) {
   };
 }
 
+function isValidWebCloseGlyphTarget(targetValue) {
+  const target = objectOrEmpty(targetValue);
+  const glyph = objectOrEmpty(target.glyph);
+  const search = objectOrEmpty(glyph.search);
+  const x = Number(target.x);
+  const y = Number(target.y);
+  return Boolean(
+    target.source === "screenshot-steam-web-close-glyph" &&
+      Number(glyph.schema) === 1 &&
+      Number(glyph.x) === x &&
+      Number(glyph.y) === y &&
+      Number(glyph.sampleCount) === 16 &&
+      Number(glyph.minimumScore) === 10 &&
+      Number(glyph.score) >= Number(glyph.minimumScore) &&
+      Number(glyph.score) <= Number(glyph.sampleCount) &&
+      Number(search.left) <= x &&
+      Number(search.right) >= x &&
+      Number(search.top) <= y &&
+      Number(search.bottom) >= y
+  );
+}
+
 function summarizePhysicalScreenshotEvidence(events, caseDir, nativeHostRect) {
   let declaredBoundsCount = 0;
   let readableCount = 0;
@@ -8005,6 +8298,21 @@ function runSelfTest() {
   assert.equal(actualUserGestureGateExpectations.length, 27);
   assert.deepEqual(actualUserGestureGateExpectations, expectedUserGestureGateExpectations);
 
+  const nativeLoadSteamUnavailableFailures = [];
+  validateSteamRunningEvidence(
+    "native-load-gate",
+    { running: { ok: true, value: false } },
+    nativeLoadSteamUnavailableFailures
+  );
+  assert.deepEqual(nativeLoadSteamUnavailableFailures, []);
+  const liveCaseSteamUnavailableFailures = [];
+  validateSteamRunningEvidence(
+    "15-managed-shortcut",
+    { running: { ok: true, value: false } },
+    liveCaseSteamUnavailableFailures
+  );
+  assert.deepEqual(liveCaseSteamUnavailableFailures, ["15-managed-shortcut: Steam running"]);
+
   const lazyBackendSummary = {
     action: "presenter-ready",
     presenterBackendEvidence: {
@@ -8126,6 +8434,121 @@ function runSelfTest() {
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-summary-"));
   try {
+    const foregroundGrantRoot = path.join(tempRoot, "foreground-grant", "03-shortcut-checkout");
+    const foregroundGrantConfig = {
+      required: true,
+      schemaVersion: 1,
+      timeoutSeconds: 120,
+      brokerConfigured: true,
+      brokerSha256: "a".repeat(64),
+      matrixInputSent: false,
+      candidateInputAllowed: false
+    };
+    const foregroundGrantManifest = {
+      launchMode: "steam-launch",
+      foregroundGrantGate: foregroundGrantConfig
+    };
+    const foregroundGrantRequest = {
+      kind: FOREGROUND_GRANT_REQUEST_KIND,
+      schemaVersion: 1,
+      challenge: "b".repeat(32),
+      caseId: "03-shortcut-checkout",
+      requestedAt: "2026-07-15T00:00:00.000Z",
+      expiresAt: "2026-07-15T00:02:00.000Z",
+      currentSessionId: 1,
+      brokerSha256: foregroundGrantConfig.brokerSha256,
+      inputTarget: "broker-button",
+      candidateInputAllowed: false
+    };
+    const foregroundGrantAcknowledgement = {
+      kind: FOREGROUND_GRANT_ACK_KIND,
+      schemaVersion: 1,
+      challenge: foregroundGrantRequest.challenge,
+      caseId: foregroundGrantRequest.caseId,
+      acknowledgedAt: "2026-07-15T00:00:01.000Z",
+      brokerPid: 100,
+      brokerSessionId: 1,
+      brokerStartUtcTicks: 639196000000000000,
+      brokerSha256: foregroundGrantConfig.brokerSha256,
+      foregroundHandle: 200,
+      foregroundOwned: true,
+      allowSetForegroundWindowResult: true,
+      lastError: 0,
+      inputTarget: "broker-button",
+      candidateInputSent: false
+    };
+    const foregroundGrantGate = {
+      kind: FOREGROUND_GRANT_GATE_KIND,
+      schemaVersion: 1,
+      challenge: foregroundGrantRequest.challenge,
+      caseId: foregroundGrantRequest.caseId,
+      required: true,
+      requestedAt: foregroundGrantRequest.requestedAt,
+      completedAt: "2026-07-15T00:00:01.100Z",
+      elapsedMilliseconds: 1100,
+      brokerSha256: foregroundGrantConfig.brokerSha256,
+      acknowledgement: foregroundGrantAcknowledgement,
+      observation: {
+        brokerProcessPresent: true,
+        brokerPathMatches: true,
+        brokerSessionId: 1,
+        brokerStartUtcTicks: foregroundGrantAcknowledgement.brokerStartUtcTicks,
+        foregroundHandle: foregroundGrantAcknowledgement.foregroundHandle,
+        foregroundOwnerPid: foregroundGrantAcknowledgement.brokerPid,
+        visible: true,
+        notIconic: true,
+        onMonitor: true,
+        rect: { left: 10, top: 10, right: 536, bottom: 229, width: 526, height: 219 },
+        ok: true
+      },
+      matrixInputSent: false,
+      candidateInputAllowed: false,
+      ok: true,
+      failure: null
+    };
+    writeJson(path.join(foregroundGrantRoot, "foreground-grant-request.json"), foregroundGrantRequest);
+    writeJson(path.join(foregroundGrantRoot, "foreground-grant-ack.json"), foregroundGrantAcknowledgement);
+    writeJson(path.join(foregroundGrantRoot, "foreground-grant-gate.json"), foregroundGrantGate);
+    const foregroundGrantFailures = [];
+    validateForegroundGrantManifest(foregroundGrantManifest, foregroundGrantFailures);
+    validateForegroundGrantCaseEvidence(
+      foregroundGrantManifest,
+      foregroundGrantRequest.caseId,
+      foregroundGrantRoot,
+      foregroundGrantFailures
+    );
+    assert.deepEqual(foregroundGrantFailures, []);
+    const unusedForegroundGrantFailures = [];
+    validateForegroundGrantManifest(
+      {
+        launchMode: "steam-launch",
+        foregroundGrantGate: {
+          ...foregroundGrantConfig,
+          required: false,
+          brokerConfigured: false,
+          brokerSha256: ""
+        }
+      },
+      unusedForegroundGrantFailures
+    );
+    assert.deepEqual(unusedForegroundGrantFailures, []);
+    writeJson(path.join(foregroundGrantRoot, "foreground-grant-ack.json"), {
+      ...foregroundGrantAcknowledgement,
+      candidateInputSent: true
+    });
+    const foregroundGrantInputFailures = [];
+    validateForegroundGrantCaseEvidence(
+      foregroundGrantManifest,
+      foregroundGrantRequest.caseId,
+      foregroundGrantRoot,
+      foregroundGrantInputFailures
+    );
+    assert.ok(
+      foregroundGrantInputFailures.includes(
+        "03-shortcut-checkout: foreground-grant acknowledgement records broker-only input"
+      )
+    );
+
     const blockedRoot = path.join(tempRoot, "blocked");
     writeBlockedFixture(blockedRoot);
     const blockedSummary = summarizeWindowsOverlayMatrixArtifacts(blockedRoot);
@@ -9066,6 +9489,21 @@ function runSelfTest() {
     assert.ok(
       webCloseRoundingSummary.caseSummaries[0].closeProbe.webCloseDerivedScale > 1.25,
       "geometry may cross an inset rounding boundary while still agreeing with window DPI"
+    );
+
+    const webCloseGlyphRoot = path.join(tempRoot, "managed-web-close-glyph");
+    writeManagedWebCloseEvidenceFixture(webCloseGlyphRoot, { webCloseGlyphEvidence: true });
+    const webCloseGlyphSummary = summarizeWindowsOverlayMatrixArtifacts(webCloseGlyphRoot);
+    assert.deepEqual(webCloseGlyphSummary.failures, []);
+    assert.equal(webCloseGlyphSummary.caseSummaries[0].closeProbe.webCloseGlyphEvidenceValid, true);
+    assert.equal(webCloseGlyphSummary.caseSummaries[0].closeProbe.webCloseGlyphScore, 12);
+
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-close-glyph-score",
+      writeManagedWebCloseEvidenceFixture,
+      { webCloseGlyphEvidence: true, invalidWebCloseGlyphScore: true },
+      "binds the click to a directly detected Steam close glyph"
     );
 
     for (const [name, options, failure] of [
@@ -10842,6 +11280,11 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   if (options.manifestCloseProbeFalse) {
     manifest.closeProbe = false;
   }
+  if (options.webCloseGlyphEvidence) {
+    manifest.webCloseTargetEvidence = options.wrongWebCloseTargetEvidence
+      ? "wrong-web-close-target-evidence"
+      : WEB_CLOSE_TARGET_EVIDENCE;
+  }
   manifest.closeProbeInput = "auto";
   manifest.closeProbeEvidenceSchema = options.userGestureGate ? 2 : closeProbeEvidenceSchema;
   if (closeProbeEvidenceSchema >= 2) {
@@ -10937,6 +11380,23 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         }
       : {})
   };
+  if (options.webCloseGlyphEvidence) {
+    target.source = "screenshot-steam-web-close-glyph";
+    target.glyph = {
+      schema: 1,
+      x: target.x,
+      y: target.y,
+      score: options.invalidWebCloseGlyphScore ? 9 : 12,
+      sampleCount: 16,
+      minimumScore: 10,
+      search: {
+        left: target.x - 80,
+        top: target.y - 50,
+        right: target.x + 80,
+        bottom: target.y + 50
+      }
+    };
+  }
   const screenshotBounds = options.screenshotMissesNativeRect
     ? { left: 100, top: 100, width: 300, height: 200 }
     : {
