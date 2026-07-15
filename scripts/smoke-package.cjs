@@ -2044,10 +2044,11 @@ function runWindowsSmokeHelperStaticChecks() {
     );
   }
   assert.ok(
-    matrixHelper.includes('$userGestureAction -eq "presenter-checkout"') &&
+    matrixHelper.includes('$userGestureLifecycleCompleteEvent = switch ($userGestureAction)') &&
       matrixHelper.includes('"overlay:presenter-checkout-open-and-wait-complete"') &&
+      matrixHelper.includes('"overlay:presenter-parked"') &&
       matrixHelper.includes('"overlay:presenter-open-and-wait-complete"'),
-    "Windows focus-return lifecycle gate must select the checkout-specific completion event"
+    "Windows focus-return lifecycle gate must select each action-specific completion event"
   );
   const probeTerminalStart = matrixHelper.indexOf("function Wait-WindowsOverlayCloseProbeTerminal");
   const probeTerminalEnd = matrixHelper.indexOf(
