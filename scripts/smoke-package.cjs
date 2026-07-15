@@ -957,7 +957,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "copy `action`, `requestOrdinal`, `mechanism`, and `challenge`",
     "must not hardcode the web action",
     "arms the listener",
-    "exactly one safe title-bar click",
+    "performed exactly one title-bar click",
     "external-foreground-ack.json",
     "acknowledgment only after the click returned success",
     "does not by itself identify the physical input that caused it",
@@ -969,6 +969,16 @@ function runWindowsSmokeHelperStaticChecks() {
     assert.ok(
       exampleReadme.replace(/\s+/g, " ").includes(expected),
       `Electron example README missing Windows safety guidance: ${expected}`
+    );
+  }
+  for (const expected of [
+    "retained only to interpret historical diagnostic artifacts",
+    "Current unattended release proof uses a separate broker window",
+    "Do not combine it with title-bar click coordination"
+  ]) {
+    assert.ok(
+      exampleReadme.replace(/\s+/g, " ").includes(expected),
+      `Electron example README missing current foreground-broker guidance: ${expected}`
     );
   }
   assert.ok(
