@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-Review anchor: `f0a0214` (`Refresh Windows readiness checkpoint`).
+Review anchor: `647bd1b` (`Record exact Windows persistent proof`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -114,6 +114,27 @@ processes, launch-environment restoration, and unchanged Steam identity. This
 is diagnostic partial evidence, not a checkout receipt root. Do not rerun this
 or other title-bar-dependent profiles unattended in the unchanged topology.
 
+The no-human-click replacement goal evaluated a clean local Windows guest
+before installing another hypervisor. This host is Windows Home, which does not
+support Windows Sandbox or the Hyper-V role. Microsoft's supported GPU
+partitioning and passthrough path also excludes client desktop hardware and
+Windows client hosts. Oracle VirtualBox can expose Direct3D 11 to a Windows
+guest, but labels Windows 3D acceleration and operation beside Hyper-V as
+experimental. More importantly, a fresh guest has no authenticated interactive
+Steam user; Valve's supported automatic login requires account credentials.
+Copying or exposing the host's private Steam authentication state is prohibited,
+so a disposable local VM cannot produce receipt-eligible evidence.
+
+The zero-area foreground owner is the valid-signed ASUS Hotplug Controller
+`3.0.0`, launched elevated from Task Scheduler and marked
+`requireAdministrator`. A no-op highest-privilege scheduled-task probe failed
+with access denied and left no task, proving the current process cannot build a
+no-click stop/restart guard. Do not stop, uninstall, or repair this display/
+hotplug component without a separately authorized elevated fail-safe that
+restores the exact executable, or a reboot-capable recovery path. The remaining
+receipt roots need a separate GPU-capable Windows host with an already
+authenticated interactive Steam session and natural foreground behavior.
+
 External working directories, `ELECTRON_LOG_FILE`, quoted `--log-file`, and
 explicit Electron logging all remain insufficient. A clean disposable signed
 copy survived the first explicit-logging pass but acquired the same 157-byte
@@ -165,6 +186,11 @@ evidence only.
 - The exact checkout attempt passes cases 01 and 02, then case 03 receives zero
   foreground events, sends zero input, and fails closed. Its wrapper cleanup
   and exact Steam continuity pass; the root is not receipt-eligible.
+- Windows Home excludes supported Sandbox/Hyper-V isolation; supported client
+  GPU passthrough is unavailable. Third-party VM graphics are experimental and
+  a fresh guest lacks an authenticated Steam session. The elevated OEM
+  foreground owner cannot be safely stopped and restored from this process
+  without a UAC-approved guard.
 - Coordinator CI `29373540650` passes. Its focused case-11 live run produced a
   timely exact challenge-bound click but no foreground event; the zero-area OEM
   helper remained foreground. The case sent zero route input and all post-run
@@ -176,23 +202,27 @@ evidence only.
 
 ## Next Actions
 
-1. Preserve the canonical persistent root. Collect exact `checkout`,
-   `shortcut-routes`, and `managed-routes` only on a materially different
-   foreground topology that launches the exact source naturally foreground;
-   do not resume human-click coordination loops.
-2. Generate the 31-case/27-activation receipt only after those three roots
+1. Preserve the canonical persistent root. Acquire a separate GPU-capable
+   Windows environment with an already authenticated interactive Steam session
+   and no zero-area OEM foreground owner; do not copy host Steam credentials or
+   install an unsupported local VM as release evidence.
+2. Collect exact `checkout`, `shortcut-routes`, and `managed-routes` only when
+   that environment launches the exact source naturally foreground; do not
+   resume human-click coordination loops.
+3. Generate the 31-case/27-activation receipt only after those three roots
    exist. App ID `480` remains synthetic public routing coverage, not a real
    product purchase lane.
-3. Run one private client-session purchase proof only when the configured game,
+4. Run one private client-session purchase proof only when the configured game,
    `InitTxn`-capable application/backend path, and complete non-empty private
    request handoff are all available.
 
 ## Exact Next Step
 
-Do not run another synthetic-input, focus-API, timeout, chat-timed click, or
-unchanged nonforeground profile. The remaining public roots wait for a
-naturally foreground-capable topology; the private purchase track waits for the
-configured game and complete handoff.
+Do not install VirtualBox, copy Steam login state, stop the elevated OEM helper,
+or run another synthetic-input, focus-API, timeout, chat-timed click, or
+unchanged nonforeground profile. Continue on a separate preauthenticated,
+GPU-capable interactive Windows host. The private purchase track still waits
+for the configured game and complete handoff.
 
 Detailed live evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

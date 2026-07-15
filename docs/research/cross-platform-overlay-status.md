@@ -297,6 +297,33 @@ purchase proof must wait for the configured game, an `InitTxn`-capable
 application/backend path, and a complete non-empty private runtime handoff; no
 private identifiers belong in these artifacts or repository notes.
 
+The subsequent no-human-click environment audit rejected a disposable local VM
+before spending another live profile. The host reports Windows Home; Microsoft
+documents that neither [Windows Sandbox](https://learn.microsoft.com/en-in/windows/security/application-security/application-isolation/windows-sandbox/)
+nor the [Hyper-V role](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/get-started/Install-Hyper-V)
+is supported on Home. Microsoft's current GPU passthrough guidance also states
+that DDA and GPU-P are unsupported on desktop-class hardware and Windows client
+hosts. Oracle VirtualBox can present Direct3D 11 to a modern Windows guest, but
+its documentation labels both Windows 3D acceleration and operation beside
+Hyper-V as experimental, with possible substantial performance degradation.
+That is not a stronger D3D11 release environment than the physical candidate.
+
+A fresh guest also cannot reuse the host's private Steam identity. Valve's
+[Steam client launch guidance](https://help.steampowered.com/en/faqs/view/0188-6BB7-D467-08E1)
+states that automatic login requires account credentials, while the
+[overlay requirements](https://partner.steamgames.com/doc/features/overlay)
+depend on a real Steam client/user context and hardware rendering. Copying host
+authentication state or placing credentials in launch configuration is outside
+the privacy boundary. The valid-signed local foreground owner is ASUS Hotplug
+Controller `3.0.0`; it is elevated, launched through Task Scheduler, and marked
+`requireAdministrator`. A no-op highest-privilege task-creation probe returned
+access denied and verified no task remained. Stopping it without an elevated
+stop/restart guard would risk display/hotplug and Parsec continuity. Therefore
+the next admissible environment is a separate GPU-capable Windows host that is
+already interactively authenticated to Steam and naturally foregrounds the
+candidate; do not install a local VM, copy Steam login state, or stop the OEM
+component as an unattended workaround.
+
 Exact receipt-repair commit `2d2178c` completed CI and Release on 2026-07-12.
 Independent verification bound its Electron `43.1.0` package, 114-file retained
 bundle, all 1,121 declared native methods, canonical tarball SHA-256
