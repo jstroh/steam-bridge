@@ -2,15 +2,15 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `d932e8d` (`Make the README human-friendly`).
+Review anchor: `7a56b3a` (`Keep README policy concise`).
 
 ## Active Goal
 
-Finish the first `steam-bridge` npm release and leave the public repository
-human-friendly. Publication and bootstrap-authority cleanup are complete. The
-active repository slice replaces the 1,199-line root README with a concise
-product-first entry point while retaining links to the package reference,
-platform smoke guide, API coverage, contribution policy, and detailed evidence.
+The first `steam-bridge` npm release and its repository-readiness follow-up are
+complete. Publication is tokenless, bootstrap authority is revoked, and the
+1,199-line root README is now a concise product-first entry point with links to
+the package reference, platform smoke guide, API coverage, contribution policy,
+and detailed evidence.
 
 Public App ID `480` proves generic Steam overlay plumbing only. Do not claim or
 run configured-product purchase proof without the separate complete private
@@ -51,11 +51,11 @@ Rosetta policy there while continuing to enforce detailed macOS commands,
 runner guards, and matrix behavior in their canonical example, workflow, and
 implementation files.
 
-CI run `29531616552` passed Windows x64, Linux x64, and Apple Silicon jobs but
-failed package smoke because the old static contract required four paragraphs
-of macOS test-runner and matrix internals in the root README. The pending smoke
-change keeps the prominent platform/Rosetta requirements in the root and leaves
-the existing detailed example, workflow, and implementation assertions intact.
+CI run `29531616552` exposed that the old static package-smoke contract required
+four paragraphs of macOS test-runner and matrix internals in the root README.
+Commit `7a56b3a` scopes that contract to the prominent platform/Rosetta policy
+while leaving the detailed example, workflow, and implementation assertions
+intact. Replacement CI `29531975098` passes all four jobs.
 
 The Windows checkout has unrelated local `AGENTS.md`, `.codex`, and input-probe
 changes that belong to the user and must remain untouched.
@@ -79,26 +79,27 @@ changes that belong to the user and must remain untouched.
   applicable self-tests and then reaches the recorded native-Windows Unix-shell
   boundary because `bash` is unavailable; exact CI covers the complete package
   smoke path.
-- The focused root-README platform policy test and the revised package-smoke
-  root policy assertions pass locally. Replacement exact CI is pending.
+- The focused root-README platform policy test and revised package-smoke policy
+  assertions pass locally. Exact CI `29531975098` passes complete package smoke
+  plus Windows x64, Linux x64, and Apple Silicon jobs.
 - No private app, product, account, shortcut, transaction, Steam, key, price,
   or fixture identifier was added to committed evidence.
 
 ## Next Actions
 
-1. Review and privacy-scan the exact diff, stage only `README.md`, the scoped
-   package-smoke assertion, and this checkpoint, commit intentionally, and push.
-2. Verify exact GitHub CI for the documentation commit.
-3. Close the persistent release goal. Retain the published release and all
-   rejected protected candidates; do not rerun live matrices for confidence.
-4. Defer real purchase proof until the configured game, `InitTxn`-capable
+1. Retain the published release and all rejected protected candidates. Do not
+   rerun live matrices merely for confidence.
+2. Keep future releases tokenless through the configured npm trusted publisher
+   and the protected `npm-production` environment.
+3. Defer real purchase proof until the configured game, `InitTxn`-capable
    application/backend lane, and complete private request handoff exist.
 
 ## Exact Next Step
 
-Validate the root README slice, commit and push only its three intended files,
-then verify exact CI and close the first-release goal. No additional Windows,
-Linux, Steam Deck, or macOS live run is warranted.
+No further action is required for the first npm release or README cleanup. The
+next release should use the existing tokenless protected workflow. No additional
+Windows, Linux, Steam Deck, or macOS live run is warranted without a relevant
+implementation, dependency, platform, or environment change.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
