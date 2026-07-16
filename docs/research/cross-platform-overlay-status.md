@@ -4228,6 +4228,31 @@ and reject post-close overlay reactivation.
 
 ## Latest macOS Recovery Evidence
 
+A physical Apple Silicon review at exact release head `0846e7b` used the public
+Apple Silicon native artifact retained by Release run `29363098329` and packaged
+Electron `43.1.0` from a clean checkout. Release-artifact verification, the
+arm64-only in-bundle launcher/signing verifier, matrix self-tests, interactive
+host preflight, and pre/post-run Steam client health all passed. The signed
+App ID `480` package then passed presenter readiness with Steam launch/injection
+and passed direct web activation with `overlayEnabled=true` and an active
+callback before the helper reached its cleanup probe.
+
+That minimal attempt could not re-collect screenshot and Escape-close evidence
+because neither unattended SSH nor the normal Terminal session had macOS Screen
+Recording or Accessibility authority. This is an automation-host boundary, not
+a presenter failure: the active result had already verified, the Metal
+host/lifecycle/close implementation was unchanged from the retained broad
+passing artifact, and installing another synthetic-input utility would remain
+behind the same TCC gate. The only intervening smoke runtime behavior change was
+passive-notification completion. A focused current-package achievement-progress
+run at `/tmp/steam-bridge-macos-passive-0846e7b` passed its Steam launch,
+injection, overlay-enabled, callback, managed-isolation, zero-managed-timing,
+parked passive presenter, disabled needs-present polling, non-modal, and crash
+requirements. No Steam restart was needed, and the post-run client health gate
+passed. Repeat the keyboard/screenshot close probe only after the chosen
+automation host has the required macOS permissions or the probe gains a
+supported permission-free input path.
+
 The local macOS Steam client recovered after a Steam update and shortcut reset.
 The stable generic App ID `480` shortcut had to be recreated under the active
 user's Steam userdata directory, after which a fresh core Apple
