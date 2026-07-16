@@ -20,11 +20,13 @@ const {
 
 const MAX_BUNDLE_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024;
 
-if (process.argv.includes("--self-test")) {
-  selfTest();
-  console.log("Release-candidate publish verifier self-test passed.");
-} else {
-  main();
+if (require.main === module) {
+  if (process.argv.includes("--self-test")) {
+    selfTest();
+    console.log("Release-candidate publish verifier self-test passed.");
+  } else {
+    main();
+  }
 }
 
 function main() {
@@ -36,6 +38,9 @@ function main() {
         "[--bundle-archive <steam-bridge-win-unpacked.tar>] " +
         "--audit-manifest <steam-bridge-windows-package-audit.json> " +
         "[--live-proof-receipt <windows-live-proof-receipt.json>] " +
+        "[--previous-tarball <steam-bridge-previous.tgz> " +
+        "--previous-live-proof-receipt <windows-live-proof-receipt.json> " +
+        "--previous-release-tag <vX.Y.Z>] " +
         "[--require-publishable|--publish --release-tag <vX.Y.Z>] [--tag <npm-tag>]"
     );
   }
@@ -46,6 +51,9 @@ function main() {
   const bundleArchiveArg = readArg("--bundle-archive");
   const npmTag = readArg("--tag");
   const liveProofReceiptArg = readArg("--live-proof-receipt");
+  const previousTarballArg = readArg("--previous-tarball");
+  const previousLiveProofReceiptArg = readArg("--previous-live-proof-receipt");
+  const previousReleaseTag = readArg("--previous-release-tag");
   const verified = verifyReleaseCandidate(tarball, auditManifest, {
     requirePublishable,
     releaseTag: readArg("--release-tag") || process.env.GITHUB_REF_NAME || "",
@@ -56,10 +64,21 @@ function main() {
   const liveProofReceipt = validateLiveProofForPublish(
     publishRequested,
     liveProofReceiptArg,
-    verified.candidateBinding
+    verified.candidateBinding,
+    {
+      candidateTarball: tarball,
+      previousTarball: previousTarballArg ? path.resolve(previousTarballArg) : undefined,
+      previousLiveProofReceipt: previousLiveProofReceiptArg
+        ? path.resolve(previousLiveProofReceiptArg)
+        : undefined,
+      previousReleaseTag
+    }
   );
   if (liveProofReceipt) {
-    console.log(`Verified matching Windows live-proof receipt sha256=${liveProofReceipt.receiptSha256}`);
+    const prefix = liveProofReceipt.documentationOnlySuccessor
+      ? "Verified documentation-only successor against prior Windows live proof"
+      : "Verified matching Windows live-proof receipt";
+    console.log(`${prefix} sha256=${liveProofReceipt.receiptSha256}`);
   }
 
   if (!publishRequested) {
@@ -91,14 +110,194 @@ function main() {
   }
 }
 
-function validateLiveProofForPublish(publishRequested, receiptArg, candidateBinding) {
-  const receipt = receiptArg
+function validateLiveProofForPublish(publishRequested, receiptArg, candidateBinding, options = {}) {
+  const hasPriorTarball = Boolean(options.previousTarball);
+  const hasPriorReceipt = Boolean(options.previousLiveProofReceipt);
+  const hasPriorReleaseTag = Boolean(options.previousReleaseTag);
+  assert.ok(
+    (hasPriorTarball && hasPriorReceipt && hasPriorReleaseTag) ||
+      (!hasPriorTarball && !hasPriorReceipt && !hasPriorReleaseTag),
+    "documentation-only publication requires the previous tarball, its live-proof receipt, and its release tag"
+  );
+  assert.ok(
+    !(receiptArg && hasPriorTarball),
+    "provide either an exact live-proof receipt or documentation-only predecessor proof, not both"
+  );
+  let receipt = receiptArg
     ? readAndValidateLiveProofReceipt(path.resolve(receiptArg), candidateBinding)
     : null;
+  if (hasPriorTarball) {
+    receipt = verifyDocumentationOnlySuccessor(
+      options.previousTarball,
+      options.candidateTarball,
+      options.previousLiveProofReceipt,
+      options.previousReleaseTag,
+      candidateBinding
+    );
+  }
   if (publishRequested) {
-    assert.ok(receipt, "npm publication requires a matching Windows live-proof receipt");
+    assert.ok(
+      receipt,
+      "npm publication requires a matching Windows live-proof receipt or verified documentation-only predecessor proof"
+    );
   }
   return receipt;
+}
+
+function verifyDocumentationOnlySuccessor(
+  previousTarball,
+  candidateTarball,
+  previousLiveProofReceipt,
+  previousReleaseTag,
+  candidateBinding
+) {
+  assertNonEmptyFile(previousTarball, "previous npm tarball");
+  assertNonEmptyFile(candidateTarball, "candidate npm tarball");
+  const receipt = readAndValidateLiveProofReceipt(previousLiveProofReceipt);
+  assert.match(previousReleaseTag || "", /^v\d+\.\d+\.\d+$/, "previous release tag is invalid");
+  assert.equal(
+    receipt.candidate.release.gitRefName,
+    previousReleaseTag,
+    "previous live-proof receipt does not belong to the requested release tag"
+  );
+  const previousHash = hashStableRegularFile(previousTarball, "previous npm tarball");
+  assert.equal(
+    previousHash.sha256,
+    receipt.candidate.package.tarballSha256,
+    "previous npm tarball does not match the retained live-proof receipt"
+  );
+
+  const previous = inspectNpmPackageTarball(previousTarball, "previous npm tarball");
+  const candidate = inspectNpmPackageTarball(candidateTarball, "candidate npm tarball");
+  assert.equal(previous.packageJson.name, "steam-bridge");
+  assert.equal(candidate.packageJson.name, "steam-bridge");
+  assert.equal(previous.packageJson.version, receipt.candidate.package.version);
+  assert.equal(candidate.packageJson.version, candidateBinding.package.version);
+  assert.equal(hashStableRegularFile(candidateTarball, "candidate npm tarball").sha256, candidateBinding.package.tarballSha256);
+  assertStablePatchSuccessor(previous.packageJson.version, candidate.packageJson.version);
+
+  const previousPackageJson = { ...previous.packageJson };
+  const candidatePackageJson = { ...candidate.packageJson };
+  delete previousPackageJson.version;
+  delete candidatePackageJson.version;
+  assert.deepEqual(
+    candidatePackageJson,
+    previousPackageJson,
+    "documentation-only successor changed package metadata beyond its version"
+  );
+  assert.notEqual(
+    candidate.files.get("README.md").sha256,
+    previous.files.get("README.md").sha256,
+    "documentation-only successor must change README.md"
+  );
+
+  const previousPaths = [...previous.files.keys()].sort();
+  const candidatePaths = [...candidate.files.keys()].sort();
+  assert.deepEqual(candidatePaths, previousPaths, "documentation-only successor changed the published file inventory");
+  for (const relativePath of previousPaths) {
+    if (relativePath === "README.md" || relativePath === "package.json") {
+      continue;
+    }
+    assert.deepEqual(
+      candidate.files.get(relativePath),
+      previous.files.get(relativePath),
+      `documentation-only successor changed published runtime file ${relativePath}`
+    );
+  }
+  assert.equal(candidateBinding.electronVersion, receipt.candidate.electronVersion);
+  assert.deepEqual(candidateBinding.nativeBinding, receipt.candidate.nativeBinding);
+
+  return {
+    ...receipt,
+    documentationOnlySuccessor: {
+      previousVersion: previous.packageJson.version,
+      candidateVersion: candidate.packageJson.version,
+      unchangedRuntimeFileCount: previousPaths.length - 2
+    }
+  };
+}
+
+function inspectNpmPackageTarball(tarballPath, label) {
+  const bytes = readStableRegularFile(tarballPath, label, 128 * 1024 * 1024);
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-npm-tarball-inspect-"));
+  const snapshot = path.join(tempRoot, "package.tgz");
+  const extractRoot = path.join(tempRoot, "extract");
+  try {
+    fs.writeFileSync(snapshot, bytes, { flag: "wx", mode: 0o400 });
+    fs.mkdirSync(extractRoot);
+    const seen = new Set();
+    let totalSize = 0;
+    tar.list({
+      file: snapshot,
+      sync: true,
+      strict: true,
+      onReadEntry(entry) {
+        const entryPath = String(entry.path || "");
+        assert.equal(entry.type, "File", `${label} contains unsupported entry type ${entry.type}`);
+        assert.ok(entryPath.startsWith("package/"), `${label} contains a file outside package/`);
+        assert.equal(path.posix.normalize(entryPath), entryPath, `${label} contains a non-canonical path`);
+        assert.ok(!entryPath.includes("\\") && !entryPath.includes("\0"), `${label} contains an unsafe path`);
+        const portablePath = entryPath.normalize("NFC").toLowerCase();
+        assert.ok(!seen.has(portablePath), `${label} contains a duplicate portable path`);
+        seen.add(portablePath);
+        assert.ok(Number.isSafeInteger(entry.size) && entry.size >= 0, `${label} contains an invalid file size`);
+        totalSize += entry.size;
+        assert.ok(totalSize <= 128 * 1024 * 1024, `${label} expands beyond the supported size`);
+      }
+    });
+    tar.extract({
+      cwd: extractRoot,
+      file: snapshot,
+      sync: true,
+      strict: true,
+      preservePaths: false,
+      unlink: true
+    });
+    assert.deepEqual(fs.readdirSync(extractRoot), ["package"], `${label} must contain exactly one package root`);
+    const packageRoot = path.join(extractRoot, "package");
+    const files = inspectRegularFiles(packageRoot);
+    assert.ok(files.has("README.md"), `${label} is missing README.md`);
+    assert.ok(files.has("package.json"), `${label} is missing package.json`);
+    const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+    return { files, packageJson };
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+function inspectRegularFiles(root) {
+  const files = new Map();
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolute);
+        continue;
+      }
+      assert.ok(entry.isFile() && !entry.isSymbolicLink(), `npm package contains unsupported entry ${absolute}`);
+      const relativePath = path.relative(root, absolute).split(path.sep).join("/");
+      const stats = fs.statSync(absolute);
+      const bytes = fs.readFileSync(absolute);
+      files.set(relativePath, {
+        size: bytes.length,
+        mode: stats.mode & 0o777,
+        sha256: crypto.createHash("sha256").update(bytes).digest("hex")
+      });
+    }
+  };
+  visit(root);
+  return files;
+}
+
+function assertStablePatchSuccessor(previousVersion, candidateVersion) {
+  const pattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  const previousMatch = pattern.exec(previousVersion || "");
+  const candidateMatch = pattern.exec(candidateVersion || "");
+  assert.ok(previousMatch && candidateMatch, "documentation-only publication requires stable semantic versions");
+  const previous = previousMatch.slice(1).map(Number);
+  const candidate = candidateMatch.slice(1).map(Number);
+  assert.deepEqual(candidate.slice(0, 2), previous.slice(0, 2), "documentation-only publication must stay in the same major/minor line");
+  assert.equal(candidate[2], previous[2] + 1, "documentation-only publication must be the next patch version");
 }
 
 function createVerifiedPublishCopy(tarball, expected) {
@@ -528,6 +727,105 @@ function selfTest() {
     writeJson(receiptPath, createSelfTestReceipt(publishableCandidate.candidateBinding));
     assert.ok(validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding));
     const signedAudit = JSON.parse(fs.readFileSync(audit, "utf8"));
+    const previousDocsTarball = createDocumentationOnlySelfTestTarball(
+      tempRoot,
+      "previous-docs-package",
+      "1.2.3",
+      "previous readme",
+      "unchanged runtime"
+    );
+    const candidateDocsTarball = createDocumentationOnlySelfTestTarball(
+      tempRoot,
+      "candidate-docs-package",
+      "1.2.4",
+      "cleaner readme",
+      "unchanged runtime"
+    );
+    const previousDocsAudit = JSON.parse(JSON.stringify(signedAudit));
+    previousDocsAudit.package.version = "1.2.3";
+    previousDocsAudit.package.tarball = {
+      fileName: path.basename(previousDocsTarball),
+      ...hashStableRegularFile(previousDocsTarball, "self-test previous documentation tarball")
+    };
+    previousDocsAudit.release = {
+      gitCommit: "1".repeat(40),
+      gitRefName: "v1.2.3"
+    };
+    const previousDocsBinding = createCandidateBinding(previousDocsAudit);
+    const previousDocsReceipt = path.join(tempRoot, "previous-docs-live-proof-receipt.json");
+    writeJson(previousDocsReceipt, createSelfTestReceipt(previousDocsBinding));
+    const candidateDocsAudit = JSON.parse(JSON.stringify(signedAudit));
+    candidateDocsAudit.package.version = "1.2.4";
+    candidateDocsAudit.package.tarball = {
+      fileName: path.basename(candidateDocsTarball),
+      ...hashStableRegularFile(candidateDocsTarball, "self-test candidate documentation tarball")
+    };
+    candidateDocsAudit.release = {
+      gitCommit: "2".repeat(40),
+      gitRefName: "v1.2.4"
+    };
+    const candidateDocsBinding = createCandidateBinding(candidateDocsAudit);
+    const documentationProof = validateLiveProofForPublish(true, undefined, candidateDocsBinding, {
+      candidateTarball: candidateDocsTarball,
+      previousTarball: previousDocsTarball,
+      previousLiveProofReceipt: previousDocsReceipt,
+      previousReleaseTag: "v1.2.3"
+    });
+    assert.deepEqual(documentationProof.documentationOnlySuccessor, {
+      previousVersion: "1.2.3",
+      candidateVersion: "1.2.4",
+      unchangedRuntimeFileCount: 1
+    });
+    assert.throws(
+      () =>
+        validateLiveProofForPublish(true, undefined, candidateDocsBinding, {
+          candidateTarball: candidateDocsTarball,
+          previousTarball: previousDocsTarball,
+          previousLiveProofReceipt: previousDocsReceipt,
+          previousReleaseTag: "v1.2.2"
+        }),
+      /does not belong to the requested release tag/
+    );
+    assert.throws(
+      () =>
+        validateLiveProofForPublish(true, receiptPath, candidateDocsBinding, {
+          candidateTarball: candidateDocsTarball,
+          previousTarball: previousDocsTarball,
+          previousLiveProofReceipt: previousDocsReceipt,
+          previousReleaseTag: "v1.2.3"
+        }),
+      /either an exact live-proof receipt or documentation-only predecessor proof/
+    );
+    assert.throws(
+      () =>
+        validateLiveProofForPublish(true, undefined, candidateDocsBinding, {
+          candidateTarball: candidateDocsTarball,
+          previousTarball: previousDocsTarball
+        }),
+      /requires the previous tarball, its live-proof receipt, and its release tag/
+    );
+    const changedRuntimeTarball = createDocumentationOnlySelfTestTarball(
+      tempRoot,
+      "changed-runtime-package",
+      "1.2.4",
+      "cleaner readme",
+      "changed runtime"
+    );
+    const changedRuntimeAudit = JSON.parse(JSON.stringify(candidateDocsAudit));
+    changedRuntimeAudit.package.tarball = {
+      fileName: path.basename(changedRuntimeTarball),
+      ...hashStableRegularFile(changedRuntimeTarball, "self-test changed-runtime tarball")
+    };
+    assert.throws(
+      () =>
+        validateLiveProofForPublish(true, undefined, createCandidateBinding(changedRuntimeAudit), {
+          candidateTarball: changedRuntimeTarball,
+          previousTarball: previousDocsTarball,
+          previousLiveProofReceipt: previousDocsReceipt,
+          previousReleaseTag: "v1.2.3"
+        }),
+      /changed published runtime file index.js/
+    );
     const unsignedAudit = JSON.parse(JSON.stringify(signedAudit));
     unsignedAudit.signing = {
       required: false,
@@ -648,6 +946,32 @@ function createSelfTestReceipt(candidateBinding) {
   return assembleLiveProofReceipt(candidateBinding, profiles, "2026-07-11T00:00:00.000Z", true);
 }
 
+function createDocumentationOnlySelfTestTarball(tempRoot, name, version, readme, runtime) {
+  const sourceRoot = path.join(tempRoot, name);
+  const tarball = path.join(tempRoot, `${name}.tgz`);
+  fs.mkdirSync(sourceRoot);
+  writeJson(path.join(sourceRoot, "package.json"), {
+    name: "steam-bridge",
+    version,
+    main: "index.js"
+  });
+  fs.writeFileSync(path.join(sourceRoot, "README.md"), `${readme}\n`);
+  fs.writeFileSync(path.join(sourceRoot, "index.js"), `${runtime}\n`);
+  tar.create(
+    {
+      cwd: sourceRoot,
+      file: tarball,
+      sync: true,
+      gzip: true,
+      portable: true,
+      noMtime: true,
+      prefix: "package"
+    },
+    ["README.md", "index.js", "package.json"]
+  );
+  return tarball;
+}
+
 function assertNonEmptyFile(filePath, label) {
   if (!filePath || !fs.existsSync(filePath)) {
     throw new Error(`Missing or empty ${label}: ${filePath}`);
@@ -745,4 +1069,4 @@ function readArg(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-module.exports = { verifyReleaseCandidate };
+module.exports = { verifyDocumentationOnlySuccessor, verifyReleaseCandidate };

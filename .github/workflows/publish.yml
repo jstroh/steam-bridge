@@ -15,6 +15,10 @@ on:
         description: npm dist-tag; leave empty for a stable release
         required: false
         type: string
+      previous_release_tag:
+        description: Prior proved release tag for an exact documentation-only patch successor
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -58,6 +62,7 @@ jobs:
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
         run: gh run download "$RELEASE_RUN_ID" --name steam-bridge-windows-publish-package-gate --dir candidate
       - name: Restore matching live-proof receipt
+        if: inputs.previous_release_tag == ''
         env:
           LIVE_PROOF_GZIP_BASE64: ${{ secrets.STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64 }}
         run: |
@@ -65,11 +70,30 @@ jobs:
           printf '%s' "$LIVE_PROOF_GZIP_BASE64" | base64 --decode > live-proof.json.gz
           gzip --test live-proof.json.gz
           gzip --decompress --stdout live-proof.json.gz > windows-live-proof-receipt.json
+      - name: Restore documentation-only predecessor proof
+        if: inputs.previous_release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RELEASE_TAG: ${{ inputs.previous_release_tag }}
+        run: |
+          [[ "$PREVIOUS_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(gh release view "$PREVIOUS_RELEASE_TAG" --json isDraft --jq .isDraft)" = "false"
+          test "$(gh release view "$PREVIOUS_RELEASE_TAG" --json isPrerelease --jq .isPrerelease)" = "false"
+          mkdir previous
+          gh release download "$PREVIOUS_RELEASE_TAG" \
+            --pattern 'steam-bridge-*.tgz' \
+            --pattern 'windows-live-proof-receipt.json' \
+            --dir previous
+          mapfile -t previous_tarballs < <(find previous -type f -name 'steam-bridge-*.tgz')
+          mapfile -t previous_receipts < <(find previous -type f -name 'windows-live-proof-receipt.json')
+          test "${#previous_tarballs[@]}" -eq 1
+          test "${#previous_receipts[@]}" -eq 1
       - name: Publish exact verified bytes
         env:
           NPM_CONFIG_ACCESS: public
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TAG: ${{ inputs.npm_tag }}
+          PREVIOUS_RELEASE_TAG: ${{ inputs.previous_release_tag }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           mapfile -t tarballs < <(find candidate -type f -name '*.tgz')
@@ -82,10 +106,22 @@ jobs:
             --tarball "${tarballs[0]}"
             --bundle-archive "${bundles[0]}"
             --audit-manifest "${audits[0]}"
-            --live-proof-receipt windows-live-proof-receipt.json
             --publish
             --release-tag "$RELEASE_TAG"
           )
+          if [[ -n "$PREVIOUS_RELEASE_TAG" ]]; then
+            mapfile -t previous_tarballs < <(find previous -type f -name 'steam-bridge-*.tgz')
+            mapfile -t previous_receipts < <(find previous -type f -name 'windows-live-proof-receipt.json')
+            test "${#previous_tarballs[@]}" -eq 1
+            test "${#previous_receipts[@]}" -eq 1
+            args+=(
+              --previous-tarball "${previous_tarballs[0]}"
+              --previous-live-proof-receipt "${previous_receipts[0]}"
+              --previous-release-tag "$PREVIOUS_RELEASE_TAG"
+            )
+          else
+            args+=(--live-proof-receipt windows-live-proof-receipt.json)
+          fi
           if [[ -n "$NPM_TAG" ]]; then
             args+=(--tag "$NPM_TAG")
           fi

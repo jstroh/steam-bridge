@@ -520,7 +520,6 @@ function runWindowsSmokeHelperStaticChecks() {
     "utf8"
   );
   const electronHelper = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "electron.ts"), "utf8");
-  const packageReadme = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "README.md"), "utf8");
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const electronSmokeMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
   const closeProbeTemplateStart = matrixHelper.indexOf('$probeScript = @"');
@@ -614,7 +613,12 @@ function runWindowsSmokeHelperStaticChecks() {
     "executableProbe?.ok",
     "--bundle-archive",
     "--live-proof-receipt",
+    "--previous-tarball",
+    "--previous-live-proof-receipt",
+    "--previous-release-tag",
     "npm publication requires a matching Windows live-proof receipt",
+    "verifyDocumentationOnlySuccessor",
+    "documentation-only successor changed published runtime file",
     "createVerifiedPublishCopy",
     "validatePublishTag",
     "shell: false",
@@ -649,6 +653,10 @@ function runWindowsSmokeHelperStaticChecks() {
     'test "$GITHUB_REF_TYPE" = "tag"',
     "npm run release:publish-candidate",
     "--live-proof-receipt windows-live-proof-receipt.json",
+    "previous_release_tag",
+    "--previous-tarball",
+    "--previous-live-proof-receipt",
+    "--previous-release-tag",
     'NPM_CONFIG_PROVENANCE: "true"'
   ]) {
     assert.ok(publishWorkflow.includes(expected), `Publish workflow missing ${expected}`);
@@ -940,10 +948,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "Electron example README must not describe in-process GPU as the Windows default"
   );
   assert.ok(
-    packageReadme.includes("`-Name=value`/`-Name:value` forms") &&
-      packageReadme.includes("redacts sensitive inline values") &&
-      packageReadme.includes("`-MatrixArgsFile` is still the preferred shape"),
-    "package README must document Windows task wrapper inline argument redaction"
+    exampleReadme.includes("`-Name=value`/`-Name:value` forms") &&
+      exampleReadme.includes("Sensitive inline values") &&
+      exampleReadme.includes("`-MatrixArgsFile` is safer"),
+    "Electron example README must document Windows task wrapper inline argument redaction"
   );
   assert.ok(
     exampleReadme.includes("`-Name=value`/`-Name:value` forms") &&
