@@ -900,6 +900,11 @@ the private `--checkout-json-file` checkout suite.
   path before overlay proof on SAC-enabled machines. The smoke package includes
   `sign-windows-package.ps1` for this step:
 
+  Production CI uses Azure Artifact Signing Public Trust with GitHub OIDC. Its
+  HSM-managed, short-lived certificates avoid exporting a private key or
+  attaching a hardware token to GitHub. The release gate pins the validated
+  publisher subject rather than the rotating leaf-certificate thumbprint.
+
   ```powershell
   # Use an installed private-key code-signing certificate.
   .\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"

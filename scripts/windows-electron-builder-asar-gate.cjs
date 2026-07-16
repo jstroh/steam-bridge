@@ -39,6 +39,7 @@ const expectedPublisherSubject =
 const expectedPublisherThumbprintInput =
   readArg("--expected-publisher-thumbprint") || process.env.STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_THUMBPRINT || "";
 const expectedPublisherThumbprint = normalizeThumbprint(expectedPublisherThumbprintInput);
+const artifactSigningConfig = readArtifactSigningConfig(process.env);
 const allPublishArtifacts = Object.freeze([
   "steam_bridge_native.darwin-arm64.node",
   "libsteam_api.dylib",
@@ -98,6 +99,20 @@ async function main() {
     throw new Error(
       "--require-signed also requires --expected-publisher-subject or --expected-publisher-thumbprint."
     );
+  }
+  if (artifactSigningConfig && expectedPublisherThumbprint) {
+    throw new Error("Artifact Signing uses short-lived certificates; configure the expected publisher subject, not a leaf thumbprint.");
+  }
+  if (artifactSigningConfig && !expectedPublisherSubject) {
+    throw new Error("Artifact Signing requires STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_SUBJECT.");
+  }
+  if (
+    artifactSigningConfig &&
+    ["WIN_CSC_LINK", "WIN_CSC_KEY_PASSWORD", "CSC_LINK", "CSC_KEY_PASSWORD"].some(
+      (name) => String(process.env[name] || "").trim()
+    )
+  ) {
+    throw new Error("Artifact Signing cannot be combined with PFX signing credentials.");
   }
 
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-asar-gate-"));
@@ -188,7 +203,8 @@ async function main() {
         fixtureConfig.win,
         requireSigned,
         expectedPublisherThumbprint,
-        expectedPublisherSubject
+        expectedPublisherSubject,
+        artifactSigningConfig
       ),
       afterPack: async (context) => {
         const appRuntimeDir = resolvePackagedWindowsRuntimeDirectory(context.appOutDir);
@@ -504,12 +520,49 @@ function listPhysicalRuntimeFiles(physicalPackageDir) {
   return inspectCandidateDirectory(physicalPackageDir).files.map((entry) => entry.relativePath);
 }
 
-function createWindowsSigningConfig(baseConfig, signed, publisherThumbprint, publisherSubject) {
+function readArtifactSigningConfig(env = process.env) {
+  const values = {
+    endpoint: String(env.STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ENDPOINT || "").trim(),
+    codeSigningAccountName: String(env.STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ACCOUNT || "").trim(),
+    certificateProfileName: String(env.STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PROFILE || "").trim(),
+    publisherName: String(env.STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME || "").trim()
+  };
+  const configured = Object.values(values).filter(Boolean).length;
+  if (configured === 0) {
+    return null;
+  }
+  if (configured !== Object.keys(values).length) {
+    throw new Error("Artifact Signing requires endpoint, account, certificate profile, and publisher name together.");
+  }
+  assert.match(
+    values.endpoint,
+    /^https:\/\/[a-z0-9-]+\.codesigning\.azure\.net\/?$/i,
+    "Artifact Signing endpoint must be an Azure codesigning endpoint."
+  );
+  assert.match(values.codeSigningAccountName, /^[A-Za-z][A-Za-z0-9-]{1,22}[A-Za-z0-9]$/);
+  assert.match(values.certificateProfileName, /^[A-Za-z][A-Za-z0-9-]{3,98}[A-Za-z0-9]$/);
+  return Object.freeze(values);
+}
+
+function createWindowsSigningConfig(baseConfig, signed, publisherThumbprint, publisherSubject, artifactSigning) {
   const config = {
     ...baseConfig,
     forceCodeSigning: signed
   };
   if (!signed) {
+    return config;
+  }
+  if (artifactSigning) {
+    assert.equal(baseConfig.signtoolOptions, undefined, "Artifact Signing cannot be combined with signtoolOptions.");
+    config.azureSignOptions = {
+      endpoint: artifactSigning.endpoint,
+      codeSigningAccountName: artifactSigning.codeSigningAccountName,
+      certificateProfileName: artifactSigning.certificateProfileName,
+      publisherName: artifactSigning.publisherName,
+      fileDigest: "SHA256",
+      timestampDigest: "SHA256",
+      timestampRfc3161: "http://timestamp.acs.microsoft.com"
+    };
     return config;
   }
   config.signtoolOptions = {
@@ -867,6 +920,38 @@ function selfTest() {
       forceCodeSigning: true,
       signtoolOptions: { certificateSubjectName: "publisher subject" }
     });
+    const azureSigning = readArtifactSigningConfig({
+      STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ENDPOINT: "https://wus3.codesigning.azure.net",
+      STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ACCOUNT: "steambridge",
+      STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PROFILE: "SteamBridgePublic",
+      STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME: "Steam Bridge"
+    });
+    assert.deepEqual(createWindowsSigningConfig({ signExts: [".node"] }, true, "", "CN=Steam Bridge", azureSigning), {
+      signExts: [".node"],
+      forceCodeSigning: true,
+      azureSignOptions: {
+        endpoint: "https://wus3.codesigning.azure.net",
+        codeSigningAccountName: "steambridge",
+        certificateProfileName: "SteamBridgePublic",
+        publisherName: "Steam Bridge",
+        fileDigest: "SHA256",
+        timestampDigest: "SHA256",
+        timestampRfc3161: "http://timestamp.acs.microsoft.com"
+      }
+    });
+    assert.throws(
+      () => readArtifactSigningConfig({ STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ENDPOINT: "https://wus3.codesigning.azure.net" }),
+      /requires endpoint, account, certificate profile, and publisher name together/
+    );
+    assert.throws(
+      () => readArtifactSigningConfig({
+        STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ENDPOINT: "https://example.com",
+        STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ACCOUNT: "steambridge",
+        STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PROFILE: "SteamBridgePublic",
+        STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME: "Steam Bridge"
+      }),
+      /must be an Azure codesigning endpoint/
+    );
     const firstArchive = createDeterministicBundleArchive(bundleDir, path.join(tempRoot, "first.tar"));
     fs.utimesSync(path.join(bundleDir, "app.exe"), new Date(1_000_000), new Date(2_000_000));
     const secondArchive = createDeterministicBundleArchive(bundleDir, path.join(tempRoot, "second.tar"));
@@ -1143,6 +1228,7 @@ module.exports = {
   createDeterministicBundleArchive,
   installExactTarball,
   preserveFailureExitCode,
+  readArtifactSigningConfig,
   stageFixture,
   verifyAsarLayout,
   verifyLiveSmokeCapability

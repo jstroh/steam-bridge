@@ -78,6 +78,17 @@ the Windows ASAR publish gate independently requires the complete set before a
 candidate can pass. Public install guidance now distinguishes this zero-SDK
 consumer path from contributor source builds, which still require a local SDK.
 
+Azure Artifact Signing Public Trust is the selected production Windows signing
+path. A user-scoped Azure CLI 2.88.0 is installed outside the repository. The
+Release workflow now has a fail-closed GitHub OIDC integration for the protected
+`windows-signing` environment and retains the PFX backend only as a mutually
+exclusive compatibility path. The environment exists, requires one reviewer,
+and permits only `v*` tag deployments; unsigned manual runs use a separate
+unprivileged `windows-diagnostics` environment. Azure login, Basic-plan
+acceptance, public identity validation, certificate-profile creation, and Entra
+federation remain interactive maintainer-account steps; no billing resource has
+been created.
+
 Unrelated local `AGENTS.md`, `.codex`, and input-probe worktree changes belong to
 the user and must remain untouched.
 
@@ -129,6 +140,13 @@ the user and must remain untouched.
 - Retained Release run `29363098329` contains all six expected Valve runtime
   files in its canonical npm tarball: the Steam API and encrypted-app-ticket
   redistributables for Windows x64, Linux x64, and Apple Silicon macOS.
+- Azure Artifact Signing integration passes `actionlint` 1.7.12, PyYAML
+  parsing, the Windows package-gate self-test, `check:platform`, all 196
+  unit/TypeScript tests, `api:check`, Rust formatting/native check, and
+  `git diff --check`. Native-Windows `package:smoke` reaches only the existing
+  Linux shortcut-ID fixture boundary after the release and macOS helper checks
+  pass. The protected `windows-signing` and unprivileged
+  `windows-diagnostics` GitHub environments exist with the intended policies.
 
 ## Next Actions
 
@@ -138,16 +156,18 @@ the user and must remain untouched.
 2. Run the current signed minimal matrix first. Expand to persistent/full proof
    only according to the changed surfaces and live findings; avoid unnecessary
    Steam restarts and unchanged negative experiments.
-3. Configure the real production Windows signing identity and first-publish npm
-   bootstrap authority, then build, live-prove, retain, and publish the exact
-   protected `v0.1.0` candidate.
+3. Complete Azure Artifact Signing Public Trust identity validation and GitHub
+   OIDC federation, configure first-publish npm bootstrap authority, then build,
+   live-prove, retain, and publish the exact protected `v0.1.0` candidate.
 
 ## Exact Next Step
 
-Enable Mac Remote Login and finish the physical-Mac review. In parallel, obtain
-the real production Windows signing identity and create the short-lived npm
-bootstrap token through the maintainer accounts. Do not create the release tag
-or publish until those credential gates and the Mac review are complete.
+Enable Mac Remote Login and finish the physical-Mac review. In parallel, sign
+in to Azure, create the Basic Artifact Signing account, complete Public Trust
+identity validation, and authorize the protected GitHub environment through an
+Entra OIDC federation. Create the short-lived npm bootstrap token through the
+maintainer account. Do not create the release tag or publish until those
+credential gates and the Mac review are complete.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

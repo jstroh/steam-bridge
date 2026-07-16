@@ -60,6 +60,22 @@ diagnostic run may remain unsigned. The workflow does not publish npm bytes or
 create a GitHub Release, and a signed tag run is still a candidate until its
 exact retained bundle passes the required live Windows gates.
 
+Production CI signing uses Azure Artifact Signing Public Trust through the
+protected `windows-signing` environment and GitHub OIDC. Configure the
+environment variables `WINDOWS_SIGNING_BACKEND=artifact-signing`,
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+`WINDOWS_ARTIFACT_SIGNING_ENDPOINT`, `WINDOWS_ARTIFACT_SIGNING_ACCOUNT`,
+`WINDOWS_ARTIFACT_SIGNING_PROFILE`,
+`WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME`, and `WINDOWS_PUBLISHER_SUBJECT`.
+The Entra principal needs only the Artifact Signing Certificate Profile Signer
+role for the selected profile. Use the validated certificate subject as the
+release policy: Artifact Signing rotates short-lived leaf certificates, so do
+not configure `WINDOWS_PUBLISHER_THUMBPRINT`. Delete the legacy
+`WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD` secrets when selecting this
+backend; the gate rejects mixed cloud/PFX credentials.
+Unsigned manual diagnostics use the unprivileged `windows-diagnostics`
+environment and never authenticate to Azure.
+
 `--require-publishable` is the signed-tag candidate gate and deliberately runs
 before live proof, so it must remain receipt-free. An actual `--publish` must
 also receive `--live-proof-receipt <receipt.json>`. Generate that sanitized

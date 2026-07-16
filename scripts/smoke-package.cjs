@@ -641,6 +641,11 @@ function runWindowsSmokeHelperStaticChecks() {
       releaseWorkflow.includes("npm run release:assemble") &&
       releaseWorkflow.includes("npm run windows:package-gate") &&
       releaseWorkflow.includes("--require-signed") &&
+      releaseWorkflow.includes("'windows-signing' || 'windows-diagnostics'") &&
+      releaseWorkflow.includes("id-token: write") &&
+      releaseWorkflow.includes("azure/login@v2") &&
+      releaseWorkflow.includes("WINDOWS_SIGNING_BACKEND == 'artifact-signing'") &&
+      releaseWorkflow.includes("WINDOWS_ARTIFACT_SIGNING_PROFILE") &&
       releaseWorkflow.includes("npm run release:publish-candidate") &&
       releaseWorkflow.includes("--require-publishable") &&
       releaseWorkflow.includes("*-win-unpacked.tar") &&

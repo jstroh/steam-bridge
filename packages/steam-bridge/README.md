@@ -118,11 +118,14 @@ race. The audit and receipt JSON are not independently signed, so retain and
 trust their workflow/release provenance. Prerelease versions require an
 explicit non-`latest` npm `--tag`.
 Publishing from the assembled workspace would repack it and is not the
-verified path. Tag-triggered Release runs set `forceCodeSigning`, require
-`WINDOWS_CSC_LINK`/`WINDOWS_CSC_KEY_PASSWORD` secrets, and match the app
-executable and native addon against `WINDOWS_PUBLISHER_SUBJECT` or
-`WINDOWS_PUBLISHER_THUMBPRINT` repository variables. The Valve runtime DLLs
-must be Authenticode-valid and retain their exact upstream bytes.
+verified path. Tag-triggered Release runs set `forceCodeSigning` and match the
+app executable and native addon against the configured publisher policy. The
+production workflow uses Azure Artifact Signing Public Trust through GitHub
+OIDC and the protected `windows-signing` environment; its validated publisher
+subject is durable while its short-lived leaf-certificate thumbprint is not.
+The legacy PFX path remains available for compatible private-key certificates,
+but the gate rejects mixing PFX credentials with Artifact Signing. The Valve
+runtime DLLs must be Authenticode-valid and retain their exact upstream bytes.
 The Release workflow validates this candidate but intentionally neither runs
 `--publish` nor creates a GitHub Release. Before production publication, retain
 the exact tarball, Windows bundle, audit, probe, and sanitized live-proof
