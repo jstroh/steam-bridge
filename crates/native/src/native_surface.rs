@@ -1195,8 +1195,8 @@ mod windows {
     use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
     use windows_sys::core::{GUID, HRESULT};
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
-    use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+    use windows_sys::Win32::Graphics::Gdi::{ClientToScreen, GetDC, ReleaseDC, HDC};
     use windows_sys::Win32::Graphics::OpenGL::{
         ChoosePixelFormat, SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
         PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
@@ -1209,8 +1209,8 @@ mod windows {
         SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
         ShowWindow, TranslateMessage, CS_OWNDC, GWL_EXSTYLE, GWL_STYLE, LWA_ALPHA, MA_NOACTIVATE,
         MSG, PM_REMOVE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WM_ACTIVATE,
-        WM_ACTIVATEAPP, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WM_ACTIVATE, WM_ACTIVATEAPP,
+        WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
         WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_SETFOCUS, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
         WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
@@ -1429,6 +1429,7 @@ mod windows {
         input_passthrough: bool,
         opaque: bool,
         visible: bool,
+        last_parent_client_bounds: Option<(i32, i32, i32, i32)>,
     }
 
     enum WindowsSurfaceRenderer {
@@ -1652,7 +1653,7 @@ mod windows {
         };
 
         let result = unsafe {
-            pump_messages();
+            pump_messages(surface.hwnd);
             update_window_frame(surface);
             if surface.visible {
                 render_surface(surface)
@@ -1744,6 +1745,10 @@ mod windows {
                 .parent_hwnd
                 .and_then(read_window_rect)
                 .map(window_rect_json);
+            let parent_client_rect = surface
+                .parent_hwnd
+                .and_then(read_client_rect_in_screen)
+                .map(window_rect_json);
             let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
             let ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
             let renderer = renderer_diagnostics_json(&surface.renderer);
@@ -1766,6 +1771,7 @@ mod windows {
                     "frame": surface.frame,
                     "rect": rect,
                     "parentRect": parent_rect,
+                    "parentClientRect": parent_client_rect,
                     "messages": message_diagnostics,
                 })
                 .to_string(),
@@ -1811,7 +1817,7 @@ mod windows {
         reset_window_message_diagnostics();
         let title = wide_string(title);
         let class_name = window_class_name();
-        let parent_rect = parent_hwnd.and_then(read_window_rect);
+        let parent_rect = parent_hwnd.and_then(read_client_rect_in_screen);
         let (x, y, width, height) = parent_rect
             .map(|rect| {
                 (
@@ -1881,10 +1887,11 @@ mod windows {
                 || !input_passthrough
                 || host_style == WindowsHostStyle::Control,
             visible: true,
+            last_parent_client_bounds: None,
         };
         sync_window_style(&mut surface);
         show_surface(&surface);
-        update_window_frame(&surface);
+        update_window_frame(&mut surface);
         if !surface.input_passthrough {
             activate_window(&surface);
         }
@@ -2254,20 +2261,24 @@ mod windows {
         format!("0x{:08X}", hr as u32)
     }
 
-    unsafe fn update_window_frame(surface: &NativeSurface) {
+    unsafe fn update_window_frame(surface: &mut NativeSurface) {
         let Some(parent_hwnd) = surface.parent_hwnd else {
             return;
         };
-        let Some(rect) = read_window_rect(parent_hwnd) else {
+        let Some(rect) = read_client_rect_in_screen(parent_hwnd) else {
             return;
         };
         let width = (rect.right - rect.left).max(1);
         let height = (rect.bottom - rect.top).max(1);
-        let mut flags = SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_SHOWWINDOW;
+        let bounds = (rect.left, rect.top, width, height);
+        if surface.last_parent_client_bounds == Some(bounds) {
+            return;
+        }
+        let mut flags = SWP_NOOWNERZORDER | SWP_NOZORDER;
         if surface.input_passthrough {
             flags |= SWP_NOACTIVATE;
         }
-        SetWindowPos(
+        if SetWindowPos(
             surface.hwnd,
             ptr::null_mut(),
             rect.left,
@@ -2275,7 +2286,10 @@ mod windows {
             width,
             height,
             flags,
-        );
+        ) != 0
+        {
+            surface.last_parent_client_bounds = Some(bounds);
+        }
     }
 
     unsafe fn sync_window_style(surface: &mut NativeSurface) {
@@ -2357,9 +2371,9 @@ mod windows {
         }
     }
 
-    unsafe fn pump_messages() {
+    unsafe fn pump_messages(hwnd: HWND) {
         let mut message: MSG = mem::zeroed();
-        while PeekMessageW(&mut message, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+        while PeekMessageW(&mut message, hwnd, 0, 0, PM_REMOVE) != 0 {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
@@ -2450,6 +2464,32 @@ mod windows {
                 return None;
             }
             Some(rect)
+        }
+    }
+
+    fn read_client_rect_in_screen(hwnd: HWND) -> Option<RECT> {
+        unsafe {
+            let mut rect: RECT = mem::zeroed();
+            if GetClientRect(hwnd, &mut rect) == 0 {
+                return None;
+            }
+
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            let mut origin = POINT {
+                x: rect.left,
+                y: rect.top,
+            };
+            if ClientToScreen(hwnd, &mut origin) == 0 {
+                return None;
+            }
+
+            Some(RECT {
+                left: origin.x,
+                top: origin.y,
+                right: origin.x + width,
+                bottom: origin.y + height,
+            })
         }
     }
 

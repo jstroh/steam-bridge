@@ -206,6 +206,21 @@ test("electron overlay compatibility profile keeps explicit Windows in-process G
   assert.equal(appendedSwitches.includes("in-process-gpu"), true);
 });
 
+test("Windows native presenter follows only the Electron client area without forcing visibility", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+
+  assert.match(source, /parent_hwnd\.and_then\(read_client_rect_in_screen\)/);
+  assert.match(source, /let Some\(rect\) = read_client_rect_in_screen\(parent_hwnd\)/);
+  assert.match(source, /ClientToScreen\(hwnd, &mut origin\)/);
+  assert.match(source, /pump_messages\(surface\.hwnd\)/);
+  assert.match(source, /PeekMessageW\(&mut message, hwnd, 0, 0, PM_REMOVE\)/);
+  assert.match(source, /last_parent_client_bounds == Some\(bounds\)/);
+  assert.doesNotMatch(source, /SWP_SHOWWINDOW/);
+});
+
 test("electron smoke sanitizer redacts private overlay proof fields", () => {
   const { sanitizeSmokeValue } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-sanitize.cjs"));
   const { serializeSmokeError } = require(path.join(repoRoot, "examples", "electron-basic", "smoke-error.cjs"));
@@ -8069,12 +8084,14 @@ test("electron steam overlay manager syncs the presenter on window geometry even
     pollIntervalMs: 10000
   });
 
-  assert.equal(handlers.has("resize"), true);
-  assert.equal(handlers.has("move"), true);
+  assert.equal(handlers.has("resize"), false);
+  assert.equal(handlers.has("move"), false);
+  assert.equal(handlers.has("resized"), true);
+  assert.equal(handlers.has("moved"), true);
   assert.equal(handlers.has("enter-full-screen"), true);
   assert.equal(pumpCalls().length, 1);
 
-  const resizeHandler = handlers.get("resize");
+  const resizeHandler = handlers.get("resized");
   windowBounds = { x: 16, y: 32, width: 1280, height: 720 };
   resizeHandler();
   assert.equal(pumpCalls().length, 2);
@@ -8085,7 +8102,7 @@ test("electron steam overlay manager syncs the presenter on window geometry even
 
   overlay.close();
   assert.equal(handlers.size, 0);
-  assert.equal(removedEvents.includes("resize"), true);
+  assert.equal(removedEvents.includes("resized"), true);
   assert.equal(removedEvents.includes("enter-full-screen"), true);
 
   resizeHandler();
@@ -8308,6 +8325,7 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   t.after(clearSteamBridgeCache);
 
   let focusCount = 0;
+  const geometryHandlers = new Map();
   const window = {
     isDestroyed() {
       return false;
@@ -8321,6 +8339,14 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
     focus() {
       focusCount += 1;
       activationOrder.push("focus-source-window");
+    },
+    on(event, handler) {
+      geometryHandlers.set(event, handler);
+    },
+    off(event, handler) {
+      if (geometryHandlers.get(event) === handler) {
+        geometryHandlers.delete(event);
+      }
     },
     once() {},
     webContents: {
@@ -8349,6 +8375,10 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   assert.deepEqual(initialSnapshot.bounds, windowBounds);
   assert.equal(initialSnapshot.electronOverlay.presenterMode, "persistent");
   assert.equal(initialSnapshot.electronOverlay.controllerGeneration > 0, true);
+  assert.equal(geometryHandlers.has("move"), false);
+  assert.equal(geometryHandlers.has("resize"), false);
+  assert.equal(geometryHandlers.has("moved"), true);
+  assert.equal(geometryHandlers.has("resized"), true);
 
   const opened = overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
   assert.equal(opened, overlay.presenter);
@@ -8405,6 +8435,7 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   assert.equal(closedSnapshot.nativeSurfaceAttachCount, 1);
   assert.equal(closedSnapshot.nativeSurfaceDetachCount, 1);
   assert.equal(closedSnapshot.lastError, undefined);
+  assert.equal(geometryHandlers.size, 0);
 
   assert.deepEqual(
     fake.calls
@@ -8427,6 +8458,99 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
       "detachNativeOverlayHostView"
     ]
   );
+});
+
+test("Windows presenter ignores idle needs-present until an operation primes it", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  const hostHandle = Buffer.from([7, 4, 2, 0]);
+  let hostOpen = false;
+  let overlayNeedsPresent = true;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    overlayNeedsPresent() {
+      return overlayNeedsPresent;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "C:\\Program Files (x86)\\Steam",
+        appId: 480,
+        overlayEnabled: true,
+        overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    idleFps: 0,
+    pollIntervalMs: 5,
+    activeGraceMs: 0
+  });
+  t.after(() => presenter.close());
+
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().overlayNeedsPresent, 500, 5),
+    true
+  );
+  assert.equal(presenter.snapshot().nativeHostOpen, false);
+  assert.equal(presenter.snapshot().currentFps, 0);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostView"),
+    []
+  );
+
+  presenter.prepareForPassiveOverlay();
+  assert.equal(presenter.snapshot().nativeHostOpen, true);
+  assert.equal(presenter.snapshot().transparent, false);
+
+  overlayNeedsPresent = false;
+  assert.equal(
+    await waitForCondition(
+      () => presenter.snapshot().overlayNeedsPresent === false && presenter.snapshot().transparent === true,
+      500,
+      5
+    ),
+    true
+  );
+
+  overlayNeedsPresent = true;
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().overlayNeedsPresent === true, 500, 5),
+    true
+  );
+  assert.equal(presenter.snapshot().transparent, true);
+  assert.equal(presenter.snapshot().currentFps, 0);
 });
 
 test("electron steam overlay openAndWait uses the direct readiness path on Windows in session mode", async (t) => {
@@ -14162,7 +14286,7 @@ test("native overlay presenter terminally closes after an activation attach fail
   assert.equal(fake.calls.filter((call) => call.method === "detachNativeOverlayHostView").length, 1);
 });
 
-test("Windows idle scheduler contains a needs-present attach failure", async (t) => {
+test("Windows passive preparation contains a needs-present attach failure", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
   const hostHandle = Buffer.from([5, 6, 5, 6]);
@@ -14212,9 +14336,15 @@ test("Windows idle scheduler contains a needs-present attach failure", async (t)
     needsPresentFps: 0,
     pollIntervalMs: 30
   });
-  assert.equal(await waitForCondition(() => presenter.snapshot().closed, 500, 5), true);
+  t.after(() => presenter.close());
+
+  assert.equal(presenter.snapshot().closed, false);
+  assert.throws(
+    () => presenter.prepareForPassiveOverlay(),
+    (error) => error === attachError
+  );
   const failed = presenter.snapshot();
-  assert.ok(diagnosticsReads >= 1);
+  assert.equal(diagnosticsReads, 0);
   assert.equal(failed.closeReason, "error");
   assert.equal(failed.lastError, attachError);
   assert.equal(failed.nativeSurfaceOwner, false);
@@ -14489,7 +14619,7 @@ test("managed controller construction rolls back every partially installed resou
     },
     on(event) {
       calls.push(`window:on:${event}`);
-      if (failureStage === "geometry" && event === "resize") {
+      if (failureStage === "geometry" && event === "resized") {
         throw new Error("geometry listener registration failed");
       }
     },
@@ -15712,6 +15842,12 @@ test("Windows native overlay presenter polls needs-present at Valve cadence with
   assert.equal(refreshed.lightweightPollCount, needsPresentCallCount);
   assert.equal(refreshed.lastFullDiagnosticsPollAt - firstFullDiagnosticsPollAt >= 250, true);
   assert.equal(refreshed.lastLightweightPollAt >= firstFullDiagnosticsPollAt, true);
+
+  presenter.prepareForPassiveOverlay();
+  const primed = presenter.snapshot();
+  assert.equal(primed.attached, true);
+  assert.equal(primed.currentFps, 0);
+  assert.equal(primed.transparent, true);
 
   needsPresent = true;
   assert.equal(

@@ -8811,7 +8811,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     lastFullDiagnosticsAttemptAt = now;
     try {
       lastDiagnostics = getOverlayDiagnostics();
-      needsPresent = lastDiagnostics.overlayNeedsPresent;
+      updateNeedsPresentState(lastDiagnostics.overlayNeedsPresent);
       fullDiagnosticsPollCount += 1;
       pollCount += 1;
       lastFullDiagnosticsPollAt = now;
@@ -8824,7 +8824,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   }
 
   function updateNeedsPresentState(value: boolean): boolean {
-    const changed = needsPresent !== value;
+    const previous = needsPresent;
+    const changed = previous !== value;
     if (lastDiagnostics && lastDiagnostics.overlayNeedsPresent !== value) {
       lastDiagnostics = {
         ...lastDiagnostics,
@@ -8832,6 +8833,16 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       };
     }
     needsPresent = value;
+    if (
+      previous &&
+      !value &&
+      process.platform === "win32" &&
+      hostActivationMode === "passive" &&
+      activationHoldCount === 0 &&
+      !overlayActive
+    ) {
+      suppressNeedsPresentOpacity = true;
+    }
     return changed;
   }
 
@@ -9047,7 +9058,6 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       hostActivationMode === "passive" &&
       activationHoldCount === 0 &&
       !overlayActive &&
-      !needsPresent &&
       !safeBoolean(() => native().isNativeOverlayHostViewOpen())
     );
   }
@@ -11145,9 +11155,10 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
 }
 
 const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEvent[] = [
-  "move",
+  // Electron emits `move` and `resize` continuously inside Windows' modal
+  // move/size loop. Pumping D3D and repositioning an owned presenter from
+  // those callbacks can re-enter that loop and hang the browser process.
   "moved",
-  "resize",
   "resized",
   "maximize",
   "unmaximize",
