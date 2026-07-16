@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `730a8b5` (`Close the first release goal`).
+Review anchor: `1f0af41` (`Publish a concise npm package page`).
 
 ## Active Goal
 
@@ -26,6 +26,8 @@ exists.
 The workspace and package versions are bumped to `0.1.5`. The package README
 now serves consumers instead of embedding release forensics and live-test logs.
 Internal wrapper and matrix detail remains in the Electron example guide.
+Commit `1f0af41` is pushed to `main`, and exact CI `29534842260` passes complete
+package smoke plus Windows x64, Linux x64, and Apple Silicon jobs.
 
 The protected publish workflow now supports an explicit
 `previous_release_tag` route for documentation-only patch successors. The
@@ -54,26 +56,24 @@ input-probe changes that belong to the user and must remain untouched.
 - Local package smoke passes its applicable Windows self-tests, package CLIs,
   and static policy checks, then stops at the already-recorded Windows host
   boundary because `bash` is unavailable. Exact CI must complete that path.
+- Exact main CI `29534842260` passes all four jobs for commit `1f0af41`.
 - No private app, product, account, shortcut, transaction, Steam, key, price,
   or fixture identifier has been added.
 
 ## Next Actions
 
-1. Commit and push the reviewed `0.1.5` documentation-only release slice
-   without touching unrelated local files; require green
-   GitHub CI.
-2. Create protected tag `v0.1.5`, wait for the exact Release candidate gate,
+1. Create protected tag `v0.1.5`, wait for the exact Release candidate gate,
    and retain the five candidate artifacts.
-3. Publish through the tokenless workflow with
+2. Publish through the tokenless workflow with
    `previous_release_tag=v0.1.4`. The byte-equivalence verifier must pass before
    npm publication.
-4. Verify registry metadata, tarball integrity, provenance, `latest`, and the
+3. Verify registry metadata, tarball integrity, provenance, `latest`, and the
    concise README in the published tarball.
 
 ## Exact Next Step
 
-Commit and push the reviewed release slice, then require green exact CI before
-tagging it.
+Commit this checkpoint, require its exact CI, then create protected tag
+`v0.1.5` at that commit.
 
 Detailed settled platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
