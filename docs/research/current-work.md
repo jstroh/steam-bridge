@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `ae9dc2a` (`Make achievement progress proof repeatable`).
+Review anchor: `b1e4fdc` (`Require Windows passive notification transition`).
 
 ## Active Goal
 
@@ -58,6 +58,12 @@ Steam-overlay-target completion path. A source-level regression test covers the
 platform predicate, and all package versions are `0.1.3`. A fresh protected
 candidate is required; do not splice `v0.1.2` evidence into its receipt.
 
+Commit `b1e4fdc` is pushed. Exact CI `29485423689` passes the runtime unit suite
+on supported platforms but its package-smoke job rejects the new predicate
+because the static packaged-source contract still searches for the old adjacent
+callback/parking substring. The worktree updates only that established contract
+to require the full event, callback, platform render-path, and parking condition.
+
 The npm registry still has no public `steam-bridge` package. The protected
 `npm-production` environment has a bootstrap `NPM_TOKEN`, but the token was
 exposed during setup. Delete the GitHub secret and revoke the npm token after
@@ -83,6 +89,8 @@ changes that belong to the user and must remain untouched.
 - The `0.1.3` worktree passes JavaScript parsing, both focused regression tests,
   all 198 unit/TypeScript tests, platform policy, API coverage, Rust formatting,
   native check, and `git diff --check`.
+- Exact CI `29485423689` fails only its stale package-smoke source-string guard;
+  the log identifies no runtime, platform, build, or test failure.
 - Native-Windows `package:smoke` passes its applicable package and self-test
   gates before the recorded missing-`bash` host boundary.
 - No private app, product, account, shortcut, transaction, or Steam identifiers

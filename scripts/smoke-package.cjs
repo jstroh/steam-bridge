@@ -3532,7 +3532,11 @@ function runElectronSmokeActionStaticChecks() {
     ["Electron smoke main", main, "overlay:presenter-duplicate-open-guard"],
     ["Electron smoke main", main, "overlay:presenter-direct-open-wait-start"],
     ["Electron smoke main", main, "overlay:presenter-direct-open-status"],
-    ["Electron smoke main", main, "callbacksSeen && isParkedPassivePresenter(presenter)"],
+    [
+      "Electron smoke main",
+      main,
+      "eventSeen && callbacksSeen && renderPathObserved && isParkedPassivePresenter(presenter)"
+    ],
     ["Electron smoke main", main, 'renderPath: transitionObserved ? "needs-present" : "steam-overlay-target"'],
     ["Electron smoke main", main, "directPresenterOpenReadinessStatus"],
     ["Electron smoke main", main, "waitForDirectPresenterOpenReadiness"],
