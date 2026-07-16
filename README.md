@@ -1,421 +1,86 @@
 # Steam Bridge
 
-Steam Bridge is a native-backed TypeScript package for Electron and Node. It
-provides a focused Steamworks API surface through a Rust `napi-rs` addon, plus a
-compatibility-shaped default export for projects migrating from Steamworks
-wrappers with similar call patterns.
+[![npm](https://img.shields.io/npm/v/steam-bridge)](https://www.npmjs.com/package/steam-bridge)
+[![CI](https://github.com/jstroh/steam-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/jstroh/steam-bridge/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/steam-bridge)](LICENSE)
 
-This project is 100% created and maintained by Codex.
+Native Steamworks for Electron and Node, with a TypeScript API and a Rust
+`napi-rs` core.
 
-The native crate calls the Steamworks flat C API through `steamworks-sys` and
-owns Steam API initialization, manual callback dispatch, auth tickets, overlay
-helpers, encrypted app ticket parsing, Steam utility checks, Steam ID helpers,
-achievements, networking, matchmaking, app metadata and DLC helpers, cloud,
-HTTP, game-server, input, stats, inventory, workshop helpers, and a generic
-Steam Web API client for publisher inventory, trading, and economy endpoints.
-Modern networking socket create/connect helpers accept per-call
-`NetworkingConfigOption` arrays.
+Steam Bridge handles Steam API initialization, callbacks, native library
+loading, and managed Electron overlays. The npm package ships ready-to-use
+native addons and Valve runtime redistributables for every supported platform,
+so application developers do not need to download the Steamworks SDK.
 
-The published npm package includes the prebuilt Steam Bridge addons and Valve
-runtime redistributables for every supported target: `steam_api64.dll` and
-`sdkencryptedappticket64.dll` on Windows, `libsteam_api.so` and
-`libsdkencryptedappticket.so` on Linux, and `libsteam_api.dylib` and
-`libsdkencryptedappticket.dylib` on macOS. Package consumers do not need to
-download the Steamworks SDK or set `STEAMWORKS_SDK_PATH`. Contributors building
-the native addon from source still need the SDK through the normal
-`steamworks-sys` setup; SDK files and generated binaries are not committed.
+## What you get
 
-## Platform Targets
+- A typed Steamworks API for auth, achievements, stats, cloud, input,
+  inventory, workshop, networking, matchmaking, game servers, and more.
+- A compatibility-style grouped client for familiar JavaScript call patterns.
+- Managed Electron overlays with one application-facing API across Windows,
+  Linux, Steam Deck, and macOS.
+- A Steam Web API client for public and publisher endpoints.
+- Prebuilt native binaries and Valve runtime libraries in the npm package.
 
-Steam Bridge targets Steam desktop platforms for Electron and Node:
+See the [Steam API coverage](docs/steam-api-coverage.md) for the complete
+implemented surface and known gaps.
 
-- macOS Apple Silicon: `aarch64-apple-darwin`
-- Windows x64: `x86_64-pc-windows-msvc`
-- Linux x64: `x86_64-unknown-linux-gnu`
+## Install
 
-Package metadata currently declares Node `>=18` and optional Electron `>=24`.
-Repository CI runs Node 22, and the smoke runtime is pinned to Electron
-`43.1.0`. The most recent completed Windows live overlay artifacts used Windows
-11 x64 and Electron `43.0.0`; the `43.1.0` candidate still needs the documented
-exact-package live gates. Those metadata ranges are not a live overlay
-certification matrix: other Electron versions and Windows releases have not all
-been exercised by the current Windows overlay suite.
-
-### macOS Apple Silicon Only
-
-Intel macOS is intentionally not supported. CI, release prebuilds, runtime
-loading, native linking, and macOS smoke-app packaging enforce the supported
-target list. All macOS test apps are built and run as Apple Silicon arm64
-targets only. Examples, smoke packages, overlay matrices, and live overlay
-proofs all use native Apple Silicon `darwin/arm64` shells and arm64 Electron
-apps. Steam Bridge does not build, run, or verify Intel or universal macOS apps.
-Do not package, launch, or verify macOS smoke apps through Rosetta. Do not
-package, launch, or verify macOS test or smoke apps through any
-`darwin-x64`/universal Electron build.
-
-The macOS CI and release jobs assert an `arm64` runner so Apple Silicon checks
-never silently become Intel cross-compilation checks.
-The macOS smoke package command is intentionally `npm run example:package:mac`;
-it always resolves to the `aarch64-apple-darwin` / `darwin-arm64` app shape.
-Do not add `darwin-x64`, `x86_64-apple-darwin`, or universal macOS test-app
-targets to this project. A macOS command path that builds or runs an Intel,
-Rosetta, or universal Electron app is a project bug, not an alternate
-validation path.
-
-`npm run check:platform` validates both the published native target list and
-the example app's Apple Silicon-only macOS package path.
-
-## Quick Start
-
-Valve's public Steamworks example app is SpaceWar, App ID `480`. It is useful for
-local smoke testing, but it is not a substitute for your own Steam app ID in
-production.
-
-```ts
-import {
-  init,
-  getSteamId,
-  getAuthTicketForWebApi,
-  onMicroTxnAuthorizationResponse,
-  getOverlayDiagnostics,
-  activateOverlayToWebPage,
-  isAchievementActivated
-} from "steam-bridge";
-
-init({ appId: 480 });
-
-const steamId = getSteamId().steamId64;
-const ticket = await getAuthTicketForWebApi("steam-bridge-example");
-const bytes = ticket.getBytes();
-
-console.log({
-  steamId,
-  ticketBytes: bytes.length,
-  overlay: getOverlayDiagnostics()
-});
-
-onMicroTxnAuthorizationResponse((event) => console.log(event));
-activateOverlayToWebPage("https://store.steampowered.com/app/480/");
-isAchievementActivated("ACH_WIN_ONE_GAME");
+```sh
+npm install steam-bridge
 ```
 
-The compatibility-style default export exposes grouped APIs:
+Requirements:
+
+- Node.js 18 or newer
+- Electron 24 or newer when used with Electron
+- A running Steam client and a Steam app ID
+
+Supported targets:
+
+| Platform | Target |
+| --- | --- |
+| Windows x64 | `x86_64-pc-windows-msvc` |
+| Linux x64 and Steam Deck | `x86_64-unknown-linux-gnu` |
+| macOS Apple Silicon | `aarch64-apple-darwin` |
+
+Intel macOS and universal macOS builds are not supported.
+Do not package, launch, or verify macOS smoke apps through Rosetta.
+
+## Quick start
 
 ```ts
 import steamworks from "steam-bridge";
 
 const client = steamworks.init(480);
 
-client.localplayer.getSteamId().steamId64;
-client.auth
-  .getAuthTicketForWebApi("steam-bridge-example")
-  .then((ticket) => ticket.getBytes());
-client.callback.register("MicroTxnAuthorizationResponse", (event) => console.log(event));
-client.SteamworksEnums.EResult.k_EResultOK;
-client.utils.getOverlayDiagnostics();
-client.overlay.activateToWebPage("https://store.steampowered.com/app/480/");
-client.achievement.isActivated("ACH_WIN_ONE_GAME");
+const steamId = client.localplayer.getSteamId().steamId64;
+const ticket = await client.auth.getAuthTicketForWebApi("my-game");
+
+client.callback.register("MicroTxnAuthorizationResponse", (event) => {
+  console.log(event);
+});
+
+client.overlay.activateToWebPage(
+  "https://store.steampowered.com/app/480/"
+);
+
+console.log({ steamId, ticketBytes: ticket.getBytes().length });
 ```
 
-The raw activation helpers above are useful for Node/native smoke checks and
-diagnostics. Electron apps should use the managed overlay in the
-[Electron Overlay](#electron-overlay) section for product overlay work,
-especially on macOS and Steam Deck Desktop Mode.
+Valve's SpaceWar App ID `480` is useful for generic local smoke testing.
+Replace it with your own app ID for app-specific features and production.
+Purchase flows require your real Steam-launched app and configured products;
+SpaceWar cannot prove them.
 
-Steam Web API calls can use endpoint helpers or the generic helper. Set
-`STEAM_WEB_API_KEY` in the environment, pass `apiKey`, or pass `key` per
-request:
+When launching outside Steam during development, place a `steam_appid.txt`
+containing your app ID next to the executable or in its working directory.
 
-```ts
-const web = steamworks.createSteamWebApiClient();
-const players = await web.get({
-  interfaceName: "ISteamUserStats",
-  methodName: "GetNumberOfCurrentPlayers",
-  version: 1,
-  params: { appid: 480 }
-});
+## Electron overlay
 
-const schema = await web.userStats.getSchemaForGame({ appId: 480 });
-const profile = await web.user.resolveVanityUrl("spacewar");
-const news = await web.news.getNewsForApp({ appId: 480, count: 2 });
-const appStatus = await web.apps.upToDateCheck({ appId: 480, version: 1 });
-const gameServerAccounts = await web.gameServersService.getAccountList();
-const notificationSessions = await web.gameNotificationsService.enumerateSessionsForApp({
-  appId: 480,
-  steamId64: 76561198000000000n
-});
-const cheatReport = await web.cheatReportingService.reportPlayerCheating({
-  appId: 480,
-  steamId64: 76561198000000000n,
-  noReportId: true
-});
-const broadcastFrame = await web.broadcastService.postGameDataFrame({
-  appId: 480,
-  steamId64: 76561198000000000n,
-  broadcastId: 123456789n,
-  frameData: JSON.stringify({ round: 1, score: 9001 })
-});
-const cloudFiles = await web.cloudService.enumerateUserFiles({
-  accessToken: "oauth-access-token",
-  appId: 480,
-  extendedDetails: true
-});
-const workshopDetails = await web.remoteStorage.getPublishedFileDetails([123456789n]);
-const workshopFiles = await web.publishedFileService.queryFiles({
-  queryType: 3,
-  creatorAppId: 480,
-  appId: 480,
-  numPerPage: 10
-});
-const workshopContributors = await web.workshopService.getFinalizedContributors({
-  appId: 480,
-  gameItemId: 100
-});
-const prices = await web.economy.getAssetPrices({ appId: 480, currency: "USD" });
-const marketEligibility = await web.econMarketService.getMarketEligibility({
-  steamId64: 76561198000000000n
-});
-const inventoryCount = await web.inventoryService.getQuantity({
-  appId: 480,
-  steamId64: 76561198000000000n,
-  itemDefIds: [100]
-});
-const itemHistory = await web.gameInventory.getUserHistory({
-  appId: 480,
-  steamId64: 76561198000000000n,
-  contextId: 2,
-  startTime: 1760000000,
-  endTime: 1760003600
-});
-const tradeSummary = await web.econService.getTradeOffersSummary({ timeLastVisit: 0 });
-const storeApps = await web.store.getAppList({ includeGames: true, maxResults: 100 });
-const siteLicensePlaytime = await web.siteLicenseService.getTotalPlaytime({
-  startTime: "2026-06-01T00:00:00Z",
-  endTime: "2026-06-02T00:00:00Z",
-  siteId: 0
-});
-const level = await web.player.getSteamLevel(76561198000000000n);
-const leaderboard = await web.leaderboards.getLeaderboardsForGame(480);
-const voteSummary = await web.publishedItemVoting.userVoteSummary({
-  steamId64: 76561198000000000n,
-  publishedFileIds: [123456789n]
-});
-const ticketUser = await web.userAuth.authenticateUserTicket({
-  appId: 480,
-  ticket: Buffer.from("ticket-bytes").toString("hex"),
-  identity: "steam-bridge-example"
-});
-
-const txn = await web.microTxnSandbox.initTxn({
-  appId: 480,
-  orderId: 9001n,
-  steamId64: 76561198000000000n,
-  language: "en",
-  currency: "USD",
-  items: [{ itemId: 100, quantity: 1, amount: 199, description: "Credits" }]
-});
-```
-
-## Layout
-
-- `crates/native`: Rust N-API module.
-- `packages/steam-bridge`: TypeScript public package, compatibility adapter,
-  reusable macOS launcher/signing templates, and a macOS app preparation CLI for
-  Electron overlay packaging.
-- `examples/electron-basic`: overlay-focused Electron smoke app using App ID
-  `480`, with packaged smoke builds for every supported platform.
-- `docs/steam-api-coverage.md`: current Steamworks coverage and known gaps.
-- `docs/research`: implementation notes, platform research, and the current
-  cross-platform overlay verification status.
-- `.github/workflows`: CI and release/prebuild scaffolding.
-
-## Local Development
-
-Prerequisites:
-
-- Node.js 22.13 or newer for the repository toolchain.
-- Rust stable.
-- Steamworks SDK files available through the standard `steamworks-sys` setup or
-  `STEAMWORKS_SDK_PATH`.
-
-```sh
-npm install
-npm run native:build
-npm run build
-```
-
-When updating the bundled Steamworks SDK metadata, regenerate the exact SDK enum
-surface before running checks:
-
-```sh
-npm run steamworks-enums:generate
-```
-
-If you build the native module by another path, set `STEAM_BRIDGE_NATIVE_PATH`
-to the `.node` file before requiring the package.
-
-To run the Electron smoke app:
-
-```sh
-npm install
-npm run native:build
-npm run example:start
-```
-
-You can override the smoke app ID if you have your own Steam app:
-
-```sh
-STEAM_BRIDGE_APP_ID=480 npm run example:start
-```
-
-To package the smoke app for platform checks, download artifacts from a
-successful `Release` workflow and run one of:
-
-```sh
-npm run example:package:mac -- --artifacts-dir /tmp/steam-bridge-release
-npm run example:package:linux -- --artifacts-dir /tmp/steam-bridge-release
-npm run example:package:win -- --artifacts-dir /tmp/steam-bridge-release
-```
-
-For the current supported host platform, a local native build is enough for a
-local smoke package. On macOS, that means Apple Silicon only: the local package
-path builds and tests the `aarch64-apple-darwin` / arm64 `.app` shape, never an
-Intel or universal macOS target. The only supported macOS smoke package command
-is `npm run example:package:mac`; it must continue to produce
-`SteamBridgeSmoke-darwin-arm64`. The example packager stages
-`steam_bridge_native.local.node` under the target prebuild name when a release
-prebuild is not present:
-
-The macOS overlay matrix checks that it is running in a native Apple Silicon
-`darwin/arm64` shell before it packages or launches the smoke app. Do not run
-macOS overlay proof from Intel macOS, Rosetta, or a universal Electron app.
-Any future macOS test app, example app, or smoke runner added to this
-repository must use the same Apple Silicon-only target shape; Intel macOS is
-not a secondary test target. When you need to build or run a local macOS test
-app, use the `darwin-arm64` smoke package path only.
-
-```sh
-npm run native:build
-npm run example:package:mac
-```
-
-The [`examples/electron-basic` README](examples/electron-basic/README.md) has
-the Steam Deck Game Mode, Steam Deck Desktop Mode, and desktop smoke-test flows,
-including autorun JSON output, screenshots, and crash diagnostics.
-
-SpaceWar `480` and the Electron smoke app are for generic initialization,
-callback, input, and overlay plumbing checks. Purchase overlays need a real
-Steam app launch with a matching App ID and a configured product or transaction.
-Keep private app IDs, item definitions, transaction IDs, publisher keys, and
-private URLs out of committed examples.
-
-When launching outside Steam, put a `steam_appid.txt` file containing the app ID
-next to the executable or in the working directory used by your app.
-
-## Electron Overlay
-
-Electron apps should create one managed Steam overlay for the process's main
-game window and reuse it. Steam Bridge currently supports one native presenter
-per process on the Node.js main thread; `worker_threads` overlay control throws
-`SteamOverlayMainThreadRequiredError`. Concurrent managed presenters for
-multiple `BrowserWindow` instances are not supported. Creating a second managed
-controller throws
-`SteamOverlayElectronControllerOwnershipError`; starting a presenter, native
-session, or raw surface while another surface owner is open throws
-`SteamOverlayNativeSurfaceOwnershipError`. Close the current owner before
-creating another. The managed overlay owns platform-specific
-overlay preparation, routes supported Steam surfaces through verified paths,
-waits for Steam overlay callbacks, and parks the native presenter after Steam
-reports that the overlay has closed. App code should not need platform-specific
-overlay host, capture, focus, or timer plumbing.
-When the managed overlay is created, Steam Bridge also scrubs Steam's overlay
-renderer entries from future Electron child-process preload environment
-variables by default. On Linux, macOS, and Windows, that keeps the bridge-owned
-native presenter as the overlay target instead of letting Chromium child
-processes compete for Steam's injected renderer. Windows managed overlays use
-the D3D11/DXGI native presenter by default. Set `presenterMode: "session"` or
-`STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=session` only when collecting direct
-Steam/Electron hook compatibility diagnostics, and set
-`scrubSteamOverlayChildProcessEnv: false` only for raw diagnostic comparisons.
-The default Windows Electron configuration no longer forces Chromium's
-in-process GPU path. That switch is useful diagnostic evidence because it can
-move Chromium rendering into a Steam-hookable process, but current Electron and
-wrapper reports also tie it to blank or white windows. The Windows smoke helper
-therefore leaves `-OverlayInProcessGpu` unset by default; pass
-`-OverlayInProcessGpu 1` only for a focused compatibility comparison. If a
-Windows smoke run shows a dim-only overlay, stale overlay, or missing
-close/back-to-app evidence, use `electronConfigureSteamOverlay({ profile: "compatibility" })`,
-`electronConfigureSteamOverlay({ enableInProcessGpu: true })`, or the helper's
-`-OverlayDisableDirectComposition 1` flag only as explicit diagnostic runs; keep
-Alt+Tab/close regression checks in those passes because the composition switch
-has known ghost-window risk in upstream Electron Steam wrapper reports.
-Steam Bridge's app-facing API stays the same across platforms: Windows creates
-the bridge-owned presenter under the hood when apps call
-`createElectronSteamOverlay(...)`. The default Windows backend reports
-`backend: "windows-d3d11"` in snapshots. Set
-`STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND=opengl` only for the older
-Win32/OpenGL diagnostic host. On Windows, the idle scheduler checks
-needs-present every 30 ms by default. Between full diagnostics refreshes it
-uses the lightweight `overlayNeedsPresent()` call; the cached full diagnostics
-object is refreshed no more often than every 250 ms. This keeps full
-diagnostics collection off the 30 ms wake-check path. Managed readiness waits
-likewise use the single `IsOverlayEnabled` signal between full snapshots. The
-repeatable Windows
-matrix exercises managed web/store, Friends/chat, dialog-equivalent and
-Community routes, checkout
-routing, keyboard open/close/back-to-app, and passive progress/unlock
-notification state without a fixed repaint loop. Historical artifacts are
-package-specific: a release candidate is not considered proved until the exact
-packaged build records matching D3D11 presenter, native-host, and renderer
-identity; active and inactive callbacks where expected; close, park, and
-open-and-wait completion; focus return; and clean crash and cleanup evidence.
-Public App ID `480` proves generic overlay and checkout routing only; real
-purchase authorization still requires a configured Steam app and product.
-
-The Windows D3D11 presenter resizes its swap-chain render target with the
-attached window. If `Present` or `ResizeBuffers` fails, Steam Bridge records the
-error in `snapshot().lastError`, sets `closeReason: "error"`, destroys the
-failed native surface, closes that presenter, and removes its managed Electron
-listeners. Snapshots expose `nativeSurfaceLeaseGeneration` and
-`nativeSurfaceOwner` so stale presenters cannot be mistaken for a newer
-process-global owner. The lease generation is ownership evidence, while Windows
-native-host diagnostics expose `surfaceInstanceGeneration` and `hwnd` as actual
-surface-reuse evidence. Parked Windows presenters reactivate that same host
-instead of recreating its HWND/D3D11 renderer. Steam Bridge does not recreate a
-failed D3D11 device or swap chain. Treat device removal/reset and suspend/resume
-recovery as unverified and terminal for that managed-overlay instance.
-If the Steam client window itself is blank or white, treat that as a Steam
-client rendering-health blocker first. The Windows matrix captures CEF,
-webhelper, and overlay log tails plus matching error lines under
-`steam-client/` for each preflight/case artifact so the next step can be chosen
-from Steam's own evidence instead of by repeatedly restarting the client.
-The Windows package also includes `windows-native-overlay-control.ps1`, which
-builds a tiny native OpenGL diagnostic executable for comparing raw Steam
-overlay routes against Electron. Use it only as a diagnostic control; it is not
-the app-builder API and does not replace the ordinary Windows Electron overlay
-path. On Smart App Control/App Control machines, freshly rebuilt generated
-diagnostic executables can still need a reputable signature or policy-disabled
-test machine even when Authenticode reports `Valid`.
-Standalone `windows-electron-smoke.ps1 -Mode steam-launch` also refuses to
-start Steam by default; pass `-AllowStartSteamClient` only for a deliberate
-manual launch.
-Before a long Windows run, launch
-`windows-electron-smoke.ps1 -Mode preflight` against the packaged app. The
-preflight reports Smart App Control/App Control policy state, the parsed
-`CiTool.exe -lp` policy inventory, enforced policy names, whether a
-`VerifiedAndReputableDesktop*` policy is actually enforced, Authenticode status
-for `SteamBridgeSmoke.exe` and the native `.node` addon, Zone.Identifier streams,
-and recent Code Integrity events so native-load blockers are visible before
-Steam overlay testing starts. The Windows matrix also writes the same evidence
-to `00-preflight/preflight.json`. The full Windows matrix then runs a direct
-native-load gate from the exact packaged app before any Steam-launched overlay
-case, because Authenticode status alone does not prove SAC/App Control will
-allow the app or native addon to load. Windows live cases also require clean
-Electron crash diagnostics, so hidden renderer/GPU/native crashes fail the smoke
-helper instead of becoming a manual post-run surprise.
-Direct Windows smoke runs pass smoke state through the child process environment
-instead of Electron command-line switches, which keeps interactive desktop-session
-runs and private checkout values out of fragile process arguments.
+Configure Electron before `app.ready`, then create one managed overlay for the
+main game window and reuse it:
 
 ```ts
 import { app, BrowserWindow } from "electron";
@@ -424,776 +89,87 @@ import steamworks from "steam-bridge";
 steamworks.electronConfigureSteamOverlay();
 
 app.whenReady().then(async () => {
-  const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 720
-  });
-
+  const mainWindow = new BrowserWindow({ width: 1280, height: 720 });
   const client = steamworks.init(480);
-  const steamOverlay = client.overlay.createElectronSteamOverlay(mainWindow);
+  const overlay = client.overlay.createElectronSteamOverlay(mainWindow);
 
-  const storeResult = await steamOverlay.openStoreAndWaitIfAvailable({ appId: 480 });
-  if (!storeResult) {
-    const storeStatus = steamOverlay.getStoreOpenStatus({ appId: 480 });
-    console.warn("Steam store overlay is not waitable right now", storeStatus.reason ?? storeStatus.waitReason);
+  const result = await overlay.openStoreAndWaitIfAvailable({ appId: 480 });
+  if (!result) {
+    console.warn("The Steam overlay is not available yet");
   }
-
-  await steamOverlay.openFriendsAndWait();
-  await steamOverlay.openWebAndWait("https://store.steampowered.com/app/480/", { modal: true });
-
-  // Optional: reuse the configured Shift+Tab target from a controller/menu button.
-  // Use the wait form when the app should resume only after Steam closes.
-  await steamOverlay.openShortcutTargetAndWaitIfAvailable();
 });
 ```
 
-Supported managed targets include web pages, store pages, checkout, Friends/chat,
-profiles, players, community hubs, stats, achievements, user routes, and known
-dialog equivalents. Use the named helpers such as `openFriends()`,
-`openStoreIfAvailable(...)`, `openCheckoutIfAvailable(...)`,
-`openFriendsAndWait()`, `openStoreAndWaitIfAvailable(...)`, and
-`openWebAndWait(...)` for common
-surfaces. Direct helpers return after Steam activation starts; wait helpers
-resolve after Steam closes and the presenter parks. Use `open(target)` or
-`openAndWait(target)` when you need to construct a target object dynamically.
-Non-wait helpers fail before activation when fresh diagnostics already prove a
-known blocker such as Steam not running, the overlay hook not being ready, a
-busy managed overlay, or an unavailable macOS native host. Wait helpers share
-the same preflight: hard blockers fail before native-host activation, while a
-temporary `overlay-not-ready` state can wait for Steam readiness before
-activating Steam. Prefer the wait or `IfAvailable` forms for normal UI buttons
-and controller bindings.
-`openAndWait(...)` validates those routes before preparing the native host and
-rejects raw native prompt routes. Use
-`open({ ..., route: "native" })` only when you are explicitly collecting
-diagnostic evidence for raw Steamworks overlay behavior. If overlay readiness
-times out before Steam activation, the scoped native-host hold is released and
-the presenter returns to its idle state.
-Use named status helpers such as `getStoreOpenStatus(...)`,
-`getCheckoutOpenStatus(...)`, `getShortcutOpenStatus()`, or the generic
-`getOpenStatus(target)` before wiring menus, controller buttons, or checkout
-fallbacks when the app needs a side-effect-free target/native-host preflight.
-They validate the managed route and report whether the target can be opened and
-waited on without touching Steam overlay UI.
-For real purchase buttons that do not have a checkout target until `InitTxn`
-returns, use `getCheckoutOperationStatus()` first; `canStartOperation=false`
-means the app should not start its backend transaction yet.
-Use named `*IfAvailable(...)` helpers, `openIfAvailable(target)`, or
-`openAndWaitIfAvailable(target)` when a button or controller binding should
-quietly do nothing for known unavailable states and still surface real errors
-after an overlay open begins. These helpers also return `null` while Steam's
-overlay is already active or the managed presenter is still opening a previous
-overlay, so duplicate menu/button presses do not start a second overlay action.
-If fresh diagnostics report Steam is not running, both helpers return `null`
-with `reason: "steam-unavailable"`. If diagnostics report the Steam overlay is
-not ready yet, direct `openIfAvailable(target)` returns `null` with
-`reason: "overlay-not-ready"`; `openAndWaitIfAvailable(target)` can still wait
-for overlay readiness before activation when the target has a verified managed
-wait route. If Steam stops while an `IfAvailable` wait is still in that
-pre-activation readiness phase, the safe helper returns `null` without opening
-Steam overlay UI; the throwing `openAndWait(target)` path rejects before
-activation instead. Once Steam overlay activation has actually begun, failures
-still surface as errors.
-Use `getShortcutOpenStatus()` for the same side-effect-free check against the
-configured Shift+Tab/controller target.
+The managed overlay supports store, web, checkout, Friends/chat, profiles,
+community, achievements, stats, and other Steam surfaces. Its wait helpers
+resolve after the Steam overlay closes and control returns to the app.
 
-While inactive, the presenter stays transparent, click-through, non-focusable,
-and idle at `0` FPS. Passive Steam notifications use the same presenter without
-forcing a permanent Electron repaint loop. The default Shift+Tab bridge opens a
-verified Friends/chat target; set `overlayShortcut.target` to choose another
-presenter-backed target. Controller or in-game menu buttons can call
-`steamOverlay.openShortcutTargetIfAvailable()` or
-`steamOverlay.openShortcutTargetAndWaitIfAvailable()` to reuse that same target
-without duplicating resolver logic. Dynamic shortcut targets are resolved only
-when the shortcut actually opens. `getShortcutOpenStatus()`
-does not call app code; it reports a dynamic target as dynamic unless a stronger
-side-effect-free blocker is already known, such as Steam not running, an
-overlay hook that is not ready yet, or a locked/asleep macOS native host. On
-macOS, keyboard-triggered and programmatic shortcut opens also fail before
-resolving a dynamic target callback while a hard blocker such as Steam stopped
-or native-host-unavailable is already known. The non-waiting
-`openShortcutTarget()` helper also fails before resolving dynamic target
-callbacks while the overlay hook is known not ready. If the shortcut fires
-before Steam reports the overlay hook ready, Steam Bridge keeps the shortcut in
-the managed wait path, waits for readiness before activation, and leaves the
-macOS global shortcut unregistered while that wait is pending so Steam can
-receive the close/toggle input after the overlay appears.
-If a macOS shortcut-open attempt fails before Steam reports a shown overlay,
-Steam Bridge restores the Electron window and re-registers the fallback
-shortcut only when the final state is no longer an active Steam overlay. A
-native-host-unavailable transition during that wait stays warning-free and
-returns focus to the app without using a timer.
+Steam Bridge supports one managed native presenter per process, controlled
+from Electron's main thread. Raw activation helpers remain available for
+native diagnostics, but Electron applications should use the managed overlay
+path for product UI.
 
-On macOS, the managed helper fails fast before Steam overlay activation if the
-screen is locked or the display is asleep. Use
-`steamworks.isSteamOverlayNativeHostUnavailableError(error)` and check
-`error.reason` when you need to fall back to another purchase or browser flow.
+## Steam Web API
 
-For checkout, use `steamOverlay.openCheckoutAndWait(() => startTxn())`.
-Use `steamOverlay.getCheckoutOperationStatus()` to decide whether the app should
-enable or start a purchase operation before `InitTxn` runs.
-Use `steamOverlay.openCheckoutAndWaitIfAvailable(() => startTxn())` when a
-purchase button should return `null` instead of starting `InitTxn` while the
-managed overlay is closed, Steam is not running, the macOS native host is
-unavailable, or another managed overlay action is already active/opening. If
-Steam is merely still reporting `overlay-not-ready`, this safe helper waits for
-readiness first and still does not call `startTxn()` until the checkout UI can
-be shown. If Steam stops during that readiness wait, the safe helper returns
-`null` and leaves `startTxn()` uncalled; the throwing checkout wait rejects
-before starting the backend transaction.
-The throwing `openCheckoutAndWait(...)` path also waits for Steam overlay
-readiness before it calls `startTxn()`, so a temporary Steam bootstrap delay
-does not create a real transaction before Steam can show the checkout UI.
-If the returned `InitTxn`/checkout envelope contains an app ID,
-`openCheckoutAndWait(...)` checks it against the initialized Steam app ID before
-opening checkout, and mismatch errors keep the raw app IDs out of logs. Pass
-`expectedAppId` only when you need to override that default in a controlled
-test harness.
-Lower-level async `withCheckoutPrepared(...)` uses the same hard-blocker
-availability gate and also waits through a temporary `overlay-not-ready` state
-before calling the wrapped transaction/preparation callback. Standalone
-`prepareForCheckout()` is synchronous, so it remains an immediate preflight and
-throws instead of priming the native surface while Steam is stopped, the overlay
-is not ready, the native host is unavailable, or another managed overlay action
-is active. Use `openCheckoutAndWait(...)` for the normal managed purchase path.
-`steamOverlay.openCheckout(...)` and
-`steamOverlay.openCheckoutIfAvailable(...)` are also available when you already
-have a resolved checkout target and intentionally do not need to await overlay
-close; real purchase flows should normally prefer the wait helper.
-`MicroTxnAuthorizationResponse` is a purchase authorization event, not an
-overlay-close signal, so keep the managed presenter alive until Steam reports
-the overlay inactive. Steam Bridge normalizes the callback's Steam app ID,
-order ID, and authorization flag to `appId`, `orderId`, and `authorized` even
-when the native payload uses SDK-style field names. The returned checkout wait
-result includes
-`targetSnapshot`, and `steamworks.snapshotSteamOverlayTarget(target)` is
-available for other diagnostics; use those sanitized snapshots in logs instead
-of raw checkout targets because they keep only presence flags for checkout URLs,
-transaction IDs, return URLs, and Steam IDs. App ID `480` proves generic
-checkout routing only; real purchase UI and `InitTxn` proof require your own
-Steam app ID with configured products. The macOS and Windows checkout matrices
-preflight private checkout JSON through the same checkout target resolver before
-launching Steam. Use macOS `--checkout-json-file` or Windows `-CheckoutJsonFile`;
-the matrix app ID is passed into that resolver so embedded app IDs use the same
-wrong-app guard as runtime checkout opens without printing either value. Bad
-`InitTxn` captures fail before any live overlay work and only sanitized presence
-flags are printed. You can run the same check directly with
-`npx steam-bridge-validate-checkout-target --file <private-init-txn-response.json> --expected-app-id <your-app-id>`.
-When you want Steam Bridge to create that private response file from a generic
-request JSON, use
-`npx steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
-with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set in the environment. The command
-does not accept publisher keys as command-line arguments, writes only the
-parsed `InitTxn` response JSON to disk, and prints sanitized checkout-target
-presence flags. Client-session captures are written with a `clientSession: true`
-wrapper so downstream helpers do not turn them into a browser checkout route.
-Use `--session web` for a returned Steam URL checkout path, or
-`--session client-default` to omit `usersession` for request-shape diagnostics.
-The validator treats Steam SDK-style app ID fields such as `m_unAppID` and
-`m_nAppID` as embedded app IDs too, including when they appear inside line-item
-arrays, so private captures report
-`appId.present=true` without printing the value.
-Matrix dry-run and live command logs also redact checkout file paths, checkout
-URLs, return URLs, transaction IDs, and control tokens; they prove those inputs
-were wired by showing the option name with `REDACTED`, not the private value.
-SDK-style order and transaction fields from Steam callbacks are treated as
-private checkout identifiers too.
-When `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
-Windows is used for real checkout proof, the summary requires a
-`MicroTxnAuthorizationResponse` callback with presenter diagnostics during the
-`openCheckoutAndWait(...)` lifecycle, before the checkout wait is allowed to
-complete. Required real-checkout proof also verifies the callback app ID matches
-the launched Steam app and that the callback includes Steam's authorization
-result plus a redacted order ID presence marker.
-On Windows, `-RequireMicroTxnCallback` is rejected with public App ID `480`;
-use a configured Steam app ID when the artifact is meant to prove real purchase
-authorization rather than generic checkout routing.
-The callback requirement belongs only to the direct managed
-`presenter-checkout` operation, where Steam Bridge can correlate the callback
-to the app/order pair associated with `openCheckoutAndWait(...)`. Shortcut
-checkout cases remain parser, route, and lifecycle proof and are never
-assigned the callback requirement by the Windows matrix.
-For split-step checkout targets outside the managed wait helper, call
-`steamworks.overlay.checkoutTargetFromResult(initTxnResponse, { expectedAppId })`
-to get the same wrong-app guard before handing the target to a shortcut or other
-managed overlay route.
-If a managed overlay wait, checkout preparation, or checkout native-host guard
-fails, catch the original error and call
-`steamworks.getSteamOverlayErrorTargetSnapshot(error)` or
-`steamworks.getSteamOverlayCheckoutErrorTargetSnapshot(error)` before logging.
-Those helpers expose the same sanitized target context without raw checkout
-values.
+Set `STEAM_WEB_API_KEY` for endpoints that require a publisher key, or provide
+an explicit key when creating or calling the client:
 
-The full Electron overlay API and platform notes are in
-[`packages/steam-bridge/README.md`](packages/steam-bridge/README.md). Current
-Deck, Linux, macOS, Windows-helper, and real-purchase evidence is tracked in
-[`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
-Maintainer recovery starts with
-[`docs/research/current-work.md`](docs/research/current-work.md), and expensive
-or negative experiments plus their rerun conditions are indexed in
-[`docs/research/test-findings-ledger.md`](docs/research/test-findings-ledger.md).
+```ts
+import steamworks from "steam-bridge";
 
-## Diagnostics
+const players = await steamworks.webApi.userStats
+  .getNumberOfCurrentPlayers(480);
 
-Steam API initialization and overlay readiness are different states. A
-`steam_appid.txt` file can be enough for Steam ID, auth tickets, and callbacks
-while the overlay still cannot hook the process.
+const news = await steamworks.webApi.news.getNewsForApp({
+  appId: 480,
+  count: 5
+});
 
-Use `client.utils.getOverlayDiagnostics()` to log `steamRunning`, `appId`,
-`overlayEnabled`, `overlayNeedsPresent`,
-`overlayNeedsPresentPollingEnabled`, `steamDeck`, `bigPicture`, and
-`steamInstallPath`. On macOS,
-`overlayNeedsPresentPollingEnabled=false` means Steam Bridge is avoiding
-Steam's crash-prone `BOverlayNeedsPresent()` call; `overlayNeedsPresent=false`
-alone is not enough to prove that.
-
-## Verification
-
-The Electron smoke app lives in
-[`examples/electron-basic`](examples/electron-basic). Its platform helpers emit
-`STEAM_BRIDGE_SMOKE_RESULT` JSON, lifecycle logs, screenshots where available,
-and crash diagnostics.
-All macOS smoke packaging and matrix runs build and execute Apple Silicon arm64
-apps only; they do not build, run, or verify Intel or universal macOS bundles.
-Use the smoke action `presenter-ready` for a cheap managed-overlay preflight:
-it attaches the Electron overlay manager, records native host availability, and
-does not activate Steam overlay UI.
-Use `presenter-duplicate-open-guard` to prove the public `IfAvailable` overlay
-helpers for every named managed target, plus shortcut/controller and checkout
-target helpers, return `null` instead of starting a second overlay while a
-managed overlay is already opening. The same proof also verifies that checkout
-`IfAvailable` wait helpers do not start the transaction operation while busy.
-The macOS minimal/core/full/persistent matrix suites require that proof, so
-regressions in duplicate menu/button suppression fail before release.
-On macOS, that preflight intentionally does not require
-`overlayEnabled=true`; Steam can attach an inert `gameoverlayui` target before
-any `GameOverlayActivated(true)` callback.
-On macOS, `--require-no-crashes` also copies fresh
-`SteamBridgeSmoke*.ips` reports from `~/Library/Logs/DiagnosticReports` into
-the artifact's `macos-crash-reports/` directory and fails the run with a short
-crash signature, so ignored macOS crash dialogs count as test failures. The
-macOS matrix summarizer also rejects any copied smoke `.ips` report it finds in
-an artifact.
-
-Run platform matrix checks:
-
-```sh
-npm run steam-deck:overlay-matrix -- \
-  --host deck@<deck-host-or-ip> \
-  --mode desktop \
-  --suite core
-
-npm run steam-deck:overlay-matrix -- \
-  --host deck@<deck-host-or-ip> \
-  --mode game \
-  --suite game
-
-npm run macos:steam-client-health
-npm run macos:overlay-matrix -- --suite core
+console.log({ players, news });
 ```
 
-The Deck Game Mode suite is a separate bounded contract: it verifies passive
-managed-presenter readiness, then uses Steam's compositor-native store route to
-prove active/inactive callbacks, Gamescope capture, Escape back-to-app, focus
-return, crash health, and exact cleanup. It does not project the Desktop managed
-web matrix into Game Mode. Both Deck suites use public App ID `480` for generic
-overlay plumbing only; real purchase proof requires a configured app and
-product.
+Keep publisher keys and private app, product, account, and transaction data out
+of source control and logs.
 
-`npm run macos:steam-client-health` does not launch the smoke app or touch the
-Steam shortcut. Its artifact records the running Steam PID/helper state, current
-SteamChrome IPC log evidence, stale SteamChrome temp entry counts, POSIX
-semaphore/shared-memory handle counts, Steam process file-descriptor counts,
-`launchctl maxfiles`, kernel file
-counters, `/private/tmp` disk state, and derived resource warnings. A running
-Steam client that is already at roughly the whole `launchctl maxfiles` soft
-limit is treated as unhealthy, because that state can prevent SteamChrome and
-overlay IPC resources from being created. Failed health artifacts include a
-recommended recovery block; for file-limit failures that means restarting Steam
-from a macOS session with a higher `launchctl maxfiles` soft limit before live
-overlay proof. The macOS overlay matrix also runs this health gate before
-launching smoke cases; if the matrix had to restart Steam after a shortcut
-update, it waits for this detector to pass before launching the smoke app. When
-the matrix owns a Steam startup or shutdown, it
-also removes stale
-Steam IPC state only after Steam is fully stopped: orphan `ipcserver`, stale
-`/private/tmp/steam.pipe`, and stale
-`/private/tmp/steam_chrome_{overlay,shmem}_uid*_spid*` entries for the current
-user. If the matrix itself attempted to start Steam and Steam exits or remains
-stuck before login, the startup health artifact treats the missing `steam_osx`
-client as a failure and records orphan `ipcserver`/IPC resource state. This
-keeps overlay tests failing at the client boundary instead of producing a
-misleading app-level failure.
+## Packaging notes
 
-Validate matrix commands without platform hardware:
+- The npm package already contains the supported native addons and Valve
+  redistributables. `STEAMWORKS_SDK_PATH` is only needed when building the
+  native addon from source.
+- Electron packagers must keep the native addon and its Steam runtime libraries
+  outside ASAR. The repository's smoke app demonstrates the supported package
+  shape.
+- macOS applications must be packaged and run as native Apple Silicon apps.
+- Windows application signing is the responsibility of the final application
+  distributor. It is not required to install or publish this npm package.
+- Steam Deck uses the Linux x64 package in both Game Mode and Desktop Mode.
+
+For complete packaging and platform procedures, use the
+[Electron example guide](examples/electron-basic/README.md#packaged-smoke-builds)
+and the [npm package reference](packages/steam-bridge/README.md).
+
+## Repository development
+
+Building the native addon from source requires Node.js 22.13 or newer, Rust
+stable, and the Steamworks SDK through the normal `steamworks-sys` setup or
+`STEAMWORKS_SDK_PATH`.
 
 ```sh
-npm run steam-deck:overlay-matrix:check
-npm run macos:overlay-matrix:check
-```
-
-Run the same core checks as CI:
-
-```sh
-npm run check:electron
-npm run check:platform
+npm install
+npm run native:build
 npm test
-npm run native:fmt
-npm run native:check
-npm run api:check
 ```
 
-Before refreshing live Electron overlay evidence after an Electron release,
-check the smoke runtime against npm's current Electron version:
+The normal repository checks are documented in [Contributing](CONTRIBUTING.md).
 
-```sh
-npm run check:electron:latest
-```
+## Documentation
 
-Current overlay evidence is tracked in
-[`docs/research/cross-platform-overlay-status.md`](docs/research/cross-platform-overlay-status.md).
-Native presenter design notes are tracked in
-[`docs/research/native-overlay-presenter-plan.md`](docs/research/native-overlay-presenter-plan.md).
+- [npm package reference](packages/steam-bridge/README.md)
+- [Electron example and platform smoke guide](examples/electron-basic/README.md)
+- [Steam API coverage](docs/steam-api-coverage.md)
+- [Contribution and release policy](CONTRIBUTING.md)
+- [Cross-platform overlay status](docs/research/cross-platform-overlay-status.md)
 
-Current macOS Apple Silicon overlay proof is intentionally summarized here and
-kept in detail in the research docs:
+## License
 
-- Full process-per-case proof:
-  `/tmp/steam-bridge-macos-overlay-matrix-full-post-reboot-20260701` reused the
-  signed arm64 Electron `43.0.0` smoke package and stable App ID `480` Steam
-  shortcut after a macOS reboot without repackaging or restarting Steam, then
-  passed all 55 presenter-backed overlay routes.
-- Persistent one-process proof:
-  `/tmp/steam-bridge-macos-overlay-matrix-persistent-post-reboot-20260701`
-  reused the same package and shortcut, then passed all 51
-  one-process/control-server routes. The first attempt hit Steam's transient
-  overlay-readiness timeout at profile `openAndWait(...)`; the bounded retry
-  passed, and the final artifact proves the successful long-lived-process
-  route.
-- Core proof:
-  `/tmp/steam-bridge-macos-overlay-matrix-core-post-reboot-20260701` passed all
-  37 core routes against the same signed arm64 package and shortcut.
-- Locked/asleep unavailable proof:
-  `/tmp/steam-bridge-macos-overlay-matrix-unavailable-target-snapshots-20260701-165605`
-  reused the signed arm64 Electron `43.0.0` smoke package and stable App ID
-  `480` shortcut without restarting Steam, then passed all six unavailable-host
-  routes with typed native-host-unavailable errors, sanitized target snapshots,
-  no Steam overlay activation, and zero native overlay targets.
-
-Those artifacts cover managed web, store, Friends/chat, checkout, passive
-progress/unlock toasts, every supported managed Shift+Tab target, direct
-profile/players/community/stats/achievements/user routes, dialog-equivalent
-routes, and programmatic shortcut `openAndWait(...)` targets. The summary
-auditor requires one Metal presenter-backed overlay target, active/inactive
-callback evidence where expected, visible web content where applicable,
-close/back-to-app proof, parked `currentFps=0` state, no post-close pumping,
-disabled macOS `BOverlayNeedsPresent()` polling, zero managed overlay timing,
-managed Electron child-overlay isolation, named open-status and checkout
-operation diagnostics, redacted checkout command values, and clean crash
-diagnostics. Public App ID `480` proves generic checkout routing only; real
-purchase-content proof still requires a real configured Steam app/product and
-the private `--checkout-json-file` checkout suite.
-
-## Shipping Notes
-
-- Use App ID `480` only for local Steamworks smoke tests.
-- Use your own App ID before shipping or testing app-specific achievements,
-  stats, inventory, UGC, economy, checkout, or transaction flows.
-- macOS support means Apple Silicon only. Build, package, sign, run, and test
-  arm64 `.app` bundles; Steam Bridge does not ship or verify Intel macOS or
-  universal macOS targets.
-- The macOS smoke package uses
-  `npx steam-bridge-prepare-macos-app --app-exe <YourApp.app/Contents/MacOS/YourApp>`
-  to install the published native launcher as the bundle executable, rename
-  Electron to `<AppExecutable>.electron`, apply the Steam overlay entitlements,
-  and verify the prepared app shape. For shipped macOS builds, apply equivalent
-  entitlements through your normal Apple signing/notarization pipeline: allow
-  dyld environment variables, disable library validation, and keep App Sandbox
-  disabled so Steam can inject the overlay into the launched process. The signed
-  smoke package is part of the live macOS overlay matrix, and the matrix
-  verifies the bundle `Info.plist` names the native launcher as
-  `CFBundleExecutable`, verifies that executable carries Steam Bridge's native
-  launcher identity while `<AppExecutable>.electron` does not, then checks both
-  smoke executables are arm64-only and signed with those entitlements before it
-  launches Steam. These packaging requirements are covered by the same
-  Steam-launched proof as the public overlay helpers. Published package
-  consumers can also run
-  `npx steam-bridge-verify-macos-signing --app-exe <YourApp.app/Contents/MacOS/YourApp>`
-  against their shipped launcher shape.
-- `electron-builder` apps can hide that packaging step in normal lifecycle
-  hooks: call `prepareMacosSteamAppAfterPack(context, { skipSign: true })` from
-  `afterPack`, sign with the published macOS entitlement template, then call
-  `verifyMacosSteamAppAfterSign(context)` from `afterSign`. The helper skips
-  non-mac targets and rejects Intel or universal macOS targets.
-- Steam Bridge does not commit the Steamworks SDK or its generated native
-  artifacts. Release prebuilds copy the exact upstream Valve redistributables
-  into the audited npm tarball, so installed-package consumers receive every
-  supported runtime without a separate SDK download.
-- The supplied Windows live-smoke app still uses `asar: false` so its historical
-  evidence remains comparable. The Release workflow is configured with a
-  separate `electron-builder` ASAR gate over the fully assembled `npm pack`
-  tarball. A successful Windows gate leaves package JavaScript in `app.asar`,
-  explicitly places the Windows x64 addon plus `steam_api64.dll` and
-  `sdkencryptedappticket64.dll` together under `resources/app.asar.unpacked`,
-  checks PE32+/AMD64/N-API/dependency identity and source-to-bundle hashes, and
-  starts the final executable without `STEAM_BRIDGE_NATIVE_PATH` or post-install
-  repair. That executable must load the exact ASAR-unpacked addon and expose
-  every method in the tarball's canonical `NativeBinding` declaration; the gate
-  records only the method count/hash and invokes none of those methods. It also
-  packages the current public smoke action/matrix protocol and
-  retains a hash-audited archive of the exact `win-unpacked` bundle as a
-  time-bounded workflow artifact for live proof and candidate recovery. The
-  schema-2 audit binds the complete portable regular-file set by path, size,
-  and content hash. Empty directories and directory metadata are outside this
-  content-fingerprint contract. The publisher independently reopens the
-  retained archive and requires the same content fingerprint. The live matrix recomputes that
-  fingerprint for the deployed directory.
-  The signed candidate must still pass
-  `presenter-ready` and the live Windows overlay gates before it carries an
-  overlay release claim. `presenter-ready` proves lazy D3D11 selection and
-  native-host availability without claiming a renderer attachment; every
-  attached live case must prove presenter/native-host/renderer agreement.
-- The ASAR gate's audited `.tgz` is the canonical npm release candidate. Verify
-  it with `npm run release:publish-candidate -- --tarball <file.tgz>
-  --bundle-archive <win-unpacked.tar> --audit-manifest <audit.json>`, then add
-  `--require-publishable --release-tag v<package-version>` to validate a signed
-  tag candidate before live testing. That pre-live check intentionally does not
-  require a receipt. An actual `--publish` additionally requires
-  `--live-proof-receipt <receipt.json>`. The receipt is generated only after
-  the exact candidate passes the complete public Windows `persistent-reuse`,
-  synthetic `checkout`, `shortcut-routes`, and `managed-routes` profiles: 31
-  exact cases, 27 of them activation cases. Private `InitTxn` evidence is never
-  eligible. Publication uses a private verified copy of the audited tarball so
-  later changes to the original path cannot affect the bytes sent to npm.
-  The audit and receipt JSON are not independently signed, so retain and trust
-  their workflow/release provenance.
-  Prerelease versions also require an explicit non-`latest` npm `--tag`.
-  Do not run `npm publish` from the assembled workspace and silently
-  create a different tarball. Tag-triggered Release runs validate an unsigned
-  app-owned Windows fixture while preserving Valve's upstream DLL signatures;
-  npm publication does not require Windows signing credentials.
-  The workflow validates candidates only: it does not run `--publish` or create
-  a GitHub Release. This public repository currently retains Actions artifacts
-  for 90 days, which is also GitHub's public-repository maximum, so an Actions
-  artifact alone is not durable rollback storage. Before a production publish,
-  copy the exact tarball, Windows bundle, audit, probe, and sanitized live-proof
-  receipt to durable immutable release storage and keep all five records bound
-  to the protected version tag. See
-  [Contributing](CONTRIBUTING.md#release-candidates-publication-and-rollback) and
-  [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
-  npm authority is not required to build or live-test the candidate. Because
-  trusted publishing can be configured only after a package exists, the first
-  publish requires an explicitly approved provenance-emitting CI bootstrap;
-  configure trusted publishing for later versions. If a published version
-  regresses, build, package, and live-validate a corrected higher
-  candidate through the same gates; then publish it, deprecate the bad version
-  with an upgrade message, and move dist-tags as applicable. Unpublishing is
-  not rollback and the same name/version cannot be reused.
-- Windows applications targeting machines with Windows Smart App Control or
-  App Control for Business enabled need an appropriate trusted publisher and
-  reputation path. This npm package and its release workflow do not require or
-  provide an Authenticode identity. A local Windows 11 live test on July 1,
-  2026 proved that an
-  unsigned `steam_bridge_native.win32-x64-msvc.node` is blocked before Steam can
-  initialize, even though the package was built on macOS from the GitHub
-  Windows x64 prebuild. Mac-built Windows packages remain supported, but the
-  final Windows app must go through its distributor's normal Windows
-  code-signing/reputation path before overlay proof on SAC-enabled machines.
-  The smoke package includes `sign-windows-package.ps1` for that optional app
-  packaging step:
-
-  ```powershell
-  # Use an installed private-key code-signing certificate.
-  .\sign-windows-package.ps1 -CertificateThumbprint "<thumbprint>"
-
-  # Or import a PFX without putting the password in the command line.
-  $env:STEAM_BRIDGE_WINDOWS_PFX_PASSWORD = "<password>"
-  .\sign-windows-package.ps1 -PfxPath "C:\path\publisher-cert.pfx"
-
-  # Audit the current package without signing.
-  .\sign-windows-package.ps1 -VerifyOnly -AllowUnsigned
-  ```
-
-  A self-signed or locally trusted certificate can be useful for syntax checks,
-  but it is not enough evidence for Smart App Control; use a real trusted and
-  reputable publisher signing path for live Windows overlay proof.
-  For disposable or dedicated development machines, the smoke package also
-  includes `windows-app-control-dev-mode.ps1`. It reports the current
-  `VerifiedAndReputablePolicyState`, captures `CiTool.exe -lp` policy inventory,
-  and can switch the machine-wide Smart App Control/App Control state before
-  refreshing CI policy:
-
-  ```powershell
-  # Report only.
-  .\windows-app-control-dev-mode.ps1 `
-    -Mode report `
-    -OutputJsonFile "$env:TEMP\steam-bridge-app-control-report.json"
-
-  # Development-machine only: move VerifiedAndReputable enforcement out of the way.
-  .\windows-app-control-dev-mode.ps1 `
-    -Mode set `
-    -State Off `
-    -OutputJsonFile "$env:TEMP\steam-bridge-app-control-off.json"
-
-  # Restore enforcement after local proof, if the Windows build supports it.
-  .\windows-app-control-dev-mode.ps1 -Mode set -State Enforce
-  ```
-
-  This helper is not a release-signing substitute and not a per-app allowlist;
-  use it only on a Windows test machine where changing Smart App Control/App
-  Control policy is acceptable.
-  The smoke package also includes `windows-overlay-matrix.ps1` for repeatable
-  Steam-launched Windows proof. It runs the same report-only preflight first,
-  then runs a short direct native-load gate from the exact packaged app and
-  requires Steam initialization plus clean crash diagnostics before live overlay
-  cases. This catches packages that report Authenticode `Valid` locally but are
-  still blocked by Smart App Control/App Control reputation or enterprise
-  signing policy. Native-load failures leave human logs and structured JSON
-  under `00-preflight/native-load-gate`; the gate also writes
-  `00-preflight/native-load-gate-app-control.json` with the enforced policy
-  summary, writes `00-preflight/native-load-gate-blocker.json` with a stable
-  blocker code and next actions, and captures a post-failure Code Integrity
-  snapshot. If a Steam-launched case is run with the native gate skipped and
-  Windows still blocks the shortcut process, the case artifact writes
-  `steam-launch-blocker.json` with the post-case Code Integrity events and a
-  `windows-app-control-steam-launch-block` code when Steam itself was blocked
-  from loading the smoke executable. Every run writes `matrix-manifest.json`
-  before preflight so the
-  summarizer can verify that baseline, managed, full, or focused `-OnlyCase`
-  artifacts contain every intended case result and satisfy each case's recorded
-  overlay-event and close-completion requirements:
-
-  ```powershell
-  .\windows-overlay-matrix.ps1 `
-    -Suite baseline `
-    -LaunchMode steam-launch `
-    -InstallShortcut
-  ```
-
-  When driving a remote Windows machine over SSH, use the packaged
-  `windows-overlay-task.ps1` wrapper to run the same matrix inside the
-  interactive desktop session through a temporary `/IT` scheduled task. This
-  avoids Session 0 overlay/DXGI failures while still leaving a normal matrix
-  artifact:
-
-  ```powershell
-  .\windows-overlay-task.ps1 `
-    -AppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
-    -ArtifactRoot C:\path\to\artifacts\windows-checkout `
-    -TaskRunLevel Limited `
-    -PrivateEnvFile C:\path\to\steam-bridge-private.env `
-    -MatrixArgs @(
-      "-AppId", "<configured-app-id>",
-      "-Suite", "checkout",
-      "-InitTxnRequestFile", "C:\path\to\private-init-txn-request.json",
-      "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
-      "-InitTxnEndpoint", "sandbox",
-      "-RequireMicroTxnCallback",
-      "-LaunchMode", "steam-app",
-      "-CloseProbe",
-      "-CloseProbeInput", "auto"
-    )
-  ```
-
-  `-TaskRunLevel Limited` is the default and matches the logged-in desktop
-  token used by Steam. Use `-TaskRunLevel Highest` only as a focused diagnostic
-  when the Windows test machine's interactive task policy requires elevation.
-
-  The optional private env file uses `NAME=VALUE` lines, is never committed,
-  and is only reported as a count of imported values. Keep real checkout proof
-  private and focused on a configured app/product; public App ID `480` still
-  proves only generic overlay routing. The configured app must launch the
-  smoke package itself for callback proof. Prefer a private Steam branch/depot
-  whose Windows launch option points at `SteamBridgeSmoke.exe`. For a local
-  Windows test machine, the smoke package also includes
-  `windows-steam-app-launch-options.ps1`, which can set a backed-up per-user
-  Steam launch-option wrapper for the configured app. Fully quit Steam before
-  setting or restoring `localconfig.vdf`; Steam can overwrite that file while
-  it is running:
-
-  ```powershell
-  .\windows-steam-app-launch-options.ps1 `
-    -Mode inspect `
-    -AppId <configured-app-id>
-
-  .\windows-steam-app-launch-options.ps1 `
-    -Mode set `
-    -AppId <configured-app-id> `
-    -SmokeAppDir C:\path\to\SteamBridgeSmoke-win32-x64 `
-    -Backup C:\path\to\steam-localconfig-before-smoke.vdf
-
-  # Restore after the private proof run.
-  .\windows-steam-app-launch-options.ps1 `
-    -Mode restore `
-    -AppId <configured-app-id> `
-    -Backup C:\path\to\steam-localconfig-before-smoke.vdf
-  ```
-
-  For development-only App Control diagnostics, the matrix can install the
-  Steam shortcut with `-ShortcutExe`, `-ShortcutStartDir`, and
-  `-ShortcutLaunchPrefix` while still using the packaged `resources/app`
-  payload and smoke env file. If the packaged Electron executable is also
-  blocked as the JavaScript shortcut updater, pass `-JavaScriptRunnerExe` to run
-  `upsert-steam-shortcut.cjs` through the same diagnostic Electron runtime in
-  Node mode. This is useful for comparing a reputable Electron runtime against a
-  locally blocked packaged executable, but it is not product package proof; the
-  native-load gate still belongs to the exact final package. If that diagnostic
-  launch writes a smoke result but App Control blocks a native dependency from
-  `resources/app`, the case writes `case-app-control-blocker.json` with
-  `windows-app-control-native-dependency-block`, fresh Code Integrity events,
-  and the same trusted/reputable-signing next actions.
-
-  From the repo, summarize a completed, readiness-only, incomplete, or
-  native-load-blocked artifact with:
-
-  ```sh
-  npm run windows:overlay-matrix:summarize -- \
-    --artifact-root "C:\\path\\to\\windows-matrix-artifacts"
-  ```
-
-  The baseline suite uses the ordinary Windows Electron/Steam overlay path for
-  direct-hook diagnostics on web, store, Friends, and passive achievement
-  notifications. It keeps
-  Chromium's in-process GPU path off by default so the smoke game must first
-  prove it can visibly render. Pass `-OverlayInProcessGpu 1` only for focused
-  compatibility artifacts. Pass `-OverlayScrubChildEnv 0` and
-  `-OverlayIsolateChildProcesses 0` only for focused Windows comparisons where
-  you intentionally want Steam's overlay preload to reach Chromium child
-  processes; a passing product artifact still needs visible overlay pixels,
-  close/back-to-app proof, clean crashes, and no duplicate or stale
-  `gameoverlayui` target. The managed suite uses the Windows D3D11 native
-  presenter by default. Its readiness case is a cheap
-  no-activation preflight, while active managed cases use complete-result mode,
-  so they do not accept a result until Steam emits the inactive callback and the
-  managed close, park, and open-and-wait completion events are recorded. Use
-  `-Suite managed-routes` when you want the repeatable public App ID `480`
-  product-facing managed route set without real transaction checkout or the raw
-  native diagnostic observe cases; `-CloseProbeInput auto` is the default for
-  automated close/back-to-app proof. Use `-Suite shortcut-routes` when you want
-  focused shortcut `openShortcutTargetAndWait(...)` coverage for the public
-  non-checkout targets with the requested target recorded in smoke diagnostics;
-  check the per-case artifact before treating a route as product-proof. The
-  schema-2 close probe resolves its target first, binds the exact lifecycle
-  native-host window to the Smoke process/session, and makes one authenticated
-  loopback request for the owning process to run the existing native activation
-  path. It independently verifies that same window after the response and again
-  immediately before dispatch. Missing, ambiguous, or failed handoff evidence
-  skips input; the probe does not retry focus externally, inject activation
-  keys, attach input queues, or fall back from a partial `SendInput` click to a
-  second pointer mechanism.
-  Keep real checkout proof focused on
-  `-Suite checkout -CheckoutJsonFile <private-init-txn-response.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
-  with your own configured app and product when a purchase authorization
-  callback is expected. The checkout suite covers prepare-only, direct checkout,
-  Shift+Tab checkout, and programmatic checkout shortcut open-and-wait without
-  rerunning unrelated overlay surfaces. Shortcut checkout cases prove parser,
-  route, and lifecycle behavior; the direct checkout case owns correlated
-  authorization-callback proof. For automated shortcut checkout proof on
-  Windows, the close probe focuses the smoke app before sending the managed
-  Shift+Tab open chord and records `probe:shortcut-focus` before the close input.
-  To let the Windows matrix create the private checkout JSON immediately before
-  the focused proof, pass
-  `-InitTxnRequestFile <private-init-txn-request.json>` instead of
-  `-CheckoutJsonFile`; the matrix runs the capture inside the initialized
-  Steam-launched smoke app, reads publisher keys only from the configured
-  environment, validates the generated target against `-AppId`, and records
-  only sanitized capture metadata. For explicit `usersession=client` request
-  files, the summary requires a sanitized client-session checkout target,
-  transaction-presence marker, a managed-operation start before capture, an
-  armed shown observer, prompt-wait start event, and active presenter state
-  before accepting a missing-prompt diagnostic. Callback-required cases
-  also require value-free `callback:microtxn-listener-registered` events for
-  both the current Steamworks callback and the legacy normalized callback path
-  before checkout proof. Any authorization callback must include a
-  `callbackSource` of `steamworks` or `legacy` and a true
-  `matchesCurrentCheckoutOperation` marker computed in memory from the current
-  app/order pair. Use a fresh order ID represented as a decimal string or safe
-  integer for each live attempt. When Steam does not show the automatic prompt,
-  the smoke app can run a bounded, read-only `QueryTxn` diagnostic and the
-  summary prints
-  `clientQuery`, `clientQuerySchema`, `clientQueryClosed`,
-  `clientQueryAttempted`, `clientQueryReason`, `clientQueryId`,
-  `clientQueryOk`, `clientQueryHttp`, `clientQueryResult`,
-  `clientQueryStatus`, `clientQueryError`, and `clientQueryRequestError`, plus
-  transaction/order/Steam-ID presence flags. It never finalizes or captures the
-  transaction. All scalar fields use a closed schema and the Windows summarizer
-  normalizes them again before printing. Historical client-prompt artifacts
-  remain inconclusive; the ordering fix now needs one current-head live run as
-  described in the [current-work checkpoint](docs/research/current-work.md).
-  Pass `-PresenterMode session` only when intentionally comparing the direct
-  Steam/Electron hook fallback.
-  Each matrix case passes `-RequireNoCrashes`,
-  so Windows artifacts must prove both overlay behavior and a clean Electron
-  crash-diagnostic snapshot.
-  Each preflight and case artifact also includes a `steam-client/` directory
-  with Steam process state, recent log inventory, CEF/webhelper/overlay log
-  tails, matching error lines, rendering-related config hints, orphaned
-  `gameoverlayui` helper state, and Windows resource-pressure snapshots. Check
-  those files first when Steam's own UI is blank/white or when the overlay
-  renderer attaches but `gameoverlay_ui` never starts. The Windows summary
-  auditor also reports per-case Steam rendering-health status and signal codes,
-  such as `steam-overlay-swapchain-failure` or
-  `steam-cef-dxgi-not-currently-available`, when those diagnostics are present.
-  Close-probe artifacts are summarized too: rows can show the foreground
-  process, screenshot count, and whether the probe stayed focused on the smoke
-  game window while Steam had reported an active overlay.
-  Use `-Suite preflight`
-  for report-only client-health capture, `-Suite readiness` for the same
-  capture plus the live Steam-run readiness gate without native-load,
-  shortcut-edit, or `steam://rungameid` work, or add `-OnlyCase 01-web` /
-  another case ID when you need one focused Steam-launched probe. Pass
-  `-CleanStaleOverlayHelpers` only when you intentionally want the matrix to
-  stop orphaned Steam overlay helper processes whose target game process and
-  recorded Steam parent process are both gone. Live Steam-launched suites require
-  Steam to already be open in the interactive Windows desktop session; the matrix
-  records `00-preflight/live-run-readiness.json` and stops before the native-load
-  gate or `steam://rungameid` launch if Steam is closed, the helper is not
-  running in the interactive desktop session, orphan overlay helpers remain, or
-  recent CEF/GPU/overlay-renderer log signals show the Steam client itself is in
-  an unhealthy blank/white rendering state. On Windows, SSH runs in Session 0;
-  live overlay proof must run from the Parsec/local desktop session or an `/IT`
-  scheduled task in the same session as `explorer.exe` and Steam. Session 0 can
-  produce `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` / `0x887A0022` swap-chain
-  failures that are not Steam Bridge overlay regressions. Stale severe rendering
-  log entries stay in `steam-client-rendering-health.json` as warnings instead
-  of failing fresh runs. The standalone helper follows the same bias: `-Mode
-  steam-launch` refuses to start Steam unless `-AllowStartSteamClient` is passed
-  intentionally, and also refuses live launch from Session 0.
-  The Windows matrix is intentionally process-per-case right now. A
-  one-process control-server harness is useful future research, but it is not
-  the Windows proof path until it can wait on overlay readiness and run without
-  destabilizing Steam's webhelper/client UI.
-  Live Steam-launched suites also run a render-health gate after native-load
-  passes and before `steam://rungameid`. The gate launches the packaged smoke
-  app directly in a tiny comparison matrix, routes Chromium logs into each
-  external case-artifact directory instead of the signed package, and writes
-  `00-preflight/render-health-gate.json` plus
-  `00-preflight/render-health/render-health-summary.json`. If the default
-  Windows render path is already blank, white, or crashy, the matrix stops
-  before launching through Steam; that is a render baseline failure, not useful
-  overlay evidence. Explicit non-default comparison runs, such as
-  `-OverlayInProcessGpu 1` or `-OverlayDisableDirectComposition 1`, skip this
-  default gate and are treated as diagnostics. Use
-  `-AllowUnhealthyDefaultRender` only when intentionally collecting those
-  artifacts, and `-SkipRenderHealthGate` only when the render-health helper
-  itself is unavailable.
-  The Windows matrix stores one stable non-Steam shortcut whose launch options
-  point at a local smoke env file, then rewrites only that env file for each
-  case. If the shortcut must be added or materially updated while Steam is
-  already running, the matrix stops and asks for a full Steam restart instead of
-  editing `shortcuts.vdf` under a live client. When standalone Node.js is not
-  installed, the matrix uses the packaged Electron executable in Node mode to
-  run the shortcut updater. Use `-Suite shortcut` when you only want to verify
-  or refresh the stable Steam shortcut before live overlay cases; that setup
-  suite runs preflight and shortcut resolution only, without the native-load
-  gate or a `steam://rungameid` launch. When `-AssumeShortcutConfigured` is
-  used, the matrix still dry-validates the shortcut against the current
-  executable, start directory, and launch options, writes
-  `00-preflight/assumed-shortcut.json`, and stops before live launch if the
-  shortcut is stale or the supplied `-ShortcutGameId` points at a different
-  entry. Do not reuse older wrapper-script shortcuts for Windows overlay proof;
-  the current package does not ship a launcher `.cmd`, so a stale shortcut can
-  time out before the smoke app ever starts. On App Control machines without
-  standalone Node.js, that Electron-in-Node-mode fallback can itself be blocked
-  unless the package has a trusted/reputable signature; install Node.js or run
-  the shortcut updater from a repo checkout in that case.
+[MIT](LICENSE)

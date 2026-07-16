@@ -2,14 +2,15 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `5b363dc` (`Require tokenless npm trusted publishing`).
+Review anchor: `a0108e2` (`Record tokenless publication CI`).
 
 ## Active Goal
 
-Close the first `steam-bridge` npm release without weakening the exact-candidate
-evidence boundary. `steam-bridge@0.1.4` is public and verified; the remaining
-security cleanup is to revoke the bootstrap npm token that was exposed during
-setup and keep later publication tokenless through npm trusted publishing.
+Finish the first `steam-bridge` npm release and leave the public repository
+human-friendly. Publication and bootstrap-authority cleanup are complete. The
+active repository slice replaces the 1,199-line root README with a concise
+product-first entry point while retaining links to the package reference,
+platform smoke guide, API coverage, contribution policy, and detailed evidence.
 
 Public App ID `480` proves generic Steam overlay plumbing only. Do not claim or
 run configured-product purchase proof without the separate complete private
@@ -22,86 +23,71 @@ Apple Silicon are ready within their recorded boundaries. Do not repeat
 unchanged Mac, Deck, Windows foreground, or Windows receipt experiments.
 
 Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
-`29488457804`, and protected Release `29488457815` pass. The public GitHub
-Release retains the required tarball, Windows archive, package audit,
-executable-load result, and Windows live-proof receipt together.
+`29488457804`, protected Release `29488457815`, and protected publish run
+`29491067145` pass. npm reports `steam-bridge@0.1.4` as `latest`; its public
+tarball exactly matches the retained audited Release artifact and has verified
+registry signature and SLSA provenance.
 
-The independently verified 114-file Windows candidate retains its exact
-398,180,793-byte binding, canonical read/execute ACL, stable public shortcut,
-and one unchanged interactive Steam identity. Fresh focused progress,
-persistent-reuse, public checkout, shortcut-routes, and managed-routes roots
-pass without human clicks or another Steam restart. The four receipt profiles
-contain 31/31 clean cases and 27 active cases; the receipt semantic SHA-256 is
-`6d2302ee100fde1f7123e4454994e18b079599a519d412623f6d64a1e7d91740`.
+The npm trusted publisher is configured for GitHub repository
+`jstroh/steam-bridge`, workflow `publish.yml`, protected environment
+`npm-production`, and `createPackage` permission. It was verified through
+`npm trust list` after creation. The main-branch publish workflow retains
+`id-token: write`, the exact candidate gates, protected environment, and
+provenance while referencing neither `NPM_TOKEN` nor `NODE_AUTH_TOKEN`.
 
-Protected publish run `29491067145` succeeded from exact tag `v0.1.4` after the
-production environment approval. npm reports `0.1.4` as `latest`; its tarball
-SHA-256 is
-`2d794025df443d46719d1519e095ee67ec598e99d53e064b73a94b72505ed201`,
-which exactly matches the independently retained Release artifact. npm also
-reports SLSA provenance bound to tag `v0.1.4`, commit `2f797aa`, publish run
-`29491067145`, and the `npm-production` environment. A clean registry install
-passes `npm audit signatures` with one verified registry signature and one
-verified attestation.
+The temporary GitHub environment secrets are deleted and the environment
+secret list is empty. The exposed `steam-bridge-bootstrap` npm token was revoked
+through npm's authenticated token API after the CLI's redacted JSON output hid
+its token ID. A direct authenticated readback reports zero remaining npm tokens.
+Future publication is tokenless through the trusted publisher.
 
-The temporary GitHub environment secrets `NPM_TOKEN` and
-`STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` were deleted after publication;
-the environment secret list is empty. The bootstrap npm token itself was pasted
-into chat and must still be revoked at npm. This Windows npm CLI has no account
-session, and browser work is explicitly stopped, so it cannot revoke or replace
-that external account credential. Do not reuse it. npm 11.16 provides the
-supported CLI path needed to finish without npm settings-page automation:
-`npm trust github` creates the GitHub OIDC relationship, `npm trust list`
-verifies it, and `npm token revoke` removes the bootstrap token once an npm
-account session exists.
-
-The main-branch `publish.yml` is now tokenless: it retains `id-token: write`,
-the tag/source/receipt/candidate gates, protected `npm-production` environment,
-and provenance, but no longer references `NPM_TOKEN` or `NODE_AUTH_TOKEN`.
-Package smoke rejects either bootstrap name if it returns. This fail-closes the
-next release until the npm trusted publisher is configured.
+The root README rewrite reduces onboarding from 1,199 lines to 175 lines. It
+keeps install requirements, supported targets, quick-start examples, the
+managed Electron overlay path, a Web API example, essential packaging notes,
+development setup, and links to canonical deeper documentation. Release
+forensics, live-test procedures, and internal matrix detail are no longer in
+the repository front door.
 
 The Windows checkout has unrelated local `AGENTS.md`, `.codex`, and input-probe
 changes that belong to the user and must remain untouched.
 
 ## Last Verification
 
-- Exact CI, tag CI, protected Release, five-asset GitHub Release, candidate
-  binding, canonical ACL, shortcut, readiness, focused progress, four receipt
-  profiles, cleanup, and Steam continuity pass for exact `v0.1.4`.
-- The repaired persistent auditor accepts the fresh three-cycle root while
-  retaining direct cycle-one glyph proof and exact per-cycle host, DPI, inset,
-  pointer, screenshot, focus, close, park, and D3D11 checks.
+- Exact release, package, provenance, Windows receipt, and platform evidence
+  remain settled for `v0.1.4`; no new live platform run is warranted.
+- Tokenless workflow commit `5b363dc` passes exact CI `29491937155`; checkpoint
+  commit `a0108e2` passes exact CI `29492148250`, including all platform jobs.
+- The npm trusted-publisher relationship was created and read back with the
+  intended repository, workflow, environment, and permission.
+- The bootstrap token DELETE succeeded; a direct authenticated token inventory
+  readback reports zero tokens. The GitHub production environment reports zero
+  secrets and `publish.yml` contains zero token references.
+- Every local path referenced by the rewritten root README exists, documented
+  API symbols used by its examples exist in the TypeScript implementation, and
+  `git diff --check` passes.
 - All 198 unit/TypeScript tests, platform policy, API coverage, Rust formatting,
-  native check, package smoke in exact CI, and `git diff --check` pass.
-- The public npm bytes exactly match the retained audited tarball; npm registry
-  metadata, `latest`, signature verification, and SLSA provenance pass.
-- Tokenless workflow commit `5b363dc` passes exact CI `29491937155`, including
-  complete package smoke and Windows x64, Linux x64, and Apple Silicon jobs.
-- Both temporary GitHub environment secrets are deleted. No private app,
-  product, account, shortcut, transaction, or Steam identifiers were added to
-  committed evidence.
+  and native checks pass after the rewrite. Local package smoke passes its
+  applicable self-tests and then reaches the recorded native-Windows Unix-shell
+  boundary because `bash` is unavailable; exact CI covers the complete package
+  smoke path.
+- No private app, product, account, shortcut, transaction, Steam, key, price,
+  or fixture identifier was added to committed evidence.
 
 ## Next Actions
 
-1. Authenticate an npm 11.16 CLI as the package owner without placing a token
-   in a command, file, GitHub secret, or log.
-2. From that authenticated npm CLI, run `npm trust github steam-bridge --file
-   publish.yml --repo jstroh/steam-bridge --env npm-production --allow-publish
-   --yes` and verify it with `npm trust list steam-bridge --json`.
-3. Revoke the exposed bootstrap token by its npm token ID and verify that it is
-   absent. Keep `NPM_TOKEN` and `NODE_AUTH_TOKEN` absent.
-4. Retain the published release and all rejected protected candidates. Do not
-   rerun live platform matrices merely for confidence.
-5. Defer real purchase proof until the configured game, `InitTxn`-capable
+1. Review and privacy-scan the exact diff, stage only `README.md` and this
+   checkpoint, commit intentionally, and push.
+2. Verify exact GitHub CI for the documentation commit.
+3. Close the persistent release goal. Retain the published release and all
+   rejected protected candidates; do not rerun live matrices for confidence.
+4. Defer real purchase proof until the configured game, `InitTxn`-capable
    application/backend lane, and complete private request handoff exist.
 
 ## Exact Next Step
 
-Authenticate this npm CLI as the package owner. Then create and verify the
-GitHub trusted-publisher relationship before revoking the exposed bootstrap
-token. Publication and repository verification are otherwise complete; no
-additional Windows, Linux, Deck, or macOS live run is warranted.
+Validate the root README slice, commit and push only its two intended files,
+then verify exact CI and close the first-release goal. No additional Windows,
+Linux, Steam Deck, or macOS live run is warranted.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
