@@ -1233,6 +1233,26 @@ test("electron smoke duplicate-open guard exercises the generic wait-if-availabl
   );
 });
 
+test("electron smoke resets achievement progress before every repeatable toast probe", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const setupStart = exampleMain.indexOf("function prepareAchievementProgressTarget");
+  const setupEnd = exampleMain.indexOf("function orderProgressAchievementNames", setupStart);
+  assert.notEqual(setupStart, -1, "achievement progress setup should exist");
+  assert.notEqual(setupEnd, -1, "achievement progress setup should have a stable function boundary");
+
+  const setupSource = exampleMain.slice(setupStart, setupEnd);
+  assert.match(
+    setupSource,
+    /const wasUnlocked = isAchievementAchieved\(unlocked\);[\s\S]*activeClient\.achievement\.clear\(name\);[\s\S]*activeClient\.stats\.store\(\);/,
+    "every progress probe should clear and persist the selected achievement before indicating the same progress again"
+  );
+  assert.doesNotMatch(
+    setupSource,
+    /if \(!isAchievementAchieved\(unlocked\)\)/,
+    "repeatable progress setup must not preserve an already-recorded partial progress value"
+  );
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {

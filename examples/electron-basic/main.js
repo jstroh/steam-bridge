@@ -4169,17 +4169,11 @@ function resolveAchievementUnlockTarget(activeClient) {
 }
 
 function prepareAchievementProgressTarget(activeClient, name, unlocked) {
-  if (!isAchievementAchieved(unlocked)) {
-    return {
-      wasUnlocked: false,
-      clearedForProgress: false
-    };
-  }
-
+  const wasUnlocked = isAchievementAchieved(unlocked);
   const cleared = activeClient.achievement.clear(name);
   const clearStored = activeClient.stats.store();
   return {
-    wasUnlocked: true,
+    wasUnlocked,
     clearedForProgress: cleared,
     clearStoredForProgress: clearStored,
     unlockedAfterClear: readValue(() => activeClient.achievement.getAndUnlockTime(name))
