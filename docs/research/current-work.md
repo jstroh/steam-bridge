@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `54fd277` (`Add protected Azure Artifact Signing path`).
+Review anchor: `eb78efd` (`Remove Windows signing from npm release gate`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -146,6 +146,10 @@ the user and must remain untouched.
   `package:smoke` passes the changed release/static checks and reaches the
   existing unsupported-Unix-helper boundary recorded by
   `WIN-PACKAGE-SMOKE-HOST-001`; exact Linux CI remains authoritative.
+- Exact CI `29468143596` for `eb78efd` passes package smoke plus Windows x64,
+  Linux x64, and Apple Silicon macOS checks. The unused `windows-signing` and
+  `windows-diagnostics` GitHub environments were deleted; only the protected
+  `npm-production` release environment remains.
 
 ## Next Actions
 
