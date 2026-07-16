@@ -323,9 +323,11 @@ function runSelfTest() {
   assert.equal(parseArgs(["--sign-identity", "Developer ID Application: Example"]).signIdentity, "Developer ID Application: Example");
   assert.throws(() => parseArgs(["--unknown"]), /unknown option/);
 
-  const paths = resolvePreparePaths("/tmp/My Game.app/Contents/MacOS/My Game");
-  assert.equal(paths.appExe, "/tmp/My Game.app/Contents/MacOS/My Game");
-  assert.equal(paths.electronExe, "/tmp/My Game.app/Contents/MacOS/My Game.electron");
+  const appRoot = path.resolve("/tmp/My Game.app");
+  const appExe = path.join(appRoot, "Contents", "MacOS", "My Game");
+  const paths = resolvePreparePaths(appExe);
+  assert.equal(paths.appExe, appExe);
+  assert.equal(paths.electronExe, `${appExe}.electron`);
   assert.equal(paths.bundle.executableName, "My Game");
   assert.throws(() => resolvePreparePaths("/tmp/My Game"), /Contents\/MacOS/);
 

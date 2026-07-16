@@ -326,11 +326,12 @@ function run(command, args, errorPrefix, options = {}) {
 }
 
 function runSelfTest() {
-  const bundle = resolveMacAppBundleExecutable("/tmp/Steam Bridge.app/Contents/MacOS/Steam Bridge");
+  const appRoot = path.resolve("/tmp/Steam Bridge.app");
+  const bundle = resolveMacAppBundleExecutable(path.join(appRoot, "Contents", "MacOS", "Steam Bridge"));
   assert.deepEqual(bundle, {
-    appRoot: "/tmp/Steam Bridge.app",
+    appRoot,
     executableName: "Steam Bridge",
-    infoPlist: "/tmp/Steam Bridge.app/Contents/Info.plist",
+    infoPlist: path.join(appRoot, "Contents", "Info.plist"),
     macosRelativePath: "Steam Bridge"
   });
   assert.equal(resolveMacAppBundleExecutable("/tmp/Steam Bridge"), undefined);

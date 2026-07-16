@@ -3098,10 +3098,10 @@ NODE
     rm -rf "$control_temp_dir"
     exit 1
   fi
-  if ! node - "$control_capture_file" "$control_token" "$result_file" <<'NODE'
+  if ! node - "$control_capture_file" "$control_token" "$result_file" "$checkout_json_file" <<'NODE'
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const [captureFile, expectedToken, expectedResultFile] = process.argv.slice(2);
+const [captureFile, expectedToken, expectedResultFile, expectedCheckoutJsonFile] = process.argv.slice(2);
 const capture = JSON.parse(fs.readFileSync(captureFile, "utf8"));
 const body = capture.body;
 
@@ -3120,7 +3120,7 @@ assert.deepEqual(body.options, {
   checkoutUrl: "https://checkout.steampowered.com/checkout/test",
   checkoutTransactionId: "123456789",
   checkoutReturnUrl: "steam://steam-bridge-return",
-  checkoutJsonFile: "/tmp/private-init-txn-response.json",
+  checkoutJsonFile: expectedCheckoutJsonFile,
   overlayDialog: "Achievements",
   userDialog: "steamid",
   shortcutTarget: "checkout",

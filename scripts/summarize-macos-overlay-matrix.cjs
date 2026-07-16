@@ -2627,7 +2627,7 @@ function assertMacosCrashReportRejected(root) {
   assert.notEqual(result.status, 0, "summary should reject copied macOS crash reports");
   assert.match(
     result.stderr,
-    /macOS crash report found: macos-crash-reports\/SteamBridgeSmoke\.electron-2099-01-01-000000\.ips/,
+    /macOS crash report found: macos-crash-reports[\\/]SteamBridgeSmoke\.electron-2099-01-01-000000\.ips/,
     "summary rejection should identify the copied macOS crash report"
   );
   assert.match(
@@ -2664,7 +2664,7 @@ function assertMacosMetalCompilerCrashReportRejected(root) {
   assert.notEqual(result.status, 0, "summary should reject attributed macOS Metal compiler crash reports");
   assert.match(
     result.stderr,
-    /macOS crash report found: macos-crash-reports\/MTLCompilerService-2099-01-01-000000\.ips/,
+    /macOS crash report found: macos-crash-reports[\\/]MTLCompilerService-2099-01-01-000000\.ips/,
     "summary rejection should identify the copied Metal compiler crash report"
   );
   assert.match(
