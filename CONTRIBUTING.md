@@ -96,14 +96,39 @@ boundary. See
 [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
 
 Publication authority is an explicit maintainer decision and is not required
-to build, sign, retain, or live-test a candidate. npm trusted publishing can be
-configured only after a package already exists, so the first publication must
-use an explicitly approved CI bootstrap authentication path that emits npm
-provenance. After that version exists, configure a trusted GitHub Actions
-publisher for later versions. Do not add a registry token, `id-token: write`,
-`--provenance`, or an automatic `--publish` step without approving that release
-design and its live-proof ordering. npm documents
-[the trusted-publisher bootstrap constraint](https://docs.npmjs.com/cli/v11/commands/npm-trust/),
+to build, sign, retain, or live-test a candidate. The manual `Publish npm
+candidate` workflow is the approved publication boundary. Invoke it at the
+exact protected package tag, provide the successful tag-triggered `Release`
+run ID, and configure the matching sanitized live-proof receipt with
+`npm run release:configure-publish-proof -- --audit-manifest <audit.json>
+--receipt <receipt.json> --repo <owner/repo>`. The workflow rejects any source
+run that is not a successful tag-triggered `Release` run for the same tag and
+commit, downloads that run's canonical artifact, revalidates its tarball,
+retained Windows bundle, audit, and receipt, and publishes only the privately
+copied verified tarball. It runs in the tag-restricted `npm-production`
+environment with OIDC permission, a required deployment approval, and
+provenance enabled. Dispatch it from the tag so the environment policy and
+workflow ref agree:
+
+```sh
+gh workflow run publish.yml --ref v<package-version> \
+  -f release_run_id=<tag-release-run-id> \
+  -f release_tag=v<package-version>
+```
+
+Delete `STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` from the environment after
+the publish completes. A stale receipt cannot validate a later candidate, but
+the environment should not retain release-scoped inputs.
+
+npm trusted publishing can be configured only after a package already exists.
+For the first publication, configure a short-lived, explicitly approved npm
+bootstrap token as the `npm-production` environment secret `NPM_TOKEN`; do not
+put it in repository variables, files, commands, or logs. After the package
+exists, configure its npm trusted publisher for this repository, workflow file
+`publish.yml`, environment `npm-production`, and `npm publish` permission, then
+delete `NPM_TOKEN`. Trusted publishing requires npm `11.5.1` or newer and Node
+`22.14.0` or newer; the workflow uses Node 24 and npm 11.15 or newer. npm
+documents [the trusted-publisher bootstrap constraint](https://docs.npmjs.com/cli/v11/commands/npm-trust/),
 [trusted publishing](https://docs.npmjs.com/trusted-publishers/), and
 [provenance requirements](https://docs.npmjs.com/generating-provenance-statements/).
 

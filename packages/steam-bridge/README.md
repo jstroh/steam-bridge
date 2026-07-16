@@ -118,10 +118,22 @@ The Release workflow validates this candidate but intentionally neither runs
 `--publish` nor creates a GitHub Release. Before production publication, retain
 the exact tarball, Windows bundle, audit, probe, and sanitized live-proof
 receipt in durable immutable release storage under the protected version tag.
-npm authority is needed only for
-publication: because trusted publishing cannot be configured until the package
-exists, use an explicitly approved provenance-emitting CI bootstrap for the
-first publish, then configure trusted publishing for later versions. For
+Configure the matching receipt for the tag-restricted `npm-production`
+environment with `npm run release:configure-publish-proof -- --audit-manifest
+<audit.json> --receipt <receipt.json> --repo <owner/repo>`, then invoke the
+manual `Publish npm candidate` workflow at that exact tag with the successful
+tag-triggered Release run ID. The workflow rejects a different run, ref,
+commit, artifact, audit, bundle, or receipt before calling the same
+`release:publish-candidate` verifier with `--publish` and provenance enabled.
+Dispatch it from the tag with `gh workflow run publish.yml --ref
+v<package-version> -f release_run_id=<tag-release-run-id> -f
+release_tag=v<package-version>` and approve the `npm-production` deployment.
+Delete the release-scoped live-proof secret after publication.
+npm authority is needed only for publication: because trusted publishing
+cannot be configured until the package exists, use the `npm-production`
+environment secret `NPM_TOKEN` only for the first approved CI bootstrap. Then
+configure the npm trusted publisher for `publish.yml`, this repository, and the
+`npm-production` environment, and delete the bootstrap token. For
 rollback, keep the known-good version available; build, sign, package, and
 live-validate a higher corrective candidate through the same gates; then
 publish it, deprecate the bad version with an upgrade message, and move

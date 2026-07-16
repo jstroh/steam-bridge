@@ -2,18 +2,18 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `f418450` (`Record completed Steam Deck readiness pass`).
+Review anchor: `d456c7e` (`Make macOS verification self-tests host-neutral`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
 ## Active Goal
 
-Complete and publish a fresh macOS Apple Silicon production-readiness review.
-Reconcile the existing live evidence with the current package and Electron
-runtime; verify the launcher, signing, Metal presenter, managed routes,
-shortcuts, passive notifications, close/back-to-app, focus, crash, host-health,
-and cleanup contracts; diagnose and fix regressions; update the ledger and
-public guidance; run proportionate checks; commit, push, and verify exact CI.
+Prepare the first npm release without weakening its exact-candidate evidence
+boundary. Finish the fresh macOS Apple Silicon production-readiness review,
+configure the protected tag/signing/publication path, build the exact signed
+cross-platform candidate, bind its complete public Windows live-proof receipt,
+retain the required artifacts, and publish only the verified tarball with npm
+provenance after explicit credentials and authority exist.
 
 Public App ID `480` remains generic overlay plumbing only. Do not claim or run
 real configured-product purchase proof without the separate complete private
@@ -56,13 +56,28 @@ the single authorization command has been provided to the user. AirPlay
 availability is not a control path. Do not infer live macOS success from GitHub
 runners or builds alone.
 
+The host-neutral macOS self-test fixes and this recovery checkpoint are pushed
+as `d456c7e`. First-release setup is now a separate slice. The repository has a
+cross-platform candidate workflow and exact Windows publication verifier, but
+the public npm package does not yet exist, no production signing identity is
+configured in GitHub, and npm is not authenticated on this host. The installed
+local test certificate is not a production release identity and must not be
+uploaded as one.
+
+The new publication setup uses a manual `publish.yml` workflow, an exact
+tag-triggered Release run ID, the retained candidate artifact, and a compressed
+environment-secret handoff for the matching sanitized Windows live-proof
+receipt. The `npm-production` GitHub environment exists, permits only `v*` tag
+deployments, and requires approval. An active tag ruleset prevents deletion or
+non-fast-forward updates of `refs/tags/v*`.
+
 Unrelated local `AGENTS.md`, `.codex`, and input-probe worktree changes belong to
 the user and must remain untouched.
 
 ## Last Verification
 
-- `main` equals `origin/main` at `f418450`; only the unrelated user changes are
-  present before this checkpoint edit.
+- `d456c7e` is pushed to `origin/main` with only the five intended macOS
+  verification/checkpoint files; unrelated user work remains unstaged.
 - The macOS ledger entries and detailed Metal/launcher/host evidence were
   reviewed before starting new live work.
 - Local discovery resolves the intended Mac, but bounded TCP checks show Remote
@@ -86,23 +101,41 @@ the user and must remain untouched.
 - Exact head CI `29401204874` passes Windows x64, Linux x64, macOS Apple Silicon,
   and full Linux package smoke. This is build/test evidence, not a substitute
   for a fresh physical-Mac Steam overlay run.
+- The npm registry has no public `steam-bridge` package yet. Current npm trusted
+  publishing requires an existing package, npm 11.5.1 or newer, Node 22.14.0 or
+  newer, a matching workflow filename, and OIDC. The first publish therefore
+  needs a short-lived approved bootstrap token; later publishes can remove it.
+- Exact CI `29463529919` for `d456c7e` passes all four required jobs: package
+  smoke plus Linux x64, Windows x64, and Apple Silicon macOS checks.
+- The publication workflow passes PyYAML parsing and `actionlint` 1.7.12. The
+  proof configurator validates candidate binding, receipt schema/hash, gzip
+  round-trip, arguments, and failure cases in its self-test.
+- Current local `check:platform`, all 196 unit/TypeScript tests, `api:check`,
+  Rust formatting/native check, and `git diff --check` pass. Native-Windows
+  `package:smoke` reaches only the existing Linux shortcut-ID fixture boundary
+  after all macOS and release-helper self-tests pass; exact Linux package smoke
+  remains green in CI.
 
 ## Next Actions
 
-1. Establish unattended Remote Login on the intended Mac without weakening the
+1. Finish and publish the tag-restricted npm publication workflow, proof-secret
+   configurator, release documentation, and GitHub environment setup.
+2. Establish unattended Remote Login on the intended Mac without weakening the
    broader machine, then collect a sanitized read-only preflight and Steam
    health artifact.
-2. Run the current signed minimal matrix first. Expand to persistent/full proof
+3. Run the current signed minimal matrix first. Expand to persistent/full proof
    only according to the changed surfaces and live findings; avoid unnecessary
    Steam restarts and unchanged negative experiments.
-3. Update the checkpoint and ledger, run full repository validation and privacy
-   review, commit and push intentional changes, and verify exact GitHub CI.
+4. Configure the real production Windows signing identity and first-publish npm
+   bootstrap authority, then build, live-prove, retain, and publish the exact
+   protected `v0.1.0` candidate.
 
 ## Exact Next Step
 
-Wait for the one bounded Mac Remote Login action, verify key-only SSH, then run
-sanitized architecture/session/toolchain/repository and Steam-health preflight
-without reading private runtime inputs.
+Validate the npm publication setup, commit and push it, configure the
+tag-restricted GitHub environment, and verify exact CI. Do not create the
+release tag or publish until the physical-Mac review and real signing/npm
+credential gates are complete.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

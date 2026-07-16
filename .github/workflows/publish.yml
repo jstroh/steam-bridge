@@ -1,0 +1,93 @@
+name: Publish npm candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful tag-triggered Release workflow run ID
+        required: true
+        type: string
+      release_tag:
+        description: Exact package tag, for example v0.1.0
+        required: true
+        type: string
+      npm_tag:
+        description: npm dist-tag; leave empty for a stable release
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish verified npm tarball
+    environment: npm-production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - name: Install release tooling
+        run: |
+          node -e "const [major, minor] = require('node:child_process').execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim().split('.').map(Number); if (major < 11 || (major === 11 && minor < 15)) throw new Error('npm 11.15.0 or newer is required')"
+          npm ci --ignore-scripts
+      - name: Verify tag and source Release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_NAME" = "$RELEASE_TAG"
+          test "$(gh run view "$RELEASE_RUN_ID" --json workflowName --jq .workflowName)" = "Release"
+          test "$(gh run view "$RELEASE_RUN_ID" --json event --jq .event)" = "push"
+          test "$(gh run view "$RELEASE_RUN_ID" --json conclusion --jq .conclusion)" = "success"
+          test "$(gh run view "$RELEASE_RUN_ID" --json headBranch --jq .headBranch)" = "$RELEASE_TAG"
+          test "$(gh run view "$RELEASE_RUN_ID" --json headSha --jq .headSha)" = "$GITHUB_SHA"
+      - name: Download exact audited candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+        run: gh run download "$RELEASE_RUN_ID" --name steam-bridge-windows-publish-package-gate --dir candidate
+      - name: Restore matching live-proof receipt
+        env:
+          LIVE_PROOF_GZIP_BASE64: ${{ secrets.STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64 }}
+        run: |
+          test -n "$LIVE_PROOF_GZIP_BASE64"
+          printf '%s' "$LIVE_PROOF_GZIP_BASE64" | base64 --decode > live-proof.json.gz
+          gzip --test live-proof.json.gz
+          gzip --decompress --stdout live-proof.json.gz > windows-live-proof-receipt.json
+      - name: Publish exact verified bytes
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_ACCESS: public
+          NPM_CONFIG_PROVENANCE: "true"
+          NPM_TAG: ${{ inputs.npm_tag }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          mapfile -t tarballs < <(find candidate -type f -name '*.tgz')
+          mapfile -t bundles < <(find candidate -type f -name '*-win-unpacked.tar')
+          mapfile -t audits < <(find candidate -type f -name 'steam-bridge-windows-package-audit.json')
+          test "${#tarballs[@]}" -eq 1
+          test "${#bundles[@]}" -eq 1
+          test "${#audits[@]}" -eq 1
+          args=(
+            --tarball "${tarballs[0]}"
+            --bundle-archive "${bundles[0]}"
+            --audit-manifest "${audits[0]}"
+            --live-proof-receipt windows-live-proof-receipt.json
+            --publish
+            --release-tag "$RELEASE_TAG"
+          )
+          if [[ -n "$NPM_TAG" ]]; then
+            args+=(--tag "$NPM_TAG")
+          fi
+          npm run release:publish-candidate -- "${args[@]}"
