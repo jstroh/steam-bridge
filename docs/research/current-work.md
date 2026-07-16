@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `47d7749` (`Record npm publication setup`).
+Review anchor: `54fd277` (`Add protected Azure Artifact Signing path`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -10,7 +10,7 @@ acting.
 
 Prepare the first npm release without weakening its exact-candidate evidence
 boundary. Finish the fresh macOS Apple Silicon production-readiness review,
-configure the protected tag/signing/publication path, build the exact signed
+configure the protected tag/publication path, build the exact
 cross-platform candidate, bind its complete public Windows live-proof receipt,
 retain the required artifacts, and publish only the verified tarball with npm
 provenance after explicit credentials and authority exist.
@@ -59,10 +59,8 @@ runners or builds alone.
 The host-neutral macOS self-test fixes and this recovery checkpoint are pushed
 as `d456c7e`. First-release setup is now a separate slice. The repository has a
 cross-platform candidate workflow and exact Windows publication verifier, but
-the public npm package does not yet exist, no production signing identity is
-configured in GitHub, and npm is not authenticated on this host. The installed
-local test certificate is not a production release identity and must not be
-uploaded as one.
+the public npm package does not yet exist and npm is not authenticated on this
+host.
 
 The publication setup is pushed as `5d95bb3`. It uses a manual `publish.yml`
 workflow, an exact tag-triggered Release run ID, the retained candidate
@@ -78,16 +76,13 @@ the Windows ASAR publish gate independently requires the complete set before a
 candidate can pass. Public install guidance now distinguishes this zero-SDK
 consumer path from contributor source builds, which still require a local SDK.
 
-Azure Artifact Signing Public Trust is the selected production Windows signing
-path. A user-scoped Azure CLI 2.88.0 is installed outside the repository. The
-Release workflow now has a fail-closed GitHub OIDC integration for the protected
-`windows-signing` environment and retains the PFX backend only as a mutually
-exclusive compatibility path. The environment exists, requires one reviewer,
-and permits only `v*` tag deployments; unsigned manual runs use a separate
-unprivileged `windows-diagnostics` environment. Azure login, Basic-plan
-acceptance, public identity validation, certificate-profile creation, and Entra
-federation remain interactive maintainer-account steps; no billing resource has
-been created.
+Windows Authenticode is not an npm registry requirement and must not block the
+first release. The tag workflow validates an unsigned app-owned Electron
+fixture while still requiring Valve's runtime DLLs to retain their exact
+upstream bytes and valid signatures. The optional signed package-gate mode
+remains available to application distributors. The abandoned Azure setup never
+authenticated, created a resource, or incurred a charge; its user-scoped CLI is
+outside the repository and irrelevant to release execution.
 
 Unrelated local `AGENTS.md`, `.codex`, and input-probe worktree changes belong to
 the user and must remain untouched.
@@ -140,13 +135,17 @@ the user and must remain untouched.
 - Retained Release run `29363098329` contains all six expected Valve runtime
   files in its canonical npm tarball: the Steam API and encrypted-app-ticket
   redistributables for Windows x64, Linux x64, and Apple Silicon macOS.
-- Azure Artifact Signing integration passes `actionlint` 1.7.12, PyYAML
-  parsing, the Windows package-gate self-test, `check:platform`, all 196
-  unit/TypeScript tests, `api:check`, Rust formatting/native check, and
-  `git diff --check`. Native-Windows `package:smoke` reaches only the existing
-  Linux shortcut-ID fixture boundary after the release and macOS helper checks
-  pass. The protected `windows-signing` and unprivileged
-  `windows-diagnostics` GitHub environments exist with the intended policies.
+- Commit `54fd277` incorrectly promoted optional Windows Authenticode signing
+  into an npm release gate. The correction removes Azure authentication and
+  signing credentials from the Release workflow, permits a fail-closed unsigned
+  app-owned candidate, and preserves upstream Valve signature and byte checks.
+- The corrected signed/unsigned package policy passes the Windows package-gate,
+  live-proof receipt, and publication-verifier self-tests. `actionlint` 1.7.12,
+  `check:platform`, all 196 unit/TypeScript tests, `api:check`, Rust
+  formatting/native check, and `git diff --check` pass. Native-Windows
+  `package:smoke` passes the changed release/static checks and reaches the
+  existing unsupported-Unix-helper boundary recorded by
+  `WIN-PACKAGE-SMOKE-HOST-001`; exact Linux CI remains authoritative.
 
 ## Next Actions
 
@@ -156,18 +155,16 @@ the user and must remain untouched.
 2. Run the current signed minimal matrix first. Expand to persistent/full proof
    only according to the changed surfaces and live findings; avoid unnecessary
    Steam restarts and unchanged negative experiments.
-3. Complete Azure Artifact Signing Public Trust identity validation and GitHub
-   OIDC federation, configure first-publish npm bootstrap authority, then build,
-   live-prove, retain, and publish the exact protected `v0.1.0` candidate.
+3. Configure first-publish npm bootstrap authority, then build, live-prove,
+   retain, and publish the exact protected `v0.1.0` candidate. Windows public
+   code signing is not a prerequisite.
 
 ## Exact Next Step
 
-Enable Mac Remote Login and finish the physical-Mac review. In parallel, sign
-in to Azure, create the Basic Artifact Signing account, complete Public Trust
-identity validation, and authorize the protected GitHub environment through an
-Entra OIDC federation. Create the short-lived npm bootstrap token through the
-maintainer account. Do not create the release tag or publish until those
-credential gates and the Mac review are complete.
+Enable Mac Remote Login and finish the physical-Mac review. In parallel, create
+the short-lived npm bootstrap token through the maintainer account. Do not
+create the release tag or publish until npm authority and the Mac review are
+complete.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

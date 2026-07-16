@@ -59,8 +59,9 @@ live proof and candidate recovery. Its schema-2 audit fingerprints every
 portable regular file by path, size, and content; retained archive and deployed
 directory verification must reproduce the same fingerprint. That archive is
 currently a 90-day GitHub
-Actions artifact, not durable rollback storage. Use the same shape in Windows
-apps:
+Actions artifact, not durable rollback storage. Applications that use
+Authenticode signing should use the same ASAR shape and include `.node` in
+their signing extensions:
 
 ```json
 {
@@ -83,16 +84,17 @@ When no explicit diagnostic override is configured, Steam Bridge resolves
 native binaries only from the physical `app.asar.unpacked` mirror when its
 JavaScript lives in ASAR; the release gate refuses an override. A packaged
 native-load pass is not overlay proof: run `presenter-ready` and the applicable
-live overlay matrix against the retained exact signed candidate.
+live overlay matrix against the retained exact candidate.
 The Windows build is configured to link the addon and its C++ shims statically
 to the MSVC/UCRT runtime. The release verifier rejects dynamic CRT and
 unexpected non-system imports; a fresh green Windows gate is the artifact-level
 proof that a developer image is not masking a clean-machine dependency.
-Add `.node` to `win.signExts` so electron-builder signs the app-owned addon while
-it signs the application executable normally. The signed/tag gate requires the
-two Steam runtime DLLs to remain byte-for-byte identical to the tarball and
-Authenticode-valid, preserving the tarball's existing signature instead of
-replacing it.
+When an application signs its Windows bundle, add `.node` to `win.signExts` so
+electron-builder signs the app-owned addon while it signs the application
+executable normally. The npm tag gate does not sign those app-owned fixture
+files. It requires the two Steam runtime DLLs to remain byte-for-byte identical
+to the tarball and Authenticode-valid, preserving their existing upstream
+signatures instead of replacing them.
 The repository's Windows matrix validator is an external build/test tool. If an
 ASAR package carries that matrix, copy both
 `bin/validate-checkout-target.cjs` and the package's complete `dist` directory
@@ -106,7 +108,7 @@ The Release artifact's audited `.tgz` is the canonical npm candidate. Run
 <win-unpacked.tar> --audit-manifest <audit.json>` to rehash the npm bytes and
 retained Windows bundle and check that the audit records a successful final
 executable probe, live-smoke protocol, signing state, and expected filenames.
-Use `--require-publishable --release-tag v<package-version>` for the signed-tag
+Use `--require-publishable --release-tag v<package-version>` for the tag
 candidate check before live testing; it intentionally needs no live receipt.
 Add `--publish --live-proof-receipt <receipt.json>` only when you intend to
 publish those exact npm bytes. The sanitized receipt must bind the same
@@ -118,14 +120,12 @@ race. The audit and receipt JSON are not independently signed, so retain and
 trust their workflow/release provenance. Prerelease versions require an
 explicit non-`latest` npm `--tag`.
 Publishing from the assembled workspace would repack it and is not the
-verified path. Tag-triggered Release runs set `forceCodeSigning` and match the
-app executable and native addon against the configured publisher policy. The
-production workflow uses Azure Artifact Signing Public Trust through GitHub
-OIDC and the protected `windows-signing` environment; its validated publisher
-subject is durable while its short-lived leaf-certificate thumbprint is not.
-The legacy PFX path remains available for compatible private-key certificates,
-but the gate rejects mixing PFX credentials with Artifact Signing. The Valve
-runtime DLLs must be Authenticode-valid and retain their exact upstream bytes.
+verified path. Tag-triggered Release runs leave the app-owned fixture executable
+and native addon unsigned; Windows Authenticode is not an npm publication
+requirement. The optional package-gate `--require-signed` mode remains available
+to application distributors validating their own configured publisher policy.
+Valve's runtime DLLs must remain Authenticode-valid and retain their exact
+upstream bytes in either mode.
 The Release workflow validates this candidate but intentionally neither runs
 `--publish` nor creates a GitHub Release. Before production publication, retain
 the exact tarball, Windows bundle, audit, probe, and sanitized live-proof

@@ -319,23 +319,12 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
       true,
       "publishing requires the retained Windows bundle to contain the live smoke protocol"
     );
-    assert.equal(audit.signing?.required, true, "publishing requires an audit produced by the signed package gate");
-    assert.equal(
-      audit.signing?.expectedPublisherSubjectConfigured === true ||
-        audit.signing?.expectedPublisherThumbprintConfigured === true,
-      true,
-      "publishing requires an exact expected publisher policy in the package audit"
-    );
-    for (const fileName of [
-      "appExecutable",
-      "steam_bridge_native.win32-x64-msvc.node",
-      "steam_api64.dll",
-      "sdkencryptedappticket64.dll"
-    ]) {
+    assert.equal(typeof audit.signing?.required, "boolean", "publishing requires explicit signing policy evidence");
+    for (const fileName of ["steam_api64.dll", "sdkencryptedappticket64.dll"]) {
       assert.equal(
         audit.finalBundle?.authenticode?.[fileName]?.status,
         "Valid",
-        `publishing requires valid Authenticode evidence for ${fileName}`
+        `publishing requires valid upstream Authenticode evidence for ${fileName}`
       );
     }
     for (const fileName of ["steam_api64.dll", "sdkencryptedappticket64.dll"]) {
@@ -347,16 +336,43 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
         `publishing requires matching source and final hashes for ${fileName}`
       );
     }
-    assert.equal(
-      audit.signing?.publisherMatches?.appExecutable,
-      true,
-      "publishing requires the Electron executable to match the expected publisher"
-    );
-    assert.equal(
-      audit.signing?.publisherMatches?.nativeAddon,
-      true,
-      "publishing requires the native addon to match the expected publisher"
-    );
+    if (audit.signing.required) {
+      assert.equal(
+        audit.signing.expectedPublisherSubjectConfigured === true ||
+          audit.signing.expectedPublisherThumbprintConfigured === true,
+        true,
+        "signed publishing requires an exact expected publisher policy in the package audit"
+      );
+      for (const fileName of ["appExecutable", "steam_bridge_native.win32-x64-msvc.node"]) {
+        assert.equal(
+          audit.finalBundle?.authenticode?.[fileName]?.status,
+          "Valid",
+          `signed publishing requires valid Authenticode evidence for ${fileName}`
+        );
+      }
+      assert.equal(
+        audit.signing.publisherMatches?.appExecutable,
+        true,
+        "signed publishing requires the Electron executable to match the expected publisher"
+      );
+      assert.equal(
+        audit.signing.publisherMatches?.nativeAddon,
+        true,
+        "signed publishing requires the native addon to match the expected publisher"
+      );
+    } else {
+      assert.equal(audit.signing.expectedPublisherSubjectConfigured, false);
+      assert.equal(audit.signing.expectedPublisherThumbprintConfigured, false);
+      assert.equal(audit.signing.publisherMatches?.appExecutable, false);
+      assert.equal(audit.signing.publisherMatches?.nativeAddon, false);
+      for (const fileName of ["appExecutable", "steam_bridge_native.win32-x64-msvc.node"]) {
+        assert.equal(
+          audit.finalBundle?.authenticode?.[fileName]?.status,
+          "NotSigned",
+          `unsigned publishing requires ${fileName} to have no partial or invalid Authenticode signature`
+        );
+      }
+    }
     assert.ok(audit.release?.gitCommit, "publishing requires a source Git commit in the package audit");
     const releaseTag = options.releaseTag || audit.release?.gitRefName || "";
     assert.equal(releaseTag, `v${audit.package?.version}`, "release tag must exactly match the audited package version");
@@ -511,6 +527,36 @@ function selfTest() {
     const receiptPath = path.join(tempRoot, "windows-live-proof-receipt.json");
     writeJson(receiptPath, createSelfTestReceipt(publishableCandidate.candidateBinding));
     assert.ok(validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding));
+    const signedAudit = JSON.parse(fs.readFileSync(audit, "utf8"));
+    const unsignedAudit = JSON.parse(JSON.stringify(signedAudit));
+    unsignedAudit.signing = {
+      required: false,
+      expectedPublisherSubjectConfigured: false,
+      expectedPublisherThumbprintConfigured: false,
+      publisherMatches: { appExecutable: false, nativeAddon: false }
+    };
+    unsignedAudit.finalBundle.authenticode.appExecutable.status = "NotSigned";
+    unsignedAudit.finalBundle.authenticode["steam_bridge_native.win32-x64-msvc.node"].status = "NotSigned";
+    writeJson(audit, unsignedAudit);
+    const unsignedCandidate = verifyReleaseCandidate(tarball, audit, {
+      requirePublishable: true,
+      releaseTag: "v0.1.0",
+      bundleArchive
+    });
+    writeJson(receiptPath, createSelfTestReceipt(unsignedCandidate.candidateBinding));
+    assert.ok(validateLiveProofForPublish(true, receiptPath, unsignedCandidate.candidateBinding));
+    unsignedAudit.finalBundle.authenticode.appExecutable.status = "HashMismatch";
+    writeJson(audit, unsignedAudit);
+    assert.throws(
+      () =>
+        verifyReleaseCandidate(tarball, audit, {
+          requirePublishable: true,
+          releaseTag: "v0.1.0",
+          bundleArchive
+        }),
+      /no partial or invalid Authenticode signature/
+    );
+    writeJson(audit, signedAudit);
     const publishCopy = createVerifiedPublishCopy(tarball, publishableCandidate);
     try {
       fs.appendFileSync(tarball, "changed-after-private-copy");

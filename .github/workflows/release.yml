@@ -2,11 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      require_windows_signing:
-        description: Require the Windows ASAR candidate to be signed by the configured publisher
-        type: boolean
-        default: false
   push:
     tags:
       - "v*"
@@ -59,10 +54,6 @@ jobs:
     name: Windows publish-tarball ASAR gate
     needs: prebuild
     runs-on: windows-latest
-    environment: ${{ (github.event_name == 'push' || inputs.require_windows_signing == true) && 'windows-signing' || 'windows-diagnostics' }}
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -75,29 +66,8 @@ jobs:
           path: release-artifacts
       - run: npm ci
       - run: npm run release:assemble -- --artifacts-dir release-artifacts
-      - name: Authenticate Azure Artifact Signing with OIDC
-        if: ${{ (github.event_name == 'push' || inputs.require_windows_signing == true) && vars.WINDOWS_SIGNING_BACKEND == 'artifact-signing' }}
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Run exact Windows package gate (unsigned diagnostic)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.require_windows_signing != true }}
+      - name: Run exact Windows package gate
         run: npm run windows:package-gate
-      - name: Run exact Windows package gate (signed candidate)
-        if: ${{ github.event_name == 'push' || inputs.require_windows_signing == true }}
-        shell: pwsh
-        env:
-          WIN_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-          STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
-          STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_THUMBPRINT: ${{ vars.WINDOWS_PUBLISHER_THUMBPRINT }}
-          STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ENDPOINT }}
-          STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.WINDOWS_ARTIFACT_SIGNING_ACCOUNT }}
-          STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PROFILE: ${{ vars.WINDOWS_ARTIFACT_SIGNING_PROFILE }}
-          STEAM_BRIDGE_WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME: ${{ vars.WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME }}
-        run: npm run windows:package-gate -- --require-signed
       - name: Verify canonical npm release candidate
         shell: pwsh
         run: |

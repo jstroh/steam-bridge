@@ -640,17 +640,17 @@ function runWindowsSmokeHelperStaticChecks() {
     releaseWorkflow.includes("windows-package-gate:") &&
       releaseWorkflow.includes("npm run release:assemble") &&
       releaseWorkflow.includes("npm run windows:package-gate") &&
-      releaseWorkflow.includes("--require-signed") &&
-      releaseWorkflow.includes("'windows-signing' || 'windows-diagnostics'") &&
-      releaseWorkflow.includes("id-token: write") &&
-      releaseWorkflow.includes("azure/login@v2") &&
-      releaseWorkflow.includes("WINDOWS_SIGNING_BACKEND == 'artifact-signing'") &&
-      releaseWorkflow.includes("WINDOWS_ARTIFACT_SIGNING_PROFILE") &&
       releaseWorkflow.includes("npm run release:publish-candidate") &&
       releaseWorkflow.includes("--require-publishable") &&
       releaseWorkflow.includes("*-win-unpacked.tar") &&
       releaseWorkflow.includes("--bundle-archive"),
     "Release workflow must gate the fully assembled publish tarball in a Windows electron-builder ASAR package"
+  );
+  assert.ok(
+    !releaseWorkflow.includes("--require-signed") &&
+      !releaseWorkflow.includes("WINDOWS_CSC_LINK") &&
+      !releaseWorkflow.includes("azure/login"),
+    "npm release workflow must not require Windows Authenticode signing"
   );
   assert.doesNotMatch(releaseWorkflow, /(?:^|\s)--publish(?:\s|$)/m, "Release workflow must remain candidate-only");
   assert.ok(

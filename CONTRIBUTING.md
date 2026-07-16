@@ -55,28 +55,14 @@ achievements, stats, inventory, UGC, and economy behavior.
 ## Release Candidates, Publication, and Rollback
 
 The Release workflow assembles and validates an exact cross-platform npm
-tarball plus a Windows candidate. Tag-triggered runs require signing; a manual
-diagnostic run may remain unsigned. The workflow does not publish npm bytes or
-create a GitHub Release, and a signed tag run is still a candidate until its
-exact retained bundle passes the required live Windows gates.
+tarball plus an unsigned app-owned Windows candidate. Valve's upstream runtime
+DLLs must retain their existing valid signatures and exact bytes. The workflow
+does not publish npm bytes or create a GitHub Release, and a tag run remains a
+candidate until its exact retained bundle passes the required live Windows
+gates. Authenticode signing of an application that consumes Steam Bridge is a
+separate distributor concern and is not an npm publication requirement.
 
-Production CI signing uses Azure Artifact Signing Public Trust through the
-protected `windows-signing` environment and GitHub OIDC. Configure the
-environment variables `WINDOWS_SIGNING_BACKEND=artifact-signing`,
-`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
-`WINDOWS_ARTIFACT_SIGNING_ENDPOINT`, `WINDOWS_ARTIFACT_SIGNING_ACCOUNT`,
-`WINDOWS_ARTIFACT_SIGNING_PROFILE`,
-`WINDOWS_ARTIFACT_SIGNING_PUBLISHER_NAME`, and `WINDOWS_PUBLISHER_SUBJECT`.
-The Entra principal needs only the Artifact Signing Certificate Profile Signer
-role for the selected profile. Use the validated certificate subject as the
-release policy: Artifact Signing rotates short-lived leaf certificates, so do
-not configure `WINDOWS_PUBLISHER_THUMBPRINT`. Delete the legacy
-`WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD` secrets when selecting this
-backend; the gate rejects mixed cloud/PFX credentials.
-Unsigned manual diagnostics use the unprivileged `windows-diagnostics`
-environment and never authenticate to Azure.
-
-`--require-publishable` is the signed-tag candidate gate and deliberately runs
+`--require-publishable` is the tag candidate gate and deliberately runs
 before live proof, so it must remain receipt-free. An actual `--publish` must
 also receive `--live-proof-receipt <receipt.json>`. Generate that sanitized
 receipt only from the exact candidate's complete public `persistent-reuse`,

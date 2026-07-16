@@ -345,14 +345,7 @@ function validatePublicManifest(manifest, contract, candidateBinding) {
   assert.equal(manifest.requireMicroTxnCallback, false);
   validateCandidateBinding(manifest.candidateBinding);
   assert.deepEqual(manifest.candidateBinding, candidateBinding);
-  assert.equal(candidateBinding.signing.required, true);
-  assert.equal(
-    candidateBinding.signing.expectedPublisherSubjectConfigured ||
-      candidateBinding.signing.expectedPublisherThumbprintConfigured,
-    true
-  );
-  assert.equal(candidateBinding.signing.appExecutablePublisherMatches, true);
-  assert.equal(candidateBinding.signing.nativeAddonPublisherMatches, true);
+  validateCandidateSigningPolicy(candidateBinding);
 
   assertExactKeys(
     manifest.cleanupContract,
@@ -445,13 +438,13 @@ function validateProfileSummary(summary, contract, candidateBinding) {
   assert.equal(preflight.currentSessionInteractive, true);
   assert.equal(preflight.executableExists, true);
   assert.equal(preflight.executableNonEmpty, true);
-  assert.equal(preflight.executableAuthenticodeValid, true);
+  assert.equal(preflight.executableAuthenticodeValid, candidateBinding.signing.required);
   assert.equal(preflight.executableZoneIdentifier, false);
   assert.equal(preflight.nativeAddonExists, true);
   assert.equal(preflight.nativeAddonNonEmpty, true);
-  assert.equal(preflight.nativeAddonAuthenticodeValid, true);
+  assert.equal(preflight.nativeAddonAuthenticodeValid, candidateBinding.signing.required);
   assert.equal(preflight.nativeAddonZoneIdentifier, false);
-  assert.equal(preflight.publisherMatches, true);
+  assert.equal(preflight.publisherMatches, candidateBinding.signing.required);
   assert.equal(preflight.nativeOverridePresent, false);
   assert.equal(preflight.nativePathOverride, false);
   assert.equal(preflight.packagedRuntimeResolutionErrorPresent, false);
@@ -1292,6 +1285,23 @@ function assertIsoTimestamp(value, label) {
   assert.ok(Number.isFinite(Date.parse(value)), `${label} is invalid.`);
 }
 
+function validateCandidateSigningPolicy(candidateBinding) {
+  const signing = candidateBinding.signing;
+  if (signing.required) {
+    assert.equal(
+      signing.expectedPublisherSubjectConfigured || signing.expectedPublisherThumbprintConfigured,
+      true
+    );
+    assert.equal(signing.appExecutablePublisherMatches, true);
+    assert.equal(signing.nativeAddonPublisherMatches, true);
+    return;
+  }
+  assert.equal(signing.expectedPublisherSubjectConfigured, false);
+  assert.equal(signing.expectedPublisherThumbprintConfigured, false);
+  assert.equal(signing.appExecutablePublisherMatches, false);
+  assert.equal(signing.nativeAddonPublisherMatches, false);
+}
+
 function sha256(bytes) {
   return crypto.createHash("sha256").update(bytes).digest("hex");
 }
@@ -1304,7 +1314,7 @@ function selfTest() {
   assert.equal(PROFILE_CONTRACTS.length, 4);
   assert.equal(TOTAL_CASE_COUNT, 31);
   assert.equal(TOTAL_ACTIVE_CASE_COUNT, 27);
-  const candidateBinding = createCandidateBinding({
+  const signedAudit = {
     schemaVersion: 2,
     target: "x86_64-pc-windows-msvc",
     package: {
@@ -1331,7 +1341,8 @@ function selfTest() {
       publisherMatches: { appExecutable: true, nativeAddon: true }
     },
     release: { gitCommit: "5".repeat(40), gitRefName: "v0.1.0" }
-  });
+  };
+  const candidateBinding = createCandidateBinding(signedAudit);
   const profiles = PROFILE_CONTRACTS.map((contract, index) => ({
     name: contract.name,
     suite: contract.suite,
@@ -1355,6 +1366,27 @@ function selfTest() {
   for (const contract of PROFILE_CONTRACTS) {
     validatePublicManifest(createSelfTestManifest(contract, candidateBinding), contract, candidateBinding);
     validateProfileSummary(createSelfTestSummary(contract, candidateBinding), contract, candidateBinding);
+  }
+  const unsignedCandidateBinding = createCandidateBinding({
+    ...signedAudit,
+    signing: {
+      required: false,
+      expectedPublisherSubjectConfigured: false,
+      expectedPublisherThumbprintConfigured: false,
+      publisherMatches: { appExecutable: false, nativeAddon: false }
+    }
+  });
+  for (const contract of PROFILE_CONTRACTS) {
+    validatePublicManifest(
+      createSelfTestManifest(contract, unsignedCandidateBinding),
+      contract,
+      unsignedCandidateBinding
+    );
+    validateProfileSummary(
+      createSelfTestSummary(contract, unsignedCandidateBinding),
+      contract,
+      unsignedCandidateBinding
+    );
   }
   const glyphManifest = createSelfTestManifest(PROFILE_CONTRACTS[3], candidateBinding);
   glyphManifest.webCloseTargetEvidence = WEB_CLOSE_TARGET_EVIDENCE;
@@ -1615,6 +1647,7 @@ function createSelfTestManifest(contract, candidateBinding) {
 }
 
 function createSelfTestSummary(contract, candidateBinding) {
+  const signed = candidateBinding.signing.required;
   const runtimeConfig = (hasCheckoutTransactionId = false, selectionOnly = false) => ({
     complete: !selectionOnly,
     authIdentityUsesPublicDefault: true,
@@ -1731,13 +1764,13 @@ function createSelfTestSummary(contract, candidateBinding) {
       currentSessionInteractive: true,
       executableExists: true,
       executableNonEmpty: true,
-      executableAuthenticodeValid: true,
+      executableAuthenticodeValid: signed,
       executableZoneIdentifier: false,
       nativeAddonExists: true,
       nativeAddonNonEmpty: true,
-      nativeAddonAuthenticodeValid: true,
+      nativeAddonAuthenticodeValid: signed,
       nativeAddonZoneIdentifier: false,
-      publisherMatches: true,
+      publisherMatches: signed,
       nativeOverridePresent: false,
       nativePathOverride: false,
       packagedRuntimeResolutionErrorPresent: false

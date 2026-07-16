@@ -869,9 +869,9 @@ the private `--checkout-json-file` checkout suite.
   their workflow/release provenance.
   Prerelease versions also require an explicit non-`latest` npm `--tag`.
   Do not run `npm publish` from the assembled workspace and silently
-  create a different tarball. Tag-triggered Release runs require Windows
-  signing credentials plus the configured publisher subject or thumbprint;
-  manual Release dispatches may remain unsigned for packaging diagnostics.
+  create a different tarball. Tag-triggered Release runs validate an unsigned
+  app-owned Windows fixture while preserving Valve's upstream DLL signatures;
+  npm publication does not require Windows signing credentials.
   The workflow validates candidates only: it does not run `--publish` or create
   a GitHub Release. This public repository currently retains Actions artifacts
   for 90 days, which is also GitHub's public-repository maximum, so an Actions
@@ -881,29 +881,26 @@ the private `--checkout-json-file` checkout suite.
   to the protected version tag. See
   [Contributing](CONTRIBUTING.md#release-candidates-publication-and-rollback) and
   [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
-  npm authority is not required to sign or live-test the candidate. Because
+  npm authority is not required to build or live-test the candidate. Because
   trusted publishing can be configured only after a package exists, the first
   publish requires an explicitly approved provenance-emitting CI bootstrap;
   configure trusted publishing for later versions. If a published version
-  regresses, build, sign, package, and live-validate a corrected higher
+  regresses, build, package, and live-validate a corrected higher
   candidate through the same gates; then publish it, deprecate the bad version
   with an upgrade message, and move dist-tags as applicable. Unpublishing is
   not rollback and the same name/version cannot be reused.
-- Windows release and smoke packages must Authenticode-sign the Electron
-  executable and native `.node` addon with a trusted publisher certificate
-  before testing on machines with Windows Smart App Control or App Control for
-  Business enabled. A local Windows 11 live test on July 1, 2026 proved that an
+- Windows applications targeting machines with Windows Smart App Control or
+  App Control for Business enabled need an appropriate trusted publisher and
+  reputation path. This npm package and its release workflow do not require or
+  provide an Authenticode identity. A local Windows 11 live test on July 1,
+  2026 proved that an
   unsigned `steam_bridge_native.win32-x64-msvc.node` is blocked before Steam can
   initialize, even though the package was built on macOS from the GitHub
   Windows x64 prebuild. Mac-built Windows packages remain supported, but the
-  final Windows app must go through a normal Windows code-signing/reputation
-  path before overlay proof on SAC-enabled machines. The smoke package includes
-  `sign-windows-package.ps1` for this step:
-
-  Production CI uses Azure Artifact Signing Public Trust with GitHub OIDC. Its
-  HSM-managed, short-lived certificates avoid exporting a private key or
-  attaching a hardware token to GitHub. The release gate pins the validated
-  publisher subject rather than the rotating leaf-certificate thumbprint.
+  final Windows app must go through its distributor's normal Windows
+  code-signing/reputation path before overlay proof on SAC-enabled machines.
+  The smoke package includes `sign-windows-package.ps1` for that optional app
+  packaging step:
 
   ```powershell
   # Use an installed private-key code-signing certificate.
