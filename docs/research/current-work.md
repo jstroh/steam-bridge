@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `e2a15a6` (`Record v0.1.3 exact CI`).
+Review anchor: `7ca52ed` (`Accept panel-relative persistent close proof`).
 
 ## Active Goal
 
@@ -46,7 +46,7 @@ overlay. The final cross-cycle assertion still required the old absolute glyph
 coordinate. The same deterministic shape exists in the retained `v0.1.1`
 artifact, so repeating unchanged is rejected.
 
-The `0.1.4` worktree repairs only that packaged evidence predicate. Cycle one
+Commit `7ca52ed` for `0.1.4` repairs only that packaged evidence predicate. Cycle one
 still must directly detect the Steam close glyph. Each later cycle must either
 detect it directly or reconstruct it from that cycle's current panel geometry;
 the existing exact host containment, independent per-monitor-DPI scale,
@@ -79,14 +79,15 @@ changes that belong to the user and must remain untouched.
 - Native-Windows `package:smoke` passes its package, binding, receipt,
   InitTxn, macOS signing, and checkout self-tests before the Linux shortcut
   self-test reaches its host-specific game-ID discovery boundary. Exact CI is
-  still required for the supported cross-platform package-smoke result.
+  passes for `7ca52ed` in exact CI `29488095230`, together with Windows x64,
+  Linux x64, and Apple Silicon checks.
 - No private app, product, account, shortcut, transaction, or Steam identifiers
   were added to committed evidence.
 
 ## Next Actions
 
-1. Complete the `0.1.4` checks, privacy/diff review, commit, push, and exact CI.
-2. Create protected `v0.1.4` only after exact CI passes; require tag CI and the
+1. Commit and push this exact-CI checkpoint and require CI on the resulting head.
+2. Create protected `v0.1.4` only after that CI passes; require tag CI and the
    protected Release, then independently verify and deploy its exact candidate.
 3. Require the focused progress case and all four fresh receipt profiles without
    human clicks or another Steam restart.
@@ -97,9 +98,8 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Run the focused summary regression and normal repository checks for the
-panel-relative persistent close proof. Commit and push only the owned package,
-summary, test-fixture, and research files; preserve the user's unrelated files.
+Commit and push only this checkpoint update, preserve the user's unrelated
+files, and require exact CI before creating protected `v0.1.4`.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

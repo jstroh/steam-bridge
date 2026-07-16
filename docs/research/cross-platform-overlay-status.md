@@ -81,12 +81,13 @@ detected the close glyph at `(1340,308)`. Steam shifted the detected panel down
 one physical pixel in cycle two, so the independently validated scale-aware
 panel point became `(1340,309)`. The final cross-cycle check rejected that
 correct current-panel target because it required the prior absolute coordinate.
-The `0.1.4` worktree retains direct cycle-one glyph proof and all exact
+Exact `0.1.4` commit `7ca52ed` retains direct cycle-one glyph proof and all exact
 host/DPI/inset/pointer/screenshot/lifecycle checks, while allowing later cycles
 to reconstruct the close point from their current audited panel geometry. Its
 one-pixel regression and readback of the rejected live root pass. Because the
 auditor is packaged evidence, `v0.1.3` remains rejected and all receipt roots
-must come from the replacement candidate.
+must come from the replacement candidate. Exact CI `29488095230` passes package
+smoke plus Windows x64, Linux x64, and Apple Silicon checks.
 
 Protected `v0.1.2` at `ae9dc2a` passes exact CI, tag CI, and protected Release
 and deploys as an independently verified 114-file candidate with canonical
