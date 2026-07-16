@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -68,6 +68,26 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+Protected `v0.1.3` at exact `e2a15a6` passes exact CI, tag CI, and protected
+Release. Its canonical artifacts, deployed 114-file binding, read/execute ACL,
+stable shortcut, readiness, and fresh focused public progress case pass. The
+focused case proves the repaired Windows false-to-true `needs-present`
+completion predicate with passive D3D11 attach, parking, clean crashes, cleanup,
+and unchanged Steam identity.
+
+Its first receipt-bound persistent root also completes all three cycles and
+closes correctly, but exposes a packaged auditor defect. Cycle one directly
+detected the close glyph at `(1340,308)`. Steam shifted the detected panel down
+one physical pixel in cycle two, so the independently validated scale-aware
+panel point became `(1340,309)`. The final cross-cycle check rejected that
+correct current-panel target because it required the prior absolute coordinate.
+The `0.1.4` worktree retains direct cycle-one glyph proof and all exact
+host/DPI/inset/pointer/screenshot/lifecycle checks, while allowing later cycles
+to reconstruct the close point from their current audited panel geometry. Its
+one-pixel regression and readback of the rejected live root pass. Because the
+auditor is packaged evidence, `v0.1.3` remains rejected and all receipt roots
+must come from the replacement candidate.
+
 Protected `v0.1.2` at `ae9dc2a` passes exact CI, tag CI, and protected Release
 and deploys as an independently verified 114-file candidate with canonical
 read/execute ACL. Fresh Session-1 readiness passes against one unchanged Steam
@@ -100,9 +120,9 @@ samples four diagonal distances, requires at least 10 of 16 glyph samples, and
 binds the search box and score to the exact physical click. The existing
 per-monitor-DPI scale, panel/host containment, foreground, point-owner,
 pre-dispatch, screenshot, close, and park checks remain. Persistent reuse binds
-cycle one directly to the glyph; a later same-host cycle may reuse only that
-exact coordinate when the pointer obscures the glyph, while preserving all
-same-host and scale evidence.
+cycle one directly to the glyph; a later same-host cycle either detects it
+directly or reconstructs the point from that cycle's independently audited
+current panel geometry when the pointer obscures it.
 
 Four fresh roots were then collected in the receipt-required order against one
 unchanged Steam identity and the same protected candidate:

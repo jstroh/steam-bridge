@@ -4878,10 +4878,8 @@ function verifyPersistentCloseProbe(
         const target = objectOrEmpty(objectOrEmpty(targets[index]?.payload).target);
         expect(
           isValidWebCloseGlyphTarget(target) ||
-            (target.source === "screenshot-steam-web-panel" &&
-              Number(target.x) === Number(baselineTarget.x) &&
-              Number(target.y) === Number(baselineTarget.y)),
-          `${caseName}: persistent cycle ${index + 1} directly detects or reuses the cycle-one close glyph coordinate`,
+            target.source === "screenshot-steam-web-panel",
+          `${caseName}: persistent cycle ${index + 1} directly detects or reconstructs the close glyph from its current scale-aware panel geometry`,
           failures
         );
       }
@@ -8691,6 +8689,29 @@ function runSelfTest() {
     assert.deepEqual(
       summarizeWindowsOverlayMatrixArtifacts(persistentFastCloseRoot).failures,
       []
+    );
+    const persistentPanelShiftRoot = path.join(
+      tempRoot,
+      "persistent-reuse-panel-relative-close"
+    );
+    writeCurrentPersistentReuseFixture(persistentPanelShiftRoot, {
+      webCloseGlyphEvidence: true,
+      panelShiftCycle: 2
+    });
+    assert.deepEqual(
+      summarizeWindowsOverlayMatrixArtifacts(persistentPanelShiftRoot).failures,
+      []
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-panel-relative-close-wrong-target",
+      writeCurrentPersistentReuseFixture,
+      {
+        webCloseGlyphEvidence: true,
+        panelShiftCycle: 2,
+        wrongCloseTargetCycle: 2
+      },
+      "scale-aware target inside the detected panel"
     );
     const legacyPersistentReuseRoot = path.join(tempRoot, "persistent-reuse-legacy-schema-2");
     writePersistentReuseFixture(legacyPersistentReuseRoot);
@@ -12919,7 +12940,8 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     action: PERSISTENT_REUSE_ACTION,
     reportedUserGestureTargetId: GENERIC_USER_GESTURE_GATE_TARGET,
     userGestureGate: true,
-    alreadyForeground: true
+    alreadyForeground: true,
+    webCloseGlyphEvidence: options.webCloseGlyphEvidence === true
   });
 
   const manifestPath = path.join(root, "matrix-manifest.json");
@@ -13477,6 +13499,14 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     const target = structuredClone(firstTarget);
     target.at = at(baseSecond + 2);
     target.payload.cycle = cycle;
+    if (options.panelShiftCycle === cycle) {
+      const panel = target.payload.target.panel;
+      panel.top += 1;
+      panel.bottom += 1;
+      target.payload.target.y += 1;
+      target.payload.target.source = "screenshot-steam-web-panel";
+      delete target.payload.target.glyph;
+    }
     if (options.wrongCloseTargetCycle === cycle) {
       target.payload.target.x += 1;
     }
@@ -13575,6 +13605,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     });
     sent.payload.nativePointerSent.x = target.payload.target.x;
     sent.payload.nativePointerSent.y = target.payload.target.y;
+    sent.payload.nativePointerSent.coordinateSource = target.payload.target.source;
     if (cycle > 1) {
       sent.payload.nativePointerSent.sent = 4;
       sent.payload.nativePointerSent.expected = 4;

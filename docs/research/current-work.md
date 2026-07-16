@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `1cfabdf` (`Update passive notification package guard`).
+Review anchor: `e2a15a6` (`Record v0.1.3 exact CI`).
 
 ## Active Goal
 
@@ -21,100 +21,85 @@ Windows x64, Steam Deck Game Mode/Desktop Mode, Linux x64 packaging, and macOS
 Apple Silicon remain ready within their recorded boundaries. Do not repeat
 unchanged Mac or Deck input experiments.
 
-Protected `v0.1.0`, `v0.1.1`, and `v0.1.2` are preserved and rejected for npm
-publication. `v0.1.0` exposed the fixed-distance 100%-scale Windows close-glyph
-defect. `v0.1.1` fixed that geometry and passed fresh persistent, checkout, and
-all ten shortcut routes, but repeated partial public achievement progress did
-not create a new toast because the smoke setup preserved prior partial state.
+Protected `v0.1.0`, `v0.1.1`, and `v0.1.2` remain preserved and rejected for npm
+publication. Protected `v0.1.3` at exact `e2a15a6` passes exact CI
+`29485815828`, tag CI `29485997432`, and protected Release `29485997411`.
+The canonical tarball, Windows archive, audit, and executable result pass the
+independent publishable-candidate verifier. Its deployed 114-file Windows
+candidate has the exact binding, canonical read/execute ACL, stable public
+shortcut, and one unchanged interactive Steam identity.
 
-`v0.1.2` at exact `ae9dc2a` clears and stores the selected achievement before
-indicating progress. Exact CI `29483278033`, tag CI `29483445342`, and protected
-Release `29483445374` pass. The canonical tarball, Windows archive, audit, and
-executable result are downloaded and independently verified. Its deployed
-114-file candidate has the expected content fingerprint and binding, canonical
-read/execute ACL, stable public shortcut, and one unchanged Steam identity.
-Fresh interactive readiness passes with healthy Steam rendering logs and clean
-task deletion.
+A valid focused `v0.1.3` public achievement-progress case settles the repaired
+Windows passive-notification completion predicate locally. It records the
+public achievement reset/store and `1/2` progress callbacks, the required
+false-to-true `needs-present` transition, attached passive D3D11 presentation,
+parking, clean crashes, complete cleanup, and Steam continuity.
 
-The first focused `v0.1.2` attempt is invalid automation evidence only: an
-accessibility watcher refreshed the broker window identity on every poll and
-missed the bounded request. The task failed closed before candidate launch and
-preserved cleanup and Steam continuity. A corrected exact-case watcher uses the
-existing broker window and delivered one challenge-bound broker-button click.
+The first receipt-bound `v0.1.3` persistent-reuse case also completed all three
+shown/closed/parked cycles, six ordered activation callbacks, one stable D3D11
+attachment, exact focus return, authenticated quit, cleanup, and Steam
+continuity. Its strict summary nevertheless rejected cycle two. Cycle one
+directly detected the close glyph at physical `(1340,308)`. Steam moved the
+detected web panel down one physical pixel in cycle two, whose independently
+validated scale-aware panel target correctly became `(1340,309)` and closed the
+overlay. The final cross-cycle assertion still required the old absolute glyph
+coordinate. The same deterministic shape exists in the retained `v0.1.1`
+artifact, so repeating unchanged is rejected.
 
-The resulting focused `v0.1.2` progress case proves the state-reset repair:
-`wasUnlocked=false`, clear accepted, clear stored, unlocked-after-clear false,
-progress indicated at public `1/2`, both relevant callbacks completed, the
-passive D3D11 presenter attached and parked, crashes were clean, task/process/
-environment cleanup passed, and Steam identity remained unchanged. The strict
-summary still rejects the case because the smoke app completed after only 145 ms
-when callbacks and parking agreed, before observing the Windows false-to-true
-`needs-present` transition that its own Windows auditor requires.
+The `0.1.4` worktree repairs only that packaged evidence predicate. Cycle one
+still must directly detect the Steam close glyph. Each later cycle must either
+detect it directly or reconstruct it from that cycle's current panel geometry;
+the existing exact host containment, independent per-monitor-DPI scale,
+scale-aware insets, target/pointer equality, distinct screenshots,
+pre-dispatch focus, and causal close/park checks remain mandatory. A synthetic
+one-pixel panel-shift regression passes, existing adversarial target/scale/inset
+tests remain, and the rejected live root now has zero semantic failures under
+the repaired auditor. Because receipt semantics are packaged in the candidate,
+`v0.1.3` remains rejected and a fresh protected candidate plus all receipt roots
+are required.
 
-This is a completion-predicate defect, not evidence that the reset failed. The
-worktree now requires the existing bounded passive wait to observe the Windows
-transition before success. Non-Windows platforms retain the established
-Steam-overlay-target completion path. A source-level regression test covers the
-platform predicate, and all package versions are `0.1.3`. A fresh protected
-candidate is required; do not splice `v0.1.2` evidence into its receipt.
-
-Exact CI `29485423689` for `b1e4fdc` passed all three supported-platform jobs but
-its package-smoke job rejected the new predicate because the static
-packaged-source contract still searched for the old adjacent callback/parking
-substring. Commit `1cfabdf` updates only that established contract to require
-the full event, callback, platform render-path, and parking condition.
-Replacement exact CI `29485623570` passes package smoke and all three supported
-platform jobs.
-
-The npm registry still has no public `steam-bridge` package. The protected
-`npm-production` environment has a bootstrap `NPM_TOKEN`, but the token was
-exposed during setup. Delete the GitHub secret and revoke the npm token after
-publication; do not treat it as durable authority.
+The protected `npm-production` environment has a bootstrap `NPM_TOKEN`, but the
+token was exposed during setup. Delete the GitHub secret and revoke the npm
+token after publication; do not treat it as durable authority.
 
 The Windows checkout has unrelated local `AGENTS.md`, `.codex`, and input-probe
 changes that belong to the user and must remain untouched.
 
 ## Last Verification
 
-- Exact `v0.1.2` CI, tag CI, and protected Release pass all supported platform,
-  package-smoke, native-prebuild, Windows Electron, ASAR, and candidate gates.
-- The retained `v0.1.2` tarball and Windows artifacts pass the canonical
-  publishable-candidate verifier; deployment binding and ACL audits pass.
-- Interactive readiness passes in Session 1 with the same Steam identity, no
-  stale overlay helper, healthy recent client logs, and complete Limited-task
-  cleanup.
-- The valid focused progress root passes foreground grant, candidate binding,
-  native load, rendering health, achievement reset/store/indicate callbacks,
-  passive D3D11 attach/parking, crash checks, cleanup, and Steam continuity. Its
-  only semantic failures derive from the missing early-ended needs-present
-  transition and dependent polling assertions.
-- The `0.1.3` worktree passes JavaScript parsing, both focused regression tests,
-  all 198 unit/TypeScript tests, platform policy, API coverage, Rust formatting,
-  native check, and `git diff --check`.
-- Replacement exact CI `29485623570` passes package smoke, Windows x64, Linux
-  x64, and Apple Silicon; the prior run's failure is isolated to its corrected
-  stale package-source guard.
-- Native-Windows `package:smoke` passes its applicable package and self-test
-  gates before the recorded missing-`bash` host boundary.
+- `v0.1.3` exact CI, tag CI, protected Release, canonical artifact verification,
+  deployed binding, ACL, shortcut, readiness, focused progress, cleanup, and
+  Steam continuity pass within the boundaries above.
+- The rejected persistent root is runtime-clean and fails only the obsolete
+  absolute cross-cycle coordinate assertion.
+- The `0.1.4` summary script parses, its complete self-test passes, and it
+  re-audits that root with one clean case and zero failures.
+- The `0.1.4` worktree passes all 198 unit/TypeScript tests, platform policy,
+  API coverage, Rust formatting, native check, and `git diff --check`.
+- Native-Windows `package:smoke` passes its package, binding, receipt,
+  InitTxn, macOS signing, and checkout self-tests before the Linux shortcut
+  self-test reaches its host-specific game-ID discovery boundary. Exact CI is
+  still required for the supported cross-platform package-smoke result.
 - No private app, product, account, shortcut, transaction, or Steam identifiers
   were added to committed evidence.
 
 ## Next Actions
 
-1. Commit and push this checkpoint, require exact CI for the resulting head, and
-   create the protected `v0.1.3` tag only after every job passes.
-2. Pass the protected Release, deploy its exact Windows candidate, and require
-   the focused progress case plus all four fresh receipt profiles.
-3. Generate and independently verify the sanitized receipt, then retain the
+1. Complete the `0.1.4` checks, privacy/diff review, commit, push, and exact CI.
+2. Create protected `v0.1.4` only after exact CI passes; require tag CI and the
+   protected Release, then independently verify and deploy its exact candidate.
+3. Require the focused progress case and all four fresh receipt profiles without
+   human clicks or another Steam restart.
+4. Generate and independently verify the sanitized receipt, then retain the
    tarball, Windows archive, audit, executable result, and receipt together.
-4. Bind the receipt to `npm-production`, publish with provenance, verify npm and
+5. Bind the receipt to `npm-production`, publish with provenance, verify npm and
    trusted publishing, and remove/revoke bootstrap authority.
 
 ## Exact Next Step
 
-Commit and push this checkpoint without staging the user's `AGENTS.md`,
-`.codex`, or input-probe files. Require exact CI for that documentation-only
-head before creating the protected `v0.1.3` tag.
+Run the focused summary regression and normal repository checks for the
+panel-relative persistent close proof. Commit and push only the owned package,
+summary, test-fixture, and research files; preserve the user's unrelated files.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
