@@ -1253,6 +1253,21 @@ test("electron smoke resets achievement progress before every repeatable toast p
   );
 });
 
+test("electron smoke waits for the Windows passive needs-present transition", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const waitStart = exampleMain.indexOf("async function waitForPassiveNotificationResult");
+  const waitEnd = exampleMain.indexOf("function observePassiveNotificationNeedsPresent", waitStart);
+  assert.notEqual(waitStart, -1, "passive notification wait should exist");
+  assert.notEqual(waitEnd, -1, "passive notification wait should have a stable function boundary");
+
+  const waitSource = exampleMain.slice(waitStart, waitEnd);
+  assert.match(
+    waitSource,
+    /const renderPathObserved = process\.platform !== "win32" \|\| transitionObserved;[\s\S]*eventSeen && callbacksSeen && renderPathObserved && isParkedPassivePresenter\(presenter\)/,
+    "Windows completion should wait for the observed needs-present transition before accepting parked callbacks"
+  );
+});
+
 function fakeTicket(label, calls) {
   return {
     cancel() {

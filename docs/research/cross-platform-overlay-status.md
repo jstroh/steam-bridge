@@ -68,6 +68,21 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+Protected `v0.1.2` at `ae9dc2a` passes exact CI, tag CI, and protected Release
+and deploys as an independently verified 114-file candidate with canonical
+read/execute ACL. Fresh Session-1 readiness passes against one unchanged Steam
+identity. A valid focused achievement-progress run then confirms the candidate
+clears and stores the selected public achievement before indicating `1/2`,
+receives the relevant callbacks, attaches and parks the passive D3D11 presenter,
+and completes crash, task, process, environment, and Steam-continuity cleanup.
+The strict summary rejects the run because the smoke app reports completion after
+145 ms when callbacks and parking agree, before its Windows-only false-to-true
+`needs-present` evidence appears. The wait accepted the non-Windows
+`steam-overlay-target` fallback on Windows. The `0.1.3` worktree now requires the
+transition inside the existing bounded Windows wait while retaining that fallback
+on non-Windows platforms. `v0.1.2` is preserved and rejected; a fresh protected
+candidate and all receipt roots are required.
+
 Exact signed protected candidate `3abcc3f` now has a complete local Windows
 release receipt. A separate foreground-grant broker replaced the rejected
 title-bar/chat-timed click loops. The broker exposes one deliberate button that

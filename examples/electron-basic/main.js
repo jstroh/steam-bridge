@@ -1739,7 +1739,8 @@ async function waitForPassiveNotificationResult(action, durationMs) {
     const transitionObserved =
       passiveNotificationNeedsPresentState?.action === action &&
       passiveNotificationNeedsPresentState.observed === true;
-    if (eventSeen && callbacksSeen && isParkedPassivePresenter(presenter)) {
+    const renderPathObserved = process.platform !== "win32" || transitionObserved;
+    if (eventSeen && callbacksSeen && renderPathObserved && isParkedPassivePresenter(presenter)) {
       const elapsedMs = Date.now() - startedAt;
       recordEvent("overlay:passive-notification-parked", {
         action,
@@ -1764,7 +1765,12 @@ async function waitForPassiveNotificationResult(action, durationMs) {
   }
 
   const presenter = safeOverlaySnapshot(electronSteamOverlay);
-  const error = { message: "Timed out waiting for passive notification callbacks and presenter parking." };
+  const error = {
+    message:
+      process.platform === "win32"
+        ? "Timed out waiting for passive notification callbacks, needs-present transition, and presenter parking."
+        : "Timed out waiting for passive notification callbacks and presenter parking."
+  };
   recordEvent("overlay:passive-notification-timeout", { action, pumps, durationMs: Date.now() - startedAt, presenter });
   return finishPassiveNotificationNeedsPresentWait({
     ok: false,
