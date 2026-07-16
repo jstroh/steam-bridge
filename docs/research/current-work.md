@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `fd26887` (`Record Apple Silicon review CI`).
+Review anchor: `fe037ef` (`Fix scale-aware Windows close glyph proof`).
 
 ## Active Goal
 
@@ -80,6 +80,12 @@ panel detector took the foreground-window fallback, so the semantic summary
 correctly rejected it as glyph/scale proof. The package and workspace versions
 are bumped to `0.1.1`; no new tag exists yet.
 
+Exact CI `29477731391` passes all three platform jobs at `fe037ef`, while package
+smoke correctly rejects a generated PowerShell line continuation introduced by
+formatting the new sampler call. The follow-up worktree correction keeps the
+same arguments and behavior on one line, satisfying that established packaging
+contract without changing the scale-aware detector.
+
 The npm registry still has no public `steam-bridge` package. A newly generated,
 unexposed bootstrap token is configured only as the protected
 `npm-production` environment secret `NPM_TOKEN`; the previously exposed token
@@ -95,6 +101,9 @@ npm trusted publishing is configured and verified.
   passes the same four required jobs.
 - Exact CI `29472516874` for `fd26887` passes package smoke plus Windows x64,
   Linux x64, and Apple Silicon macOS checks.
+- Exact CI `29477731391` for `fe037ef` passes all three platform jobs and fails
+  only the package-smoke guard against a generated PowerShell line continuation;
+  the worktree correction removes that continuation without changing behavior.
 - Protected tag Release `29474570221` passes all three prebuilds and the exact
   Windows publish-tarball/ASAR gate at `fd26887`. Independent local verification
   revalidates the retained tarball, Windows archive, package audit, release tag,
@@ -135,8 +144,8 @@ npm trusted publishing is configured and verified.
 
 ## Next Actions
 
-1. Commit and push the validated `0.1.1` scale-aware patch, then require exact
-   CI before creating its protected tag.
+1. Commit and push the package-guard correction, then require exact CI for the
+   resulting `0.1.1` commit before creating its protected tag.
 2. Pass the protected Release, deploy its exact Windows candidate, and collect
    all four complete receipt profiles without reusing `v0.1.0` evidence.
 3. Retain the exact tarball, Windows archive, audit, executable probe, and live
@@ -148,9 +157,9 @@ npm trusted publishing is configured and verified.
 
 ## Exact Next Step
 
-Run the full repository and package checks for the `0.1.1` scale-aware patch,
-review its exact diff and privacy boundary, then commit and push it. Do not tag
-until exact CI passes.
+Run the focused generated-template guard and repository checks for the one-line
+sampler call, review the exact follow-up diff, then commit and push it. Do not
+tag until exact CI passes.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

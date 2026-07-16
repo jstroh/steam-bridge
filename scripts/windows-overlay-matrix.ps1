@@ -5319,11 +5319,7 @@ function Get-WebCloseClickTarget {
   } else {
     [int]([Math]::Round(`$rect.top + (`$rect.height * 0.142)))
   }
-  `$glyph = Find-WebCloseGlyphFromScreenshot `
-    -Screenshot `$Screenshot `
-    -CandidateX `$targetX `
-    -CandidateY `$targetY `
-    -Scale `$scale
+  `$glyph = Find-WebCloseGlyphFromScreenshot -Screenshot `$Screenshot -CandidateX `$targetX -CandidateY `$targetY -Scale `$scale
   if (`$glyph) {
     `$correctedRight = [int][Math]::Min(`$Foreground.rect.right, `$glyph.x + `$rightInset)
     `$correctedTop = [int][Math]::Max(`$Foreground.rect.top, `$glyph.y - `$topInset)
