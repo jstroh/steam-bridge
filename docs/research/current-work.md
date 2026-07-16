@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `2f797aa` (`Record v0.1.4 exact CI`).
+Review anchor: `5b363dc` (`Require tokenless npm trusted publishing`).
 
 ## Active Goal
 
@@ -76,28 +76,32 @@ changes that belong to the user and must remain untouched.
   native check, package smoke in exact CI, and `git diff --check` pass.
 - The public npm bytes exactly match the retained audited tarball; npm registry
   metadata, `latest`, signature verification, and SLSA provenance pass.
+- Tokenless workflow commit `5b363dc` passes exact CI `29491937155`, including
+  complete package smoke and Windows x64, Linux x64, and Apple Silicon jobs.
 - Both temporary GitHub environment secrets are deleted. No private app,
   product, account, shortcut, transaction, or Steam identifiers were added to
   committed evidence.
 
 ## Next Actions
 
-1. Revoke the exposed bootstrap token in the npm account; it is no longer
-   present in GitHub and must never be reused.
-2. From an authenticated npm CLI, run `npm trust github steam-bridge --file
+1. Authenticate an npm 11.16 CLI as the package owner without placing a token
+   in a command, file, GitHub secret, or log.
+2. From that authenticated npm CLI, run `npm trust github steam-bridge --file
    publish.yml --repo jstroh/steam-bridge --env npm-production --allow-publish
-   --yes`, verify it with `npm trust list steam-bridge --json`, then revoke the
-   exposed bootstrap token by its npm token ID. Keep `NPM_TOKEN` absent.
-3. Retain the published release and all rejected protected candidates. Do not
+   --yes` and verify it with `npm trust list steam-bridge --json`.
+3. Revoke the exposed bootstrap token by its npm token ID and verify that it is
+   absent. Keep `NPM_TOKEN` and `NODE_AUTH_TOKEN` absent.
+4. Retain the published release and all rejected protected candidates. Do not
    rerun live platform matrices merely for confidence.
-4. Defer real purchase proof until the configured game, `InitTxn`-capable
+5. Defer real purchase proof until the configured game, `InitTxn`-capable
    application/backend lane, and complete private request handoff exist.
 
 ## Exact Next Step
 
-Revoke the exposed npm token from the npm account. Publication and repository
-verification are otherwise complete; no additional Windows, Linux, Deck, or
-macOS live run is warranted.
+Authenticate this npm CLI as the package owner. Then create and verify the
+GitHub trusted-publisher relationship before revoking the exposed bootstrap
+token. Publication and repository verification are otherwise complete; no
+additional Windows, Linux, Deck, or macOS live run is warranted.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
