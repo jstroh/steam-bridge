@@ -2,19 +2,19 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `1f0af41` (`Publish a concise npm package page`).
+Review anchor: `c845066` (`Record v0.1.5 candidate CI`).
 
 ## Active Goal
 
-Publish `steam-bridge@0.1.5` as a documentation-only patch so npmjs.com shows a
-human-friendly package page. The package README has been reduced from 1,863
-lines to 217 lines while retaining install, supported targets, quick starts,
-managed Electron overlay guidance, packaging requirements, the macOS
-electron-builder helper, CLI names, and links to canonical deeper docs.
+Publish `steam-bridge@0.1.6` as a documentation-only patch so npmjs.com shows
+the concise package README. The package page is reduced from 1,863 lines to 217
+lines while retaining install, supported targets, quick starts, managed
+Electron overlay guidance, packaging requirements, the macOS electron-builder
+helper, CLI names, and links to canonical deeper docs.
 
 Do not repeat unchanged Windows foreground, Windows receipt, Mac, Deck, or
-Linux live experiments. The patch may reuse `v0.1.4` live proof only if the
-publisher proves that every shipped runtime byte is identical.
+Linux live experiments. Publication may reuse `v0.1.4` live proof only when the
+new tarball contains the exact same non-documentation payload.
 
 ## Current State
 
@@ -23,57 +23,61 @@ release assets, registry signature, provenance, tokenless trusted publisher,
 and cross-platform evidence remain settled. No npm or GitHub publication token
 exists.
 
-The workspace and package versions are bumped to `0.1.5`. The package README
-now serves consumers instead of embedding release forensics and live-test logs.
-Internal wrapper and matrix detail remains in the Electron example guide.
-Commit `1f0af41` is pushed to `main`, and exact CI `29534842260` passes complete
-package smoke plus Windows x64, Linux x64, and Apple Silicon jobs.
+Protected `v0.1.5` at `c845066` passed tag CI `29535232461` and complete Release
+run `29535232465`, including all native prebuilds and the Windows ASAR/package
+gate. It was not published: the documentation-only verifier correctly rejected
+the exact candidate because its freshly rebuilt macOS addon differed from the
+proved `v0.1.4` bytes. Preserve that tag and candidate as rejected; do not rerun
+live Steam matrices for it.
 
-The protected publish workflow now supports an explicit
-`previous_release_tag` route for documentation-only patch successors. The
-publisher validates the prior retained receipt against its exact tarball,
-requires the next stable patch version in the same major/minor line, compares
-the complete extracted npm file inventories, permits differences only in
-`README.md` and the package `version`, and requires all code, helpers,
-templates, native addons, and Valve runtime libraries to remain byte-identical.
-Any runtime difference fails closed and requires new exact live proof.
+The workspace and package versions are now `0.1.6`. For this replacement tag,
+the Release workflow restores the nine exact native addons and Valve runtime
+libraries from the protected `v0.1.4` package before building the audited npm
+tarball. The tag candidate itself must then pass the strict full package
+comparison: only `README.md` and package `version` may differ across the 38-file
+inventory. The tokenless publish workflow repeats the same comparison against
+the retained `v0.1.4` tarball and receipt.
 
 The Windows checkout still has unrelated local `AGENTS.md`, `.codex`, and
 input-probe changes that belong to the user and must remain untouched.
 
 ## Last Verification
 
-- The release-candidate publisher self-test covers the documentation-only
-  successor success path, incomplete inputs, mixed proof modes, predecessor-tag
-  mismatch, and rejection of a changed runtime file.
-- The real equivalence verifier passes against the retained `v0.1.4` tarball
-  and receipt with a staged `0.1.5` package containing the new README and exact
-  prior payload: 36 non-documentation published files remain byte-identical.
-- JavaScript syntax checks and `git diff --check` pass.
-- Platform policy, API coverage, Rust formatting, and native checks pass.
-- All 198 unit and TypeScript tests pass after retaining the exact package
-  README Rosetta prohibition.
-- Local package smoke passes its applicable Windows self-tests, package CLIs,
-  and static policy checks, then stops at the already-recorded Windows host
-  boundary because `bash` is unavailable. Exact CI must complete that path.
-- Exact main CI `29534842260` passes all four jobs for commit `1f0af41`.
+- Exact main CI `29535032768` passes all four jobs for checkpoint commit
+  `c845066`; exact tag CI `29535232461` also passes all four jobs.
+- Exact Release `29535232465` passes all three native prebuilds and the complete
+  Windows package/audit gate for protected `v0.1.5`.
+- The real equivalence verifier rejects that exact tarball at the first changed
+  runtime file, the rebuilt macOS addon. npm still reports only `0.1.4`.
+- Publisher self-tests cover documentation-only success, incomplete inputs,
+  mixed proof modes, predecessor-tag mismatch, version policy, and rejection of
+  a changed runtime file.
+- The `0.1.6` release and publish workflows parse, their retained `v0.1.4`
+  tarball and receipt assets exist under a stable GitHub Release, and static
+  package policy checks cover the exact-payload restore and comparison route.
+- All 198 unit and TypeScript tests, platform policy, API coverage, Rust
+  formatting, native checks, publisher self-tests, JavaScript syntax checks,
+  and `git diff --check` pass for the `0.1.6` candidate source.
+- Local package smoke passes every applicable Windows check and stops only at
+  the recorded native-Windows `bash` boundary. Exact CI must complete that
+  Unix-hosted portion.
 - No private app, product, account, shortcut, transaction, Steam, key, price,
   or fixture identifier has been added.
 
 ## Next Actions
 
-1. Create protected tag `v0.1.5`, wait for the exact Release candidate gate,
-   and retain the five candidate artifacts.
-2. Publish through the tokenless workflow with
-   `previous_release_tag=v0.1.4`. The byte-equivalence verifier must pass before
-   npm publication.
-3. Verify registry metadata, tarball integrity, provenance, `latest`, and the
-   concise README in the published tarball.
+1. Commit and push the validated exact-payload Release change, require exact
+   green main CI, then create protected tag
+   `v0.1.6`.
+2. Require the tag Release to pass byte equivalence before retaining its
+   candidate artifacts.
+3. Publish through the tokenless workflow with
+   `previous_release_tag=v0.1.4` and verify registry integrity, provenance,
+   `latest`, and the concise README in the public tarball.
 
 ## Exact Next Step
 
-Commit this checkpoint, require its exact CI, then create protected tag
-`v0.1.5` at that commit.
+Commit and push the validated `0.1.6` source, then require exact green main CI.
 
 Detailed settled platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

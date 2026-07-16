@@ -66,6 +66,44 @@ jobs:
           path: release-artifacts
       - run: npm ci
       - run: npm run release:assemble -- --artifacts-dir release-artifacts
+      - name: Restore proved runtime payload for documentation-only v0.1.6
+        if: github.event_name == 'push' && github.ref_name == 'v0.1.6'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RELEASE_TAG: v0.1.4
+        run: |
+          $previousRoot = "documentation-only-previous"
+          New-Item -ItemType Directory -Path $previousRoot | Out-Null
+          if ((gh release view $env:PREVIOUS_RELEASE_TAG --json isDraft --jq .isDraft) -ne "false") {
+            throw "Documentation-only predecessor must be a published GitHub Release."
+          }
+          if ((gh release view $env:PREVIOUS_RELEASE_TAG --json isPrerelease --jq .isPrerelease) -ne "false") {
+            throw "Documentation-only predecessor must be stable."
+          }
+          gh release download $env:PREVIOUS_RELEASE_TAG `
+            --pattern "steam-bridge-0.1.4.tgz" `
+            --pattern "windows-live-proof-receipt.json" `
+            --dir $previousRoot
+          tar -xzf "$previousRoot\steam-bridge-0.1.4.tgz" -C $previousRoot
+          $runtimeFiles = @(
+            "steam_bridge_native.darwin-arm64.node",
+            "steam_bridge_native.linux-x64-gnu.node",
+            "steam_bridge_native.win32-x64-msvc.node",
+            "libsteam_api.dylib",
+            "libsteam_api.so",
+            "steam_api64.dll",
+            "libsdkencryptedappticket.dylib",
+            "libsdkencryptedappticket.so",
+            "sdkencryptedappticket64.dll"
+          )
+          foreach ($fileName in $runtimeFiles) {
+            $source = Join-Path "$previousRoot\package" $fileName
+            if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
+              throw "Documentation-only predecessor is missing $fileName."
+            }
+            Copy-Item -LiteralPath $source -Destination "packages\steam-bridge\$fileName" -Force
+          }
       - name: Run exact Windows package gate
         run: npm run windows:package-gate
       - name: Verify canonical npm release candidate
@@ -79,7 +117,17 @@ jobs:
           if ($bundleArchives.Count -ne 1) {
             throw "Expected exactly one retained Windows bundle archive, found $($bundleArchives.Count)."
           }
-          if ("${{ github.event_name }}" -eq "push") {
+          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -eq "v0.1.6") {
+            npm run release:publish-candidate -- `
+              --tarball $tarballs[0].FullName `
+              --bundle-archive $bundleArchives[0].FullName `
+              --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json" `
+              --previous-tarball "documentation-only-previous\steam-bridge-0.1.4.tgz" `
+              --previous-live-proof-receipt "documentation-only-previous\windows-live-proof-receipt.json" `
+              --previous-release-tag v0.1.4 `
+              --require-publishable `
+              --release-tag "${{ github.ref_name }}"
+          } elseif ("${{ github.event_name }}" -eq "push") {
             npm run release:publish-candidate -- `
               --tarball $tarballs[0].FullName `
               --bundle-archive $bundleArchives[0].FullName `

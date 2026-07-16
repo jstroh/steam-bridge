@@ -1,6 +1,6 @@
 {
   "name": "steam-bridge",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Native-backed Steamworks bridge for Electron and Node.",
   "license": "MIT",
   "homepage": "https://github.com/jstroh/steam-bridge#readme",

@@ -297,7 +297,7 @@ function assertStablePatchSuccessor(previousVersion, candidateVersion) {
   const previous = previousMatch.slice(1).map(Number);
   const candidate = candidateMatch.slice(1).map(Number);
   assert.deepEqual(candidate.slice(0, 2), previous.slice(0, 2), "documentation-only publication must stay in the same major/minor line");
-  assert.equal(candidate[2], previous[2] + 1, "documentation-only publication must be the next patch version");
+  assert.ok(candidate[2] > previous[2], "documentation-only publication must use a higher patch version");
 }
 
 function createVerifiedPublishCopy(tarball, expected) {
@@ -914,6 +914,9 @@ function selfTest() {
     assert.throws(() => verifyReleaseCandidate(tarball, audit), /differs from the audited candidate/);
     validatePublishTag("1.0.0", undefined);
     validatePublishTag("1.0.0-beta.1", "beta");
+    assertStablePatchSuccessor("1.2.3", "1.2.6");
+    assert.throws(() => assertStablePatchSuccessor("1.2.3", "1.2.3"), /higher patch version/);
+    assert.throws(() => assertStablePatchSuccessor("1.2.3", "1.3.0"), /same major\/minor line/);
     assert.throws(() => validatePublishTag("1.0.0-beta.1", undefined), /explicit non-latest/);
     assert.throws(() => validatePublishTag("1.0.0-beta.1", "latest"), /explicit non-latest/);
     assert.throws(() => validatePublishTag("1.0.0", "1.0.0"), /must not be a version/);

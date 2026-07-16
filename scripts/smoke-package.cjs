@@ -636,6 +636,15 @@ function runWindowsSmokeHelperStaticChecks() {
       releaseWorkflow.includes("--bundle-archive"),
     "Release workflow must gate the fully assembled publish tarball in a Windows electron-builder ASAR package"
   );
+  for (const expected of [
+    "Restore proved runtime payload for documentation-only v0.1.6",
+    "documentation-only-previous",
+    "steam-bridge-0.1.4.tgz",
+    "--previous-live-proof-receipt",
+    "--previous-release-tag v0.1.4"
+  ]) {
+    assert.ok(releaseWorkflow.includes(expected), `Documentation-only Release workflow missing ${expected}`);
+  }
   assert.ok(
     !releaseWorkflow.includes("--require-signed") &&
       !releaseWorkflow.includes("WINDOWS_CSC_LINK") &&

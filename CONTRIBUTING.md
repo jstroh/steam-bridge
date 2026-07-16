@@ -128,8 +128,8 @@ A documentation-only patch may reuse the immediately preceding stable
 release's retained Windows proof by passing
 `previous_release_tag=v<previous-version>` to the publish workflow. This path
 is fail-closed: the publisher validates the prior release receipt against its
-exact tarball, requires the new version to be the next patch in the same
-major/minor line, and compares the extracted npm packages. The published file
+exact tarball, requires a higher stable patch in the same major/minor line, and
+compares the extracted npm packages. The published file
 inventory, package metadata other than `version`, and every code, helper,
 template, native addon, and runtime-library byte must be identical. Only
 `README.md` and the package version may differ. Any other change requires a new
