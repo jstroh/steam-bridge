@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `c845066` (`Record v0.1.5 candidate CI`).
+Review anchor: `3360799` (`Reuse proved payload for documentation-only release`).
 
 ## Active Goal
 
@@ -36,7 +36,8 @@ libraries from the protected `v0.1.4` package before building the audited npm
 tarball. The tag candidate itself must then pass the strict full package
 comparison: only `README.md` and package `version` may differ across the 38-file
 inventory. The tokenless publish workflow repeats the same comparison against
-the retained `v0.1.4` tarball and receipt.
+the retained `v0.1.4` tarball and receipt. Commit `3360799` is pushed to `main`,
+and exact CI `29536299505` passes all four jobs.
 
 The Windows checkout still has unrelated local `AGENTS.md`, `.codex`, and
 input-probe changes that belong to the user and must remain untouched.
@@ -55,6 +56,8 @@ input-probe changes that belong to the user and must remain untouched.
 - The `0.1.6` release and publish workflows parse, their retained `v0.1.4`
   tarball and receipt assets exist under a stable GitHub Release, and static
   package policy checks cover the exact-payload restore and comparison route.
+- Exact main CI `29536299505` passes complete package smoke plus Windows x64,
+  Linux x64, and Apple Silicon checks for commit `3360799`.
 - All 198 unit and TypeScript tests, platform policy, API coverage, Rust
   formatting, native checks, publisher self-tests, JavaScript syntax checks,
   and `git diff --check` pass for the `0.1.6` candidate source.
@@ -66,9 +69,8 @@ input-probe changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Commit and push the validated exact-payload Release change, require exact
-   green main CI, then create protected tag
-   `v0.1.6`.
+1. Commit and push this checkpoint, require exact green main CI, then create
+   protected tag `v0.1.6`.
 2. Require the tag Release to pass byte equivalence before retaining its
    candidate artifacts.
 3. Publish through the tokenless workflow with
@@ -77,7 +79,8 @@ input-probe changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Commit and push the validated `0.1.6` source, then require exact green main CI.
+Commit and push this checkpoint, require its exact CI, then create protected
+tag `v0.1.6` at that commit.
 
 Detailed settled platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
