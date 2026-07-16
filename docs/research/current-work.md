@@ -2,14 +2,14 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `7ca52ed` (`Accept panel-relative persistent close proof`).
+Review anchor: `2f797aa` (`Record v0.1.4 exact CI`).
 
 ## Active Goal
 
-Publish the first `steam-bridge` npm release without weakening the exact-candidate
-evidence boundary. Preserve rejected protected candidates, retain the five
-required release artifacts together, publish only the verified tarball with npm
-provenance, and remove bootstrap authority after trusted publishing is active.
+Close the first `steam-bridge` npm release without weakening the exact-candidate
+evidence boundary. `steam-bridge@0.1.4` is public and verified; the remaining
+security cleanup is to revoke the bootstrap npm token that was exposed during
+setup and keep later publication tokenless through npm trusted publishing.
 
 Public App ID `480` proves generic Steam overlay plumbing only. Do not claim or
 run configured-product purchase proof without the separate complete private
@@ -18,88 +18,75 @@ runtime handoff and configured-game path.
 ## Current State
 
 Windows x64, Steam Deck Game Mode/Desktop Mode, Linux x64 packaging, and macOS
-Apple Silicon remain ready within their recorded boundaries. Do not repeat
-unchanged Mac or Deck input experiments.
+Apple Silicon are ready within their recorded boundaries. Do not repeat
+unchanged Mac, Deck, Windows foreground, or Windows receipt experiments.
 
-Protected `v0.1.0`, `v0.1.1`, and `v0.1.2` remain preserved and rejected for npm
-publication. Protected `v0.1.3` at exact `e2a15a6` passes exact CI
-`29485815828`, tag CI `29485997432`, and protected Release `29485997411`.
-The canonical tarball, Windows archive, audit, and executable result pass the
-independent publishable-candidate verifier. Its deployed 114-file Windows
-candidate has the exact binding, canonical read/execute ACL, stable public
-shortcut, and one unchanged interactive Steam identity.
+Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
+`29488457804`, and protected Release `29488457815` pass. The public GitHub
+Release retains the required tarball, Windows archive, package audit,
+executable-load result, and Windows live-proof receipt together.
 
-A valid focused `v0.1.3` public achievement-progress case settles the repaired
-Windows passive-notification completion predicate locally. It records the
-public achievement reset/store and `1/2` progress callbacks, the required
-false-to-true `needs-present` transition, attached passive D3D11 presentation,
-parking, clean crashes, complete cleanup, and Steam continuity.
+The independently verified 114-file Windows candidate retains its exact
+398,180,793-byte binding, canonical read/execute ACL, stable public shortcut,
+and one unchanged interactive Steam identity. Fresh focused progress,
+persistent-reuse, public checkout, shortcut-routes, and managed-routes roots
+pass without human clicks or another Steam restart. The four receipt profiles
+contain 31/31 clean cases and 27 active cases; the receipt semantic SHA-256 is
+`6d2302ee100fde1f7123e4454994e18b079599a519d412623f6d64a1e7d91740`.
 
-The first receipt-bound `v0.1.3` persistent-reuse case also completed all three
-shown/closed/parked cycles, six ordered activation callbacks, one stable D3D11
-attachment, exact focus return, authenticated quit, cleanup, and Steam
-continuity. Its strict summary nevertheless rejected cycle two. Cycle one
-directly detected the close glyph at physical `(1340,308)`. Steam moved the
-detected web panel down one physical pixel in cycle two, whose independently
-validated scale-aware panel target correctly became `(1340,309)` and closed the
-overlay. The final cross-cycle assertion still required the old absolute glyph
-coordinate. The same deterministic shape exists in the retained `v0.1.1`
-artifact, so repeating unchanged is rejected.
+Protected publish run `29491067145` succeeded from exact tag `v0.1.4` after the
+production environment approval. npm reports `0.1.4` as `latest`; its tarball
+SHA-256 is
+`2d794025df443d46719d1519e095ee67ec598e99d53e064b73a94b72505ed201`,
+which exactly matches the independently retained Release artifact. npm also
+reports SLSA provenance bound to tag `v0.1.4`, commit `2f797aa`, publish run
+`29491067145`, and the `npm-production` environment. A clean registry install
+passes `npm audit signatures` with one verified registry signature and one
+verified attestation.
 
-Commit `7ca52ed` for `0.1.4` repairs only that packaged evidence predicate. Cycle one
-still must directly detect the Steam close glyph. Each later cycle must either
-detect it directly or reconstruct it from that cycle's current panel geometry;
-the existing exact host containment, independent per-monitor-DPI scale,
-scale-aware insets, target/pointer equality, distinct screenshots,
-pre-dispatch focus, and causal close/park checks remain mandatory. A synthetic
-one-pixel panel-shift regression passes, existing adversarial target/scale/inset
-tests remain, and the rejected live root now has zero semantic failures under
-the repaired auditor. Because receipt semantics are packaged in the candidate,
-`v0.1.3` remains rejected and a fresh protected candidate plus all receipt roots
-are required.
-
-The protected `npm-production` environment has a bootstrap `NPM_TOKEN`, but the
-token was exposed during setup. Delete the GitHub secret and revoke the npm
-token after publication; do not treat it as durable authority.
+The temporary GitHub environment secrets `NPM_TOKEN` and
+`STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` were deleted after publication;
+the environment secret list is empty. The bootstrap npm token itself was pasted
+into chat and must still be revoked at npm. This Windows npm CLI has no account
+session, and browser work is explicitly stopped, so it cannot revoke or replace
+that external account credential. Do not reuse it.
 
 The Windows checkout has unrelated local `AGENTS.md`, `.codex`, and input-probe
 changes that belong to the user and must remain untouched.
 
 ## Last Verification
 
-- `v0.1.3` exact CI, tag CI, protected Release, canonical artifact verification,
-  deployed binding, ACL, shortcut, readiness, focused progress, cleanup, and
-  Steam continuity pass within the boundaries above.
-- The rejected persistent root is runtime-clean and fails only the obsolete
-  absolute cross-cycle coordinate assertion.
-- The `0.1.4` summary script parses, its complete self-test passes, and it
-  re-audits that root with one clean case and zero failures.
-- The `0.1.4` worktree passes all 198 unit/TypeScript tests, platform policy,
-  API coverage, Rust formatting, native check, and `git diff --check`.
-- Native-Windows `package:smoke` passes its package, binding, receipt,
-  InitTxn, macOS signing, and checkout self-tests before the Linux shortcut
-  self-test reaches its host-specific game-ID discovery boundary. Exact CI is
-  passes for `7ca52ed` in exact CI `29488095230`, together with Windows x64,
-  Linux x64, and Apple Silicon checks.
-- No private app, product, account, shortcut, transaction, or Steam identifiers
-  were added to committed evidence.
+- Exact CI, tag CI, protected Release, five-asset GitHub Release, candidate
+  binding, canonical ACL, shortcut, readiness, focused progress, four receipt
+  profiles, cleanup, and Steam continuity pass for exact `v0.1.4`.
+- The repaired persistent auditor accepts the fresh three-cycle root while
+  retaining direct cycle-one glyph proof and exact per-cycle host, DPI, inset,
+  pointer, screenshot, focus, close, park, and D3D11 checks.
+- All 198 unit/TypeScript tests, platform policy, API coverage, Rust formatting,
+  native check, package smoke in exact CI, and `git diff --check` pass.
+- The public npm bytes exactly match the retained audited tarball; npm registry
+  metadata, `latest`, signature verification, and SLSA provenance pass.
+- Both temporary GitHub environment secrets are deleted. No private app,
+  product, account, shortcut, transaction, or Steam identifiers were added to
+  committed evidence.
 
 ## Next Actions
 
-1. Commit and push this exact-CI checkpoint and require CI on the resulting head.
-2. Create protected `v0.1.4` only after that CI passes; require tag CI and the
-   protected Release, then independently verify and deploy its exact candidate.
-3. Require the focused progress case and all four fresh receipt profiles without
-   human clicks or another Steam restart.
-4. Generate and independently verify the sanitized receipt, then retain the
-   tarball, Windows archive, audit, executable result, and receipt together.
-5. Bind the receipt to `npm-production`, publish with provenance, verify npm and
-   trusted publishing, and remove/revoke bootstrap authority.
+1. Revoke the exposed bootstrap token in the npm account; it is no longer
+   present in GitHub and must never be reused.
+2. Configure npm trusted publishing for
+   `jstroh/steam-bridge`, workflow `publish.yml`, environment
+   `npm-production` before the next release, then keep `NPM_TOKEN` absent.
+3. Retain the published release and all rejected protected candidates. Do not
+   rerun live platform matrices merely for confidence.
+4. Defer real purchase proof until the configured game, `InitTxn`-capable
+   application/backend lane, and complete private request handoff exist.
 
 ## Exact Next Step
 
-Commit and push only this checkpoint update, preserve the user's unrelated
-files, and require exact CI before creating protected `v0.1.4`.
+Revoke the exposed npm token from the npm account. Publication and repository
+verification are otherwise complete; no additional Windows, Linux, Deck, or
+macOS live run is warranted.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

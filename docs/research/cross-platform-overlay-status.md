@@ -68,6 +68,43 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
+`29488457804`, and protected Release `29488457815` pass. The independently
+verified 114-file / 398,180,793-byte candidate retains content SHA-256
+`0299d32649b5618149df4d96442989f1c6c5b66351a4c9f7072707601980a570`,
+binding SHA-256
+`ec365fb2feefba92b62eaa1fe4cdb00f485ef2d548dcdd6288dc07ddc46c874c`,
+canonical read/execute ACL, stable shortcut, clean readiness, and one unchanged
+interactive Steam identity.
+
+A fresh focused achievement-progress case passes the required false-to-true
+`needs-present` transition. Four fresh receipt roots then pass in order without
+human clicks or another Steam restart:
+
+- `C:\Users\admin\steam-bridge-artifacts\windows-v0.1.4-receipt-persistent-20260716-032000`
+- `C:\Users\admin\steam-bridge-artifacts\windows-v0.1.4-receipt-checkout-20260716-033000`
+- `C:\Users\admin\steam-bridge-artifacts\windows-v0.1.4-receipt-shortcut-20260716-034000`
+- `C:\Users\admin\steam-bridge-artifacts\windows-v0.1.4-receipt-managed-20260716-035000`
+
+Strict summaries pass 1/1 persistent-reuse, 4/4 public checkout, 10/10
+shortcut-routes, and 16/16 managed-routes cases: 31 clean cases and 27 active
+routes. The repaired persistent check accepts the one-pixel panel movement
+without weakening cycle-one glyph proof or per-cycle host, DPI, inset, pointer,
+screenshot, focus, lifecycle, and three-way D3D11 requirements. Receipt semantic
+SHA-256
+`6d2302ee100fde1f7123e4454994e18b079599a519d412623f6d64a1e7d91740`
+binds the four roots to the exact candidate and Steam identity.
+
+Protected publish run `29491067145` published the exact tag-scoped candidate as
+`steam-bridge@0.1.4`. npm `latest` resolves to `0.1.4`; public registry SHA-256
+`2d794025df443d46719d1519e095ee67ec598e99d53e064b73a94b72505ed201`
+matches the retained Release tarball exactly. A clean install reports one
+verified npm registry signature and one verified SLSA provenance attestation
+bound to tag `v0.1.4`, commit `2f797aa`, the publish workflow, and the protected
+`npm-production` environment. The temporary GitHub receipt and npm-token secrets
+were deleted after publication. The exposed bootstrap npm token still requires
+account-side revocation and must not be reused.
+
 Protected `v0.1.3` at exact `e2a15a6` passes exact CI, tag CI, and protected
 Release. Its canonical artifacts, deployed 114-file binding, read/execute ACL,
 stable shortcut, readiness, and fresh focused public progress case pass. The
