@@ -2,17 +2,15 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `209a108` (`Record current Apple Silicon release review`).
-Reconcile this checkpoint with newer Git history and worktree changes before
-acting.
+Review anchor: `fd26887` (`Record Apple Silicon review CI`).
 
 ## Active Goal
 
 Publish the first `steam-bridge` npm release without weakening the exact-candidate
-evidence boundary. Configure first-publish npm authority, create the protected
-`v0.1.0` candidate, bind its complete public Windows live-proof receipt, retain
-the required artifacts, and publish only that verified tarball with npm
-provenance.
+evidence boundary. Preserve the rejected protected `v0.1.0` candidate, repair
+the release-proof close-glyph detector, create a higher protected patch
+candidate, bind its complete public Windows live-proof receipt, retain the
+required artifacts, and publish only that verified tarball with npm provenance.
 
 Public App ID `480` proves generic Steam overlay plumbing only. Do not claim or
 run configured-product purchase proof without the separate complete private
@@ -47,17 +45,47 @@ The Mac checkout is clean at `origin/main`. The Windows development checkout
 still has unrelated local `AGENTS.md`, `.codex`, and input-probe changes that
 belong to the user and must remain untouched.
 
-The release workflows and public package shape are prepared. The candidate
-ships Valve's Steam API and encrypted-app-ticket redistributables for Windows
-x64, Linux x64, and Apple Silicon macOS. Windows Authenticode is optional for
-application distributors and is not an npm release prerequisite. Only the
-protected `npm-production` GitHub environment remains.
+The protected annotated `v0.1.0` tag resolves to exact commit `fd26887`. Its
+tag-triggered Release run `29474570221` passed all three supported native
+prebuilds, the Windows Electron/ASAR package gate, canonical-candidate
+verification, and artifact upload. The downloaded canonical tarball SHA-256 is
+`829723ceb8a802e49dc5d3b572ac291f00e6ab4e4348dc55d4a560cdc53495dd`.
+The retained Windows archive contains 114 files and binds to content SHA-256
+`98012c5bb1b8bf93a4b164a2cc0cff089c58b61fcaba1234881d5bfb193fabea`.
 
-The npm registry has no public `steam-bridge` package yet and this host is not
-authenticated to npm. The first publish requires explicit maintainer-granted
-bootstrap authority; subsequent releases can use the configured trusted
-publisher/OIDC path. Do not create the release tag or publish until that
-authority exists.
+The exact unsigned application-owned Windows candidate is deployed at a new
+dedicated local root without replacing earlier evidence. Its audit binding,
+canonical read/execute-only ACL, stable public App ID `480` shortcut, Steam
+readiness task, and unchanged default D3D11 configuration pass. The package
+ships Valve's signed Steam API and encrypted-app-ticket redistributables for
+Windows x64, Linux x64, and Apple Silicon macOS. Windows Authenticode remains
+optional for application distributors and is not an npm release prerequisite.
+
+`v0.1.0` is now a rejected, preserved candidate and must not be published. Its
+complete `persistent-reuse` and public synthetic `checkout` profiles pass, but
+two complete `shortcut-routes` attempts stop at the ordered user route. At 100%
+display scale the screenshot panel detector can select the compact inner panel;
+the existing close-glyph sampler then misses the smaller 100%-scale glyph and
+falls back to a point 16 physical pixels left of it. That click blanks the panel
+without producing inactive/close/park callbacks. A focused user route selects
+the full panel and passes, proving the runtime route and exact close lifecycle;
+the ordered failure is a deterministic proof-driver geometry defect. The
+earlier 225%-scale roots remain valid for their exact candidate and scale.
+
+The worktree patch scales four logical diagonal distances through the measured
+presenter DPI while preserving the 16-sample/10-point score and existing search
+and lifecycle contract. Retained screenshots score 15/16 at 100% and 16/16 at
+225%. A focused worktree-matrix user route passed the product lifecycle, but its
+panel detector took the foreground-window fallback, so the semantic summary
+correctly rejected it as glyph/scale proof. The package and workspace versions
+are bumped to `0.1.1`; no new tag exists yet.
+
+The npm registry still has no public `steam-bridge` package. A newly generated,
+unexposed bootstrap token is configured only as the protected
+`npm-production` environment secret `NPM_TOKEN`; the previously exposed token
+was revoked. The environment requires maintainer approval and accepts protected
+`v*` tags. Remove bootstrap authority only after the first publish exists and
+npm trusted publishing is configured and verified.
 
 ## Last Verification
 
@@ -65,6 +93,29 @@ authority exists.
   Linux x64, and Apple Silicon macOS checks.
 - Exact CI `29472399883` for the committed Apple Silicon review at `209a108`
   passes the same four required jobs.
+- Exact CI `29472516874` for `fd26887` passes package smoke plus Windows x64,
+  Linux x64, and Apple Silicon macOS checks.
+- Protected tag Release `29474570221` passes all three prebuilds and the exact
+  Windows publish-tarball/ASAR gate at `fd26887`. Independent local verification
+  revalidates the retained tarball, Windows archive, package audit, release tag,
+  commit, native 1,121-method shape, and publishable candidate contract.
+- The newly deployed `v0.1.0` Windows candidate passes the exact 114-file
+  fingerprint, canonical write-protection audit, stable shortcut update while
+  Steam was closed, and a Limited interactive readiness task after one Steam
+  start.
+- Its complete protected `persistent-reuse` and public synthetic `checkout`
+  roots pass with clean Limited-task, process, launch-environment, broker, Steam
+  continuity, ACL, and post-profile fingerprint evidence.
+- Two preserved complete shortcut roots pass the first eight routes and then
+  reproduce the same 100%-scale user-panel close miss. The failing target is
+  `x=1324`; a focused passing user route detects the full panel and closes at
+  the actual glyph center `x=1340`. All three tasks clean up fully and retain
+  the same candidate and Steam identity.
+- The scale-aware worktree sampler passes PowerShell 5.1 parsing, all Windows
+  package-gate self-tests, its static packaged-helper contract, and retained
+  100%/225% pixel scoring. The focused live diagnostic passes runtime close and
+  cleanup but is deliberately not accepted as glyph evidence because that
+  launch used the non-screenshot fallback target.
 - Retained Release run `29363098329` supplies the verified Apple Silicon native
   binding and both Valve dylibs used by the fresh physical-Mac package.
 - `npm run release:verify -- --target aarch64-apple-darwin`, the macOS signing
@@ -84,19 +135,22 @@ authority exists.
 
 ## Next Actions
 
-1. Obtain explicit short-lived npm bootstrap authority for the first package.
-2. Create the protected exact `v0.1.0` tag/candidate and retain the Release run
-   and canonical tarball.
-3. Run the public Windows proof against that exact protected candidate, bind its
-   sanitized receipt to the publication workflow, and verify required CI.
-4. Approve `npm-production` and publish only the verified candidate with
-   provenance. Remove bootstrap authority after trusted publishing is active.
+1. Commit and push the validated `0.1.1` scale-aware patch, then require exact
+   CI before creating its protected tag.
+2. Pass the protected Release, deploy its exact Windows candidate, and collect
+   all four complete receipt profiles without reusing `v0.1.0` evidence.
+3. Retain the exact tarball, Windows archive, audit, executable probe, and live
+   receipt together on the new protected tag.
+4. Bind the receipt to `npm-production`, approve the deployment, and publish
+   only the new verified candidate with provenance.
+5. Configure and verify npm trusted publishing, then remove both the bootstrap
+   token and release-scoped receipt secret.
 
 ## Exact Next Step
 
-Verify npm authentication state and obtain the maintainer-approved first-publish
-bootstrap token. Do not open a browser, create the tag, or publish without that
-explicit authority.
+Run the full repository and package checks for the `0.1.1` scale-aware patch,
+review its exact diff and privacy boundary, then commit and push it. Do not tag
+until exact CI passes.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in

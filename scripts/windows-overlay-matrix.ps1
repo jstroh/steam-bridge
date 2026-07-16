@@ -5085,7 +5085,8 @@ function Find-WebCloseGlyphFromScreenshot {
   param(
     [object]`$Screenshot,
     [int]`$CandidateX,
-    [int]`$CandidateY
+    [int]`$CandidateY,
+    [double]`$Scale = 1
   )
 
   if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$Screenshot.bounds) {
@@ -5107,11 +5108,19 @@ function Find-WebCloseGlyphFromScreenshot {
       `$searchTop += 1
     }
 
+    `$normalizedScale = [Math]::Max(1.0, `$Scale)
+    `$logicalSampleDistances = @(2, 3, 4, 5)
+    `$sampleDistances = @(
+      `$logicalSampleDistances |
+        ForEach-Object { [int][Math]::Max(1, [Math]::Round(`$_ * `$normalizedScale)) } |
+        Select-Object -Unique
+    )
+
     `$best = `$null
     foreach (`$y in (`$searchTop..`$searchBottom | Where-Object { (`$_ % 2) -eq 0 })) {
       foreach (`$x in (`$searchLeft..`$searchRight | Where-Object { (`$_ % 2) -eq 0 })) {
         `$score = 0
-        foreach (`$distance in @(4, 7, 10, 13)) {
+        foreach (`$distance in `$sampleDistances) {
           foreach (`$offset in @(
             @(-`$distance, -`$distance),
             @(`$distance, -`$distance),
@@ -5145,8 +5154,11 @@ function Find-WebCloseGlyphFromScreenshot {
             x = [int]`$x
             y = [int]`$y
             score = [int]`$score
-            sampleCount = 16
+            sampleCount = [int](`$sampleDistances.Count * 4)
             minimumScore = 10
+            logicalSampleDistances = `$logicalSampleDistances
+            sampleDistances = `$sampleDistances
+            scale = `$normalizedScale
             search = [PSCustomObject]@{
               left = `$searchLeft
               top = `$searchTop
@@ -5307,7 +5319,11 @@ function Get-WebCloseClickTarget {
   } else {
     [int]([Math]::Round(`$rect.top + (`$rect.height * 0.142)))
   }
-  `$glyph = Find-WebCloseGlyphFromScreenshot -Screenshot `$Screenshot -CandidateX `$targetX -CandidateY `$targetY
+  `$glyph = Find-WebCloseGlyphFromScreenshot `
+    -Screenshot `$Screenshot `
+    -CandidateX `$targetX `
+    -CandidateY `$targetY `
+    -Scale `$scale
   if (`$glyph) {
     `$correctedRight = [int][Math]::Min(`$Foreground.rect.right, `$glyph.x + `$rightInset)
     `$correctedTop = [int][Math]::Max(`$Foreground.rect.top, `$glyph.y - `$topInset)

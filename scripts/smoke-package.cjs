@@ -704,6 +704,9 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   for (const expected of [
     "Find-WebCloseGlyphFromScreenshot",
+    '[double]`$Scale = 1',
+    "@(2, 3, 4, 5)",
+    '[Math]::Round(`$_ * `$normalizedScale)',
     'source = "screenshot-steam-web-close-glyph"',
     'webCloseTargetEvidence = "screenshot-close-glyph-v1"'
   ]) {
