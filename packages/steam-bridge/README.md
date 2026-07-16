@@ -16,8 +16,17 @@ This project is 100% created and maintained by Codex.
 npm install steam-bridge
 ```
 
-Steam Bridge expects Steamworks SDK redistributables to be present at build or
-package time. It does not vendor Valve SDK files.
+The published package includes the prebuilt Steam Bridge addons and Valve
+runtime redistributables for every supported target:
+
+- Windows x64: `steam_api64.dll` and `sdkencryptedappticket64.dll`
+- Linux x64: `libsteam_api.so` and `libsdkencryptedappticket.so`
+- macOS Apple Silicon: `libsteam_api.dylib` and
+  `libsdkencryptedappticket.dylib`
+
+Package consumers do not need to download the Steamworks SDK or set
+`STEAMWORKS_SDK_PATH`. The full SDK is required only when building the native
+addon from source.
 
 ## Platform Targets
 

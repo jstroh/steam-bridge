@@ -16,9 +16,14 @@ Steam Web API client for publisher inventory, trading, and economy endpoints.
 Modern networking socket create/connect helpers accept per-call
 `NetworkingConfigOption` arrays.
 
-Steam SDK redistributables are not committed. For local/native builds, provide
-the Steamworks SDK in the normal location expected by `steamworks-sys`, or set
-`STEAMWORKS_SDK_PATH` according to your SDK setup.
+The published npm package includes the prebuilt Steam Bridge addons and Valve
+runtime redistributables for every supported target: `steam_api64.dll` and
+`sdkencryptedappticket64.dll` on Windows, `libsteam_api.so` and
+`libsdkencryptedappticket.so` on Linux, and `libsteam_api.dylib` and
+`libsdkencryptedappticket.dylib` on macOS. Package consumers do not need to
+download the Steamworks SDK or set `STEAMWORKS_SDK_PATH`. Contributors building
+the native addon from source still need the SDK through the normal
+`steamworks-sys` setup; SDK files and generated binaries are not committed.
 
 ## Platform Targets
 
@@ -820,7 +825,10 @@ the private `--checkout-json-file` checkout suite.
   `afterPack`, sign with the published macOS entitlement template, then call
   `verifyMacosSteamAppAfterSign(context)` from `afterSign`. The helper skips
   non-mac targets and rejects Intel or universal macOS targets.
-- Steam Bridge does not vendor the Steamworks SDK or Valve redistributables.
+- Steam Bridge does not commit the Steamworks SDK or its generated native
+  artifacts. Release prebuilds copy the exact upstream Valve redistributables
+  into the audited npm tarball, so installed-package consumers receive every
+  supported runtime without a separate SDK download.
 - The supplied Windows live-smoke app still uses `asar: false` so its historical
   evidence remains comparable. The Release workflow is configured with a
   separate `electron-builder` ASAR gate over the fully assembled `npm pack`

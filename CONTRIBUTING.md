@@ -18,7 +18,9 @@ npm run build
 
 Steamworks SDK files and redistributables are not committed to this repository.
 Use the standard `steamworks-sys` SDK setup or set `STEAMWORKS_SDK_PATH` for
-your local SDK location.
+your local SDK location. The Release workflow copies the exact upstream
+redistributables into the audited npm tarball; package consumers do not need a
+separate SDK installation.
 
 The project supports Apple Silicon macOS only (`aarch64-apple-darwin`). Intel
 macOS is intentionally unsupported. Keep builds, prebuilds, docs, and examples

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `5d95bb3` (`Add protected npm publication workflow`).
+Review anchor: `47d7749` (`Record npm publication setup`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -71,6 +71,13 @@ sanitized Windows live-proof receipt. The `npm-production` GitHub environment
 exists, permits only `v*` tag deployments, and requires approval. An active tag
 ruleset prevents deletion or non-fast-forward updates of `refs/tags/v*`.
 
+The assembled npm candidate already ships Valve's Steam API and encrypted app
+ticket redistributables for all three supported targets. Retained Release
+artifact inspection confirms all six files are present in the tarball, while
+the Windows ASAR publish gate independently requires the complete set before a
+candidate can pass. Public install guidance now distinguishes this zero-SDK
+consumer path from contributor source builds, which still require a local SDK.
+
 Unrelated local `AGENTS.md`, `.codex`, and input-probe worktree changes belong to
 the user and must remain untouched.
 
@@ -119,6 +126,9 @@ the user and must remain untouched.
   smoke plus Linux x64, Windows x64, and Apple Silicon macOS checks. GitHub
   recognizes the new manual workflow, and `main` equals `origin/main` at that
   commit with only the unrelated user work remaining locally.
+- Retained Release run `29363098329` contains all six expected Valve runtime
+  files in its canonical npm tarball: the Steam API and encrypted-app-ticket
+  redistributables for Windows x64, Linux x64, and Apple Silicon macOS.
 
 ## Next Actions
 
