@@ -67,7 +67,6 @@ jobs:
           gzip --decompress --stdout live-proof.json.gz > windows-live-proof-receipt.json
       - name: Publish exact verified bytes
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_ACCESS: public
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TAG: ${{ inputs.npm_tag }}

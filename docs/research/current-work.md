@@ -49,7 +49,17 @@ The temporary GitHub environment secrets `NPM_TOKEN` and
 the environment secret list is empty. The bootstrap npm token itself was pasted
 into chat and must still be revoked at npm. This Windows npm CLI has no account
 session, and browser work is explicitly stopped, so it cannot revoke or replace
-that external account credential. Do not reuse it.
+that external account credential. Do not reuse it. npm 11.16 provides the
+supported CLI path needed to finish without npm settings-page automation:
+`npm trust github` creates the GitHub OIDC relationship, `npm trust list`
+verifies it, and `npm token revoke` removes the bootstrap token once an npm
+account session exists.
+
+The main-branch `publish.yml` is now tokenless: it retains `id-token: write`,
+the tag/source/receipt/candidate gates, protected `npm-production` environment,
+and provenance, but no longer references `NPM_TOKEN` or `NODE_AUTH_TOKEN`.
+Package smoke rejects either bootstrap name if it returns. This fail-closes the
+next release until the npm trusted publisher is configured.
 
 The Windows checkout has unrelated local `AGENTS.md`, `.codex`, and input-probe
 changes that belong to the user and must remain untouched.
@@ -74,9 +84,10 @@ changes that belong to the user and must remain untouched.
 
 1. Revoke the exposed bootstrap token in the npm account; it is no longer
    present in GitHub and must never be reused.
-2. Configure npm trusted publishing for
-   `jstroh/steam-bridge`, workflow `publish.yml`, environment
-   `npm-production` before the next release, then keep `NPM_TOKEN` absent.
+2. From an authenticated npm CLI, run `npm trust github steam-bridge --file
+   publish.yml --repo jstroh/steam-bridge --env npm-production --allow-publish
+   --yes`, verify it with `npm trust list steam-bridge --json`, then revoke the
+   exposed bootstrap token by its npm token ID. Keep `NPM_TOKEN` absent.
 3. Retain the published release and all rejected protected candidates. Do not
    rerun live platform matrices merely for confidence.
 4. Defer real purchase proof until the configured game, `InitTxn`-capable

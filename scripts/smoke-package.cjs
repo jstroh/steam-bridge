@@ -526,6 +526,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "utf8"
   );
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+  const publishWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "publish.yml"), "utf8");
   const cargoConfig = fs.readFileSync(path.join(repoRoot, ".cargo", "config.toml"), "utf8");
   const nativeBuildScript = fs.readFileSync(path.join(repoRoot, "crates", "native", "build.rs"), "utf8");
   const matrixSummary = fs.readFileSync(path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"), "utf8");
@@ -656,6 +657,21 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.ok(
     !releaseWorkflow.includes("--live-proof-receipt"),
     "Release workflow must not fabricate a live-proof receipt before Windows live testing"
+  );
+  for (const expected of [
+    "id-token: write",
+    "environment: npm-production",
+    'test "$GITHUB_REF_TYPE" = "tag"',
+    "npm run release:publish-candidate",
+    "--live-proof-receipt windows-live-proof-receipt.json",
+    'NPM_CONFIG_PROVENANCE: "true"'
+  ]) {
+    assert.ok(publishWorkflow.includes(expected), `Publish workflow missing ${expected}`);
+  }
+  assert.doesNotMatch(
+    publishWorkflow,
+    /NPM_TOKEN|NODE_AUTH_TOKEN/,
+    "Publish workflow must use npm trusted publishing without a bootstrap token"
   );
   for (const expected of [
     "TOTAL_CASE_COUNT, 31",

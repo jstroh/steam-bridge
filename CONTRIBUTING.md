@@ -130,7 +130,23 @@ bootstrap token as the `npm-production` environment secret `NPM_TOKEN`; do not
 put it in repository variables, files, commands, or logs. After the package
 exists, configure its npm trusted publisher for this repository, workflow file
 `publish.yml`, environment `npm-production`, and `npm publish` permission, then
-delete `NPM_TOKEN`. Trusted publishing requires npm `11.5.1` or newer and Node
+delete `NPM_TOKEN`. An authenticated maintainer can configure and verify the
+relationship without placing a token in a command:
+
+```sh
+npm trust github steam-bridge \
+  --file publish.yml \
+  --repo <owner/repo> \
+  --env npm-production \
+  --allow-publish \
+  --yes
+npm trust list steam-bridge --json
+```
+
+After the relationship is verified, revoke the first-publish token by its ID
+from `npm token list --json`, verify that it is absent, and keep both
+`NPM_TOKEN` and `NODE_AUTH_TOKEN` out of `publish.yml` and the GitHub
+environment. Trusted publishing requires npm `11.5.1` or newer and Node
 `22.14.0` or newer; the workflow uses Node 24 and npm 11.15 or newer. npm
 documents [the trusted-publisher bootstrap constraint](https://docs.npmjs.com/cli/v11/commands/npm-trust/),
 [trusted publishing](https://docs.npmjs.com/trusted-publishers/), and

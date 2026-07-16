@@ -145,7 +145,11 @@ npm authority is needed only for publication: because trusted publishing
 cannot be configured until the package exists, use the `npm-production`
 environment secret `NPM_TOKEN` only for the first approved CI bootstrap. Then
 configure the npm trusted publisher for `publish.yml`, this repository, and the
-`npm-production` environment, and delete the bootstrap token. For
+`npm-production` environment with `npm trust github steam-bridge --file
+publish.yml --repo <owner/repo> --env npm-production --allow-publish --yes`,
+verify it with `npm trust list steam-bridge --json`, delete the GitHub secret,
+and revoke the bootstrap token by its npm token ID. Keep `NPM_TOKEN` and
+`NODE_AUTH_TOKEN` absent from later publication. For
 rollback, keep the known-good version available; build, sign, package, and
 live-validate a higher corrective candidate through the same gates; then
 publish it, deprecate the bad version with an upgrade message, and move
