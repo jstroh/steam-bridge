@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `b1e4fdc` (`Require Windows passive notification transition`).
+Review anchor: `1cfabdf` (`Update passive notification package guard`).
 
 ## Active Goal
 
@@ -58,11 +58,13 @@ Steam-overlay-target completion path. A source-level regression test covers the
 platform predicate, and all package versions are `0.1.3`. A fresh protected
 candidate is required; do not splice `v0.1.2` evidence into its receipt.
 
-Commit `b1e4fdc` is pushed. Exact CI `29485423689` passes the runtime unit suite
-on supported platforms but its package-smoke job rejects the new predicate
-because the static packaged-source contract still searches for the old adjacent
-callback/parking substring. The worktree updates only that established contract
-to require the full event, callback, platform render-path, and parking condition.
+Exact CI `29485423689` for `b1e4fdc` passed all three supported-platform jobs but
+its package-smoke job rejected the new predicate because the static
+packaged-source contract still searched for the old adjacent callback/parking
+substring. Commit `1cfabdf` updates only that established contract to require
+the full event, callback, platform render-path, and parking condition.
+Replacement exact CI `29485623570` passes package smoke and all three supported
+platform jobs.
 
 The npm registry still has no public `steam-bridge` package. The protected
 `npm-production` environment has a bootstrap `NPM_TOKEN`, but the token was
@@ -89,8 +91,9 @@ changes that belong to the user and must remain untouched.
 - The `0.1.3` worktree passes JavaScript parsing, both focused regression tests,
   all 198 unit/TypeScript tests, platform policy, API coverage, Rust formatting,
   native check, and `git diff --check`.
-- Exact CI `29485423689` fails only its stale package-smoke source-string guard;
-  the log identifies no runtime, platform, build, or test failure.
+- Replacement exact CI `29485623570` passes package smoke, Windows x64, Linux
+  x64, and Apple Silicon; the prior run's failure is isolated to its corrected
+  stale package-source guard.
 - Native-Windows `package:smoke` passes its applicable package and self-test
   gates before the recorded missing-`bash` host boundary.
 - No private app, product, account, shortcut, transaction, or Steam identifiers
@@ -98,8 +101,8 @@ changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Review, privacy-scan, commit, and push the `0.1.3` completion-predicate slice;
-   require exact CI before creating its protected tag.
+1. Commit and push this checkpoint, require exact CI for the resulting head, and
+   create the protected `v0.1.3` tag only after every job passes.
 2. Pass the protected Release, deploy its exact Windows candidate, and require
    the focused progress case plus all four fresh receipt profiles.
 3. Generate and independently verify the sanitized receipt, then retain the
@@ -109,9 +112,9 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Update the open Windows passive-poll ledger finding with the protected `v0.1.2`
-evidence, review and privacy-scan the exact `0.1.3` diff, then commit and push
-without staging the user's `AGENTS.md`, `.codex`, or input-probe files.
+Commit and push this checkpoint without staging the user's `AGENTS.md`,
+`.codex`, or input-probe files. Require exact CI for that documentation-only
+head before creating the protected `v0.1.3` tag.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
