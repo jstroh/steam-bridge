@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-16
 
-Review anchor: `a0108e2` (`Record tokenless publication CI`).
+Review anchor: `d932e8d` (`Make the README human-friendly`).
 
 ## Active Goal
 
@@ -41,12 +41,21 @@ through npm's authenticated token API after the CLI's redacted JSON output hid
 its token ID. A direct authenticated readback reports zero remaining npm tokens.
 Future publication is tokenless through the trusted publisher.
 
-The root README rewrite reduces onboarding from 1,199 lines to 175 lines. It
+The root README rewrite reduces onboarding from 1,199 lines to 177 lines. It
 keeps install requirements, supported targets, quick-start examples, the
 managed Electron overlay path, a Web API example, essential packaging notes,
 development setup, and links to canonical deeper documentation. Release
 forensics, live-test procedures, and internal matrix detail are no longer in
-the repository front door.
+the repository front door. Package smoke now requires the concise platform and
+Rosetta policy there while continuing to enforce detailed macOS commands,
+runner guards, and matrix behavior in their canonical example, workflow, and
+implementation files.
+
+CI run `29531616552` passed Windows x64, Linux x64, and Apple Silicon jobs but
+failed package smoke because the old static contract required four paragraphs
+of macOS test-runner and matrix internals in the root README. The pending smoke
+change keeps the prominent platform/Rosetta requirements in the root and leaves
+the existing detailed example, workflow, and implementation assertions intact.
 
 The Windows checkout has unrelated local `AGENTS.md`, `.codex`, and input-probe
 changes that belong to the user and must remain untouched.
@@ -70,13 +79,15 @@ changes that belong to the user and must remain untouched.
   applicable self-tests and then reaches the recorded native-Windows Unix-shell
   boundary because `bash` is unavailable; exact CI covers the complete package
   smoke path.
+- The focused root-README platform policy test and the revised package-smoke
+  root policy assertions pass locally. Replacement exact CI is pending.
 - No private app, product, account, shortcut, transaction, Steam, key, price,
   or fixture identifier was added to committed evidence.
 
 ## Next Actions
 
-1. Review and privacy-scan the exact diff, stage only `README.md` and this
-   checkpoint, commit intentionally, and push.
+1. Review and privacy-scan the exact diff, stage only `README.md`, the scoped
+   package-smoke assertion, and this checkpoint, commit intentionally, and push.
 2. Verify exact GitHub CI for the documentation commit.
 3. Close the persistent release goal. Retain the published release and all
    rejected protected candidates; do not rerun live matrices for confidence.
@@ -85,7 +96,7 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Validate the root README slice, commit and push only its two intended files,
+Validate the root README slice, commit and push only its three intended files,
 then verify exact CI and close the first-release goal. No additional Windows,
 Linux, Steam Deck, or macOS live run is warranted.
 

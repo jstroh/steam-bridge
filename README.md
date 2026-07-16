@@ -37,13 +37,15 @@ Requirements:
 - Electron 24 or newer when used with Electron
 - A running Steam client and a Steam app ID
 
-Supported targets:
+## Platform Targets
 
 | Platform | Target |
 | --- | --- |
 | Windows x64 | `x86_64-pc-windows-msvc` |
 | Linux x64 and Steam Deck | `x86_64-unknown-linux-gnu` |
 | macOS Apple Silicon | `aarch64-apple-darwin` |
+
+### macOS Apple Silicon Only
 
 Intel macOS and universal macOS builds are not supported.
 Do not package, launch, or verify macOS smoke apps through Rosetta.

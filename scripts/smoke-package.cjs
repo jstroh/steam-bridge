@@ -283,23 +283,8 @@ function runMacosPackageSigningStaticChecks() {
   );
   assert.match(
     readme,
-    /All macOS test apps are built and run as Apple Silicon arm64\s+targets only/,
-    "README must document that macOS test apps are Apple Silicon only"
-  );
-  assert.match(
-    readme,
-    /never silently become\s+Intel cross-compilation checks/,
-    "README must document the macOS arm64 runner guard"
-  );
-  assert.match(
-    readme,
-    /The macOS smoke package command is intentionally `npm run example:package:mac`/,
-    "README must document the Apple Silicon-only macOS package command"
-  );
-  assert.match(
-    readme,
-    /macOS overlay matrix checks that it is running in a native Apple Silicon\s+`darwin\/arm64` shell before it packages or launches/,
-    "README must document that the macOS overlay matrix checks Apple Silicon before packaging or launch"
+    /Do not package, launch, or verify macOS smoke apps through Rosetta/,
+    "README must reject Rosetta for macOS smoke apps"
   );
   assert.match(
     packageReadme,
