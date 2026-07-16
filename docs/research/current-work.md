@@ -2,8 +2,9 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `0846e7b` (`Record npm signing gate correction`). Reconcile this
-checkpoint with newer Git history and worktree changes before acting.
+Review anchor: `209a108` (`Record current Apple Silicon release review`).
+Reconcile this checkpoint with newer Git history and worktree changes before
+acting.
 
 ## Active Goal
 
@@ -62,6 +63,8 @@ authority exists.
 
 - Exact CI `29468266079` for `0846e7b` passes package smoke plus Windows x64,
   Linux x64, and Apple Silicon macOS checks.
+- Exact CI `29472399883` for the committed Apple Silicon review at `209a108`
+  passes the same four required jobs.
 - Retained Release run `29363098329` supplies the verified Apple Silicon native
   binding and both Valve dylibs used by the fresh physical-Mac package.
 - `npm run release:verify -- --target aarch64-apple-darwin`, the macOS signing
