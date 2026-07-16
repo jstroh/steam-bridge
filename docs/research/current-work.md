@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-15
 
-Review anchor: `d456c7e` (`Make macOS verification self-tests host-neutral`).
+Review anchor: `5d95bb3` (`Add protected npm publication workflow`).
 Reconcile this checkpoint with newer Git history and worktree changes before
 acting.
 
@@ -64,12 +64,12 @@ configured in GitHub, and npm is not authenticated on this host. The installed
 local test certificate is not a production release identity and must not be
 uploaded as one.
 
-The new publication setup uses a manual `publish.yml` workflow, an exact
-tag-triggered Release run ID, the retained candidate artifact, and a compressed
-environment-secret handoff for the matching sanitized Windows live-proof
-receipt. The `npm-production` GitHub environment exists, permits only `v*` tag
-deployments, and requires approval. An active tag ruleset prevents deletion or
-non-fast-forward updates of `refs/tags/v*`.
+The publication setup is pushed as `5d95bb3`. It uses a manual `publish.yml`
+workflow, an exact tag-triggered Release run ID, the retained candidate
+artifact, and a compressed environment-secret handoff for the matching
+sanitized Windows live-proof receipt. The `npm-production` GitHub environment
+exists, permits only `v*` tag deployments, and requires approval. An active tag
+ruleset prevents deletion or non-fast-forward updates of `refs/tags/v*`.
 
 Unrelated local `AGENTS.md`, `.codex`, and input-probe worktree changes belong to
 the user and must remain untouched.
@@ -115,27 +115,29 @@ the user and must remain untouched.
   `package:smoke` reaches only the existing Linux shortcut-ID fixture boundary
   after all macOS and release-helper self-tests pass; exact Linux package smoke
   remains green in CI.
+- Exact CI `29464185812` for `5d95bb3` passes all four required jobs: package
+  smoke plus Linux x64, Windows x64, and Apple Silicon macOS checks. GitHub
+  recognizes the new manual workflow, and `main` equals `origin/main` at that
+  commit with only the unrelated user work remaining locally.
 
 ## Next Actions
 
-1. Finish and publish the tag-restricted npm publication workflow, proof-secret
-   configurator, release documentation, and GitHub environment setup.
-2. Establish unattended Remote Login on the intended Mac without weakening the
+1. Establish unattended Remote Login on the intended Mac without weakening the
    broader machine, then collect a sanitized read-only preflight and Steam
    health artifact.
-3. Run the current signed minimal matrix first. Expand to persistent/full proof
+2. Run the current signed minimal matrix first. Expand to persistent/full proof
    only according to the changed surfaces and live findings; avoid unnecessary
    Steam restarts and unchanged negative experiments.
-4. Configure the real production Windows signing identity and first-publish npm
+3. Configure the real production Windows signing identity and first-publish npm
    bootstrap authority, then build, live-prove, retain, and publish the exact
    protected `v0.1.0` candidate.
 
 ## Exact Next Step
 
-Validate the npm publication setup, commit and push it, configure the
-tag-restricted GitHub environment, and verify exact CI. Do not create the
-release tag or publish until the physical-Mac review and real signing/npm
-credential gates are complete.
+Enable Mac Remote Login and finish the physical-Mac review. In parallel, obtain
+the real production Windows signing identity and create the short-lived npm
+bootstrap token through the maintainer accounts. Do not create the release tag
+or publish until those credential gates and the Mac review are complete.
 
 Detailed platform evidence is in
 `docs/research/cross-platform-overlay-status.md`; rerun contracts are in
