@@ -20,9 +20,11 @@ const SYSTEM_WINDOWS_DLLS = new Set([
   "advapi32.dll",
   "bcrypt.dll",
   "bcryptprimitives.dll",
+  "comctl32.dll",
   "comdlg32.dll",
   "crypt32.dll",
   "d3d11.dll",
+  "d3dcompiler_47.dll",
   "dwmapi.dll",
   "dxgi.dll",
   "gdi32.dll",
@@ -481,6 +483,16 @@ function selfTest() {
           "dynamic.node delay imports"
         ),
       /must link the MSVC\/UCRT runtime statically/
+    );
+    assert.doesNotThrow(() =>
+      assertSupportedWindowsImports(
+        ["comctl32.dll", "d3dcompiler_47.dll"],
+        "native host system imports"
+      )
+    );
+    assert.throws(
+      () => assertSupportedWindowsImports(["third-party-renderer.dll"], "native host imports"),
+      /imports unbundled non-system dependency third-party-renderer\.dll/
     );
 
     const otherDir = path.join(tempRoot, "other");
