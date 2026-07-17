@@ -1322,7 +1322,10 @@ mod windows {
     const MK_RBUTTON: u32 = 0x0002;
     const MK_MBUTTON: u32 = 0x0010;
     const PARENT_SUBCLASS_ID: usize = 0x5354_4252_4944_4745;
-    const CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis(32);
+    // The JavaScript session pump selects the requested display cadence and
+    // D3D11 Present(1) synchronizes to vertical blank. Keep this native guard
+    // only as a duplicate-pump debounce; it must not impose a lower FPS cap.
+    const CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis(1);
     const RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
     const MODAL_PRESENT_TIMER_ID: usize = 0x5342;
     const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
@@ -1576,7 +1579,7 @@ mod windows {
             update_window_frame(surface);
             sync_window_style(surface);
             sync_surface_visibility(surface);
-            if surface.parent_hwnd.is_none() && surface.visible && !surface.input_passthrough {
+            if surface.visible && !surface.input_passthrough && parent_allows_surface(surface) {
                 activate_window(surface);
             }
         })
@@ -1625,7 +1628,7 @@ mod windows {
             surface.input_passthrough = pass_through;
             sync_window_style(surface);
             sync_surface_visibility(surface);
-            if surface.parent_hwnd.is_none() && surface.visible && !pass_through {
+            if surface.visible && !pass_through && parent_allows_surface(surface) {
                 activate_window(surface);
             }
         })
@@ -2616,7 +2619,7 @@ mod windows {
         if should_be_visible {
             surface.presentation_ready = false;
             apply_window_style(surface);
-            let command = if surface.parent_hwnd.is_some() || surface.input_passthrough {
+            let command = if surface.input_passthrough {
                 SW_SHOWNOACTIVATE
             } else {
                 SW_SHOW
@@ -2627,7 +2630,7 @@ mod windows {
             surface.presentation_ready = false;
         }
         surface.visible = should_be_visible;
-        if surface.parent_hwnd.is_none() && should_be_visible && !surface.input_passthrough {
+        if should_be_visible && !surface.input_passthrough {
             activate_window(surface);
         }
     }
@@ -2641,13 +2644,15 @@ mod windows {
         let mut ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
         if surface.parent_hwnd.is_some() {
             ex_style &= !WS_EX_TOPMOST;
-            // Steam consumes overlay input at the process level. Keep the
-            // owned presenter non-activating so Electron's native title bar
-            // and menu remain the foreground window and can handle chrome
-            // input outside the presenter rectangle.
-            ex_style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            ex_style |= WS_EX_TOOLWINDOW;
             if surface.input_passthrough {
-                ex_style |= WS_EX_TRANSPARENT;
+                // A parked presenter follows the Electron window without
+                // taking activation from its title bar or menu. Once Steam is
+                // interactive, remove both flags so the clipped content popup
+                // can receive ordinary overlay mouse and keyboard input.
+                ex_style |= WS_EX_NOACTIVATE | WS_EX_TRANSPARENT;
+            } else {
+                ex_style &= !(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT);
             }
         } else {
             ex_style &= !(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST);
@@ -3044,10 +3049,10 @@ mod windows {
     fn base_ex_style(attached: bool, pass_through: bool) -> u32 {
         let mut style = WS_EX_LAYERED;
         if attached {
-            style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            style |= WS_EX_TOOLWINDOW;
         }
         if pass_through {
-            style |= WS_EX_TRANSPARENT;
+            style |= WS_EX_NOACTIVATE | WS_EX_TRANSPARENT;
         }
         style
     }

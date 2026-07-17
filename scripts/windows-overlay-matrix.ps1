@@ -4114,6 +4114,8 @@ public static class SteamBridgeWindowsProbe {
 `$script:UserGestureRendererGeometry = `$null
 `$script:PersistentReuseNativeHostHandle = [IntPtr]::Zero
 `$script:PersistentReuseNativeHostOwnerPid = [uint32]0
+`$script:PersistentReuseCycleOneCloseTarget = `$null
+`$script:PersistentReuseCycleOneHostRect = `$null
 
 `$script:ProbeScreenshotAssemblyError = `$null
 try {
@@ -5288,8 +5290,93 @@ function Capture-ProbeScreen {
   }
 }
 
+function Get-PersistentReuseAnchoredWebCloseTarget {
+  param([object]`$Foreground, [object]`$Screenshot)
+
+  if (
+    -not `$script:UsePersistentReuseGate -or
+    `$script:CloseCycleOrdinal -le 1 -or
+    -not `$script:PersistentReuseCycleOneCloseTarget -or
+    -not `$script:PersistentReuseCycleOneHostRect -or
+    `$script:PersistentReuseNativeHostHandle -eq [IntPtr]::Zero -or
+    -not [SteamBridgeWindowsProbe]::IsWindow(`$script:PersistentReuseNativeHostHandle) -or
+    [SteamBridgeWindowsProbe]::GetForegroundWindow() -ne `$script:PersistentReuseNativeHostHandle -or
+    -not `$Foreground -or
+    -not `$Foreground.rect -or
+    `$Foreground.handlePresent -ne `$true -or
+    [string]`$Foreground.processName -cne "SteamBridgeSmoke" -or
+    [string]`$Foreground.title -cne "Steam Bridge Native Overlay Host"
+  ) {
+    return `$null
+  }
+
+  `$baselineRect = `$script:PersistentReuseCycleOneHostRect
+  `$currentRect = `$Foreground.rect
+  `$sameHostRect = (
+    [int]`$currentRect.left -eq [int]`$baselineRect.left -and
+    [int]`$currentRect.top -eq [int]`$baselineRect.top -and
+    [int]`$currentRect.right -eq [int]`$baselineRect.right -and
+    [int]`$currentRect.bottom -eq [int]`$baselineRect.bottom -and
+    [int]`$currentRect.width -eq [int]`$baselineRect.width -and
+    [int]`$currentRect.height -eq [int]`$baselineRect.height
+  )
+  if (-not `$sameHostRect) {
+    return `$null
+  }
+
+  `$baseline = `$script:PersistentReuseCycleOneCloseTarget
+  if (
+    [string]`$baseline.source -cne "screenshot-steam-web-close-glyph" -or
+    -not `$baseline.panel -or
+    -not `$baseline.scale -or
+    -not `$baseline.insets -or
+    -not `$baseline.approach
+  ) {
+    return `$null
+  }
+
+  `$scale = [double]`$baseline.scale.value
+  if (-not [double]::IsFinite(`$scale) -or `$scale -lt 0.5 -or `$scale -gt 8) {
+    return `$null
+  }
+
+  if (-not `$Screenshot -or `$Screenshot.ok -ne `$true) {
+    return `$null
+  }
+
+  # Steam renders its pointer into the overlay backbuffer. On later cycles it
+  # can cover the close X and itself satisfy the diagonal glyph heuristic.
+  # Reuse is therefore limited to the exact cycle-one glyph coordinate after
+  # reconfirming the same native HWND, unchanged physical host rect, and a
+  # fresh current-cycle screenshot. The summarizer independently verifies all
+  # of those bindings before it accepts the release proof.
+  return [PSCustomObject]@{
+    x = [int]`$baseline.x
+    y = [int]`$baseline.y
+    source = "persistent-cycle-one-steam-web-close-glyph"
+    panel = `$baseline.panel
+    scale = `$baseline.scale
+    approach = `$baseline.approach
+    insets = `$baseline.insets
+    glyph = `$baseline.glyph
+    persistentReuse = [PSCustomObject]@{
+      schema = 1
+      anchorCycle = 1
+      cycle = `$script:CloseCycleOrdinal
+      freshScreenshotCaptured = `$true
+      sameNativeHost = `$true
+      sameHostRect = `$true
+    }
+  }
+}
+
 function Get-WebCloseClickTarget {
   param([object]`$Foreground, [object]`$Screenshot = `$null)
+
+  `$persistentAnchoredTarget = Get-PersistentReuseAnchoredWebCloseTarget -Foreground `$Foreground -Screenshot `$Screenshot
+  if (`$persistentAnchoredTarget) {
+    return `$persistentAnchoredTarget
+  }
 
   `$panel = Get-WebClosePanelRect -Foreground `$Foreground -Screenshot `$Screenshot
   if (-not `$panel -or -not `$panel.rect) {
@@ -5403,7 +5490,33 @@ function Test-WebClosePanelScreenshot {
   try {
     `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
     `$bounds = `$Screenshot.bounds
-    `$rect = `$panel.rect
+    `$rect = if (`$script:UsePersistentReuseGate -and `$target.panel) {
+      `$target.panel
+    } else {
+      `$panel.rect
+    }
+    `$scaleEvidence = Get-WebCloseDpiScale
+    `$scale = [double]`$scaleEvidence.value
+    `$minimumModalTopInset = [int][Math]::Max(1, [Math]::Round(48 * `$scale))
+    `$minimumModalRightInset = [int][Math]::Max(1, [Math]::Round(48 * `$scale))
+    `$persistentPanelGeometryReady = `$true
+    `$persistentTargetSourceReady = `$true
+    `$persistentModalBackdropReady = `$true
+    `$hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
+    if (`$script:UsePersistentReuseGate) {
+      `$persistentPanelGeometryReady = (
+        `$hostRect -and
+        [int]`$rect.left -ge [int]`$hostRect.left -and
+        [int]`$rect.top -ge ([int]`$hostRect.top + `$minimumModalTopInset) -and
+        [int]`$rect.right -le ([int]`$hostRect.right - `$minimumModalRightInset) -and
+        [int]`$rect.bottom -le [int]`$hostRect.bottom
+      )
+      `$persistentTargetSourceReady = if (`$script:CloseCycleOrdinal -le 1) {
+        [string]`$target.source -ceq "screenshot-steam-web-close-glyph"
+      } else {
+        [string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"
+      }
+    }
     `$sampleLeft = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.12)))
     `$sampleRight = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.86)))
     `$sampleTop = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.11)))
@@ -5419,6 +5532,49 @@ function Test-WebClosePanelScreenshot {
     `$contentTotal = 0
     `$contentBright = 0
     `$contentMaxSeen = 0
+    `$backdropTotal = 0
+    `$backdropDark = 0
+    `$backdropMaxSum = 0
+
+    if (`$script:UsePersistentReuseGate -and `$hostRect) {
+      `$backdropPoints = New-Object Collections.Generic.List[object]
+      `$backdropTopY = [int][Math]::Round(`$hostRect.top + (`$hostRect.height * 0.04))
+      foreach (`$fraction in @(0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90)) {
+        [void]`$backdropPoints.Add([PSCustomObject]@{
+          x = [int][Math]::Round(`$hostRect.left + (`$hostRect.width * `$fraction))
+          y = `$backdropTopY
+        })
+      }
+      `$backdropLeftX = [int][Math]::Round(`$hostRect.left + (`$hostRect.width * 0.03))
+      `$backdropRightX = [int][Math]::Round(`$hostRect.right - (`$hostRect.width * 0.03))
+      foreach (`$fraction in @(0.16, 0.28, 0.40, 0.52, 0.64, 0.76, 0.88)) {
+        `$backdropY = [int][Math]::Round(`$hostRect.top + (`$hostRect.height * `$fraction))
+        [void]`$backdropPoints.Add([PSCustomObject]@{ x = `$backdropLeftX; y = `$backdropY })
+        [void]`$backdropPoints.Add([PSCustomObject]@{ x = `$backdropRightX; y = `$backdropY })
+      }
+      foreach (`$point in `$backdropPoints) {
+        `$bitmapX = [int](`$point.x - `$bounds.left)
+        `$bitmapY = [int](`$point.y - `$bounds.top)
+        if (`$bitmapX -lt 0 -or `$bitmapY -lt 0 -or `$bitmapX -ge `$bitmap.Width -or `$bitmapY -ge `$bitmap.Height) {
+          continue
+        }
+        `$pixel = `$bitmap.GetPixel(`$bitmapX, `$bitmapY)
+        `$pixelMax = [Math]::Max(`$pixel.R, [Math]::Max(`$pixel.G, `$pixel.B))
+        `$backdropTotal += 1
+        `$backdropMaxSum += `$pixelMax
+        if (`$pixelMax -le 96) {
+          `$backdropDark += 1
+        }
+      }
+      `$backdropAverageMax = if (`$backdropTotal -gt 0) { `$backdropMaxSum / `$backdropTotal } else { 255 }
+      `$persistentModalBackdropReady = (
+        `$backdropTotal -ge 16 -and
+        `$backdropAverageMax -le 96 -and
+        `$backdropDark -ge [Math]::Ceiling(`$backdropTotal * 0.75)
+      )
+    } else {
+      `$backdropAverageMax = 0
+    }
 
     for (`$y = `$sampleTop; `$y -le `$sampleBottom; `$y += 8) {
       for (`$x = `$sampleLeft; `$x -le `$sampleRight; `$x += 8) {
@@ -5459,10 +5615,27 @@ function Test-WebClosePanelScreenshot {
     `$chromeReady = (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12)))
     `$contentReady = (`$contentTotal -gt 0 -and (`$contentBright -gt 3 -or `$contentMaxSeen -gt 120))
     [PSCustomObject]@{
-      ready = (`$chromeReady -and `$contentReady)
+      ready = (`$chromeReady -and `$contentReady -and `$persistentPanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentModalBackdropReady)
       target = `$target
       rectSource = `$panel.source
       foregroundCandidate = Test-WebCloseForegroundCandidate `$Foreground
+      persistentPanelGeometryReady = `$persistentPanelGeometryReady
+      persistentTargetSourceReady = `$persistentTargetSourceReady
+      persistentModalBackdropReady = `$persistentModalBackdropReady
+      persistentPanelGeometry = [PSCustomObject]@{
+        required = `$script:UsePersistentReuseGate
+        minimumModalTopInset = `$minimumModalTopInset
+        minimumModalRightInset = `$minimumModalRightInset
+        hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
+      }
+      persistentModalBackdrop = [PSCustomObject]@{
+        required = `$script:UsePersistentReuseGate
+        total = `$backdropTotal
+        dark = `$backdropDark
+        averageMax = `$backdropAverageMax
+        maximumReadyValue = 96
+        minimumDarkRatio = 0.75
+      }
       sample = [PSCustomObject]@{
         left = `$sampleLeft
         top = `$sampleTop
@@ -5526,7 +5699,7 @@ function Wait-WebClosePanelReady {
       })
       return `$analysis
     }
-    if (`$target -and (-not `$screenshot -or -not `$screenshot.ok -or `$attempt -ge 8)) {
+    if (-not `$script:UsePersistentReuseGate -and `$target -and (-not `$screenshot -or -not `$screenshot.ok -or `$attempt -ge 8)) {
       `$fallback = [PSCustomObject]@{
         ready = `$true
         reason = if (-not `$screenshot -or -not `$screenshot.ok) { "target-ready-screenshot-unavailable" } else { "target-ready-before-content-gate" }
@@ -6808,6 +6981,19 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         webCloseReadiness = `$webCloseReadiness
         processes = Get-ProbeProcessSnapshot
       })
+      if (
+        `$script:UsePersistentReuseGate -and
+        '$input' -eq 'web-close-click-sendinput' -and
+        (-not `$webCloseReadiness -or `$webCloseReadiness.ready -ne `$true)
+      ) {
+        Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+          cycle = `$cycle
+          reason = "persistent-web-close-readiness-not-proved"
+          readiness = `$webCloseReadiness
+        })
+        `$terminalFailure = `$true
+        continue
+      }
       `$target = `$null
       if ('$input' -eq 'web-close-click-sendinput') {
         `$foreground = Get-ForegroundProbeSnapshot
@@ -6816,6 +7002,17 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         }
         if (-not `$target) {
           `$target = Get-WebCloseClickTarget `$foreground
+        }
+        if (
+          `$script:UsePersistentReuseGate -and
+          `$cycle -eq 1 -and
+          `$target -and
+          [string]`$target.source -ceq "screenshot-steam-web-close-glyph" -and
+          `$foreground -and
+          `$foreground.rect
+        ) {
+          `$script:PersistentReuseCycleOneCloseTarget = `$target
+          `$script:PersistentReuseCycleOneHostRect = `$foreground.rect
         }
         Write-ProbeEvent "probe:web-close-click-target" ([PSCustomObject]@{
           cycle = `$cycle

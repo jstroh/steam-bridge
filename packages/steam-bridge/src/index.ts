@@ -1584,7 +1584,19 @@ export interface OverlayWebPageOptions {
 
 export interface NativeOverlaySessionOptions {
   title?: string;
+  /**
+   * Target presentation rate for the native host. The session timer runs just
+   * ahead of this rate and the Windows D3D11 backend synchronizes Present to
+   * the display's vertical blank. Takes precedence over pumpIntervalMs.
+   */
+  frameRate?: number;
   pumpIntervalMs?: number;
+  /**
+   * Continuously present the retained frame at the session cadence. Useful
+   * for game hosts that must remain visible to desktop-capture software even
+   * while their source frame is static. Defaults to false.
+   */
+  continuousPresent?: boolean;
   clientWidth?: number;
   clientHeight?: number;
   nativeWindowHandle?: Buffer;
@@ -1677,6 +1689,10 @@ export interface NativeOverlaySessionSnapshot {
   nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   macOverlayEnvironment?: MacOverlayEnvironment;
   lastPumpAt?: number;
+  /** Current target presentation rate. */
+  frameRate: number;
+  /** Current native session timer interval. */
+  pumpIntervalMs: number;
   lastError?: unknown;
   nativeSurfaceLeaseGeneration?: number;
   nativeSurfaceOwner?: boolean;
@@ -1690,6 +1706,7 @@ export interface NativeOverlaySession extends CallbackHandle {
   updateFrame(frame: NativeOverlayFrame): void;
   updateSharedTexture(texture: NativeOverlaySharedTexture): void;
   setCursorHidden(hidden: boolean): void;
+  setFrameRate(frameRate: number): void;
   setFullScreen(fullScreen: boolean): void;
   isFullScreen(): boolean;
   isOpen(): boolean;
@@ -8070,11 +8087,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
   const title = options.title ?? "Steam Bridge Native Overlay";
   const backend = resolveNativeOverlayBackend(options);
-  const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
+  let frameRate = resolveNativeOverlayFrameRate(options);
+  let pumpIntervalMs = resolveNativeOverlayPumpIntervalMs(options);
   const clientWidth = normalizeNativeOverlayClientDimension(options.clientWidth);
   const clientHeight = normalizeNativeOverlayClientDimension(options.clientHeight);
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
   const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
+  const continuousPresentRequested = options.continuousPresent === true;
   const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
 
@@ -8145,6 +8164,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       overlayActive,
       overlayWasActive,
       lastOverlayEvent,
+      frameRate,
+      pumpIntervalMs,
       nativeProbeOpen,
       nativeHostOpen,
       fullScreen: fullScreenRequested,
@@ -8236,7 +8257,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const width = normalizeNativeOverlayFrameDimension(frame.width, "frame width");
     const height = normalizeNativeOverlayFrameDimension(frame.height, "frame height");
     native().updateNativeOverlayHostFrame(frame.data, width, height);
-    pump();
+    if (!continuousPresentRequested) {
+      pump();
+    }
   };
 
   const updateSharedTexture = (texture: NativeOverlaySharedTexture): void => {
@@ -8257,12 +8280,26 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       normalizeNativeOverlayFrameDimension(texture.width, "shared texture width"),
       normalizeNativeOverlayFrameDimension(texture.height, "shared texture height")
     );
-    pump();
+    if (!continuousPresentRequested) {
+      pump();
+    }
   };
 
   const setCursorHidden = (hidden: boolean): void => {
     cursorHiddenRequested = Boolean(hidden);
     syncCursorHidden();
+  };
+
+  const setFrameRate = (nextFrameRate: number): void => {
+    const normalizedFrameRate = normalizeNativeOverlayFrameRate(nextFrameRate);
+    const nextPumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(normalizedFrameRate);
+    if (frameRate === normalizedFrameRate && pumpIntervalMs === nextPumpIntervalMs) {
+      return;
+    }
+    frameRate = normalizedFrameRate;
+    pumpIntervalMs = nextPumpIntervalMs;
+    schedulePumpTimer();
+    emitStateChange();
   };
 
   const setFullScreen = (fullScreen: boolean): void => {
@@ -8308,14 +8345,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       emitStateChange();
     });
 
-    pumpTimer = setInterval(() => {
-      try {
-        pump();
-      } catch {
-        // The thrown error is stored in the session snapshot and the session closes itself.
-      }
-    }, pumpIntervalMs);
-    pumpTimer.unref?.();
+    schedulePumpTimer();
   } catch (error) {
     fail(error);
     throw error;
@@ -8328,6 +8358,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     updateFrame,
     updateSharedTexture,
     setCursorHidden,
+    setFrameRate,
     setFullScreen,
     isFullScreen: () => fullScreenRequested,
     isOpen: () => {
@@ -8365,6 +8396,23 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         });
       }
     }
+  }
+
+  function schedulePumpTimer(): void {
+    if (closed) {
+      return;
+    }
+    if (pumpTimer) {
+      clearInterval(pumpTimer);
+    }
+    pumpTimer = setInterval(() => {
+      try {
+        pump();
+      } catch {
+        // The thrown error is stored in the session snapshot and the session closes itself.
+      }
+    }, pumpIntervalMs);
+    pumpTimer.unref?.();
   }
 
   function updateNativeOverlayHostAvailability(): boolean {
@@ -8438,7 +8486,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function syncContinuousPresent(): void {
-    setNativeContinuousPresent(overlayActive || safeBoolean(() => overlayNeedsPresent()));
+    setNativeContinuousPresent(
+      continuousPresentRequested || overlayActive || safeBoolean(() => overlayNeedsPresent())
+    );
   }
 
   function setNativeContinuousPresent(continuous: boolean): void {
@@ -8627,6 +8677,45 @@ function normalizeNativeOverlayClientDimension(value: number | undefined): numbe
     return undefined;
   }
   return Math.max(1, Math.round(value));
+}
+
+function normalizeNativeOverlayFrameRate(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TypeError("Steam Bridge native overlay frame rate must be a positive finite number.");
+  }
+  return Math.max(1, Math.min(240, Math.round(value)));
+}
+
+function normalizeNativeOverlayPumpInterval(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new TypeError("Steam Bridge native overlay pump interval must be a finite number.");
+  }
+  return Math.max(1, Math.round(value));
+}
+
+function nativeOverlayPumpIntervalForFrameRate(frameRate: number): number {
+  // Wake just ahead of the target cadence. Present(1) performs the actual
+  // display synchronization on Windows, so this avoids undershooting rates
+  // such as 60 Hz or 144 Hz due to whole-millisecond timer rounding.
+  return Math.max(1, Math.floor(1000 / frameRate));
+}
+
+function resolveNativeOverlayFrameRate(options: NativeOverlaySessionOptions): number {
+  if (options.frameRate !== undefined) {
+    return normalizeNativeOverlayFrameRate(options.frameRate);
+  }
+  const pumpIntervalMs = normalizeNativeOverlayPumpInterval(options.pumpIntervalMs ?? 33);
+  // Preserve the exact legacy interval in diagnostics. Large test or
+  // low-power intervals can intentionally represent less than one pump per
+  // second, while the explicit frameRate option remains clamped to 1..240.
+  return Math.min(240, 1000 / pumpIntervalMs);
+}
+
+function resolveNativeOverlayPumpIntervalMs(options: NativeOverlaySessionOptions): number {
+  if (options.frameRate !== undefined) {
+    return nativeOverlayPumpIntervalForFrameRate(normalizeNativeOverlayFrameRate(options.frameRate));
+  }
+  return normalizeNativeOverlayPumpInterval(options.pumpIntervalMs ?? 33);
 }
 
 function normalizeNativeOverlayFrameDimension(value: number, label: string): number {
@@ -11419,7 +11508,7 @@ function isOverlayNeedsPresentPollingEnabledForProcess(): boolean {
 
 function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOptions = {}): NativeOverlayPresenter {
   const title = options.title ?? "Steam Bridge Electron Overlay Session";
-  const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
+  const pumpIntervalMs = resolveNativeOverlayPumpIntervalMs(options);
   const startedAt = Date.now();
   let closed = false;
   let session: NativeOverlaySessionInternal | undefined;
@@ -11531,7 +11620,8 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const overlayNeedsPresentPollingEnabled =
         diagnostics?.overlayNeedsPresentPollingEnabled ?? safeBoolean(() => isOverlayNeedsPresentPollingEnabled());
       const active = attached && (overlayActive || overlayNeedsPresent);
-      const fps = Math.round(1000 / pumpIntervalMs);
+      const fps = snapshot?.frameRate ?? resolveNativeOverlayFrameRate(options);
+      const activePumpIntervalMs = snapshot?.pumpIntervalMs ?? pumpIntervalMs;
       const bounds = closed ? undefined : snapshot?.bounds;
       return {
         title,
@@ -11550,7 +11640,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
         idleFps: 0,
         needsPresentFps: fps,
         activeOverlayFps: fps,
-        pollIntervalMs: pumpIntervalMs,
+        pollIntervalMs: activePumpIntervalMs,
         currentFps: attached ? fps : 0,
         pumpCount: snapshot?.pumpCount ?? 0,
         pollCount: 0,

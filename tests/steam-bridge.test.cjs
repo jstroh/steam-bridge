@@ -206,7 +206,7 @@ test("electron overlay compatibility profile keeps explicit Windows in-process G
   assert.equal(appendedSwitches.includes("in-process-gpu"), true);
 });
 
-test("Windows native presenter tracks Electron chrome with a non-activating owned D3D surface", () => {
+test("Windows native presenter parks without activation and accepts input while active", () => {
   const source = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
     "utf8"
@@ -239,9 +239,12 @@ test("Windows native presenter tracks Electron chrome with a non-activating owne
   assert.match(source, /GetAncestor\(foreground, GA_ROOTOWNER\) == parent_hwnd/);
   assert.match(source, /surface\.input_passthrough && !surface\.opaque/);
   assert.match(source, /ex_style &= !WS_EX_TOPMOST/);
-  assert.match(source, /ex_style \|= WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE/);
+  assert.match(source, /ex_style \|= WS_EX_TOOLWINDOW/);
+  assert.match(source, /ex_style \|= WS_EX_NOACTIVATE \| WS_EX_TRANSPARENT/);
+  assert.match(source, /ex_style &= !\(WS_EX_NOACTIVATE \| WS_EX_TRANSPARENT\)/);
   assert.match(source, /if surface\.parent_hwnd\.is_some\(\) \|\| surface\.input_passthrough \{\s*flags \|= SWP_NOACTIVATE/);
-  assert.match(source, /surface\.parent_hwnd\.is_some\(\) \|\| surface\.input_passthrough \{\s*SW_SHOWNOACTIVATE/);
+  assert.match(source, /if surface\.input_passthrough \{\s*SW_SHOWNOACTIVATE\s*\} else \{\s*SW_SHOW/);
+  assert.match(source, /if should_be_visible && !surface\.input_passthrough \{\s*activate_window\(surface\)/);
   assert.match(source, /surface\.presentation_ready = false/);
   assert.match(source, /surface\.opaque && surface\.presentation_ready/);
   assert.match(source, /SetLayeredWindowAttributes\(surface\.hwnd, 0, 0, LWA_ALPHA\)/);
@@ -283,7 +286,7 @@ test("Windows standalone D3D host uses normal chrome without diagnostic menu UI"
   assert.match(source, /surface_has_foreground\(surface\)/);
   assert.match(source, /cursor_is_in_client\(surface\.hwnd\)/);
   assert.match(source, /source_frame_dirty \|\| !surface\.presentation_ready/);
-  assert.match(source, /CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis\(32\)/);
+  assert.match(source, /CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis\(1\)/);
   assert.match(source, /RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis\(250\)/);
   assert.match(source, /last_present_at\.elapsed\(\) >= RETAINED_FRAME_REFRESH_INTERVAL/);
   assert.match(source, /surface\.source_frame_dirty \|\| surface\.continuous_present_requested/);
@@ -15265,6 +15268,63 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     () => session.updateSharedTexture({ handle: Buffer.alloc(8), width: 1, height: 1 }),
     /session is closed/
   );
+});
+
+test("native overlay session retargets its presentation timer by frame rate", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let probeOpen = false;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow() {
+      probeOpen = true;
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(data, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [data, width, height] });
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({
+    pumpIntervalMs: 10000,
+    continuousPresent: true
+  });
+
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  assert.equal(session.snapshot().frameRate, 0.1);
+  assert.equal(session.snapshot().pumpIntervalMs, 10000);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent").map((call) => call.args[0]),
+    [true]
+  );
+  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
+
+  session.updateFrame({ data: Buffer.alloc(4), width: 1, height: 1 });
+  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
+
+  session.setFrameRate(120);
+  assert.equal(session.snapshot().frameRate, 120);
+  assert.equal(session.snapshot().pumpIntervalMs, 8);
+  assert.throws(() => session.setFrameRate(Number.NaN), /positive finite number/);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length > 1);
 });
 
 test("raw native surface diagnostics cannot mutate a managed owner", (t) => {

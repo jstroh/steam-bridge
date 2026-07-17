@@ -115,6 +115,13 @@ from Electron's main thread. Raw activation helpers remain available for
 native diagnostics, but Electron applications should use the managed overlay
 path for product UI.
 
+On Windows, a managed presenter is non-activating and click-through while it
+is parked. When Steam opens an interactive surface, the presenter becomes
+focusable inside the Electron content bounds; after Steam closes, it returns
+to the parked state and restores application focus. This keeps the ordinary
+title bar, menus, minimize, maximize, window drag, and rounded-corner behavior
+owned by the Electron window.
+
 ### Windows game-host mode
 
 Steam renders into a top-level native swap chain on Windows. A Chromium
@@ -145,6 +152,33 @@ in a `finally` block. Steam Bridge copies the pooled texture before the call
 returns, selects the matching high-performance DXGI adapter, preserves the
 source aspect ratio, and presents with a two-buffer flip-discard swap chain.
 `updateFrame()` remains available as a BGRA CPU fallback.
+
+Set `frameRate` to the active display's refresh rate and update it with
+`session.setFrameRate(...)` when the native host moves to another monitor. The
+whole-millisecond session timer wakes just ahead of that cadence; Windows
+`Present(1)` performs the vertical-blank synchronization. Set
+`continuousPresent: true` for game-streaming or desktop-capture hosts that must
+keep exposing a retained frame while the Electron source is static. It is
+`false` by default, and in continuous mode the cadence timer is the sole
+presentation driver so frame uploads cannot double-pump the swap chain.
+
+```ts
+const session = steamworks.overlay.startNativeOverlaySession({
+  clientWidth: 1024,
+  clientHeight: 768,
+  frameRate: 60,
+  continuousPresent: true,
+  onInputEvent(event) {
+    // Forward mapped input to gameWindow.webContents.
+  }
+});
+
+function applyDisplayRate(displayFrequency: number | undefined) {
+  const frameRate = Math.max(1, Math.round(displayFrequency || 60));
+  gameWindow.webContents.setFrameRate(frameRate);
+  session.setFrameRate(frameRate);
+}
+```
 
 The standalone host owns window movement, resize, maximize, minimize,
 fullscreen, focus visibility, rounded-corner clipping, cursor state, and the

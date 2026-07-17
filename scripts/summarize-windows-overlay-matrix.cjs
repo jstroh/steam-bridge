@@ -4549,6 +4549,7 @@ function verifyPersistentCloseProbe(
       lifecycleEvent?.type === "event:callback:overlay-activated" &&
       objectOrEmpty(lifecycleEvent.payload).active === false
   );
+  const baselineCloseTarget = objectOrEmpty(objectOrEmpty(targets[0]?.payload).target);
   const persistentScreenshotPathSets = [];
   sent.forEach((event, index) => {
     const payload = objectOrEmpty(event.payload);
@@ -4573,6 +4574,11 @@ function verifyPersistentCloseProbe(
       const scale = Number(targetScale.value);
       const expectedTarget = expectedWebCloseTarget(panel, objectOrEmpty(target.panel), scale);
       const directGlyphTargetValid = isValidWebCloseGlyphTarget(target);
+      const reusedCycleOneTargetValid = isValidPersistentReuseCycleOneCloseTarget(
+        target,
+        baselineCloseTarget,
+        ordinal
+      );
       const pointer = objectOrEmpty(payload.nativePointerSent);
       const pointerApproach = objectOrEmpty(pointer.approach);
       const approachExpected = ordinal > 1;
@@ -4765,7 +4771,9 @@ function verifyPersistentCloseProbe(
           scale >= 0.5 &&
           scale <= 8 &&
           expectedTarget &&
-          (target.source === "screenshot-steam-web-panel" || directGlyphTargetValid) &&
+          (target.source === "screenshot-steam-web-panel" ||
+            directGlyphTargetValid ||
+            reusedCycleOneTargetValid) &&
           Number(target.x) === expectedTarget.x &&
           Number(target.y) === expectedTarget.y &&
           Number(target.x) >= panel.left &&
@@ -4775,6 +4783,13 @@ function verifyPersistentCloseProbe(
         `${caseName}: persistent input cycle ${ordinal} uses one scale-aware target inside the detected panel`,
         failures
       );
+      if (target.source === "persistent-cycle-one-steam-web-close-glyph") {
+        expect(
+          reusedCycleOneTargetValid,
+          `${caseName}: persistent input cycle ${ordinal} binds its exact cycle-one close target to the same host and fresh screenshot`,
+          failures
+        );
+      }
       expect(
         exactHostTargetValid,
         `${caseName}: persistent input cycle ${ordinal} binds its detected panel and click to the exact lifecycle native host`,
@@ -4878,8 +4893,9 @@ function verifyPersistentCloseProbe(
         const target = objectOrEmpty(objectOrEmpty(targets[index]?.payload).target);
         expect(
           isValidWebCloseGlyphTarget(target) ||
-            target.source === "screenshot-steam-web-panel",
-          `${caseName}: persistent cycle ${index + 1} directly detects or reconstructs the close glyph from its current scale-aware panel geometry`,
+            target.source === "screenshot-steam-web-panel" ||
+            isValidPersistentReuseCycleOneCloseTarget(target, baselineTarget, index + 1),
+          `${caseName}: persistent cycle ${index + 1} directly detects, reconstructs, or exactly reuses the cycle-one close glyph on the unchanged host`,
           failures
         );
       }
@@ -7683,6 +7699,31 @@ function isValidWebCloseGlyphTarget(targetValue) {
   );
 }
 
+function isValidPersistentReuseCycleOneCloseTarget(targetValue, baselineValue, cycle) {
+  const target = objectOrEmpty(targetValue);
+  const baseline = objectOrEmpty(baselineValue);
+  const reuse = objectOrEmpty(target.persistentReuse);
+  return Boolean(
+    Number.isInteger(cycle) &&
+      cycle > 1 &&
+      target.source === "persistent-cycle-one-steam-web-close-glyph" &&
+      isValidWebCloseGlyphTarget(baseline) &&
+      reuse.schema === 1 &&
+      reuse.anchorCycle === 1 &&
+      reuse.cycle === cycle &&
+      reuse.freshScreenshotCaptured === true &&
+      reuse.sameNativeHost === true &&
+      reuse.sameHostRect === true &&
+      Number(target.x) === Number(baseline.x) &&
+      Number(target.y) === Number(baseline.y) &&
+      isDeepStrictEqual(target.panel, baseline.panel) &&
+      isDeepStrictEqual(target.scale, baseline.scale) &&
+      isDeepStrictEqual(target.approach, baseline.approach) &&
+      isDeepStrictEqual(target.insets, baseline.insets) &&
+      isDeepStrictEqual(target.glyph, baseline.glyph)
+  );
+}
+
 function summarizePhysicalScreenshotEvidence(events, caseDir, nativeHostRect) {
   let declaredBoundsCount = 0;
   let readableCount = 0;
@@ -8657,6 +8698,29 @@ function runSelfTest() {
     assert.equal(persistentReuseSummary.cleanup.taskFileGuardOk, true);
     assert.equal(persistentReuseSummary.cleanup.taskFailureStage, "success");
     assert.equal(persistentReuseSummary.cleanup.taskRunnerTerminatedWithoutDone, false);
+    const persistentCycleOneTargetReuseRoot = path.join(
+      tempRoot,
+      "persistent-reuse-cycle-one-close-target"
+    );
+    writeCurrentPersistentReuseFixture(persistentCycleOneTargetReuseRoot, {
+      webCloseGlyphEvidence: true,
+      reuseCycleOneCloseTarget: true
+    });
+    assert.deepEqual(
+      summarizeWindowsOverlayMatrixArtifacts(persistentCycleOneTargetReuseRoot).failures,
+      []
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-cycle-one-close-target-wrong-binding",
+      writeCurrentPersistentReuseFixture,
+      {
+        webCloseGlyphEvidence: true,
+        reuseCycleOneCloseTarget: true,
+        wrongReusedCloseTargetBindingCycle: 2
+      },
+      "binds its exact cycle-one close target to the same host and fresh screenshot"
+    );
     const persistentAlternateCallbackRoot = path.join(
       tempRoot,
       "persistent-reuse-alternate-callback-order"
@@ -13499,6 +13563,17 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     const target = structuredClone(firstTarget);
     target.at = at(baseSecond + 2);
     target.payload.cycle = cycle;
+    if (options.reuseCycleOneCloseTarget && cycle > 1) {
+      target.payload.target.source = "persistent-cycle-one-steam-web-close-glyph";
+      target.payload.target.persistentReuse = {
+        schema: 1,
+        anchorCycle: 1,
+        cycle,
+        freshScreenshotCaptured: true,
+        sameNativeHost: true,
+        sameHostRect: options.wrongReusedCloseTargetBindingCycle === cycle ? false : true
+      };
+    }
     if (options.panelShiftCycle === cycle) {
       const panel = target.payload.target.panel;
       panel.top += 1;

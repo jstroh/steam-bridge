@@ -28,6 +28,35 @@ npm run example:start
 The app writes `steam_appid.txt` for local smoke testing before it initializes
 Steam.
 
+### Windows standalone game host
+
+`createElectronSteamOverlay()` remains the normal product API. A Windows game
+that must keep native title-bar behavior while presenting Steam and Electron
+through one top-level D3D11 swap chain can instead create an offscreen
+`BrowserWindow` with `useSharedTexture: true` and pass every paint event's NT
+handle to `startNativeOverlaySession().updateSharedTexture(...)`. Release the
+Electron texture in a `finally` block immediately after the update returns;
+Steam Bridge has already copied it into bridge-owned storage.
+
+Use the current monitor's `displayFrequency` for both
+`webContents.setFrameRate(...)` and the native session's `frameRate`. Reapply
+both values with `session.setFrameRate(...)` after a `windowChanged` event if
+the host moved to a different display. `continuousPresent: true` is appropriate
+for Parsec, game-streaming, and desktop-capture hosts because it republishes a
+retained frame even when Electron has no new damage. It defaults to `false`;
+when enabled, the cadence timer presents frames and texture uploads do not add
+a second present loop.
+
+The standalone host owns drag, resize, maximize, minimize, fullscreen,
+per-monitor DPI, focus visibility, restored-window corner clipping, and cursor
+state. Map native input through the same aspect-fit rectangle used for
+presentation before forwarding it to the offscreen renderer, and release all
+pressed input on `blur` or `captureLost`. Electron's
+[official shared-texture contract](https://github.com/electron/electron/blob/main/shell/browser/osr/README.md)
+requires opening every event's pooled handle, copying it before release, and
+releasing the pooled texture promptly; the bridge performs that copy
+synchronously inside `updateSharedTexture(...)`.
+
 ## Packaged Smoke Builds
 
 Download release artifacts from a successful `Release` workflow, then package a

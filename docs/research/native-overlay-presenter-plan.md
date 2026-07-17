@@ -2007,6 +2007,24 @@ Chromium flag profiles remain diagnostic comparisons behind the same app-facing
 API; they must not replace D3D11 without broader route, input,
 close/back-to-app, render-health, and crash evidence.
 
+The Windows design now has two deliberately separate D3D11 shapes. Managed
+Electron overlays use a content-bounded owned popup that is
+`WS_EX_NOACTIVATE | WS_EX_TRANSPARENT` only while parked; it removes both flags
+and may activate while Steam is interactive, then returns to passive parking.
+Standalone Electron games use a normal top-level native host and feed it
+offscreen shared textures. That host owns native chrome, geometry, fullscreen,
+focus visibility, cursor state, aspect-fit presentation, and per-display frame
+cadence. `continuousPresent` is an opt-in capture-host policy with one
+timer-owned present loop; Electron texture arrivals update retained source
+state but do not create a competing present loop. D3D11 `Present(1)` remains the
+actual vertical-blank synchronization boundary.
+
+Exact `v0.2.1` is preserved as rejected evidence because its interactive owned
+popup retained `WS_EX_NOACTIVATE`; rendered pixels did not prove a focusable
+Steam surface. The replacement focus contract, close-readiness contract, and
+display-cadence changes require a fresh `v0.2.2` candidate and complete Windows
+receipt. Neither failed tag may be moved or reused.
+
 The remainder of this section preserves the investigation chronologically.
 Statements in early July 2 evidence that call the ordinary Electron hook the
 default or say D3D11 must remain opt-in are historical and superseded by the

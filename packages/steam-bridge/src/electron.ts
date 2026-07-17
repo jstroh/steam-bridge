@@ -34,7 +34,9 @@ export interface ElectronOverlayBounds {
 
 export interface ElectronNativeOverlaySessionOptions {
   title?: string;
+  frameRate?: number;
   pumpIntervalMs?: number;
+  continuousPresent?: boolean;
   nativeWindowHandle?: Buffer;
   getBounds?: () => ElectronOverlayBounds | undefined;
   restoreFocus?: () => void;
