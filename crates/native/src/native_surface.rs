@@ -189,7 +189,11 @@ mod macos {
         fn steam_bridge_macos_free_string(value: *mut i8);
     }
 
-    pub fn open(title: Option<String>) -> Result<(), Error> {
+    pub fn open(
+        title: Option<String>,
+        _client_width: Option<u32>,
+        _client_height: Option<u32>,
+    ) -> Result<(), Error> {
         ensure_main_thread()?;
         close();
 
@@ -350,6 +354,22 @@ mod macos {
         Ok(())
     }
 
+    pub fn set_cursor_hidden(_hidden: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_continuous_present(_continuous: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_full_screen(_full_screen: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn pump() -> Result<(), Error> {
         ensure_main_thread()?;
 
@@ -475,6 +495,12 @@ mod macos {
         });
 
         Ok(())
+    }
+
+    pub fn update_shared_texture(_handle: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+        Err(Error::from_reason(
+            "Electron shared textures are currently supported only by the Windows D3D11 native host",
+        ))
     }
 
     pub fn close() {
@@ -644,6 +670,10 @@ mod macos {
 
     pub fn host_diagnostics_json() -> Option<String> {
         None
+    }
+
+    pub fn drain_input_events_json() -> String {
+        "[]".to_owned()
     }
 
     unsafe fn create_probe_window(title: &str) -> Result<NativeSurface, Error> {
@@ -1106,7 +1136,11 @@ mod macos {
 mod fallback {
     use super::Error;
 
-    pub fn open(_title: Option<String>) -> Result<(), Error> {
+    pub fn open(
+        _title: Option<String>,
+        _client_width: Option<u32>,
+        _client_height: Option<u32>,
+    ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Steam Bridge native overlay probe is not implemented on this platform",
         ))
@@ -1142,8 +1176,34 @@ mod fallback {
         Ok(())
     }
 
+    pub fn set_cursor_hidden(_hidden: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_continuous_present(_continuous: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_full_screen(_full_screen: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn update_frame(_buffer: super::Buffer, _width: u32, _height: u32) -> Result<(), Error> {
         Ok(())
+    }
+
+    pub fn update_shared_texture(
+        _handle: super::Buffer,
+        _width: u32,
+        _height: u32,
+    ) -> Result<(), Error> {
+        Err(Error::from_reason(
+            "Electron shared textures are currently supported only by the Windows D3D11 native host",
+        ))
     }
 
     pub fn close() {}
@@ -1175,6 +1235,10 @@ mod fallback {
     pub fn host_diagnostics_json() -> Option<String> {
         None
     }
+
+    pub fn drain_input_events_json() -> String {
+        "[]".to_owned()
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -1185,6 +1249,7 @@ pub use macos::*;
 #[cfg(target_os = "windows")]
 mod windows {
     use super::{Buffer, Error};
+    use crate::windows_d3d11::WindowsD3d11Renderer;
     use once_cell::sync::Lazy;
     use serde::Serialize;
     use serde_json::json;
@@ -1193,53 +1258,78 @@ mod windows {
     use std::ptr;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use windows_sys::core::{GUID, HRESULT};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-    use windows_sys::Win32::Graphics::Gdi::{ClientToScreen, GetDC, ReleaseDC, HDC};
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
+        DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+        DWMWCP_ROUND, DWMWCP_ROUNDSMALL,
+    };
+    use windows_sys::Win32::Graphics::Gdi::{
+        BeginPaint, ClientToScreen, CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject,
+        EndPaint, GetDC, GetMonitorInfoW, MonitorFromWindow, ReleaseDC, ScreenToClient,
+        SetWindowRgn, HDC, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, RGN_AND,
+    };
     use windows_sys::Win32::Graphics::OpenGL::{
         ChoosePixelFormat, SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
         PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
     };
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-        GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, PeekMessageW, RegisterClassW,
-        SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
-        ShowWindow, TranslateMessage, CS_OWNDC, GWL_EXSTYLE, GWL_STYLE, LWA_ALPHA, MA_NOACTIVATE,
-        MSG, PM_REMOVE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WM_ACTIVATE, WM_ACTIVATEAPP,
-        WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
-        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_SETFOCUS, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
-        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
+    use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, GetCapture, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus,
     };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        AdjustWindowRectEx, CreateCursor, CreateWindowExW, DefWindowProcW, DestroyCursor,
+        DestroyWindow, DispatchMessageW, GetAncestor, GetClientRect, GetCursorPos,
+        GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW, GetWindowPlacement,
+        GetWindowRect, IsIconic, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW,
+        RegisterClassW, SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetTimer,
+        SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
+        TranslateMessage, CS_OWNDC, GA_ROOTOWNER, GWL_EXSTYLE, GWL_STYLE, HCURSOR, IDC_ARROW,
+        LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE, SIZE_MINIMIZED, SM_CXSCREEN, SM_CYSCREEN,
+        SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+        SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WINDOWPLACEMENT,
+        WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE,
+        WM_COMMAND, WM_DPICHANGED, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_KEYDOWN,
+        WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
+        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCDESTROY, WM_PAINT,
+        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETFOCUS, WM_SHOWWINDOW, WM_SIZE, WM_SYSKEYDOWN,
+        WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+        WS_OVERLAPPEDWINDOW, WS_POPUP,
+    };
+
+    type SubclassProc =
+        unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM, usize, usize) -> LRESULT;
+
+    #[link(name = "comctl32")]
+    extern "system" {
+        fn SetWindowSubclass(
+            hwnd: HWND,
+            proc: Option<SubclassProc>,
+            id: usize,
+            reference_data: usize,
+        ) -> i32;
+        fn RemoveWindowSubclass(hwnd: HWND, proc: Option<SubclassProc>, id: usize) -> i32;
+        fn DefSubclassProc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
+    }
 
     type Hglrc = isize;
-    type IUnknownPtr = *mut std::ffi::c_void;
-    type ID3D11DevicePtr = *mut std::ffi::c_void;
-    type ID3D11DeviceContextPtr = *mut std::ffi::c_void;
-    type ID3D11RenderTargetViewPtr = *mut std::ffi::c_void;
-    type IDXGISwapChainPtr = *mut std::ffi::c_void;
 
     const GL_COLOR_BUFFER_BIT: u32 = 0x0000_4000;
-    const D3D_DRIVER_TYPE_HARDWARE: u32 = 1;
-    const D3D_FEATURE_LEVEL_11_0: u32 = 0x0000_B000;
-    const D3D_FEATURE_LEVEL_10_1: u32 = 0x0000_A100;
-    const D3D_FEATURE_LEVEL_10_0: u32 = 0x0000_A000;
-    const D3D11_SDK_VERSION: u32 = 7;
-    const DXGI_FORMAT_R8G8B8A8_UNORM: u32 = 28;
-    const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x0000_0020;
-    const DXGI_SWAP_EFFECT_DISCARD: u32 = 0;
-    const S_OK: HRESULT = 0;
-    const IID_ID3D11_TEXTURE_2D: GUID = GUID {
-        data1: 0x6f15_aaf2,
-        data2: 0xd208,
-        data3: 0x4e89,
-        data4: [0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c],
-    };
-
+    const MK_LBUTTON: u32 = 0x0001;
+    const MK_RBUTTON: u32 = 0x0002;
+    const MK_MBUTTON: u32 = 0x0010;
+    const PARENT_SUBCLASS_ID: usize = 0x5354_4252_4944_4745;
+    const CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis(32);
+    const RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
+    const MODAL_PRESENT_TIMER_ID: usize = 0x5342;
+    const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
+    const VK_TAB_CODE: i32 = 0x09;
+    const VK_SHIFT_CODE: i32 = 0x10;
+    const VK_LEFT_SHIFT_CODE: i32 = 0xA0;
+    const VK_RIGHT_SHIFT_CODE: i32 = 0xA1;
     #[link(name = "opengl32")]
     extern "system" {
         fn glClear(mask: u32);
@@ -1248,174 +1338,6 @@ mod windows {
         fn wglCreateContext(hdc: HDC) -> Hglrc;
         fn wglDeleteContext(context: Hglrc) -> i32;
         fn wglMakeCurrent(hdc: HDC, context: Hglrc) -> i32;
-    }
-
-    #[link(name = "d3d11")]
-    extern "system" {
-        fn D3D11CreateDeviceAndSwapChain(
-            adapter: IUnknownPtr,
-            driver_type: u32,
-            software: isize,
-            flags: u32,
-            feature_levels: *const u32,
-            feature_levels_count: u32,
-            sdk_version: u32,
-            swap_chain_desc: *const DxgiSwapChainDesc,
-            swap_chain: *mut IDXGISwapChainPtr,
-            device: *mut ID3D11DevicePtr,
-            feature_level: *mut u32,
-            immediate_context: *mut ID3D11DeviceContextPtr,
-        ) -> HRESULT;
-    }
-
-    #[repr(C)]
-    struct DxgiRational {
-        numerator: u32,
-        denominator: u32,
-    }
-
-    #[repr(C)]
-    struct DxgiModeDesc {
-        width: u32,
-        height: u32,
-        refresh_rate: DxgiRational,
-        format: u32,
-        scanline_ordering: u32,
-        scaling: u32,
-    }
-
-    #[repr(C)]
-    struct DxgiSampleDesc {
-        count: u32,
-        quality: u32,
-    }
-
-    #[repr(C)]
-    struct DxgiSwapChainDesc {
-        buffer_desc: DxgiModeDesc,
-        sample_desc: DxgiSampleDesc,
-        buffer_usage: u32,
-        buffer_count: u32,
-        output_window: HWND,
-        windowed: i32,
-        swap_effect: u32,
-        flags: u32,
-    }
-
-    #[repr(C)]
-    struct UnknownVtbl {
-        query_interface:
-            unsafe extern "system" fn(IUnknownPtr, *const GUID, *mut IUnknownPtr) -> HRESULT,
-        add_ref: unsafe extern "system" fn(IUnknownPtr) -> u32,
-        release: unsafe extern "system" fn(IUnknownPtr) -> u32,
-    }
-
-    #[repr(C)]
-    struct DxgiSwapChainVtbl {
-        query_interface:
-            unsafe extern "system" fn(IDXGISwapChainPtr, *const GUID, *mut IUnknownPtr) -> HRESULT,
-        add_ref: unsafe extern "system" fn(IDXGISwapChainPtr) -> u32,
-        release: unsafe extern "system" fn(IDXGISwapChainPtr) -> u32,
-        set_private_data: usize,
-        set_private_data_interface: usize,
-        get_private_data: usize,
-        get_parent: usize,
-        get_device: usize,
-        present: unsafe extern "system" fn(IDXGISwapChainPtr, u32, u32) -> HRESULT,
-        get_buffer: unsafe extern "system" fn(
-            IDXGISwapChainPtr,
-            u32,
-            *const GUID,
-            *mut IUnknownPtr,
-        ) -> HRESULT,
-        set_fullscreen_state: usize,
-        get_fullscreen_state: usize,
-        get_desc: usize,
-        resize_buffers:
-            unsafe extern "system" fn(IDXGISwapChainPtr, u32, u32, u32, u32, u32) -> HRESULT,
-    }
-
-    #[repr(C)]
-    struct D3d11DeviceVtbl {
-        query_interface:
-            unsafe extern "system" fn(ID3D11DevicePtr, *const GUID, *mut IUnknownPtr) -> HRESULT,
-        add_ref: unsafe extern "system" fn(ID3D11DevicePtr) -> u32,
-        release: unsafe extern "system" fn(ID3D11DevicePtr) -> u32,
-        create_buffer: usize,
-        create_texture_1d: usize,
-        create_texture_2d: usize,
-        create_texture_3d: usize,
-        create_shader_resource_view: usize,
-        create_unordered_access_view: usize,
-        create_render_target_view: unsafe extern "system" fn(
-            ID3D11DevicePtr,
-            IUnknownPtr,
-            *const std::ffi::c_void,
-            *mut ID3D11RenderTargetViewPtr,
-        ) -> HRESULT,
-    }
-
-    #[repr(C)]
-    struct D3d11DeviceContextVtbl {
-        query_interface: unsafe extern "system" fn(
-            ID3D11DeviceContextPtr,
-            *const GUID,
-            *mut IUnknownPtr,
-        ) -> HRESULT,
-        add_ref: unsafe extern "system" fn(ID3D11DeviceContextPtr) -> u32,
-        release: unsafe extern "system" fn(ID3D11DeviceContextPtr) -> u32,
-        get_device: usize,
-        get_private_data: usize,
-        set_private_data: usize,
-        set_private_data_interface: usize,
-        vs_set_constant_buffers: usize,
-        ps_set_shader_resources: usize,
-        ps_set_shader: usize,
-        ps_set_samplers: usize,
-        vs_set_shader: usize,
-        draw_indexed: usize,
-        draw: usize,
-        map: usize,
-        unmap: usize,
-        ps_set_constant_buffers: usize,
-        ia_set_input_layout: usize,
-        ia_set_vertex_buffers: usize,
-        ia_set_index_buffer: usize,
-        draw_indexed_instanced: usize,
-        draw_instanced: usize,
-        gs_set_constant_buffers: usize,
-        gs_set_shader: usize,
-        ia_set_primitive_topology: usize,
-        vs_set_shader_resources: usize,
-        vs_set_samplers: usize,
-        begin: usize,
-        end: usize,
-        get_data: usize,
-        set_predication: usize,
-        gs_set_shader_resources: usize,
-        gs_set_samplers: usize,
-        om_set_render_targets: usize,
-        om_set_render_targets_and_unordered_access_views: usize,
-        om_set_blend_state: usize,
-        om_set_depth_stencil_state: usize,
-        so_set_targets: usize,
-        draw_auto: usize,
-        draw_indexed_instanced_indirect: usize,
-        draw_instanced_indirect: usize,
-        dispatch: usize,
-        dispatch_indirect: usize,
-        rs_set_state: usize,
-        rs_set_viewports: usize,
-        rs_set_scissor_rects: usize,
-        copy_subresource_region: usize,
-        copy_resource: usize,
-        update_subresource: usize,
-        copy_structure_count: usize,
-        clear_render_target_view: unsafe extern "system" fn(
-            ID3D11DeviceContextPtr,
-            ID3D11RenderTargetViewPtr,
-            *const f32,
-        ),
     }
 
     struct NativeSurface {
@@ -1428,8 +1350,36 @@ mod windows {
         frame: u64,
         input_passthrough: bool,
         opaque: bool,
+        cursor_hidden_requested: bool,
+        cursor_suppressed: bool,
+        cursor_display_count: Option<i32>,
+        transparent_cursor: HCURSOR,
+        continuous_present_requested: bool,
+        full_screen: bool,
+        windowed_style: Option<u32>,
+        windowed_placement: Option<WINDOWPLACEMENT>,
+        presentation_ready: bool,
+        requested_visible: bool,
         visible: bool,
+        bounds_override: Option<RECT>,
+        parent_subclass_state: Option<*mut ParentWindowSubclassState>,
         last_parent_client_bounds: Option<(i32, i32, i32, i32)>,
+        source_frame: Option<FrameUpload>,
+        source_frame_dirty: bool,
+        last_present_at: Option<Instant>,
+        present_after_modal_loop: bool,
+        overlay_shortcut_down: bool,
+    }
+
+    struct ParentWindowSubclassState {
+        popup_hwnd: HWND,
+        content_insets: RECT,
+    }
+
+    struct FrameUpload {
+        width: i32,
+        height: i32,
+        data: Vec<u8>,
     }
 
     enum WindowsSurfaceRenderer {
@@ -1438,14 +1388,9 @@ mod windows {
             hglrc: Hglrc,
         },
         D3d11 {
-            device: ID3D11DevicePtr,
-            context: ID3D11DeviceContextPtr,
-            swap_chain: IDXGISwapChainPtr,
-            render_target: ID3D11RenderTargetViewPtr,
-            width: i32,
-            height: i32,
-            feature_level: u32,
-            last_present: HRESULT,
+            renderer: WindowsD3d11Renderer,
+            last_frame_upload: bool,
+            frame_upload_failures: u64,
         },
     }
 
@@ -1476,29 +1421,23 @@ mod windows {
 
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum WindowsHostStyle {
-        PopupLayered,
-        Control,
+        OwnedPopup,
+        Standalone,
     }
 
     impl WindowsHostStyle {
         fn from_env(attached: bool) -> Self {
-            if !attached {
-                return Self::PopupLayered;
-            }
-
-            match env::var("STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE") {
-                Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
-                    "control" | "overlapped" | "plain" => Self::Control,
-                    _ => Self::PopupLayered,
-                },
-                Err(_) => Self::PopupLayered,
+            if attached {
+                Self::OwnedPopup
+            } else {
+                Self::Standalone
             }
         }
 
         fn as_str(self) -> &'static str {
             match self {
-                Self::PopupLayered => "popup-layered",
-                Self::Control => "control",
+                Self::OwnedPopup => "owned-popup",
+                Self::Standalone => "standalone",
             }
         }
     }
@@ -1510,6 +1449,8 @@ mod windows {
     static WINDOW_CLASS_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
     static WINDOW_MESSAGE_DIAGNOSTICS: Lazy<Mutex<WindowMessageDiagnostics>> =
         Lazy::new(|| Mutex::new(WindowMessageDiagnostics::default()));
+    static WINDOW_INPUT_EVENTS: Lazy<Mutex<Vec<WindowInputEvent>>> =
+        Lazy::new(|| Mutex::new(Vec::new()));
 
     #[derive(Clone, Default, Serialize)]
     struct WindowMessageCounters {
@@ -1527,6 +1468,7 @@ mod windows {
         activate: u64,
         activate_app: u64,
         mouse_activate: u64,
+        command: u64,
     }
 
     #[derive(Clone, Serialize)]
@@ -1545,10 +1487,34 @@ mod windows {
         recent: Vec<WindowMessageEvent>,
     }
 
-    pub fn open(title: Option<String>) -> Result<(), Error> {
+    #[derive(Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WindowInputEvent {
+        kind: &'static str,
+        message: u32,
+        wparam: u64,
+        lparam: i64,
+        x: Option<i32>,
+        y: Option<i32>,
+        delta_y: Option<i32>,
+        client_width: i32,
+        client_height: i32,
+    }
+
+    pub fn open(
+        title: Option<String>,
+        client_width: Option<u32>,
+        client_height: Option<u32>,
+    ) -> Result<(), Error> {
         close();
         let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
-        let surface = unsafe { create_surface(&title, None, false)? };
+        let client_size = client_width.zip(client_height).map(|(width, height)| {
+            (
+                width.max(1).min(i32::MAX as u32) as i32,
+                height.max(1).min(i32::MAX as u32) as i32,
+            )
+        });
+        let surface = unsafe { create_surface(&title, None, false, client_size)? };
         *SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned") = Some(surface);
@@ -1570,6 +1536,7 @@ mod windows {
                 "Steam Bridge Native Overlay Host",
                 Some(parent_handle as HWND),
                 true,
+                None,
             )?
         };
         *SURFACE
@@ -1593,6 +1560,7 @@ mod windows {
                 "Steam Bridge Native Overlay Host",
                 Some(parent_handle as HWND),
                 false,
+                None,
             )?
         };
         *SURFACE
@@ -1604,11 +1572,11 @@ mod windows {
 
     pub fn show() -> Result<(), Error> {
         with_surface(|surface| unsafe {
-            show_surface(surface);
-            surface.visible = true;
+            surface.requested_visible = true;
             update_window_frame(surface);
             sync_window_style(surface);
-            if !surface.input_passthrough {
+            sync_surface_visibility(surface);
+            if surface.parent_hwnd.is_none() && surface.visible && !surface.input_passthrough {
                 activate_window(surface);
             }
         })
@@ -1616,8 +1584,36 @@ mod windows {
 
     pub fn hide() -> Result<(), Error> {
         with_surface(|surface| unsafe {
-            ShowWindow(surface.hwnd, SW_HIDE);
+            surface.requested_visible = false;
+            hide_window_without_activation(surface.hwnd);
             surface.visible = false;
+            surface.presentation_ready = false;
+        })
+    }
+
+    pub fn set_bounds(x: i32, y: i32, width: u32, height: u32) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            let width = width.max(1).min(i32::MAX as u32) as i32;
+            let height = height.max(1).min(i32::MAX as u32) as i32;
+            let next_bounds = RECT {
+                left: x,
+                top: y,
+                right: x.saturating_add(width),
+                bottom: y.saturating_add(height),
+            };
+            let bounds_changed = surface.bounds_override.as_ref().map_or(true, |bounds| {
+                bounds.left != next_bounds.left
+                    || bounds.top != next_bounds.top
+                    || bounds.right != next_bounds.right
+                    || bounds.bottom != next_bounds.bottom
+            });
+            surface.bounds_override = Some(next_bounds);
+            if bounds_changed {
+                surface.presentation_ready = false;
+                apply_window_style(surface);
+            }
+            surface.last_parent_client_bounds = None;
+            update_window_frame(surface);
         })
     }
 
@@ -1628,7 +1624,8 @@ mod windows {
             }
             surface.input_passthrough = pass_through;
             sync_window_style(surface);
-            if !pass_through {
+            sync_surface_visibility(surface);
+            if surface.parent_hwnd.is_none() && surface.visible && !pass_through {
                 activate_window(surface);
             }
         })
@@ -1640,22 +1637,179 @@ mod windows {
                 return;
             }
             surface.opaque = opaque;
+            if opaque {
+                surface.presentation_ready = false;
+                surface.source_frame = None;
+                if let WindowsSurfaceRenderer::D3d11 {
+                    last_frame_upload, ..
+                } = &mut surface.renderer
+                {
+                    *last_frame_upload = false;
+                }
+            }
             sync_window_style(surface);
+            sync_surface_visibility(surface);
         })
     }
 
-    pub fn pump() -> Result<(), Error> {
+    pub fn set_cursor_hidden(hidden: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            surface.cursor_hidden_requested = hidden;
+            sync_cursor_visibility(surface);
+        })
+    }
+
+    pub fn set_continuous_present(continuous: bool) -> Result<(), Error> {
+        with_surface(|surface| {
+            if surface.continuous_present_requested != continuous {
+                surface.continuous_present_requested = continuous;
+                // Steam composites its UI into the presented backbuffer. When
+                // continuous presentation starts or stops, upload the clean
+                // Electron frame so Steam pixels cannot become retained input.
+                surface.source_frame_dirty = true;
+            }
+        })
+    }
+
+    pub fn set_full_screen(full_screen: bool) -> Result<(), Error> {
         let mut guard = SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned");
         let Some(surface) = guard.as_mut() else {
             return Ok(());
         };
+        if surface.parent_hwnd.is_some() || surface.full_screen == full_screen {
+            return Ok(());
+        }
+
+        unsafe {
+            if full_screen {
+                let mut placement: WINDOWPLACEMENT = mem::zeroed();
+                placement.length = mem::size_of::<WINDOWPLACEMENT>() as u32;
+                let monitor = MonitorFromWindow(surface.hwnd, MONITOR_DEFAULTTONEAREST);
+                let mut monitor_info: MONITORINFO = mem::zeroed();
+                monitor_info.cbSize = mem::size_of::<MONITORINFO>() as u32;
+                if GetWindowPlacement(surface.hwnd, &mut placement) == 0
+                    || monitor.is_null()
+                    || GetMonitorInfoW(monitor, &mut monitor_info) == 0
+                {
+                    return Err(Error::from_reason(
+                        "Failed to inspect the native overlay host before fullscreen",
+                    ));
+                }
+
+                let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
+                surface.windowed_style = Some(style);
+                surface.windowed_placement = Some(placement);
+                SetWindowLongPtrW(
+                    surface.hwnd,
+                    GWL_STYLE,
+                    (style & !WS_OVERLAPPEDWINDOW) as isize,
+                );
+                let rect = monitor_info.rcMonitor;
+                if SetWindowPos(
+                    surface.hwnd,
+                    ptr::null_mut(),
+                    rect.left,
+                    rect.top,
+                    (rect.right - rect.left).max(1),
+                    (rect.bottom - rect.top).max(1),
+                    SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+                ) == 0
+                {
+                    SetWindowLongPtrW(surface.hwnd, GWL_STYLE, style as isize);
+                    SetWindowPos(
+                        surface.hwnd,
+                        ptr::null_mut(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE
+                            | SWP_NOSIZE
+                            | SWP_NOOWNERZORDER
+                            | SWP_NOZORDER
+                            | SWP_FRAMECHANGED,
+                    );
+                    surface.windowed_style = None;
+                    surface.windowed_placement = None;
+                    return Err(Error::from_reason(
+                        "Failed to resize the native overlay host for fullscreen",
+                    ));
+                }
+            } else {
+                let style = surface
+                    .windowed_style
+                    .unwrap_or(WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+                SetWindowLongPtrW(surface.hwnd, GWL_STYLE, style as isize);
+                let placement_restored = if let Some(mut placement) = surface.windowed_placement {
+                    placement.length = mem::size_of::<WINDOWPLACEMENT>() as u32;
+                    SetWindowPlacement(surface.hwnd, &placement) != 0
+                } else {
+                    true
+                };
+                let frame_refreshed = SetWindowPos(
+                    surface.hwnd,
+                    ptr::null_mut(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+                ) != 0;
+                if !placement_restored || !frame_refreshed {
+                    return Err(Error::from_reason(
+                        "Failed to restore the native overlay host from fullscreen",
+                    ));
+                }
+                surface.windowed_style = None;
+                surface.windowed_placement = None;
+            }
+        }
+
+        surface.full_screen = full_screen;
+        unsafe {
+            set_window_corner_preference(surface.hwnd, full_screen);
+        }
+        surface.source_frame_dirty = true;
+        if surface.visible {
+            unsafe {
+                render_surface(surface)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn pump() -> Result<(), Error> {
+        let hwnd = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .map(|surface| surface.hwnd);
+        let Some(hwnd) = hwnd else {
+            return Ok(());
+        };
+
+        unsafe {
+            // Dispatching SC_SIZE/SC_MOVE enters a nested Windows modal loop.
+            // Do not hold the surface lock across it: WM_SIZE/WM_PAINT must be
+            // able to repaint the retained frame while the user is dragging.
+            pump_messages(hwnd);
+        }
+
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut().filter(|surface| surface.hwnd == hwnd) else {
+            return Ok(());
+        };
 
         let result = unsafe {
-            pump_messages(surface.hwnd);
             update_window_frame(surface);
-            if surface.visible {
+            sync_cursor_visibility(surface);
+            poll_overlay_shortcut(surface);
+            let present_after_modal_loop = mem::take(&mut surface.present_after_modal_loop);
+            if surface.visible && (present_after_modal_loop || surface_needs_render(surface)) {
                 render_surface(surface)
             } else {
                 Ok(())
@@ -1676,7 +1830,79 @@ mod windows {
         Ok(())
     }
 
-    pub fn update_frame(_buffer: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+    pub fn update_frame(buffer: Buffer, width: u32, height: u32) -> Result<(), Error> {
+        let width = width.max(1).min(i32::MAX as u32) as i32;
+        let height = height.max(1).min(i32::MAX as u32) as i32;
+        let expected_len = width as usize * height as usize * 4;
+        if buffer.len() < expected_len {
+            return Err(Error::from_reason(format!(
+                "Windows native overlay frame needs {expected_len} BGRA bytes, received {}",
+                buffer.len()
+            )));
+        }
+
+        with_surface(|surface| {
+            surface.source_frame = Some(FrameUpload {
+                width,
+                height,
+                data: buffer[..expected_len].to_vec(),
+            });
+            surface.source_frame_dirty = true;
+        })
+    }
+
+    pub fn update_shared_texture(
+        handle_buffer: Buffer,
+        width: u32,
+        height: u32,
+    ) -> Result<(), Error> {
+        let handle_size = mem::size_of::<usize>();
+        if handle_buffer.len() < handle_size {
+            return Err(Error::from_reason(format!(
+                "Windows shared texture handle needs {handle_size} bytes, received {}",
+                handle_buffer.len()
+            )));
+        }
+        let mut handle_bytes = [0_u8; mem::size_of::<usize>()];
+        handle_bytes.copy_from_slice(&handle_buffer[..handle_size]);
+        let handle = usize::from_ne_bytes(handle_bytes);
+
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let surface = guard
+            .as_mut()
+            .ok_or_else(|| Error::from_reason("Native overlay host is not open"))?;
+        let hwnd = surface.hwnd;
+        match &mut surface.renderer {
+            WindowsSurfaceRenderer::D3d11 {
+                renderer,
+                last_frame_upload,
+                ..
+            } => unsafe {
+                if renderer
+                    .import_shared_texture(handle, width.max(1), height.max(1))
+                    .is_err()
+                {
+                    renderer
+                        .switch_to_shared_texture_adapter(
+                            hwnd.cast(),
+                            handle,
+                            width.max(1),
+                            height.max(1),
+                        )
+                        .map_err(Error::from_reason)?;
+                }
+                *last_frame_upload = true;
+            },
+            WindowsSurfaceRenderer::OpenGl { .. } => {
+                return Err(Error::from_reason(
+                    "Electron shared textures require the Windows D3D11 native host backend",
+                ));
+            }
+        }
+        surface.source_frame = None;
+        surface.source_frame_dirty = false;
         Ok(())
     }
 
@@ -1767,7 +1993,21 @@ mod windows {
                     "exStyle": format!("0x{ex_style:08X}"),
                     "inputPassthrough": surface.input_passthrough,
                     "opaque": surface.opaque,
+                    "cursorHiddenRequested": surface.cursor_hidden_requested,
+                    "cursorSuppressed": surface.cursor_suppressed,
+                    "cursorDisplayCount": surface.cursor_display_count,
+                    "continuousPresentRequested": surface.continuous_present_requested,
+                    "fullScreen": surface.full_screen,
+                    "presentationReady": surface.presentation_ready,
+                    "requestedVisible": surface.requested_visible,
                     "visible": surface.visible,
+                    "parentAllowsSurface": parent_allows_surface(surface),
+                    "sourceFrame": surface.source_frame.as_ref().map(|frame| json!({
+                        "width": frame.width,
+                        "height": frame.height,
+                        "bytes": frame.data.len(),
+                    })),
+                    "sourceFrameDirty": surface.source_frame_dirty,
                     "frame": surface.frame,
                     "rect": rect,
                     "parentRect": parent_rect,
@@ -1777,6 +2017,15 @@ mod windows {
                 .to_string(),
             )
         }
+    }
+
+    pub fn drain_input_events_json() -> String {
+        let events = mem::take(
+            &mut *WINDOW_INPUT_EVENTS
+                .lock()
+                .expect("Steam overlay window input event lock poisoned"),
+        );
+        serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_owned())
     }
 
     fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {
@@ -1812,37 +2061,54 @@ mod windows {
         title: &str,
         parent_hwnd: Option<HWND>,
         initial_input_passthrough: bool,
+        standalone_client_size: Option<(i32, i32)>,
     ) -> Result<NativeSurface, Error> {
         ensure_window_class()?;
         reset_window_message_diagnostics();
         let title = wide_string(title);
         let class_name = window_class_name();
-        let parent_rect = parent_hwnd.and_then(read_client_rect_in_screen);
-        let (x, y, width, height) = parent_rect
-            .map(|rect| {
-                (
-                    rect.left,
-                    rect.top,
-                    (rect.right - rect.left).max(1),
-                    (rect.bottom - rect.top).max(1),
-                )
-            })
-            .unwrap_or((100, 100, 960, 540));
         let backend = WindowsNativeBackend::from_env();
         let host_style = WindowsHostStyle::from_env(parent_hwnd.is_some());
-        let input_passthrough = parent_hwnd.is_some()
-            && host_style != WindowsHostStyle::Control
-            && initial_input_passthrough;
-        let ex_style = base_ex_style(parent_hwnd.is_some(), input_passthrough, host_style);
-        let style = if parent_hwnd.is_some() && host_style == WindowsHostStyle::PopupLayered {
+        let input_passthrough = parent_hwnd.is_some() && initial_input_passthrough;
+        let ex_style = base_ex_style(parent_hwnd.is_some(), input_passthrough);
+        let style = if parent_hwnd.is_some() {
             WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
         } else {
             WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
         };
-        let owner = if parent_hwnd.is_some() && host_style == WindowsHostStyle::PopupLayered {
-            parent_hwnd.unwrap_or(ptr::null_mut())
+        let owner = parent_hwnd.unwrap_or(ptr::null_mut());
+        let parent_rect = parent_hwnd.and_then(read_client_rect_in_screen);
+        let (x, y, width, height) = if let Some(rect) = parent_rect {
+            (
+                rect.left,
+                rect.top,
+                (rect.right - rect.left).max(1),
+                (rect.bottom - rect.top).max(1),
+            )
+        } else if let Some((client_width, client_height)) = standalone_client_size {
+            let mut adjusted = RECT {
+                left: 0,
+                top: 0,
+                right: client_width.max(1),
+                bottom: client_height.max(1),
+            };
+            if AdjustWindowRectEx(&mut adjusted, style, 0, ex_style) == 0 {
+                return Err(Error::from_reason(
+                    "Failed to size the Windows native overlay client area",
+                ));
+            }
+            let width = (adjusted.right - adjusted.left).max(1);
+            let height = (adjusted.bottom - adjusted.top).max(1);
+            let screen_width = GetSystemMetrics(SM_CXSCREEN).max(width);
+            let screen_height = GetSystemMetrics(SM_CYSCREEN).max(height);
+            (
+                ((screen_width - width) / 2).max(0),
+                ((screen_height - height) / 2).max(0),
+                width,
+                height,
+            )
         } else {
-            ptr::null_mut()
+            (100, 100, 960, 540)
         };
         let hwnd = CreateWindowExW(
             ex_style,
@@ -1863,6 +2129,16 @@ mod windows {
                 "Failed to create Windows native overlay host window",
             ));
         }
+        if parent_hwnd.is_none() {
+            let transitions_disabled = 1i32;
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+                &transitions_disabled as *const i32 as *const std::ffi::c_void,
+                mem::size_of::<i32>() as u32,
+            );
+            set_window_corner_preference(hwnd, false);
+        }
 
         let renderer = match create_renderer(hwnd, backend, width, height) {
             Ok(renderer) => renderer,
@@ -1872,6 +2148,17 @@ mod windows {
             }
         };
 
+        let and_mask = [0xFF_u8; 128];
+        let xor_mask = [0_u8; 128];
+        let transparent_cursor = CreateCursor(
+            GetModuleHandleW(ptr::null()),
+            0,
+            0,
+            32,
+            32,
+            and_mask.as_ptr().cast(),
+            xor_mask.as_ptr().cast(),
+        );
         let mut surface = NativeSurface {
             instance_generation: NEXT_SURFACE_INSTANCE_GENERATION
                 .fetch_add(1, Ordering::Relaxed)
@@ -1883,16 +2170,57 @@ mod windows {
             renderer,
             frame: 0,
             input_passthrough,
-            opaque: parent_hwnd.is_none()
-                || !input_passthrough
-                || host_style == WindowsHostStyle::Control,
-            visible: true,
+            opaque: parent_hwnd.is_none() || !input_passthrough,
+            cursor_hidden_requested: false,
+            cursor_suppressed: false,
+            cursor_display_count: None,
+            transparent_cursor,
+            continuous_present_requested: false,
+            full_screen: false,
+            windowed_style: None,
+            windowed_placement: None,
+            presentation_ready: false,
+            requested_visible: parent_hwnd.is_none(),
+            visible: false,
+            bounds_override: None,
+            parent_subclass_state: None,
             last_parent_client_bounds: None,
+            source_frame: None,
+            source_frame_dirty: true,
+            last_present_at: None,
+            present_after_modal_loop: false,
+            overlay_shortcut_down: false,
         };
+        if let Some(parent_hwnd) = parent_hwnd {
+            let subclass_state = Box::into_raw(Box::new(ParentWindowSubclassState {
+                popup_hwnd: hwnd,
+                content_insets: RECT {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                },
+            }));
+            if SetWindowSubclass(
+                parent_hwnd,
+                Some(parent_window_subclass_proc),
+                PARENT_SUBCLASS_ID,
+                subclass_state as usize,
+            ) == 0
+            {
+                drop(Box::from_raw(subclass_state));
+                release_renderer(surface.renderer, surface.hwnd);
+                DestroyWindow(surface.hwnd);
+                return Err(Error::from_reason(
+                    "Failed to observe the Electron parent window lifecycle",
+                ));
+            }
+            surface.parent_subclass_state = Some(subclass_state);
+        }
         sync_window_style(&mut surface);
-        show_surface(&surface);
         update_window_frame(&mut surface);
-        if !surface.input_passthrough {
+        sync_surface_visibility(&mut surface);
+        if surface.parent_hwnd.is_none() && surface.visible && !surface.input_passthrough {
             activate_window(&surface);
         }
         Ok(surface)
@@ -1905,41 +2233,65 @@ mod windows {
         }
         let width = (rect.right - rect.left).max(1);
         let height = (rect.bottom - rect.top).max(1);
-        let seconds = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_millis() as f32 / 1000.0)
-            .unwrap_or(0.0);
-        let wave = (seconds * 1.7).sin() * 0.5 + 0.5;
         let color = if surface.opaque {
-            [0.05 + wave * 0.10, 0.08, 0.14 + wave * 0.08, 1.0]
+            [0.0, 0.0, 0.0, 1.0]
         } else {
             [0.0, 0.0, 0.0, 0.0]
         };
+        let source_frame = surface.source_frame.as_ref();
+        let upload_source_frame =
+            surface.source_frame_dirty || surface.continuous_present_requested;
 
         match &mut surface.renderer {
             WindowsSurfaceRenderer::OpenGl { hdc, hglrc } => {
                 render_opengl(*hdc, *hglrc, width, height, color)?
             }
             WindowsSurfaceRenderer::D3d11 {
-                device,
-                context,
-                swap_chain,
-                render_target,
-                width: render_width,
-                height: render_height,
-                last_present,
-                ..
+                renderer,
+                last_frame_upload,
+                frame_upload_failures,
             } => {
-                if *render_width != width || *render_height != height {
-                    resize_d3d11_render_target(*device, *swap_chain, render_target, width, height)?;
-                    *render_width = width;
-                    *render_height = height;
+                renderer
+                    .resize(width as u32, height as u32)
+                    .map_err(Error::from_reason)?;
+                if upload_source_frame {
+                    if let Some(frame) = source_frame {
+                        match renderer.upload_cpu_frame(
+                            &frame.data,
+                            frame.width as u32,
+                            frame.height as u32,
+                        ) {
+                            Ok(()) => *last_frame_upload = true,
+                            Err(error) => {
+                                *last_frame_upload = false;
+                                *frame_upload_failures = frame_upload_failures.saturating_add(1);
+                                return Err(Error::from_reason(error));
+                            }
+                        }
+                    }
                 }
-                *last_present = render_d3d11(*context, *swap_chain, *render_target, color)?;
+                renderer.render(color).map_err(Error::from_reason)?;
             }
         }
 
         surface.frame = surface.frame.wrapping_add(1);
+        surface.source_frame_dirty = matches!(
+            &surface.renderer,
+            WindowsSurfaceRenderer::D3d11 {
+                last_frame_upload: false,
+                ..
+            }
+        ) && surface.source_frame.is_some();
+        surface.last_present_at = Some(Instant::now());
+        let has_required_frame = matches!(&surface.renderer, WindowsSurfaceRenderer::OpenGl { .. })
+            || matches!(
+                &surface.renderer,
+                WindowsSurfaceRenderer::D3d11 { renderer, .. } if renderer.has_source()
+            );
+        if !surface.presentation_ready && has_required_frame {
+            surface.presentation_ready = true;
+            apply_window_style(surface);
+        }
         Ok(())
     }
 
@@ -2001,79 +2353,15 @@ mod windows {
         width: i32,
         height: i32,
     ) -> Result<WindowsSurfaceRenderer, Error> {
-        let swap_chain_desc = DxgiSwapChainDesc {
-            buffer_desc: DxgiModeDesc {
-                width: width.max(1) as u32,
-                height: height.max(1) as u32,
-                refresh_rate: DxgiRational {
-                    numerator: 0,
-                    denominator: 1,
-                },
-                format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                scanline_ordering: 0,
-                scaling: 0,
-            },
-            sample_desc: DxgiSampleDesc {
-                count: 1,
-                quality: 0,
-            },
-            buffer_usage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-            buffer_count: 1,
-            output_window: hwnd,
-            windowed: 1,
-            swap_effect: DXGI_SWAP_EFFECT_DISCARD,
-            flags: 0,
-        };
-        let feature_levels = [
-            D3D_FEATURE_LEVEL_11_0,
-            D3D_FEATURE_LEVEL_10_1,
-            D3D_FEATURE_LEVEL_10_0,
-        ];
-        let mut swap_chain: IDXGISwapChainPtr = ptr::null_mut();
-        let mut device: ID3D11DevicePtr = ptr::null_mut();
-        let mut feature_level = 0;
-        let mut context: ID3D11DeviceContextPtr = ptr::null_mut();
-        let hr = D3D11CreateDeviceAndSwapChain(
-            ptr::null_mut(),
-            D3D_DRIVER_TYPE_HARDWARE,
-            0,
-            0,
-            feature_levels.as_ptr(),
-            feature_levels.len() as u32,
-            D3D11_SDK_VERSION,
-            &swap_chain_desc,
-            &mut swap_chain,
-            &mut device,
-            &mut feature_level,
-            &mut context,
-        );
-        if failed(hr) || swap_chain.is_null() || device.is_null() || context.is_null() {
-            release_unknown(context);
-            release_unknown(device);
-            release_unknown(swap_chain);
-            return Err(Error::from_reason(format!(
-                "Failed to create Windows native overlay D3D11 swapchain: {}",
-                hresult_hex(hr)
-            )));
-        }
-
-        let mut render_target = ptr::null_mut();
-        if let Err(error) = create_d3d11_render_target(device, swap_chain, &mut render_target) {
-            release_unknown(context);
-            release_unknown(device);
-            release_unknown(swap_chain);
-            return Err(error);
-        }
-
         Ok(WindowsSurfaceRenderer::D3d11 {
-            device,
-            context,
-            swap_chain,
-            render_target,
-            width: width.max(1),
-            height: height.max(1),
-            feature_level,
-            last_present: S_OK,
+            renderer: WindowsD3d11Renderer::new(
+                hwnd.cast(),
+                width.max(1) as u32,
+                height.max(1) as u32,
+            )
+            .map_err(Error::from_reason)?,
+            last_frame_upload: false,
+            frame_upload_failures: 0,
         })
     }
 
@@ -2097,95 +2385,6 @@ mod windows {
         Ok(())
     }
 
-    unsafe fn render_d3d11(
-        context: ID3D11DeviceContextPtr,
-        swap_chain: IDXGISwapChainPtr,
-        render_target: ID3D11RenderTargetViewPtr,
-        color: [f32; 4],
-    ) -> Result<HRESULT, Error> {
-        if context.is_null() || swap_chain.is_null() || render_target.is_null() {
-            return Err(Error::from_reason(
-                "Windows native overlay D3D11 renderer was not initialized",
-            ));
-        }
-        ((*d3d11_context_vtbl(context)).clear_render_target_view)(
-            context,
-            render_target,
-            color.as_ptr(),
-        );
-        let hr = ((*dxgi_swap_chain_vtbl(swap_chain)).present)(swap_chain, 1, 0);
-        if failed(hr) {
-            return Err(Error::from_reason(format!(
-                "Windows native overlay D3D11 Present failed: {}",
-                hresult_hex(hr)
-            )));
-        }
-        Ok(hr)
-    }
-
-    unsafe fn resize_d3d11_render_target(
-        device: ID3D11DevicePtr,
-        swap_chain: IDXGISwapChainPtr,
-        render_target: &mut ID3D11RenderTargetViewPtr,
-        width: i32,
-        height: i32,
-    ) -> Result<(), Error> {
-        release_unknown(*render_target);
-        *render_target = ptr::null_mut();
-        let hr = ((*dxgi_swap_chain_vtbl(swap_chain)).resize_buffers)(
-            swap_chain,
-            0,
-            width.max(1) as u32,
-            height.max(1) as u32,
-            DXGI_FORMAT_R8G8B8A8_UNORM,
-            0,
-        );
-        if failed(hr) {
-            return Err(Error::from_reason(format!(
-                "Windows native overlay D3D11 ResizeBuffers failed: {}",
-                hresult_hex(hr)
-            )));
-        }
-        create_d3d11_render_target(device, swap_chain, render_target)
-    }
-
-    unsafe fn create_d3d11_render_target(
-        device: ID3D11DevicePtr,
-        swap_chain: IDXGISwapChainPtr,
-        render_target: &mut ID3D11RenderTargetViewPtr,
-    ) -> Result<(), Error> {
-        let mut back_buffer: IUnknownPtr = ptr::null_mut();
-        let hr = ((*dxgi_swap_chain_vtbl(swap_chain)).get_buffer)(
-            swap_chain,
-            0,
-            &IID_ID3D11_TEXTURE_2D,
-            &mut back_buffer,
-        );
-        if failed(hr) || back_buffer.is_null() {
-            return Err(Error::from_reason(format!(
-                "Windows native overlay D3D11 GetBuffer failed: {}",
-                hresult_hex(hr)
-            )));
-        }
-
-        let hr = ((*d3d11_device_vtbl(device)).create_render_target_view)(
-            device,
-            back_buffer,
-            ptr::null(),
-            render_target,
-        );
-        release_unknown(back_buffer);
-        if failed(hr) || render_target.is_null() {
-            release_unknown(*render_target);
-            *render_target = ptr::null_mut();
-            return Err(Error::from_reason(format!(
-                "Windows native overlay D3D11 CreateRenderTargetView failed: {}",
-                hresult_hex(hr)
-            )));
-        }
-        Ok(())
-    }
-
     unsafe fn release_renderer(renderer: WindowsSurfaceRenderer, hwnd: HWND) {
         match renderer {
             WindowsSurfaceRenderer::OpenGl { hdc, hglrc } => {
@@ -2197,18 +2396,7 @@ mod windows {
                     ReleaseDC(hwnd, hdc);
                 }
             }
-            WindowsSurfaceRenderer::D3d11 {
-                render_target,
-                context,
-                device,
-                swap_chain,
-                ..
-            } => {
-                release_unknown(render_target);
-                release_unknown(context);
-                release_unknown(device);
-                release_unknown(swap_chain);
-            }
+            WindowsSurfaceRenderer::D3d11 { .. } => {}
         }
     }
 
@@ -2218,118 +2406,259 @@ mod windows {
                 "backend": "windows-opengl",
             }),
             WindowsSurfaceRenderer::D3d11 {
-                width,
-                height,
-                feature_level,
-                last_present,
-                ..
+                renderer,
+                last_frame_upload,
+                frame_upload_failures,
             } => json!({
                 "backend": "windows-d3d11",
-                "width": width,
-                "height": height,
-                "featureLevel": format!("0x{feature_level:04X}"),
-                "lastPresent": hresult_hex(*last_present),
+                "width": renderer.width(),
+                "height": renderer.height(),
+                "format": "bgra8-unorm",
+                "presentationMode": "flip-discard",
+                "bufferCount": 2,
+                "gdiCompatible": false,
+                "featureLevel": format!("0x{:04X}", renderer.feature_level()),
+                "adapter": renderer.adapter_name(),
+                "lastPresent": format!("0x{:08X}", renderer.last_present() as u32),
+                "lastFrameUpload": last_frame_upload,
+                "frameUploadFailures": frame_upload_failures,
+                "sourceMode": renderer.source_mode(),
+                "sourceWidth": renderer.source_width(),
+                "sourceHeight": renderer.source_height(),
+                "cpuUploadCount": renderer.cpu_upload_count(),
+                "sharedTextureImportCount": renderer.shared_texture_import_count(),
             }),
         }
-    }
-
-    unsafe fn dxgi_swap_chain_vtbl(swap_chain: IDXGISwapChainPtr) -> *const DxgiSwapChainVtbl {
-        *(swap_chain as *const *const DxgiSwapChainVtbl)
-    }
-
-    unsafe fn d3d11_device_vtbl(device: ID3D11DevicePtr) -> *const D3d11DeviceVtbl {
-        *(device as *const *const D3d11DeviceVtbl)
-    }
-
-    unsafe fn d3d11_context_vtbl(context: ID3D11DeviceContextPtr) -> *const D3d11DeviceContextVtbl {
-        *(context as *const *const D3d11DeviceContextVtbl)
-    }
-
-    unsafe fn release_unknown(pointer: IUnknownPtr) {
-        if pointer.is_null() {
-            return;
-        }
-        let vtbl = *(pointer as *const *const UnknownVtbl);
-        ((*vtbl).release)(pointer);
-    }
-
-    fn failed(hr: HRESULT) -> bool {
-        hr < 0
-    }
-
-    fn hresult_hex(hr: HRESULT) -> String {
-        format!("0x{:08X}", hr as u32)
     }
 
     unsafe fn update_window_frame(surface: &mut NativeSurface) {
         let Some(parent_hwnd) = surface.parent_hwnd else {
             return;
         };
-        let Some(rect) = read_client_rect_in_screen(parent_hwnd) else {
+        let Some(parent_client_rect) = read_client_rect_in_screen(parent_hwnd) else {
+            sync_surface_visibility(surface);
             return;
         };
+        let rect = surface.bounds_override.unwrap_or(parent_client_rect);
+        if let Some(subclass_state) = surface.parent_subclass_state {
+            (*subclass_state).content_insets = RECT {
+                left: rect.left - parent_client_rect.left,
+                top: rect.top - parent_client_rect.top,
+                right: parent_client_rect.right - rect.right,
+                bottom: parent_client_rect.bottom - rect.bottom,
+            };
+        }
         let width = (rect.right - rect.left).max(1);
         let height = (rect.bottom - rect.top).max(1);
         let bounds = (rect.left, rect.top, width, height);
-        if surface.last_parent_client_bounds == Some(bounds) {
+        if surface.last_parent_client_bounds != Some(bounds) {
+            if SetWindowPos(
+                surface.hwnd,
+                ptr::null_mut(),
+                rect.left,
+                rect.top,
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+            ) != 0
+            {
+                surface.last_parent_client_bounds = Some(bounds);
+                sync_owned_popup_clip(surface.hwnd, parent_hwnd, rect);
+            }
+        }
+        sync_surface_visibility(surface);
+    }
+
+    unsafe fn sync_owned_popup_clip(popup_hwnd: HWND, parent_hwnd: HWND, bounds: RECT) {
+        let mut visible_frame: RECT = mem::zeroed();
+        let frame_result = DwmGetWindowAttribute(
+            parent_hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+            &mut visible_frame as *mut RECT as *mut std::ffi::c_void,
+            mem::size_of::<RECT>() as u32,
+        );
+        if frame_result < 0 {
+            let Some(frame) = read_window_rect(parent_hwnd) else {
+                return;
+            };
+            visible_frame = frame;
+        }
+
+        let mut corner_preference = 0i32;
+        let corner_result = DwmGetWindowAttribute(
+            parent_hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            &mut corner_preference as *mut i32 as *mut std::ffi::c_void,
+            mem::size_of::<i32>() as u32,
+        );
+        if corner_result < 0 || corner_preference == DWMWCP_DONOTROUND || IsZoomed(parent_hwnd) != 0
+        {
+            SetWindowRgn(popup_hwnd, ptr::null_mut(), 1);
             return;
         }
-        let mut flags = SWP_NOOWNERZORDER | SWP_NOZORDER;
-        if surface.input_passthrough {
-            flags |= SWP_NOACTIVATE;
+
+        let dpi = GetDpiForWindow(parent_hwnd).max(96);
+        let base_radius = if corner_preference == DWMWCP_ROUNDSMALL {
+            4
+        } else {
+            8
+        };
+        let radius = ((base_radius * dpi as i32) + 48) / 96;
+        let diameter = (radius * 2).max(2);
+        let width = (bounds.right - bounds.left).max(1);
+        let height = (bounds.bottom - bounds.top).max(1);
+        let content_region = CreateRectRgn(0, 0, width + 1, height + 1);
+        let frame_region = CreateRoundRectRgn(
+            visible_frame.left - bounds.left,
+            visible_frame.top - bounds.top,
+            visible_frame.right - bounds.left + 1,
+            visible_frame.bottom - bounds.top + 1,
+            diameter,
+            diameter,
+        );
+        if content_region.is_null() || frame_region.is_null() {
+            if !content_region.is_null() {
+                DeleteObject(content_region);
+            }
+            if !frame_region.is_null() {
+                DeleteObject(frame_region);
+            }
+            return;
         }
-        if SetWindowPos(
-            surface.hwnd,
+
+        CombineRgn(content_region, content_region, frame_region, RGN_AND);
+        DeleteObject(frame_region);
+        if SetWindowRgn(popup_hwnd, content_region, 1) == 0 {
+            DeleteObject(content_region);
+        }
+    }
+
+    unsafe fn hide_window_without_activation(hwnd: HWND) {
+        SetWindowPos(
+            hwnd,
             ptr::null_mut(),
-            rect.left,
-            rect.top,
-            width,
-            height,
-            flags,
-        ) != 0
-        {
-            surface.last_parent_client_bounds = Some(bounds);
+            0,
+            0,
+            0,
+            0,
+            SWP_HIDEWINDOW
+                | SWP_NOMOVE
+                | SWP_NOSIZE
+                | SWP_NOZORDER
+                | SWP_NOOWNERZORDER
+                | SWP_NOACTIVATE,
+        );
+    }
+
+    unsafe extern "system" fn parent_window_subclass_proc(
+        hwnd: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        reference_data: usize,
+    ) -> LRESULT {
+        let subclass_state = &*(reference_data as *const ParentWindowSubclassState);
+        let popup_hwnd = subclass_state.popup_hwnd;
+        if matches!(message, WM_WINDOWPOSCHANGED | WM_SIZE | WM_SHOWWINDOW) {
+            if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
+                hide_window_without_activation(popup_hwnd);
+            } else if let Some(parent_client_rect) = read_client_rect_in_screen(hwnd) {
+                let bounds = RECT {
+                    left: parent_client_rect.left + subclass_state.content_insets.left,
+                    top: parent_client_rect.top + subclass_state.content_insets.top,
+                    right: parent_client_rect.right - subclass_state.content_insets.right,
+                    bottom: parent_client_rect.bottom - subclass_state.content_insets.bottom,
+                };
+                SetWindowPos(
+                    popup_hwnd,
+                    ptr::null_mut(),
+                    bounds.left,
+                    bounds.top,
+                    (bounds.right - bounds.left).max(1),
+                    (bounds.bottom - bounds.top).max(1),
+                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+                );
+                sync_owned_popup_clip(popup_hwnd, hwnd, bounds);
+            }
+        } else if message == WM_NCDESTROY {
+            RemoveWindowSubclass(hwnd, Some(parent_window_subclass_proc), PARENT_SUBCLASS_ID);
+        }
+
+        DefSubclassProc(hwnd, message, wparam, lparam)
+    }
+
+    unsafe fn parent_allows_surface(surface: &NativeSurface) -> bool {
+        if !surface.requested_visible {
+            return false;
+        }
+        if surface.input_passthrough && !surface.opaque {
+            return false;
+        }
+        let Some(parent_hwnd) = surface.parent_hwnd else {
+            return true;
+        };
+        if IsWindowVisible(parent_hwnd) == 0 || IsIconic(parent_hwnd) != 0 {
+            return false;
+        }
+
+        let foreground = GetForegroundWindow();
+        foreground == parent_hwnd
+            || foreground == surface.hwnd
+            || (!foreground.is_null() && GetAncestor(foreground, GA_ROOTOWNER) == parent_hwnd)
+    }
+
+    unsafe fn sync_surface_visibility(surface: &mut NativeSurface) {
+        let should_be_visible = parent_allows_surface(surface);
+        if should_be_visible == surface.visible {
+            return;
+        }
+        if should_be_visible {
+            surface.presentation_ready = false;
+            apply_window_style(surface);
+            let command = if surface.parent_hwnd.is_some() || surface.input_passthrough {
+                SW_SHOWNOACTIVATE
+            } else {
+                SW_SHOW
+            };
+            ShowWindow(surface.hwnd, command);
+        } else {
+            hide_window_without_activation(surface.hwnd);
+            surface.presentation_ready = false;
+        }
+        surface.visible = should_be_visible;
+        if surface.parent_hwnd.is_none() && should_be_visible && !surface.input_passthrough {
+            activate_window(surface);
         }
     }
 
     unsafe fn sync_window_style(surface: &mut NativeSurface) {
-        let mut ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
-        if surface.host_style == WindowsHostStyle::Control {
-            ex_style &= !(WS_EX_LAYERED
-                | WS_EX_TOOLWINDOW
-                | WS_EX_NOACTIVATE
-                | WS_EX_TRANSPARENT
-                | WS_EX_TOPMOST);
-            SetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE, ex_style as isize);
-            SetWindowPos(
-                surface.hwnd,
-                ptr::null_mut(),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
-            );
-            if surface.input_passthrough || !surface.opaque {
-                ShowWindow(surface.hwnd, SW_HIDE);
-                surface.visible = false;
-            } else {
-                ShowWindow(surface.hwnd, SW_SHOW);
-                surface.visible = true;
-                activate_window(surface);
-            }
-            return;
-        }
+        apply_window_style(surface);
+        sync_surface_visibility(surface);
+    }
 
+    unsafe fn apply_window_style(surface: &mut NativeSurface) {
+        let mut ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
         if surface.parent_hwnd.is_some() {
-            ex_style |= WS_EX_TOPMOST;
+            ex_style &= !WS_EX_TOPMOST;
+            // Steam consumes overlay input at the process level. Keep the
+            // owned presenter non-activating so Electron's native title bar
+            // and menu remain the foreground window and can handle chrome
+            // input outside the presenter rectangle.
+            ex_style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
             if surface.input_passthrough {
-                ex_style |= WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-            } else {
-                ex_style &= !(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+                ex_style |= WS_EX_TRANSPARENT;
             }
         } else {
-            ex_style |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+            ex_style &= !(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST);
+        }
+        // Keep the presenter transparent until it has copied and presented a
+        // fresh Electron frame. Once ready, it is a normal opaque owned popup;
+        // Steam then composites over the copied game pixels in its swapchain.
+        if surface.opaque && surface.presentation_ready {
+            ex_style &= !WS_EX_LAYERED;
+        } else {
+            ex_style |= WS_EX_LAYERED;
         }
         if surface.input_passthrough {
             ex_style |= WS_EX_TRANSPARENT;
@@ -2339,14 +2668,27 @@ mod windows {
         SetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE, ex_style as isize);
         let mut flags =
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED;
-        if surface.input_passthrough {
+        if surface.parent_hwnd.is_some() || surface.input_passthrough {
             flags |= SWP_NOACTIVATE;
         }
         SetWindowPos(surface.hwnd, ptr::null_mut(), 0, 0, 0, 0, flags);
         if ex_style & WS_EX_LAYERED != 0 {
-            let alpha = if surface.opaque { 255 } else { 1 };
-            SetLayeredWindowAttributes(surface.hwnd, 0, alpha, LWA_ALPHA);
+            SetLayeredWindowAttributes(surface.hwnd, 0, 0, LWA_ALPHA);
         }
+    }
+
+    unsafe fn set_window_corner_preference(hwnd: HWND, full_screen: bool) {
+        let corner_preference = if full_screen {
+            DWMWCP_DONOTROUND
+        } else {
+            DWMWCP_ROUND
+        };
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            &corner_preference as *const i32 as *const std::ffi::c_void,
+            mem::size_of::<i32>() as u32,
+        );
     }
 
     unsafe fn activate_window(surface: &NativeSurface) {
@@ -2355,20 +2697,134 @@ mod windows {
         SetFocus(surface.hwnd);
     }
 
-    unsafe fn show_surface(surface: &NativeSurface) {
-        let show_command = if surface.input_passthrough {
-            SW_SHOWNOACTIVATE
-        } else {
-            SW_SHOW
-        };
-        ShowWindow(surface.hwnd, show_command);
-    }
-
     unsafe fn destroy_surface(surface: NativeSurface) {
+        if surface.cursor_suppressed {
+            normalize_cursor_display_count(true);
+        }
+        if let Some(parent_hwnd) = surface.parent_hwnd {
+            RemoveWindowSubclass(
+                parent_hwnd,
+                Some(parent_window_subclass_proc),
+                PARENT_SUBCLASS_ID,
+            );
+        }
+        if let Some(subclass_state) = surface.parent_subclass_state {
+            drop(Box::from_raw(subclass_state));
+        }
         release_renderer(surface.renderer, surface.hwnd);
         if !surface.hwnd.is_null() {
             DestroyWindow(surface.hwnd);
         }
+        if !surface.transparent_cursor.is_null() {
+            DestroyCursor(surface.transparent_cursor);
+        }
+    }
+
+    unsafe fn surface_needs_render(surface: &NativeSurface) -> bool {
+        if surface.source_frame_dirty || !surface.presentation_ready {
+            return true;
+        }
+
+        if surface.continuous_present_requested
+            && surface.last_present_at.is_none_or(|last_present_at| {
+                last_present_at.elapsed() >= CONTINUOUS_PRESENT_INTERVAL
+            })
+        {
+            return true;
+        }
+
+        // Some desktop-capture paths stop exposing an idle legacy swapchain
+        // even though its source bitmap has not changed. Refresh the retained
+        // frame at a deliberately low cadence; active Electron paint still
+        // drives the real display-rate path.
+        if surface.source_frame.is_some()
+            && surface.last_present_at.is_none_or(|last_present_at| {
+                last_present_at.elapsed() >= RETAINED_FRAME_REFRESH_INTERVAL
+            })
+        {
+            return true;
+        }
+
+        match &surface.renderer {
+            WindowsSurfaceRenderer::OpenGl { .. } => true,
+            WindowsSurfaceRenderer::D3d11 { renderer, .. } => {
+                let mut rect: RECT = mem::zeroed();
+                GetClientRect(surface.hwnd, &mut rect) != 0
+                    && (renderer.width() != (rect.right - rect.left).max(1) as u32
+                        || renderer.height() != (rect.bottom - rect.top).max(1) as u32)
+            }
+        }
+    }
+
+    unsafe fn sync_cursor_visibility(surface: &mut NativeSurface) {
+        let should_suppress = surface.cursor_hidden_requested
+            && surface.visible
+            && surface_has_foreground(surface)
+            && cursor_is_in_client(surface.hwnd);
+
+        if should_suppress != surface.cursor_suppressed {
+            surface.cursor_display_count = Some(normalize_cursor_display_count(!should_suppress));
+            surface.cursor_suppressed = should_suppress;
+        }
+        if should_suppress {
+            SetCursor(surface.transparent_cursor);
+        }
+    }
+
+    unsafe fn normalize_cursor_display_count(visible: bool) -> i32 {
+        let mut display_count = ShowCursor(if visible { 1 } else { 0 });
+        for _ in 0..32 {
+            if (visible && display_count >= 0) || (!visible && display_count < 0) {
+                break;
+            }
+            display_count = ShowCursor(if visible { 1 } else { 0 });
+        }
+        display_count
+    }
+
+    unsafe fn surface_has_foreground(surface: &NativeSurface) -> bool {
+        let foreground = GetForegroundWindow();
+        if foreground.is_null() {
+            return false;
+        }
+        if foreground == surface.hwnd {
+            return true;
+        }
+        surface.parent_hwnd.is_some_and(|parent_hwnd| {
+            foreground == parent_hwnd || GetAncestor(foreground, GA_ROOTOWNER) == parent_hwnd
+        })
+    }
+
+    unsafe fn poll_overlay_shortcut(surface: &mut NativeSurface) {
+        let tab_state = async_key_state(VK_TAB_CODE);
+        let shift_state = async_key_state(VK_SHIFT_CODE)
+            | async_key_state(VK_LEFT_SHIFT_CODE)
+            | async_key_state(VK_RIGHT_SHIFT_CODE);
+        let has_foreground = surface_has_foreground(surface);
+        let shortcut_down = has_foreground && tab_state & 0x8000 != 0 && shift_state & 0x8000 != 0;
+        let shortcut_signaled =
+            has_foreground && tab_state & 0x8001 != 0 && shift_state & 0x8001 != 0;
+        if shortcut_signaled && !surface.overlay_shortcut_down {
+            record_overlay_shortcut(surface.hwnd);
+        }
+        surface.overlay_shortcut_down = shortcut_down;
+    }
+
+    unsafe fn async_key_state(virtual_key: i32) -> u16 {
+        GetAsyncKeyState(virtual_key) as u16
+    }
+
+    unsafe fn cursor_is_in_client(hwnd: HWND) -> bool {
+        let mut point: POINT = mem::zeroed();
+        if GetCursorPos(&mut point) == 0 || ScreenToClient(hwnd, &mut point) == 0 {
+            return false;
+        }
+        let mut rect: RECT = mem::zeroed();
+        GetClientRect(hwnd, &mut rect) != 0
+            && point.x >= rect.left
+            && point.y >= rect.top
+            && point.x < rect.right
+            && point.y < rect.bottom
     }
 
     unsafe fn pump_messages(hwnd: HWND) {
@@ -2379,6 +2835,27 @@ mod windows {
         }
     }
 
+    unsafe fn render_retained_frame_from_window_message(
+        hwnd: HWND,
+        present_after_modal_loop: bool,
+    ) {
+        let Ok(mut guard) = SURFACE.try_lock() else {
+            return;
+        };
+        let Some(surface) = guard
+            .as_mut()
+            .filter(|surface| surface.hwnd == hwnd && surface.visible)
+        else {
+            return;
+        };
+        surface.present_after_modal_loop |= present_after_modal_loop;
+        if render_surface(surface).is_err() {
+            // The ordinary pump owns error teardown. Keep the retained frame
+            // dirty so it retries immediately after the modal sizing loop.
+            surface.source_frame_dirty = true;
+        }
+    }
+
     unsafe extern "system" fn window_proc(
         hwnd: HWND,
         message: u32,
@@ -2386,6 +2863,19 @@ mod windows {
         lparam: LPARAM,
     ) -> LRESULT {
         record_window_message(hwnd, message, wparam, lparam);
+        record_window_input(hwnd, message, wparam, lparam);
+        if matches!(message, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN) {
+            SetCapture(hwnd);
+        }
+        if matches!(message, WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP)
+            && (wparam as u32 & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON)) == 0
+            && GetCapture() == hwnd
+        {
+            ReleaseCapture();
+        }
+        if message == WM_CANCELMODE && GetCapture() == hwnd {
+            ReleaseCapture();
+        }
         if message == WM_CLOSE {
             ShowWindow(hwnd, SW_HIDE);
             return 0;
@@ -2394,6 +2884,57 @@ mod windows {
             && GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_NOACTIVATE != 0
         {
             return MA_NOACTIVATE as LRESULT;
+        }
+        if message == WM_ERASEBKGND {
+            render_retained_frame_from_window_message(hwnd, false);
+            return 1;
+        }
+        if message == WM_SIZE && wparam != SIZE_MINIMIZED as usize {
+            render_retained_frame_from_window_message(hwnd, false);
+        }
+        if message == WM_DPICHANGED && lparam != 0 {
+            let suggested = &*(lparam as *const RECT);
+            SetWindowPos(
+                hwnd,
+                ptr::null_mut(),
+                suggested.left,
+                suggested.top,
+                (suggested.right - suggested.left).max(1),
+                (suggested.bottom - suggested.top).max(1),
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+            );
+            render_retained_frame_from_window_message(hwnd, true);
+            return 0;
+        }
+        if message == WM_ENTERSIZEMOVE {
+            // DefWindowProc owns a nested modal loop while a top-level window is
+            // moved or resized. The ordinary JS-driven pump is blocked during
+            // that loop, so keep capture/composition alive from a window timer.
+            SetTimer(
+                hwnd,
+                MODAL_PRESENT_TIMER_ID,
+                MODAL_PRESENT_INTERVAL_MS,
+                None,
+            );
+            render_retained_frame_from_window_message(hwnd, true);
+        }
+        if message == WM_TIMER && wparam == MODAL_PRESENT_TIMER_ID {
+            render_retained_frame_from_window_message(hwnd, false);
+            return 0;
+        }
+        if message == WM_EXITSIZEMOVE {
+            KillTimer(hwnd, MODAL_PRESENT_TIMER_ID);
+            render_retained_frame_from_window_message(hwnd, true);
+        }
+        if message == WM_MOVE {
+            render_retained_frame_from_window_message(hwnd, false);
+        }
+        if message == WM_PAINT {
+            let mut paint: PAINTSTRUCT = mem::zeroed();
+            BeginPaint(hwnd, &mut paint);
+            render_retained_frame_from_window_message(hwnd, false);
+            EndPaint(hwnd, &paint);
+            return 0;
         }
         DefWindowProcW(hwnd, message, wparam, lparam)
     }
@@ -2414,7 +2955,7 @@ mod windows {
             cbWndExtra: 0,
             hInstance: GetModuleHandleW(ptr::null()),
             hIcon: ptr::null_mut(),
-            hCursor: ptr::null_mut(),
+            hCursor: LoadCursorW(ptr::null_mut(), IDC_ARROW),
             hbrBackground: ptr::null_mut(),
             lpszMenuName: ptr::null(),
             lpszClassName: class_name.as_ptr(),
@@ -2467,12 +3008,19 @@ mod windows {
         }
     }
 
-    fn read_client_rect_in_screen(hwnd: HWND) -> Option<RECT> {
+    fn read_client_rect(hwnd: HWND) -> Option<RECT> {
         unsafe {
             let mut rect: RECT = mem::zeroed();
             if GetClientRect(hwnd, &mut rect) == 0 {
                 return None;
             }
+            Some(rect)
+        }
+    }
+
+    fn read_client_rect_in_screen(hwnd: HWND) -> Option<RECT> {
+        unsafe {
+            let rect = read_client_rect(hwnd)?;
 
             let width = rect.right - rect.left;
             let height = rect.bottom - rect.top;
@@ -2493,18 +3041,10 @@ mod windows {
         }
     }
 
-    fn base_ex_style(attached: bool, pass_through: bool, host_style: WindowsHostStyle) -> u32 {
-        if host_style == WindowsHostStyle::Control {
-            return 0;
-        }
-
-        if attached && !pass_through {
-            return WS_EX_TOPMOST;
-        }
-
-        let mut style = WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+    fn base_ex_style(attached: bool, pass_through: bool) -> u32 {
+        let mut style = WS_EX_LAYERED;
         if attached {
-            style |= WS_EX_TOPMOST | WS_EX_NOACTIVATE;
+            style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
         }
         if pass_through {
             style |= WS_EX_TRANSPARENT;
@@ -2517,6 +3057,119 @@ mod windows {
             .lock()
             .expect("Steam overlay window message diagnostics lock poisoned") =
             WindowMessageDiagnostics::default();
+        WINDOW_INPUT_EVENTS
+            .lock()
+            .expect("Steam overlay window input event lock poisoned")
+            .clear();
+    }
+
+    fn record_overlay_shortcut(hwnd: HWND) {
+        let client = read_client_rect(hwnd).unwrap_or(RECT {
+            left: 0,
+            top: 0,
+            right: 1,
+            bottom: 1,
+        });
+        let event = WindowInputEvent {
+            kind: "overlayShortcut",
+            message: 0,
+            wparam: 0,
+            lparam: 0,
+            x: None,
+            y: None,
+            delta_y: None,
+            client_width: (client.right - client.left).max(1),
+            client_height: (client.bottom - client.top).max(1),
+        };
+        let mut events = WINDOW_INPUT_EVENTS
+            .lock()
+            .expect("Steam overlay window input event lock poisoned");
+        events.push(event);
+        if events.len() > 256 {
+            events.remove(0);
+        }
+    }
+
+    fn record_window_input(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) {
+        let kind = match message {
+            WM_MOUSEMOVE => "mouseMove",
+            WM_LBUTTONDOWN => "leftMouseDown",
+            WM_LBUTTONUP => "leftMouseUp",
+            WM_RBUTTONDOWN => "rightMouseDown",
+            WM_RBUTTONUP => "rightMouseUp",
+            WM_MBUTTONDOWN => "middleMouseDown",
+            WM_MBUTTONUP => "middleMouseUp",
+            WM_MOUSEWHEEL => "mouseWheel",
+            WM_KEYDOWN | WM_SYSKEYDOWN => "keyDown",
+            WM_KEYUP | WM_SYSKEYUP => "keyUp",
+            WM_CHAR => "char",
+            WM_SETFOCUS => "focus",
+            WM_KILLFOCUS => "blur",
+            WM_CAPTURECHANGED | WM_CANCELMODE => "captureLost",
+            WM_CLOSE => "close",
+            WM_MOVE | WM_SIZE => "windowChanged",
+            _ => return,
+        };
+        let (x, y) = if message == WM_MOUSEWHEEL {
+            let packed = lparam as u32;
+            let mut point = POINT {
+                x: (packed as u16 as i16) as i32,
+                y: ((packed >> 16) as u16 as i16) as i32,
+            };
+            if unsafe { ScreenToClient(hwnd, &mut point) } != 0 {
+                (Some(point.x), Some(point.y))
+            } else {
+                (None, None)
+            }
+        } else if matches!(
+            message,
+            WM_MOUSEMOVE
+                | WM_LBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_RBUTTONDOWN
+                | WM_RBUTTONUP
+                | WM_MBUTTONDOWN
+                | WM_MBUTTONUP
+        ) {
+            let packed = lparam as u32;
+            (
+                Some((packed as u16 as i16) as i32),
+                Some(((packed >> 16) as u16 as i16) as i32),
+            )
+        } else {
+            (None, None)
+        };
+        let client = read_client_rect(hwnd).unwrap_or(RECT {
+            left: 0,
+            top: 0,
+            right: 1,
+            bottom: 1,
+        });
+        let event = WindowInputEvent {
+            kind,
+            message,
+            wparam: wparam as u64,
+            lparam: lparam as i64,
+            x,
+            y,
+            delta_y: (message == WM_MOUSEWHEEL)
+                .then(|| ((wparam as u32 >> 16) as u16 as i16) as i32),
+            client_width: (client.right - client.left).max(1),
+            client_height: (client.bottom - client.top).max(1),
+        };
+        let mut events = WINDOW_INPUT_EVENTS
+            .lock()
+            .expect("Steam overlay window input event lock poisoned");
+        if matches!(message, WM_MOUSEMOVE | WM_MOVE | WM_SIZE)
+            && events.last().is_some_and(|last| last.kind == kind)
+        {
+            *events.last_mut().expect("input event disappeared") = event;
+        } else {
+            events.push(event);
+        }
+        if events.len() > 256 {
+            events.remove(0);
+        }
     }
 
     fn record_window_message(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) {
@@ -2566,6 +3219,9 @@ mod windows {
                 diagnostics.counters.mouse_activate =
                     diagnostics.counters.mouse_activate.saturating_add(1)
             }
+            WM_COMMAND => {
+                diagnostics.counters.command = diagnostics.counters.command.saturating_add(1);
+            }
             _ => {}
         }
 
@@ -2599,6 +3255,7 @@ mod windows {
                 | WM_ACTIVATE
                 | WM_ACTIVATEAPP
                 | WM_MOUSEACTIVATE
+                | WM_COMMAND
         )
     }
 
@@ -2617,6 +3274,7 @@ mod windows {
             WM_ACTIVATE => "WM_ACTIVATE",
             WM_ACTIVATEAPP => "WM_ACTIVATEAPP",
             WM_MOUSEACTIVATE => "WM_MOUSEACTIVATE",
+            WM_COMMAND => "WM_COMMAND",
             _ => "other",
         }
     }
@@ -2688,7 +3346,11 @@ mod linux {
 
     static SURFACE: Lazy<Mutex<Option<NativeSurface>>> = Lazy::new(|| Mutex::new(None));
 
-    pub fn open(title: Option<String>) -> Result<(), Error> {
+    pub fn open(
+        title: Option<String>,
+        _client_width: Option<u32>,
+        _client_height: Option<u32>,
+    ) -> Result<(), Error> {
         close();
 
         let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
@@ -2819,8 +3481,30 @@ mod linux {
         })
     }
 
+    pub fn set_cursor_hidden(_hidden: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_continuous_present(_continuous: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_full_screen(_full_screen: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn update_frame(_buffer: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
         Ok(())
+    }
+
+    pub fn update_shared_texture(_handle: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+        Err(Error::from_reason(
+            "Electron shared textures are currently supported only by the Windows D3D11 native host",
+        ))
     }
 
     pub fn close() {
@@ -2877,6 +3561,10 @@ mod linux {
 
     pub fn host_diagnostics_json() -> Option<String> {
         None
+    }
+
+    pub fn drain_input_events_json() -> String {
+        "[]".to_owned()
     }
 
     fn with_surface(run: impl FnOnce(&mut NativeSurface)) -> Result<(), Error> {

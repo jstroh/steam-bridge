@@ -37,6 +37,10 @@ Requirements:
 - Electron 24 or newer when used with Electron
 - A running Steam client and a Steam app ID
 
+The repository smoke application tracks Electron `43.1.1`. Windows
+shared-texture hosting is tested against that runtime; applications using the
+lower-level host should feature-detect Electron's offscreen texture event.
+
 ## Platform Targets
 
 | Platform | Target |
@@ -110,6 +114,46 @@ Steam Bridge supports one managed native presenter per process, controlled
 from Electron's main thread. Raw activation helpers remain available for
 native diagnostics, but Electron applications should use the managed overlay
 path for product UI.
+
+### Windows game-host mode
+
+Steam renders into a top-level native swap chain on Windows. A Chromium
+offscreen surface or a Win32 child window is not, by itself, a Steam overlay
+presentation target. Games that need native title-bar behavior and continuous
+game rendering while Steam is open can use `startNativeOverlaySession()` as a
+standalone D3D11 host and render their hidden Electron game window with
+offscreen shared textures.
+
+Create the hidden renderer with:
+
+```ts
+const gameWindow = new BrowserWindow({
+  show: false,
+  webPreferences: {
+    offscreen: {
+      useSharedTexture: true,
+      sharedTexturePixelFormat: "argb"
+    }
+  }
+});
+```
+
+For each frame paint event, pass the frame texture's
+`textureInfo.handle.ntHandle`, coded width, and coded height to
+`session.updateSharedTexture()`, then release Electron's texture immediately
+in a `finally` block. Steam Bridge copies the pooled texture before the call
+returns, selects the matching high-performance DXGI adapter, preserves the
+source aspect ratio, and presents with a two-buffer flip-discard swap chain.
+`updateFrame()` remains available as a BGRA CPU fallback.
+
+The standalone host owns window movement, resize, maximize, minimize,
+fullscreen, focus visibility, rounded-corner clipping, cursor state, and the
+Steam presentation surface. The consumer remains responsible for translating
+`onInputEvent` coordinates through the same aspect-fit transform and forwarding
+them to its offscreen `webContents`. Mouse capture-loss and focus-loss events
+must release any pressed input state. See the native session types and the
+[Electron example guide](examples/electron-basic/README.md) before adopting
+this advanced path.
 
 ## Steam Web API
 

@@ -354,6 +354,10 @@ function copyTargetHelpers(appPath) {
       path.join(repoRoot, "scripts", "summarize-windows-overlay-matrix.cjs"),
       matrixSummaryPath
     );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-release-candidate-fingerprint.cjs"),
+      path.join(appPath, "windows-release-candidate-fingerprint.cjs")
+    );
     run(process.execPath, [matrixSummaryPath, "--self-test"], appPath);
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "upsert-steam-shortcut.cjs"),
@@ -475,11 +479,12 @@ function currentTarget() {
 }
 
 function run(command, args, cwd, options = {}) {
-  const result = spawnSync(command, args, {
+  const invocation = resolveCommand(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     encoding: options.encoding,
     stdio: options.encoding ? ["ignore", "pipe", "inherit"] : "inherit",
-    shell: process.platform === "win32",
+    shell: false,
     env: options.env
   });
 
@@ -488,8 +493,27 @@ function run(command, args, cwd, options = {}) {
   }
 
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with exit status ${result.status ?? "unknown"}.`);
+    throw new Error(
+      `${invocation.command} ${invocation.args.join(" ")} failed with exit status ${result.status ?? "unknown"}.`
+    );
   }
 
   return result;
+}
+
+function resolveCommand(command, args) {
+  if (process.platform !== "win32" || command !== "npm") {
+    return { command, args };
+  }
+
+  // Node 24 rejects direct .cmd spawning without a shell. Invoke npm's
+  // JavaScript entry point with the current Node executable so paths remain
+  // argument-safe and installations under "Program Files" work correctly.
+  const npmCli =
+    process.env.npm_execpath ||
+    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (!fs.existsSync(npmCli)) {
+    throw new Error(`Could not locate npm CLI at ${npmCli}.`);
+  }
+  return { command: process.execPath, args: [npmCli, ...args] };
 }

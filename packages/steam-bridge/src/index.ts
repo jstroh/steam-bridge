@@ -1585,8 +1585,11 @@ export interface OverlayWebPageOptions {
 export interface NativeOverlaySessionOptions {
   title?: string;
   pumpIntervalMs?: number;
+  clientWidth?: number;
+  clientHeight?: number;
   nativeWindowHandle?: Buffer;
   getBounds?: NativeOverlayBoundsProvider;
+  onInputEvent?: (event: NativeOverlayInputEvent) => void;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
@@ -1611,6 +1614,52 @@ export interface NativeOverlayBounds {
 
 export type NativeOverlayBoundsProvider = () => NativeOverlayBounds | undefined;
 
+export interface NativeOverlayFrame {
+  data: Buffer;
+  width: number;
+  height: number;
+}
+
+export interface NativeOverlaySharedTexture {
+  /** Process-local Windows NT handle from Electron's OffscreenSharedTexture. */
+  handle: Buffer;
+  width: number;
+  height: number;
+}
+
+export type NativeOverlayInputEventKind =
+  | "mouseMove"
+  | "leftMouseDown"
+  | "leftMouseUp"
+  | "rightMouseDown"
+  | "rightMouseUp"
+  | "middleMouseDown"
+  | "middleMouseUp"
+  | "mouseWheel"
+  | "keyDown"
+  | "keyUp"
+  | "char"
+  | "focus"
+  | "blur"
+  | "captureLost"
+  | "overlayShortcut"
+  | "windowChanged"
+  | "close";
+
+export interface NativeOverlayInputEvent {
+  kind: NativeOverlayInputEventKind;
+  message: number;
+  wparam: number;
+  lparam: number;
+  x?: number;
+  y?: number;
+  deltaY?: number;
+  clientWidth: number;
+  clientHeight: number;
+}
+
+export type NativeOverlayFrameProvider = () => Promise<NativeOverlayFrame | undefined>;
+
 export interface NativeOverlaySessionSnapshot {
   title: string;
   backend: NativeOverlayBackend;
@@ -1623,6 +1672,7 @@ export interface NativeOverlaySessionSnapshot {
   lastOverlayEvent?: GameOverlayActivated;
   nativeProbeOpen: boolean;
   nativeHostOpen: boolean;
+  fullScreen: boolean;
   nativeHostDiagnostics?: NativeOverlayHostDiagnostics;
   nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   macOverlayEnvironment?: MacOverlayEnvironment;
@@ -1637,6 +1687,11 @@ export interface NativeOverlaySessionSnapshot {
 export interface NativeOverlaySession extends CallbackHandle {
   close(): void;
   pump(): void;
+  updateFrame(frame: NativeOverlayFrame): void;
+  updateSharedTexture(texture: NativeOverlaySharedTexture): void;
+  setCursorHidden(hidden: boolean): void;
+  setFullScreen(fullScreen: boolean): void;
+  isFullScreen(): boolean;
   isOpen(): boolean;
   snapshot(): NativeOverlaySessionSnapshot;
 }
@@ -1649,6 +1704,7 @@ export interface NativeOverlayPresenterOptions {
   title?: string;
   nativeWindowHandle?: Buffer;
   getBounds?: NativeOverlayBoundsProvider;
+  captureFrame?: NativeOverlayFrameProvider;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   idleFps?: number;
@@ -2374,8 +2430,12 @@ type ElectronOverlayWindowGeometryEvent =
   | "resized"
   | "maximize"
   | "unmaximize"
+  | "minimize"
   | "restore"
   | "show"
+  | "hide"
+  | "focus"
+  | "blur"
   | "enter-full-screen"
   | "leave-full-screen"
   | "enter-html-full-screen"
@@ -7719,10 +7779,16 @@ export function activateOverlayToWebPage(url: string, options: OverlayWebPageOpt
   native().activateOverlayToWebPage(url, options.modal);
 }
 
-export function openNativeOverlayProbeWindow(title?: string): void {
+export function openNativeOverlayProbeWindow(title?: string, clientWidth?: number, clientHeight?: number): void {
   runRawNativeOverlaySurfaceOpen(
     "probe",
-    () => native().openNativeOverlayProbeWindow(title),
+    () => {
+      if (clientWidth !== undefined && clientHeight !== undefined) {
+        native().openNativeOverlayProbeWindow(title, clientWidth, clientHeight);
+      } else {
+        native().openNativeOverlayProbeWindow(title);
+      }
+    },
     () => native().closeNativeOverlayProbeWindow()
   );
 }
@@ -7767,8 +7833,34 @@ export function setNativeOverlayHostOpacity(opaque: boolean): void {
   runRawNativeOverlaySurfaceMutation(() => native().setNativeOverlayHostOpacity(opaque));
 }
 
+export function setNativeOverlayHostBounds(x: number, y: number, width: number, height: number): void {
+  const bounds = normalizeNativeOverlayBounds({ x, y, width, height });
+  if (!bounds) {
+    throw new Error("Steam overlay native host bounds must contain finite coordinates and non-negative dimensions.");
+  }
+  runRawNativeOverlaySurfaceMutation(() => {
+    const binding = native();
+    const setter = binding.setNativeOverlayHostBounds;
+    if (typeof setter !== "function") {
+      throw new Error("The loaded Steam Bridge native payload does not support native host bounds.");
+    }
+    setter.call(binding, bounds.x, bounds.y, bounds.width, bounds.height);
+  });
+}
+
 export function updateNativeOverlayHostFrame(frame: Buffer, width: number, height: number): void {
   runRawNativeOverlaySurfaceMutation(() => native().updateNativeOverlayHostFrame(frame, width, height));
+}
+
+export function updateNativeOverlayHostSharedTexture(handle: Buffer, width: number, height: number): void {
+  runRawNativeOverlaySurfaceMutation(() => {
+    const binding = native();
+    const update = binding.updateNativeOverlayHostSharedTexture;
+    if (typeof update !== "function") {
+      throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
+    }
+    update.call(binding, handle, Math.max(1, Math.round(width)), Math.max(1, Math.round(height)));
+  });
 }
 
 export function closeNativeOverlayProbeWindow(): void {
@@ -7979,6 +8071,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const title = options.title ?? "Steam Bridge Native Overlay";
   const backend = resolveNativeOverlayBackend(options);
   const pumpIntervalMs = Math.max(1, options.pumpIntervalMs ?? 33);
+  const clientWidth = normalizeNativeOverlayClientDimension(options.clientWidth);
+  const clientHeight = normalizeNativeOverlayClientDimension(options.clientHeight);
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
   const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
   const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
@@ -7990,6 +8084,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let lastError: unknown;
   let overlayActive = false;
   let overlayWasActive = false;
+  let cursorHiddenRequested = false;
+  let cursorHiddenApplied: boolean | undefined;
+  let continuousPresentApplied: boolean | undefined;
+  let fullScreenRequested = false;
+  let fullScreenApplied: boolean | undefined;
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let nativeHostUnavailableReason: NativeOverlayHostUnavailableReason | undefined;
   let macOverlayEnvironment: MacOverlayEnvironment | undefined;
@@ -8010,7 +8109,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (!ensureNativeOverlaySurfaceReady()) {
         return;
       }
+      syncContinuousPresent();
+      syncFullScreen();
       native().pumpNativeOverlayProbeWindow();
+      dispatchNativeInputEvents();
       pumpCount += 1;
       lastPumpAt = Date.now();
       emitStateChange();
@@ -8032,7 +8134,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const nativeSurfaceOwner = !closed && ownsNativeOverlaySurface(surfaceLease);
     const nativeProbeOpen = nativeSurfaceOwner && safeBoolean(() => native().isNativeOverlayProbeWindowOpen());
     const nativeHostOpen = nativeSurfaceOwner && safeBoolean(() => native().isNativeOverlayHostViewOpen());
-    const nativeHostDiagnostics = nativeHostOpen ? getNativeOverlayHostDiagnostics() : undefined;
+    const nativeHostDiagnostics = nativeHostOpen || nativeProbeOpen ? getNativeOverlayHostDiagnostics() : undefined;
     const base = {
       title,
       backend: closed ? "none" : backend,
@@ -8045,6 +8147,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       lastOverlayEvent,
       nativeProbeOpen,
       nativeHostOpen,
+      fullScreen: fullScreenRequested,
       ...(nativeHostDiagnostics ? { nativeHostDiagnostics } : {}),
       nativeHostUnavailableReason,
       macOverlayEnvironment,
@@ -8067,6 +8170,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
 
+    setNativeCursorHidden(false);
+    setNativeContinuousPresent(false);
+    try {
+      setNativeFullScreen(false);
+    } catch (error) {
+      lastError ??= error;
+    } finally {
+      fullScreenRequested = false;
+    }
     closed = true;
     closeReason = reason;
     nativeHostUnavailableReason = undefined;
@@ -8113,6 +8225,58 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
   const close = (): void => closeWithReason("closed");
 
+  const updateFrame = (frame: NativeOverlayFrame): void => {
+    if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+      throw new Error("Steam Bridge native overlay session is closed.");
+    }
+    if (!frame || !Buffer.isBuffer(frame.data)) {
+      throw new TypeError("Steam Bridge native overlay frame data must be a Buffer.");
+    }
+
+    const width = normalizeNativeOverlayFrameDimension(frame.width, "frame width");
+    const height = normalizeNativeOverlayFrameDimension(frame.height, "frame height");
+    native().updateNativeOverlayHostFrame(frame.data, width, height);
+    pump();
+  };
+
+  const updateSharedTexture = (texture: NativeOverlaySharedTexture): void => {
+    if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+      throw new Error("Steam Bridge native overlay session is closed.");
+    }
+    if (!texture || !Buffer.isBuffer(texture.handle)) {
+      throw new TypeError("Steam Bridge shared texture handle must be a Buffer.");
+    }
+    const binding = native();
+    const update = binding.updateNativeOverlayHostSharedTexture;
+    if (typeof update !== "function") {
+      throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
+    }
+    update.call(
+      binding,
+      texture.handle,
+      normalizeNativeOverlayFrameDimension(texture.width, "shared texture width"),
+      normalizeNativeOverlayFrameDimension(texture.height, "shared texture height")
+    );
+    pump();
+  };
+
+  const setCursorHidden = (hidden: boolean): void => {
+    cursorHiddenRequested = Boolean(hidden);
+    syncCursorHidden();
+  };
+
+  const setFullScreen = (fullScreen: boolean): void => {
+    const previousFullScreen = fullScreenRequested;
+    fullScreenRequested = Boolean(fullScreen);
+    try {
+      syncFullScreen();
+    } catch (error) {
+      fullScreenRequested = previousFullScreen;
+      throw error;
+    }
+    emitStateChange();
+  };
+
   const fail = (error: unknown): void => {
     lastError = error;
     closeWithReason("error");
@@ -8139,6 +8303,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       } else if (event.active === false) {
         scheduleRestoreFocus();
       }
+      syncCursorHidden();
+      syncContinuousPresent();
       emitStateChange();
     });
 
@@ -8159,6 +8325,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     close,
     disconnect: close,
     pump,
+    updateFrame,
+    updateSharedTexture,
+    setCursorHidden,
+    setFullScreen,
+    isFullScreen: () => fullScreenRequested,
     isOpen: () => {
       if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
         return false;
@@ -8213,17 +8384,110 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (options.nativeWindowHandle) {
       if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
         native().attachNativeOverlayHostView(options.nativeWindowHandle);
+        cursorHiddenApplied = undefined;
+        continuousPresentApplied = undefined;
+        fullScreenApplied = undefined;
         native().showNativeOverlayHostView();
         setHostInputPassthrough(false);
         setHostOpaque(true);
       }
+      syncCursorHidden();
+      syncFullScreen();
       return true;
     }
 
     if (!safeBoolean(() => native().isNativeOverlayProbeWindowOpen())) {
-      native().openNativeOverlayProbeWindow(title);
+      if (clientWidth !== undefined && clientHeight !== undefined) {
+        native().openNativeOverlayProbeWindow(title, clientWidth, clientHeight);
+      } else {
+        native().openNativeOverlayProbeWindow(title);
+      }
+      cursorHiddenApplied = undefined;
+      continuousPresentApplied = undefined;
+      fullScreenApplied = undefined;
     }
+    syncCursorHidden();
+    syncFullScreen();
     return true;
+  }
+
+  function syncCursorHidden(): void {
+    setNativeCursorHidden(cursorHiddenRequested && !overlayActive);
+  }
+
+  function setNativeCursorHidden(hidden: boolean): void {
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      nativeHostUnavailableReason !== undefined ||
+      cursorHiddenApplied === hidden
+    ) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostCursorHidden;
+    if (typeof setter !== "function") {
+      return;
+    }
+    try {
+      setter.call(binding, hidden);
+      cursorHiddenApplied = hidden;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function syncContinuousPresent(): void {
+    setNativeContinuousPresent(overlayActive || safeBoolean(() => overlayNeedsPresent()));
+  }
+
+  function setNativeContinuousPresent(continuous: boolean): void {
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      nativeHostUnavailableReason !== undefined ||
+      continuousPresentApplied === continuous
+    ) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostContinuousPresent;
+    if (typeof setter !== "function") {
+      return;
+    }
+    try {
+      setter.call(binding, continuous);
+      continuousPresentApplied = continuous;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function syncFullScreen(): void {
+    setNativeFullScreen(fullScreenRequested);
+  }
+
+  function setNativeFullScreen(fullScreen: boolean): void {
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      nativeHostUnavailableReason !== undefined ||
+      fullScreenApplied === fullScreen
+    ) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostFullScreen;
+    if (typeof setter !== "function") {
+      return;
+    }
+    try {
+      setter.call(binding, fullScreen);
+      fullScreenApplied = fullScreen;
+    } catch (error) {
+      lastError = error;
+      throw error;
+    }
   }
 
   function scheduleRestoreFocus(): void {
@@ -8278,6 +8542,53 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     restoreFocusTimer.unref?.();
   }
 
+  function dispatchNativeInputEvents(): void {
+    const drain = native().drainNativeOverlayHostInputEventsJson;
+    if (typeof drain !== "function") {
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(drain());
+    } catch (error) {
+      lastError = error;
+      return;
+    }
+    if (!Array.isArray(parsed) || typeof options.onInputEvent !== "function") {
+      return;
+    }
+
+    for (const value of parsed) {
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+      const source = value as Record<string, unknown>;
+      const kind = source.kind;
+      if (!isNativeOverlayInputEventKind(kind)) {
+        continue;
+      }
+      const event: NativeOverlayInputEvent = {
+        kind,
+        message: Number(source.message) || 0,
+        wparam: Number(source.wparam) || 0,
+        lparam: Number(source.lparam) || 0,
+        clientWidth: Math.max(1, Number(source.clientWidth) || 1),
+        clientHeight: Math.max(1, Number(source.clientHeight) || 1),
+        ...(typeof source.x === "number" && Number.isFinite(source.x) ? { x: source.x } : {}),
+        ...(typeof source.y === "number" && Number.isFinite(source.y) ? { y: source.y } : {}),
+        ...(typeof source.deltaY === "number" && Number.isFinite(source.deltaY)
+          ? { deltaY: source.deltaY }
+          : {})
+      };
+      try {
+        options.onInputEvent(event);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+  }
+
   function setHostInputPassthrough(passThrough: boolean): void {
     if (
       closed ||
@@ -8309,6 +8620,46 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       lastError = error;
     }
   }
+}
+
+function normalizeNativeOverlayClientDimension(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.max(1, Math.round(value));
+}
+
+function normalizeNativeOverlayFrameDimension(value: number, label: string): number {
+  if (!Number.isFinite(value)) {
+    throw new TypeError(`Steam Bridge ${label} must be a finite number.`);
+  }
+  const dimension = Math.max(1, Math.round(value));
+  if (dimension > 0x7fff_ffff) {
+    throw new RangeError(`Steam Bridge ${label} exceeds the native renderer limit.`);
+  }
+  return dimension;
+}
+
+function isNativeOverlayInputEventKind(value: unknown): value is NativeOverlayInputEventKind {
+  return (
+    value === "mouseMove" ||
+    value === "leftMouseDown" ||
+    value === "leftMouseUp" ||
+    value === "rightMouseDown" ||
+    value === "rightMouseUp" ||
+    value === "middleMouseDown" ||
+    value === "middleMouseUp" ||
+    value === "mouseWheel" ||
+    value === "keyDown" ||
+    value === "keyUp" ||
+    value === "char" ||
+    value === "focus" ||
+    value === "blur" ||
+    value === "captureLost" ||
+    value === "overlayShortcut" ||
+    value === "windowChanged" ||
+    value === "close"
+  );
 }
 
 const DEFAULT_OVERLAY_NEEDS_PRESENT_POLL_INTERVAL_MS = 250;
@@ -8383,7 +8734,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let surfaceLease: NativeOverlaySurfaceLease | undefined;
   let nativeSurfaceAttachCount = 0;
   let nativeSurfaceDetachCount = 0;
+  let lastNativeHostBounds: NativeOverlayBounds | undefined;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
+  let frameCaptureInFlight = false;
+  let frameCaptureReady = false;
+  let frameCaptureGeneration = 0;
   const stateListeners = new Set<() => void>();
 
   const pump = (): void => {
@@ -8402,6 +8757,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         emitStateChange();
         return;
       }
+      syncNativeHostBounds();
       native().pumpNativeOverlayProbeWindow();
       pumpCount += 1;
       lastPumpAt = Date.now();
@@ -8425,6 +8781,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           emitStateChange();
           return;
         }
+        syncNativeHostBounds();
         native().showNativeOverlayHostView();
       } else {
         if (!updateNativeOverlayHostAvailability()) {
@@ -8658,6 +9015,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     closed = true;
     closeReason = reason;
+    frameCaptureGeneration += 1;
+    frameCaptureInFlight = false;
+    frameCaptureReady = false;
     activationHoldCount = 0;
     currentFps = 0;
     nativeHostUnavailableReason = undefined;
@@ -8920,6 +9280,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           : false;
     setHostInputPassthrough(!shouldAcceptInput);
     setHostOpaque(shouldShowHost);
+    if (shouldShowHost) {
+      requestSourceFrame();
+    }
   }
 
   function shouldHostAcceptInput(now: number): boolean {
@@ -8962,9 +9325,55 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     try {
       native().setNativeOverlayHostOpacity(opaque);
       hostOpaque = opaque;
+      frameCaptureReady = false;
     } catch (error) {
       lastError = error;
     }
+  }
+
+  function requestSourceFrame(): void {
+    if (
+      process.platform !== "win32" ||
+      closed ||
+      !usesNativeHostView ||
+      frameCaptureInFlight ||
+      frameCaptureReady ||
+      typeof options.captureFrame !== "function" ||
+      !ownsNativeOverlaySurface(surfaceLease)
+    ) {
+      return;
+    }
+
+    const generation = ++frameCaptureGeneration;
+    frameCaptureInFlight = true;
+    void options
+      .captureFrame()
+      .then((frame) => {
+        if (
+          closed ||
+          generation !== frameCaptureGeneration ||
+          !frame ||
+          !Buffer.isBuffer(frame.data) ||
+          !ownsNativeOverlaySurface(surfaceLease)
+        ) {
+          return;
+        }
+        const width = normalizeNativeOverlayFrameDimension(frame.width, "captured frame width");
+        const height = normalizeNativeOverlayFrameDimension(frame.height, "captured frame height");
+        native().updateNativeOverlayHostFrame(frame.data, width, height);
+        frameCaptureReady = true;
+        pump();
+        schedule(0);
+      })
+      .catch((error) => {
+        lastError = error;
+        emitStateChange();
+      })
+      .finally(() => {
+        if (generation === frameCaptureGeneration) {
+          frameCaptureInFlight = false;
+        }
+      });
   }
 
   function schedule(delayMs: number): void {
@@ -9051,6 +9460,53 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     return nativeHostUnavailableReason === undefined;
   }
 
+  function syncNativeHostBounds(force = false): void {
+    if (
+      process.platform !== "win32" ||
+      !usesNativeHostView ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+    ) {
+      return;
+    }
+
+    const nextBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (!nextBounds) {
+      return;
+    }
+    const normalizedBounds: NativeOverlayBounds = {
+      x: Math.round(nextBounds.x),
+      y: Math.round(nextBounds.y),
+      width: Math.max(1, Math.round(nextBounds.width)),
+      height: Math.max(1, Math.round(nextBounds.height))
+    };
+    if (
+      !force &&
+      lastNativeHostBounds?.x === normalizedBounds.x &&
+      lastNativeHostBounds.y === normalizedBounds.y &&
+      lastNativeHostBounds.width === normalizedBounds.width &&
+      lastNativeHostBounds.height === normalizedBounds.height
+    ) {
+      return;
+    }
+
+    const binding = native();
+    const setter = binding.setNativeOverlayHostBounds;
+    if (typeof setter !== "function") {
+      return;
+    }
+    setter.call(
+      binding,
+      normalizedBounds.x,
+      normalizedBounds.y,
+      normalizedBounds.width,
+      normalizedBounds.height
+    );
+    lastNativeHostBounds = normalizedBounds;
+  }
+
   function shouldDeferWindowsNativeHostAttach(): boolean {
     return (
       process.platform === "win32" &&
@@ -9076,6 +9532,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       if (!hostOpen) {
         native().attachNativeOverlayHostViewForOverlay(options.nativeWindowHandle);
         nativeSurfaceAttachCount += 1;
+        frameCaptureReady = false;
+        lastNativeHostBounds = undefined;
+        syncNativeHostBounds(true);
       } else {
         if (hostInputPassthrough) {
           native().setNativeOverlayHostInputPassthrough(false);
@@ -9085,10 +9544,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         }
       }
       if (visible) {
+        syncNativeHostBounds();
         native().showNativeOverlayHostView();
       }
       hostInputPassthrough = false;
       hostOpaque = true;
+      requestSourceFrame();
       return true;
     }
 
@@ -9104,6 +9565,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
         native().attachNativeOverlayHostView(options.nativeWindowHandle);
         nativeSurfaceAttachCount += 1;
+        frameCaptureReady = false;
+        lastNativeHostBounds = undefined;
+        syncNativeHostBounds(true);
         if (visible) {
           native().showNativeOverlayHostView();
         }
@@ -11162,8 +11626,12 @@ const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEv
   "resized",
   "maximize",
   "unmaximize",
+  "minimize",
   "restore",
   "show",
+  "hide",
+  "focus",
+  "blur",
   "enter-full-screen",
   "leave-full-screen",
   "enter-html-full-screen",
@@ -11299,6 +11767,11 @@ function installElectronSteamOverlayShortcut(
   };
 
   const handler = (event: ElectronOverlayInputEvent, input: ElectronOverlayKeyboardInput): void => {
+    const snapshot = controller.snapshot();
+    if (snapshot.overlayActive || isElectronSteamOverlayOpening(snapshot)) {
+      event.preventDefault?.();
+      return;
+    }
     if (isElectronSteamOverlayShortcutInput(input)) {
       handleShortcut(event);
     }
@@ -17280,7 +17753,9 @@ export const overlay = {
   hideNativeOverlayHostView,
   setNativeOverlayHostInputPassthrough,
   setNativeOverlayHostOpacity,
+  setNativeOverlayHostBounds,
   updateNativeOverlayHostFrame,
+  updateNativeOverlayHostSharedTexture,
   closeNativeOverlayProbeWindow,
   detachNativeOverlayHostView,
   isNativeOverlayProbeWindowOpen,
@@ -25109,7 +25584,9 @@ const defaultExport = {
   hideNativeOverlayHostView,
   setNativeOverlayHostInputPassthrough,
   setNativeOverlayHostOpacity,
+  setNativeOverlayHostBounds,
   updateNativeOverlayHostFrame,
+  updateNativeOverlayHostSharedTexture,
   closeNativeOverlayProbeWindow,
   detachNativeOverlayHostView,
   isNativeOverlayProbeWindowOpen,

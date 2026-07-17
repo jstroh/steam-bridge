@@ -206,19 +206,106 @@ test("electron overlay compatibility profile keeps explicit Windows in-process G
   assert.equal(appendedSwitches.includes("in-process-gpu"), true);
 });
 
-test("Windows native presenter follows only the Electron client area without forcing visibility", () => {
+test("Windows native presenter tracks Electron chrome with a non-activating owned D3D surface", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const d3dSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "windows_d3d11.rs"),
+    "utf8"
+  );
+
+  assert.match(source, /parent_hwnd\s*\.and_then\(read_client_rect_in_screen\)/);
+  assert.match(source, /ClientToScreen\(hwnd, &mut origin\)/);
+  assert.match(source, /surface\.bounds_override/);
+  assert.match(source, /pub fn set_bounds\(x: i32, y: i32, width: u32, height: u32\)/);
+  assert.match(source, /WS_POPUP \| WS_CLIPSIBLINGS \| WS_CLIPCHILDREN/);
+  assert.match(source, /let owner = parent_hwnd\.unwrap_or\(ptr::null_mut\(\)\)/);
+  assert.match(source, /let bounds = \(rect\.left, rect\.top, width, height\)/);
+  assert.match(source, /SetWindowSubclass\(/);
+  assert.match(source, /parent_window_subclass_proc/);
+  assert.match(source, /struct ParentWindowSubclassState/);
+  assert.match(source, /content_insets: RECT/);
+  assert.match(source, /rect\.top - parent_client_rect\.top/);
+  assert.match(source, /parent_client_rect\.top \+ subclass_state\.content_insets\.top/);
+  assert.match(source, /DWMWA_EXTENDED_FRAME_BOUNDS/);
+  assert.match(source, /CreateRoundRectRgn\(/);
+  assert.match(source, /CombineRgn\(content_region, content_region, frame_region, RGN_AND\)/);
+  assert.match(source, /SetWindowRgn\(popup_hwnd, content_region, 1\)/);
+  assert.match(source, /IsWindowVisible\(parent_hwnd\) == 0 \|\| IsIconic\(parent_hwnd\) != 0/);
+  assert.match(source, /foreground == parent_hwnd/);
+  assert.match(source, /foreground == surface\.hwnd/);
+  assert.match(source, /GetAncestor\(foreground, GA_ROOTOWNER\) == parent_hwnd/);
+  assert.match(source, /surface\.input_passthrough && !surface\.opaque/);
+  assert.match(source, /ex_style &= !WS_EX_TOPMOST/);
+  assert.match(source, /ex_style \|= WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE/);
+  assert.match(source, /if surface\.parent_hwnd\.is_some\(\) \|\| surface\.input_passthrough \{\s*flags \|= SWP_NOACTIVATE/);
+  assert.match(source, /surface\.parent_hwnd\.is_some\(\) \|\| surface\.input_passthrough \{\s*SW_SHOWNOACTIVATE/);
+  assert.match(source, /surface\.presentation_ready = false/);
+  assert.match(source, /surface\.opaque && surface\.presentation_ready/);
+  assert.match(source, /SetLayeredWindowAttributes\(surface\.hwnd, 0, 0, LWA_ALPHA\)/);
+  assert.match(d3dSource, /DXGI_SWAP_EFFECT_FLIP_DISCARD/);
+  assert.match(d3dSource, /BufferCount: 2/);
+  assert.match(d3dSource, /OpenSharedResource1/);
+  assert.match(d3dSource, /UpdateSubresource/);
+  assert.doesNotMatch(source, /DXGI_SWAP_CHAIN_FLAG_GDI_COMPATIBLE/);
+  assert.doesNotMatch(source, /StretchDIBits\(/);
+  assert.match(source, /source_frame: Option<FrameUpload>/);
+  assert.doesNotMatch(source, /LWA_COLORKEY/);
+  assert.doesNotMatch(source, /OVERLAY_CHROMA_KEY/);
+  assert.doesNotMatch(source, /\[1\.0, 0\.0, 1\.0, 1\.0\]/);
+  assert.doesNotMatch(source, /0\.05 \+ wave/);
+  assert.match(source, /pump_messages\(hwnd\)/);
+  assert.match(source, /render_retained_frame_from_window_message\(hwnd,/);
+  assert.match(source, /SURFACE\.try_lock\(\)/);
+  assert.match(source, /PeekMessageW\(&mut message, hwnd, 0, 0, PM_REMOVE\)/);
+  assert.match(source, /last_parent_client_bounds != Some\(bounds\)/);
+  assert.doesNotMatch(source, /SWP_SHOWWINDOW/);
+});
+
+test("Windows standalone D3D host uses normal chrome without diagnostic menu UI", () => {
   const source = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
     "utf8"
   );
 
-  assert.match(source, /parent_hwnd\.and_then\(read_client_rect_in_screen\)/);
-  assert.match(source, /let Some\(rect\) = read_client_rect_in_screen\(parent_hwnd\)/);
-  assert.match(source, /ClientToScreen\(hwnd, &mut origin\)/);
-  assert.match(source, /pump_messages\(surface\.hwnd\)/);
-  assert.match(source, /PeekMessageW\(&mut message, hwnd, 0, 0, PM_REMOVE\)/);
-  assert.match(source, /last_parent_client_bounds == Some\(bounds\)/);
-  assert.doesNotMatch(source, /SWP_SHOWWINDOW/);
+  assert.match(source, /WS_OVERLAPPEDWINDOW \| WS_CLIPSIBLINGS \| WS_CLIPCHILDREN/);
+  assert.match(source, /AdjustWindowRectEx\(&mut adjusted, style, 0, ex_style\)/);
+  assert.doesNotMatch(source, /create_native_host_test_menu/);
+  assert.doesNotMatch(source, /NATIVE_HOST_INPUT_TEST_COMMAND/);
+  assert.match(source, /hCursor: LoadCursorW\(ptr::null_mut\(\), IDC_ARROW\)/);
+  assert.match(source, /cursor_hidden_requested: bool/);
+  assert.match(source, /normalize_cursor_display_count\(!should_suppress\)/);
+  assert.match(source, /CreateCursor\(/);
+  assert.match(source, /SetCursor\(surface\.transparent_cursor\)/);
+  assert.match(source, /DestroyCursor\(surface\.transparent_cursor\)/);
+  assert.match(source, /surface_has_foreground\(surface\)/);
+  assert.match(source, /cursor_is_in_client\(surface\.hwnd\)/);
+  assert.match(source, /source_frame_dirty \|\| !surface\.presentation_ready/);
+  assert.match(source, /CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis\(32\)/);
+  assert.match(source, /RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis\(250\)/);
+  assert.match(source, /last_present_at\.elapsed\(\) >= RETAINED_FRAME_REFRESH_INTERVAL/);
+  assert.match(source, /surface\.source_frame_dirty \|\| surface\.continuous_present_requested/);
+  assert.match(source, /surface\.continuous_present_requested != continuous/);
+  assert.match(source, /renderer\.upload_cpu_frame/);
+  assert.match(source, /renderer\.has_source\(\)/);
+  assert.match(source, /ex_style &= !\(WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE \| WS_EX_TOPMOST\)/);
+  assert.match(source, /style & !WS_OVERLAPPEDWINDOW/);
+  assert.match(source, /GetWindowPlacement\(surface\.hwnd, &mut placement\)/);
+  assert.match(source, /SetWindowPlacement\(surface\.hwnd, &placement\)/);
+  assert.match(source, /surface\.full_screen = full_screen;\s*unsafe \{\s*set_window_corner_preference\(surface\.hwnd, full_screen\)/);
+  assert.match(source, /DWMWA_TRANSITIONS_FORCEDISABLED/);
+  assert.match(source, /render_retained_frame_from_window_message\(hwnd, false\);\s*return 1/);
+  assert.match(source, /message == WM_ENTERSIZEMOVE/);
+  assert.match(source, /SetTimer\(/);
+  assert.match(source, /message == WM_TIMER && wparam == MODAL_PRESENT_TIMER_ID/);
+  assert.match(source, /KillTimer\(hwnd, MODAL_PRESENT_TIMER_ID\)/);
+  assert.match(source, /mem::take\(&mut surface\.present_after_modal_loop\)/);
+  assert.match(source, /poll_overlay_shortcut\(surface\)/);
+  assert.match(source, /GetAsyncKeyState\(virtual_key\)/);
+  assert.match(source, /tab_state & 0x8001/);
+  assert.match(source, /kind: "overlayShortcut"/);
 });
 
 test("electron smoke sanitizer redacts private overlay proof fields", () => {
@@ -2751,6 +2838,11 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     /"aarch64-apple-darwin":\s*\{[\s\S]*?platform:\s*"darwin"[\s\S]*?arch:\s*"arm64"/
   );
   assert.match(packagerScript, /assertSupportedPackageHost\(target\)/);
+  assert.match(packagerScript, /process\.env\.npm_execpath/);
+  assert.match(packagerScript, /command: process\.execPath, args: \[npmCli, \.\.\.args\]/);
+  assert.match(packagerScript, /shell: false/);
+  assert.doesNotMatch(packagerScript, /shell: process\.platform === "win32"/);
+  assert.match(packagerScript, /windows-release-candidate-fingerprint\.cjs/);
   assert.match(
     packagerScript,
     /Steam Bridge does not build, run, or verify Intel or multi-arch macOS test apps/
@@ -7202,6 +7294,9 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
     setNativeOverlayHostOpacity(opaque) {
       this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
     },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+    },
     updateNativeOverlayHostFrame(frame, width, height) {
       this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
     },
@@ -7433,6 +7528,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   steam.hideNativeOverlayHostView();
   steam.overlay.setNativeOverlayHostInputPassthrough(true);
   steam.overlay.setNativeOverlayHostOpacity(false);
+  steam.overlay.setNativeOverlayHostBounds(10, 20, 1024, 768);
   steam.overlay.updateNativeOverlayHostFrame(frame, 2, 2);
   steam.overlay.detachNativeOverlayHostView();
   assert.equal(steam.isNativeOverlayProbeWindowOpen(), true);
@@ -7549,6 +7645,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
         "hideNativeOverlayHostView",
         "setNativeOverlayHostInputPassthrough",
         "setNativeOverlayHostOpacity",
+        "setNativeOverlayHostBounds",
         "updateNativeOverlayHostFrame",
         "closeNativeOverlayProbeWindow",
         "detachNativeOverlayHostView",
@@ -7567,6 +7664,7 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
       { method: "hideNativeOverlayHostView", args: [] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "setNativeOverlayHostBounds", args: [10, 20, 1024, 768] },
       { method: "updateNativeOverlayHostFrame", args: [frame, 2, 2] },
       { method: "detachNativeOverlayHostView", args: [] },
       { method: "isNativeOverlayProbeWindowOpen", args: [] },
@@ -7602,6 +7700,50 @@ test("electron overlay helper scrubs Steam overlay preload from child process en
   assert.equal(env.OTHER, "untouched");
 
   assert.deepEqual(electron.electronScrubSteamOverlayChildProcessEnv(env), []);
+});
+
+test("electron overlay helper converts BrowserWindow content DIP to Win32 screen pixels", (t) => {
+  clearSteamBridgeCache();
+  setProcessPlatformForTest(t, "win32");
+  const physicalBounds = { x: 25, y: 166, width: 2304, height: 1728 };
+  let convertedWindow;
+  let convertedBounds;
+  mockElectronModule(t, {
+    screen: {
+      dipToScreenRect(window, bounds) {
+        convertedWindow = window;
+        convertedBounds = bounds;
+        return physicalBounds;
+      }
+    }
+  });
+  const electron = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+
+  const framedBounds = { x: 10, y: 20, width: 1026, height: 824 };
+  const contentBounds = { x: 11, y: 74, width: 1024, height: 768 };
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([1, 2, 3, 4]);
+    },
+    getBounds() {
+      return framedBounds;
+    },
+    getContentBounds() {
+      return contentBounds;
+    },
+    webContents: {
+      invalidate() {}
+    }
+  };
+
+  const options = electron.electronOverlayPresenterOptions(window);
+  assert.deepEqual(options.getBounds(), physicalBounds);
+  assert.equal(convertedWindow, window);
+  assert.deepEqual(convertedBounds, contentBounds);
 });
 
 test("electron steam overlay manager scrubs Steam overlay preload from child process env by default", (t) => {
@@ -8277,9 +8419,17 @@ test("electron steam overlay manager can use direct Steam activation on Windows 
 
 test("electron steam overlay manager uses Windows D3D11 native presenter by default", async (t) => {
   setProcessPlatformForTest(t, "win32");
+  mockElectronModule(t, {
+    screen: {
+      dipToScreenRect(_window, bounds) {
+        return bounds;
+      }
+    }
+  });
 
   const hostHandle = Buffer.from([6, 4, 2, 0]);
-  const windowBounds = { x: 12, y: 18, width: 1366, height: 768 };
+  const windowBounds = { x: 12, y: 18, width: 1368, height: 824 };
+  let contentBounds = { x: 13, y: 72, width: 1366, height: 768 };
   let hostOpen = false;
   const activationOrder = [];
   const fake = createFakeNative({
@@ -8305,6 +8455,10 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
     },
     setNativeOverlayHostOpacity(opaque) {
       this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      activationOrder.push("native-bounds");
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
     },
     detachNativeOverlayHostView() {
       hostOpen = false;
@@ -8335,6 +8489,9 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
     },
     getBounds() {
       return windowBounds;
+    },
+    getContentBounds() {
+      return contentBounds;
     },
     focus() {
       focusCount += 1;
@@ -8372,13 +8529,17 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   assert.equal(initialSnapshot.currentFps, 0);
   assert.equal(initialSnapshot.nativeSurfaceAttachCount, 0);
   assert.equal(initialSnapshot.nativeSurfaceDetachCount, 0);
-  assert.deepEqual(initialSnapshot.bounds, windowBounds);
+  assert.deepEqual(initialSnapshot.bounds, contentBounds);
   assert.equal(initialSnapshot.electronOverlay.presenterMode, "persistent");
   assert.equal(initialSnapshot.electronOverlay.controllerGeneration > 0, true);
   assert.equal(geometryHandlers.has("move"), false);
   assert.equal(geometryHandlers.has("resize"), false);
   assert.equal(geometryHandlers.has("moved"), true);
   assert.equal(geometryHandlers.has("resized"), true);
+  assert.equal(geometryHandlers.has("minimize"), true);
+  assert.equal(geometryHandlers.has("hide"), true);
+  assert.equal(geometryHandlers.has("focus"), true);
+  assert.equal(geometryHandlers.has("blur"), true);
 
   const opened = overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/", modal: true });
   assert.equal(opened, overlay.presenter);
@@ -8390,9 +8551,21 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
   assert.deepEqual(activationOrder, [
     "focus-source-window",
     "native-attach-overlay",
+    "native-bounds",
     "native-show",
     "steam-activate-web"
   ]);
+  assert.deepEqual(
+    fake.calls.find((call) => call.method === "setNativeOverlayHostBounds"),
+    { method: "setNativeOverlayHostBounds", args: [13, 72, 1366, 768] }
+  );
+
+  contentBounds = { x: 20, y: 80, width: 1280, height: 720 };
+  geometryHandlers.get("resized")();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostBounds").at(-1),
+    { method: "setNativeOverlayHostBounds", args: [20, 80, 1280, 720] }
+  );
 
   const openingSnapshot = overlay.snapshot();
   assert.equal(openingSnapshot.mode, "active");
@@ -8446,13 +8619,16 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
           "showNativeOverlayHostView",
           "setNativeOverlayHostInputPassthrough",
           "setNativeOverlayHostOpacity",
+          "setNativeOverlayHostBounds",
           "detachNativeOverlayHostView"
         ].includes(call.method)
       )
       .map((call) => call.method),
     [
       "attachNativeOverlayHostViewForOverlay",
+      "setNativeOverlayHostBounds",
       "showNativeOverlayHostView",
+      "setNativeOverlayHostBounds",
       "setNativeOverlayHostInputPassthrough",
       "setNativeOverlayHostOpacity",
       "detachNativeOverlayHostView"
@@ -9690,7 +9866,7 @@ test("electron steam overlay manager opens the presenter route from the default 
       shift: true
     }
   );
-  assert.equal(preventDefaultCount, 2);
+  assert.equal(preventDefaultCount, 3);
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "activateOverlayToWebPage"),
     [{ method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] }]
@@ -9710,7 +9886,7 @@ test("electron steam overlay manager opens the presenter route from the default 
       isAutoRepeat: true
     }
   );
-  assert.equal(preventDefaultCount, 2);
+  assert.equal(preventDefaultCount, 4);
 
   overlay.close();
   assert.equal(removedHandler !== undefined, true);
@@ -14900,6 +15076,195 @@ test("native overlay session constructor failure cleans and releases its surface
   assert.equal(session.isOpen(), true);
   assert.equal(session.snapshot().nativeSurfaceOwner, true);
   session.close();
+});
+
+test("native overlay session presents shared textures and owned CPU fallback frames immediately", (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let probeOpen = false;
+  let failFullScreenTransition;
+  const queuedInputEvents = [];
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    updateNativeOverlayHostSharedTexture(handle, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostSharedTexture", args: [handle, width, height] });
+    },
+    setNativeOverlayHostCursorHidden(hidden) {
+      this.calls.push({ method: "setNativeOverlayHostCursorHidden", args: [hidden] });
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    setNativeOverlayHostFullScreen(fullScreen) {
+      this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [fullScreen] });
+      if (fullScreen === failFullScreenTransition) {
+        throw new Error(`fullscreen ${fullScreen} failed`);
+      }
+    },
+    drainNativeOverlayHostInputEventsJson() {
+      return JSON.stringify(queuedInputEvents.splice(0));
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const receivedInputEvents = [];
+  const session = steam.overlay.startNativeOverlaySession({
+    pumpIntervalMs: 10000,
+    clientWidth: 1024,
+    clientHeight: 768,
+    onInputEvent(event) {
+      receivedInputEvents.push(event);
+    }
+  });
+  const frame = Buffer.from([1, 2, 3, 4]);
+  assert.deepEqual(fake.calls.find((call) => call.method === "openNativeOverlayProbeWindow").args, [
+    "Steam Bridge Native Overlay",
+    1024,
+    768
+  ]);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostCursorHidden").map((call) => call.args[0]),
+    [false]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent").map((call) => call.args[0]),
+    [false]
+  );
+  assert.equal(session.isFullScreen(), false);
+  assert.equal(session.snapshot().fullScreen, false);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen").map((call) => call.args[0]),
+    [false]
+  );
+  failFullScreenTransition = true;
+  assert.throws(() => session.setFullScreen(true), /fullscreen true failed/);
+  assert.equal(session.isFullScreen(), false);
+  assert.equal(session.snapshot().fullScreen, false);
+  failFullScreenTransition = undefined;
+  session.setFullScreen(true);
+  assert.equal(session.isFullScreen(), true);
+  assert.equal(session.snapshot().fullScreen, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen").map((call) => call.args[0]),
+    [false, true, true]
+  );
+  session.setCursorHidden(true);
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostCursorHidden").map((call) => call.args[0]),
+    [false, true, false, true]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent").map((call) => call.args[0]),
+    [false, true, false]
+  );
+  const pumpsBeforeFrame = fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
+  queuedInputEvents.push({
+    kind: "leftMouseDown",
+    message: 513,
+    wparam: 1,
+    lparam: 1310730,
+    x: 10,
+    y: 20,
+    clientWidth: 960,
+    clientHeight: 540
+  }, {
+    kind: "mouseWheel",
+    message: 522,
+    wparam: 7864320,
+    lparam: 1310730,
+    x: 10,
+    y: 20,
+    deltaY: 120,
+    clientWidth: 960,
+    clientHeight: 540
+  });
+
+  session.updateFrame({ data: frame, width: 1, height: 1 });
+
+  const upload = fake.calls.find((call) => call.method === "updateNativeOverlayHostFrame");
+  assert.equal(upload.args[0], frame);
+  assert.deepEqual(upload.args.slice(1), [1, 1]);
+  const sharedHandle = Buffer.from([9, 8, 7, 6, 5, 4, 3, 2]);
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  const sharedUpload = fake.calls.find((call) => call.method === "updateNativeOverlayHostSharedTexture");
+  assert.equal(sharedUpload.args[0], sharedHandle);
+  assert.deepEqual(sharedUpload.args.slice(1), [1024, 768]);
+  assert.throws(
+    () => session.updateFrame({ data: frame, width: Number.NaN, height: 1 }),
+    /frame width must be a finite number/
+  );
+  assert.throws(
+    () => session.updateSharedTexture({ handle: sharedHandle, width: Number.POSITIVE_INFINITY, height: 1 }),
+    /shared texture width must be a finite number/
+  );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
+    pumpsBeforeFrame + 2
+  );
+  assert.deepEqual(receivedInputEvents, [
+    {
+      kind: "leftMouseDown",
+      message: 513,
+      wparam: 1,
+      lparam: 1310730,
+      x: 10,
+      y: 20,
+      clientWidth: 960,
+      clientHeight: 540
+    },
+    {
+      kind: "mouseWheel",
+      message: 522,
+      wparam: 7864320,
+      lparam: 1310730,
+      x: 10,
+      y: 20,
+      deltaY: 120,
+      clientWidth: 960,
+      clientHeight: 540
+    }
+  ]);
+
+  failFullScreenTransition = false;
+  assert.doesNotThrow(() => session.close());
+  assert.equal(session.isFullScreen(), false);
+  assert.equal(session.snapshot().fullScreen, false);
+  assert.match(session.snapshot().lastError.message, /fullscreen false failed/);
+  assert.equal(probeOpen, false);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen").map((call) => call.args[0]),
+    [false, true, true, false]
+  );
+  assert.throws(
+    () => session.updateFrame({ data: frame, width: 1, height: 1 }),
+    /session is closed/
+  );
+  assert.throws(
+    () => session.updateSharedTexture({ handle: Buffer.alloc(8), width: 1, height: 1 }),
+    /session is closed/
+  );
 });
 
 test("raw native surface diagnostics cannot mutate a managed owner", (t) => {

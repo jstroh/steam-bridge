@@ -14,6 +14,8 @@ use tokio::sync::oneshot;
 mod compat;
 mod native_surface;
 mod state;
+#[cfg(target_os = "windows")]
+mod windows_d3d11;
 
 extern "C" {
     fn SteamAPI_InitAnonymousUser() -> bool;
@@ -433,9 +435,13 @@ pub fn activate_overlay_to_web_page(url: String, modal: Option<bool>) -> Result<
 }
 
 #[napi(js_name = "openNativeOverlayProbeWindow")]
-pub fn open_native_overlay_probe_window(title: Option<String>) -> Result<(), Error> {
+pub fn open_native_overlay_probe_window(
+    title: Option<String>,
+    client_width: Option<u32>,
+    client_height: Option<u32>,
+) -> Result<(), Error> {
     state::ensure_initialized()?;
-    native_surface::open(title)
+    native_surface::open(title, client_width, client_height)
 }
 
 #[napi(js_name = "attachNativeOverlayHostView")]
@@ -482,6 +488,31 @@ pub fn set_native_overlay_host_opacity(opaque: bool) -> Result<(), Error> {
     native_surface::set_opaque(opaque)
 }
 
+#[napi(js_name = "setNativeOverlayHostCursorHidden")]
+pub fn set_native_overlay_host_cursor_hidden(hidden: bool) -> Result<(), Error> {
+    native_surface::set_cursor_hidden(hidden)
+}
+
+#[napi(js_name = "setNativeOverlayHostContinuousPresent")]
+pub fn set_native_overlay_host_continuous_present(continuous: bool) -> Result<(), Error> {
+    native_surface::set_continuous_present(continuous)
+}
+
+#[napi(js_name = "setNativeOverlayHostFullScreen")]
+pub fn set_native_overlay_host_full_screen(full_screen: bool) -> Result<(), Error> {
+    native_surface::set_full_screen(full_screen)
+}
+
+#[napi(js_name = "setNativeOverlayHostBounds")]
+pub fn set_native_overlay_host_bounds(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<(), Error> {
+    native_surface::set_bounds(x, y, width, height)
+}
+
 #[napi(js_name = "updateNativeOverlayHostFrame")]
 pub fn update_native_overlay_host_frame(
     frame: Buffer,
@@ -489,6 +520,21 @@ pub fn update_native_overlay_host_frame(
     height: u32,
 ) -> Result<(), Error> {
     native_surface::update_frame(frame, width, height)
+}
+
+#[napi(js_name = "updateNativeOverlayHostSharedTexture")]
+pub fn update_native_overlay_host_shared_texture(
+    handle: Buffer,
+    width: u32,
+    height: u32,
+) -> Result<(), Error> {
+    native_surface::update_shared_texture(handle, width, height)
+}
+
+#[napi(js_name = "drainNativeOverlayHostInputEventsJson")]
+pub fn drain_native_overlay_host_input_events_json() -> Result<String, Error> {
+    state::ensure_initialized()?;
+    Ok(native_surface::drain_input_events_json())
 }
 
 #[napi(js_name = "closeNativeOverlayProbeWindow")]

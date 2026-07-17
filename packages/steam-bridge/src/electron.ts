@@ -46,6 +46,7 @@ export interface ElectronOverlayPresenterOptions {
   title?: string;
   nativeWindowHandle?: Buffer;
   getBounds?: () => ElectronOverlayBounds | undefined;
+  captureFrame?: () => Promise<ElectronOverlayFrame | undefined>;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   idleFps?: number;
@@ -62,6 +63,17 @@ export interface ElectronOverlayPresenterOptions {
   activeGraceMs?: number;
 }
 
+export interface ElectronOverlayFrame {
+  data: Buffer;
+  width: number;
+  height: number;
+}
+
+interface ElectronNativeImage {
+  getSize(): { width: number; height: number };
+  toBitmap(): Buffer;
+}
+
 interface ElectronApp {
   commandLine: {
     appendSwitch(name: string, value?: string): void;
@@ -76,11 +88,13 @@ interface ElectronWindow {
   show?(): void;
   focus?(): void;
   getBounds?(): ElectronOverlayBounds;
+  getContentBounds?(): ElectronOverlayBounds;
   getNativeWindowHandle?(): Buffer;
   webContents: {
     once(event: "did-finish-load", handler: () => void): void;
     invalidate(): void;
     send(channel: string, ...args: unknown[]): void;
+    capturePage?(): Promise<ElectronNativeImage>;
   };
 }
 
@@ -88,6 +102,9 @@ interface ElectronApi {
   app: ElectronApp;
   BrowserWindow: {
     getAllWindows(): ElectronWindow[];
+  };
+  screen?: {
+    dipToScreenRect?(window: ElectronWindow, bounds: ElectronOverlayBounds): ElectronOverlayBounds;
   };
 }
 
@@ -249,6 +266,7 @@ function electronWindowNativeOverlayOptions<
   T extends {
     nativeWindowHandle?: Buffer;
     getBounds?: () => ElectronOverlayBounds | undefined;
+    captureFrame?: () => Promise<ElectronOverlayFrame | undefined>;
     restoreFocus?: () => void;
   }
 >(
@@ -263,6 +281,7 @@ function electronWindowNativeOverlayOptions<
     ...options,
     nativeWindowHandle: window.getNativeWindowHandle(),
     getBounds: () => readElectronWindowBounds(window),
+    captureFrame: () => captureElectronWindowFrame(window),
     restoreFocus: () => {
       if (window.isDestroyed()) {
         return;
@@ -277,12 +296,74 @@ function electronWindowNativeOverlayOptions<
   } as T;
 }
 
-function readElectronWindowBounds(window: ElectronWindow): ElectronOverlayBounds | undefined {
-  if (window.isDestroyed() || typeof window.getBounds !== "function") {
+async function captureElectronWindowFrame(window: ElectronWindow): Promise<ElectronOverlayFrame | undefined> {
+  if (window.isDestroyed() || typeof window.webContents.capturePage !== "function") {
     return undefined;
   }
 
-  return normalizeElectronOverlayBounds(window.getBounds());
+  const image = await window.webContents.capturePage();
+  const data = image.toBitmap();
+  const size = image.getSize();
+  const dimensions = resolveElectronBitmapDimensions(data.length, size.width, size.height);
+  if (!dimensions) {
+    throw new Error(
+      `Electron capturePage() returned ${data.length} bytes for an invalid ${size.width}x${size.height} bitmap.`
+    );
+  }
+
+  return { data, ...dimensions };
+}
+
+function resolveElectronBitmapDimensions(
+  byteLength: number,
+  reportedWidth: number,
+  reportedHeight: number
+): { width: number; height: number } | undefined {
+  if (byteLength <= 0 || byteLength % 4 !== 0) {
+    return undefined;
+  }
+
+  const width = Math.max(1, Math.round(reportedWidth));
+  const height = Math.max(1, Math.round(reportedHeight));
+  const pixelCount = byteLength / 4;
+  if (width * height === pixelCount) {
+    return { width, height };
+  }
+
+  const aspect = width / height;
+  const estimatedWidth = Math.max(1, Math.round(Math.sqrt(pixelCount * aspect)));
+  for (let candidateWidth = Math.max(1, estimatedWidth - 4); candidateWidth <= estimatedWidth + 4; candidateWidth += 1) {
+    if (pixelCount % candidateWidth === 0) {
+      return { width: candidateWidth, height: pixelCount / candidateWidth };
+    }
+  }
+  return undefined;
+}
+
+function readElectronWindowBounds(window: ElectronWindow): ElectronOverlayBounds | undefined {
+  if (window.isDestroyed()) {
+    return undefined;
+  }
+
+  if (typeof window.getContentBounds === "function") {
+    const contentBounds = normalizeElectronOverlayBounds(window.getContentBounds());
+    if (!contentBounds || process.platform !== "win32") {
+      return contentBounds;
+    }
+
+    const electron = require("electron") as ElectronApi;
+    if (typeof electron.screen?.dipToScreenRect === "function") {
+      return normalizeElectronOverlayBounds(electron.screen.dipToScreenRect(window, contentBounds));
+    }
+
+    // Win32 HWND and D3D coordinates are physical pixels. Falling back to
+    // native client bounds is safer than treating Electron DIP as pixels.
+    return undefined;
+  }
+  if (typeof window.getBounds === "function") {
+    return normalizeElectronOverlayBounds(window.getBounds());
+  }
+  return undefined;
 }
 
 function normalizeElectronOverlayBounds(bounds: ElectronOverlayBounds | undefined): ElectronOverlayBounds | undefined {

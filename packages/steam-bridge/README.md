@@ -24,6 +24,10 @@ Requirements:
 - Electron 24 or newer when used with Electron
 - A running Steam client and a Steam app ID
 
+The repository smoke application tracks Electron `43.1.1`. Windows
+shared-texture hosting is tested against that runtime; applications using the
+lower-level host should feature-detect Electron's offscreen texture event.
+
 ## What is included
 
 - Typed Steamworks APIs for auth, achievements, stats, cloud, input,
@@ -108,6 +112,42 @@ application. Steam Bridge supports one managed native presenter per process,
 controlled from Electron's main thread. Raw activation helpers remain
 available for diagnostics, but Electron product UI should use the managed
 overlay path.
+
+### Windows game-host mode
+
+Steam renders into a top-level native swap chain on Windows. A Chromium
+offscreen surface or Win32 child window is not a complete Steam presentation
+target. Games that need native title-bar behavior and continuous rendering
+while Steam is open can use `startNativeOverlaySession()` as a standalone D3D11
+host and render the game in a hidden Electron window created with:
+
+```ts
+const gameWindow = new BrowserWindow({
+  show: false,
+  webPreferences: {
+    offscreen: {
+      useSharedTexture: true,
+      sharedTexturePixelFormat: "argb"
+    }
+  }
+});
+```
+
+For every frame paint event, pass the frame texture's
+`textureInfo.handle.ntHandle`, coded width, and coded height to
+`session.updateSharedTexture()`, then release Electron's texture immediately
+in a `finally` block. Steam Bridge copies the pooled texture before the call
+returns, uses the matching high-performance DXGI adapter, aspect-fits the
+source, and presents through a two-buffer flip-discard swap chain.
+`updateFrame()` remains available as a BGRA CPU fallback.
+
+The native host owns ordinary Windows movement, resize, maximize, minimize,
+fullscreen, focus visibility, rounded-corner clipping, cursor state, and the
+Steam presentation surface. The consumer must map `onInputEvent` coordinates
+through the same aspect-fit transform and forward them to the offscreen
+`webContents`; release pressed input on capture or focus loss. This is an
+advanced path. Prefer `createElectronSteamOverlay()` unless the application
+needs a standalone game host.
 
 ## Steam Web API
 
