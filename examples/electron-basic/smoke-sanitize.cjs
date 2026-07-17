@@ -60,6 +60,8 @@ const SENSITIVE_ARG_PREFIXES = [
   "--steam-bridge-smoke-control-token"
 ];
 
+const { serializeSmokeError } = require("./smoke-error.cjs");
+
 const CHECKOUT_URL_PATTERN = /https?:\/\/checkout\.steampowered\.com\/checkout\/approvetxn\/[^/\s"'<>]+/i;
 const STEAM_ID64_PATTERN = /\b7656119\d{10}\b/g;
 
@@ -93,6 +95,12 @@ function sanitizeValue(value, key) {
       byteLength: value.length,
       redacted: true
     };
+  }
+
+  if (value instanceof Error) {
+    const serializedError = serializeSmokeError(value);
+    delete serializedError.stack;
+    return sanitizeValue(serializedError, key);
   }
 
   if (Array.isArray(value)) {

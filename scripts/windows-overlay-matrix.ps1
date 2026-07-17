@@ -298,6 +298,7 @@ $ExternalForegroundTransition = "external-foreground-event-v1"
 $AutorunUserGestureGatePolicy = "single-cycle-active-v1"
 $PersistentReuseGatePolicy = "initial-user-gesture-verify-only-v1"
 $PersistentReuseEvidenceSchema = 1
+$PersistentReuseCloseTargetSchema = 2
 $ForegroundGrantEvidenceSchema = 1
 
 function Test-PathAncestorChainHasReparsePoint {
@@ -2181,7 +2182,8 @@ function Resolve-PersistentReuseGateCase {
     [int]$Case.persistentReuseCycles -ne 3 -or
     $Case.persistentReuseGate -ne $true -or
     [string]$Case.persistentReuseGatePolicy -cne $PersistentReuseGatePolicy -or
-    [int]$Case.persistentReuseEvidenceSchema -ne $PersistentReuseEvidenceSchema
+    [int]$Case.persistentReuseEvidenceSchema -ne $PersistentReuseEvidenceSchema -or
+    [int]$Case.persistentReuseCloseTargetSchema -ne $PersistentReuseCloseTargetSchema
   ) {
     return $null
   }
@@ -2191,6 +2193,7 @@ function Resolve-PersistentReuseGateCase {
     targetId = "autorun-user-gesture-target"
     policy = $PersistentReuseGatePolicy
     evidenceSchema = $PersistentReuseEvidenceSchema
+    closeTargetSchema = $PersistentReuseCloseTargetSchema
   }
 }
 
@@ -2997,6 +3000,7 @@ function New-Case {
     persistentReuseGate = [bool]$PersistentReuseGate
     persistentReuseGatePolicy = if ($PersistentReuseGate) { $PersistentReuseGatePolicy } else { "" }
     persistentReuseEvidenceSchema = if ($PersistentReuseGate) { $PersistentReuseEvidenceSchema } else { 0 }
+    persistentReuseCloseTargetSchema = if ($PersistentReuseGate) { $PersistentReuseCloseTargetSchema } else { 0 }
     initialUserGestureCycle = if ($PersistentReuseGate) { 1 } else { 0 }
     verifyOnlyCycles = if ($PersistentReuseGate) { @(2, 3) } else { @() }
     closeVerificationOrdinals = if ($PersistentReuseGate) { @(1, 2, 3) } else { @() }
@@ -3320,6 +3324,7 @@ function Write-MatrixManifest {
           persistentReuseGate = [bool]$_.persistentReuseGate
           persistentReuseGatePolicy = [string]$_.persistentReuseGatePolicy
           persistentReuseEvidenceSchema = [int]$_.persistentReuseEvidenceSchema
+          persistentReuseCloseTargetSchema = [int]$_.persistentReuseCloseTargetSchema
           initialUserGestureCycle = [int]$_.initialUserGestureCycle
           verifyOnlyCycles = @($_.verifyOnlyCycles)
           closeVerificationOrdinals = @($_.closeVerificationOrdinals)
@@ -3392,6 +3397,8 @@ function Write-MatrixManifest {
     autorunUserGestureGatePolicy = $AutorunUserGestureGatePolicy
     persistentReuseGatePolicy = $PersistentReuseGatePolicy
     supportedPersistentReuseEvidenceSchemas = @($PersistentReuseEvidenceSchema)
+    persistentReuseCloseTargetSchema = $PersistentReuseCloseTargetSchema
+    supportedPersistentReuseCloseTargetSchemas = @($PersistentReuseCloseTargetSchema)
     closeProbeEvidenceSchema = $CloseProbeEvidenceSchema
     supportedCloseProbeEvidenceSchemas = @(
       $CloseProbeEvidenceSchema,
@@ -4093,6 +4100,7 @@ public static class SteamBridgeWindowsProbe {
 `$script:UsePersistentReuseGate = [bool]::Parse('$usePersistentReuseGate')
 `$script:PersistentReuseGatePolicy = '$PersistentReuseGatePolicy'
 `$script:PersistentReuseEvidenceSchema = $PersistentReuseEvidenceSchema
+`$script:PersistentReuseCloseTargetSchema = $PersistentReuseCloseTargetSchema
 `$script:UserGestureAction = '$userGestureAction'
 `$script:UserGestureTargetId = '$userGestureTargetId'
 `$script:UserGestureLifecycleCompleteEvent = '$userGestureLifecycleCompleteEvent'
@@ -4906,6 +4914,7 @@ function Find-WebClosePanelRectFromScreenshot {
     }
 
     `$minRunWidth = [int][Math]::Max(360, `$rect.width * 0.45)
+    `$minimumPanelHeight = [int][Math]::Min(180, `$rect.height * 0.25)
     `$top = `$null
     `$bottom = `$null
     `$leftSum = 0
@@ -4988,7 +4997,23 @@ function Find-WebClosePanelRectFromScreenshot {
       } elseif (`$null -ne `$top) {
         `$consecutiveMisses += 1
         if (`$consecutiveMisses -ge 8) {
-          break
+          if (([int]`$bottom - [int]`$top) -ge `$minimumPanelHeight) {
+            break
+          }
+
+          # Ignore short bright fragments above the modal. The Steam-rendered
+          # pointer glow and dimmed page controls can briefly exceed the row
+          # width threshold before the panel itself begins.
+          `$top = `$null
+          `$bottom = `$null
+          `$leftSum = 0
+          `$rightSum = 0
+          `$runSamples = 0
+          `$topRun = `$null
+          `$upperBandBottom = `$null
+          `$upperBandLeftValues.Clear()
+          `$upperBandRightValues.Clear()
+          `$consecutiveMisses = 0
         }
       }
     }
@@ -5014,7 +5039,7 @@ function Find-WebClosePanelRectFromScreenshot {
     `$bottom = [Math]::Min(`$rect.bottom, [int]`$bottom)
     `$width = [Math]::Max(0, `$right - `$left)
     `$height = [Math]::Max(0, `$bottom - `$top)
-    if (`$width -lt `$minRunWidth -or `$height -lt [Math]::Min(180, `$rect.height * 0.25)) {
+    if (`$width -lt `$minRunWidth -or `$height -lt `$minimumPanelHeight) {
       return `$null
     }
 
@@ -5335,37 +5360,77 @@ function Get-PersistentReuseAnchoredWebCloseTarget {
     return `$null
   }
 
-  `$scale = [double]`$baseline.scale.value
-  if (-not [double]::IsFinite(`$scale) -or `$scale -lt 0.5 -or `$scale -gt 8) {
-    return `$null
-  }
-
   if (-not `$Screenshot -or `$Screenshot.ok -ne `$true) {
     return `$null
   }
 
-  # Steam renders its pointer into the overlay backbuffer. On later cycles it
-  # can cover the close X and itself satisfy the diagonal glyph heuristic.
-  # Reuse is therefore limited to the exact cycle-one glyph coordinate after
-  # reconfirming the same native HWND, unchanged physical host rect, and a
-  # fresh current-cycle screenshot. The summarizer independently verifies all
-  # of those bindings before it accepts the release proof.
+  `$currentPanel = Find-WebClosePanelRectFromScreenshot -Screenshot `$Screenshot -Foreground `$Foreground
+  if (-not `$currentPanel -or [string]`$currentPanel.source -cne "screenshot-steam-web-panel" -or -not `$currentPanel.rect) {
+    return `$null
+  }
+
+  `$rect = `$baseline.panel
+  `$scaleEvidence = Get-WebCloseDpiScale
+  `$scale = [double]`$scaleEvidence.value
+  if (-not [double]::IsFinite(`$scale) -or `$scale -lt 0.5 -or `$scale -gt 8) {
+    return `$null
+  }
+  `$currentPanelTopTolerance = [int][Math]::Max(4, [Math]::Round(8 * `$scale))
+  `$currentPanelTopDelta = [int][Math]::Abs(
+    [int]`$currentPanel.rect.top - [int]`$baseline.panel.top
+  )
+  if (`$currentPanelTopDelta -gt `$currentPanelTopTolerance) {
+    return `$null
+  }
+
+  `$rightInset = [int]([Math]::Min(
+    [Math]::Max(1, `$rect.width - 1),
+    [Math]::Max(1, [Math]::Round(16 * `$scale))
+  ))
+  `$topInset = [int]([Math]::Min(
+    [Math]::Max(1, `$rect.height - 1),
+    [Math]::Max(1, [Math]::Round(18 * `$scale))
+  ))
+  `$targetX = [int]([Math]::Round(`$rect.right - `$rightInset))
+  `$targetY = [int]([Math]::Round(`$rect.top + `$topInset))
+  `$approachDistance = [int][Math]::Max(1, [Math]::Round(32 * `$scale))
+  `$approachX = [int][Math]::Max(`$rect.left + 1, `$targetX - `$approachDistance)
+
+  # Steam renders its pointer and blue hover glow into the overlay backbuffer,
+  # so later-cycle screenshots cannot reliably redetect either the glyph or
+  # the panel's right edge. Keep cycle one's direct glyph geometry as the
+  # exact-host anchor, but require a substantial panel found in this exact
+  # screenshot whose observed top still aligns with that anchor.
   return [PSCustomObject]@{
-    x = [int]`$baseline.x
-    y = [int]`$baseline.y
+    x = `$targetX
+    y = `$targetY
     source = "persistent-cycle-one-steam-web-close-glyph"
-    panel = `$baseline.panel
-    scale = `$baseline.scale
-    approach = `$baseline.approach
-    insets = `$baseline.insets
+    panel = `$rect
+    scale = `$scaleEvidence
+    approach = [PSCustomObject]@{
+      x = `$approachX
+      y = `$targetY
+      logicalDistance = 32
+    }
+    insets = [PSCustomObject]@{
+      right = `$rightInset
+      top = `$topInset
+      logicalRight = 16
+      logicalTop = 18
+    }
     glyph = `$baseline.glyph
     persistentReuse = [PSCustomObject]@{
-      schema = 1
+      schema = `$script:PersistentReuseCloseTargetSchema
       anchorCycle = 1
       cycle = `$script:CloseCycleOrdinal
       freshScreenshotCaptured = `$true
       sameNativeHost = `$true
       sameHostRect = `$true
+      currentPanelDetected = `$true
+      currentPanelSource = "screenshot-steam-web-panel"
+      currentPanel = `$currentPanel.rect
+      currentPanelTopDelta = `$currentPanelTopDelta
+      currentPanelTopTolerance = `$currentPanelTopTolerance
     }
   }
 }
@@ -5507,6 +5572,29 @@ function Test-WebClosePanelScreenshot {
     }
     `$persistentModalBackdropReady = `$true
     `$hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
+    `$persistentCurrentPanelReady = if (`$script:UsePersistentReuseGate -and `$script:CloseCycleOrdinal -gt 1) {
+      `$reuse = `$target.persistentReuse
+      `$currentPanel = `$reuse.currentPanel
+      `$detectedPanel = `$panel.rect
+      (
+        `$reuse -and
+        [int]`$reuse.schema -eq `$script:PersistentReuseCloseTargetSchema -and
+        `$reuse.currentPanelDetected -eq `$true -and
+        [string]`$reuse.currentPanelSource -ceq "screenshot-steam-web-panel" -and
+        [string]`$panel.source -ceq "screenshot-steam-web-panel" -and
+        `$currentPanel -and
+        [int]`$currentPanel.left -eq [int]`$detectedPanel.left -and
+        [int]`$currentPanel.top -eq [int]`$detectedPanel.top -and
+        [int]`$currentPanel.right -eq [int]`$detectedPanel.right -and
+        [int]`$currentPanel.bottom -eq [int]`$detectedPanel.bottom -and
+        [int]`$currentPanel.width -eq [int]`$detectedPanel.width -and
+        [int]`$currentPanel.height -eq [int]`$detectedPanel.height -and
+        [int]`$reuse.currentPanelTopDelta -ge 0 -and
+        [int]`$reuse.currentPanelTopDelta -le [int]`$reuse.currentPanelTopTolerance
+      )
+    } else {
+      `$true
+    }
     `$webClosePanelGeometryReady = (
       `$hostRect -and
       [int]`$rect.left -ge [int]`$hostRect.left -and
@@ -5613,7 +5701,7 @@ function Test-WebClosePanelScreenshot {
     `$chromeReady = (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12)))
     `$contentReady = (`$contentTotal -gt 0 -and (`$contentBright -gt 3 -or `$contentMaxSeen -gt 120))
     [PSCustomObject]@{
-      ready = (`$chromeReady -and `$contentReady -and `$webClosePanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentModalBackdropReady)
+      ready = (`$chromeReady -and `$contentReady -and `$webClosePanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentCurrentPanelReady -and `$persistentModalBackdropReady)
       target = `$target
       rectSource = `$panel.source
       foregroundCandidate = Test-WebCloseForegroundCandidate `$Foreground
@@ -5626,6 +5714,7 @@ function Test-WebClosePanelScreenshot {
       }
       persistentPanelGeometryReady = `$persistentPanelGeometryReady
       persistentTargetSourceReady = `$persistentTargetSourceReady
+      persistentCurrentPanelReady = `$persistentCurrentPanelReady
       persistentModalBackdropReady = `$persistentModalBackdropReady
       persistentPanelGeometry = [PSCustomObject]@{
         required = `$script:UsePersistentReuseGate
@@ -6457,6 +6546,7 @@ Write-ProbeEvent "probe:start" ([PSCustomObject]@{
   persistentReuseGate = `$script:UsePersistentReuseGate
   persistentReuseGatePolicy = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseGatePolicy } else { "" }
   persistentReuseEvidenceSchema = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseEvidenceSchema } else { 0 }
+  persistentReuseCloseTargetSchema = if (`$script:UsePersistentReuseGate) { `$script:PersistentReuseCloseTargetSchema } else { 0 }
   initialUserGestureCycle = if (`$script:UsePersistentReuseGate) { 1 } else { 0 }
   verifyOnlyCycles = if (`$script:UsePersistentReuseGate) { @(2, 3) } else { @() }
   closeVerificationOrdinals = if (`$script:UsePersistentReuseGate) { @(1, 2, 3) } else { @() }
@@ -7018,7 +7108,11 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
           (
             `$script:UsePersistentReuseGate -and
             `$cycle -gt 1 -and
-            [string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"
+            [string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph" -and
+            `$target.persistentReuse -and
+            [int]`$target.persistentReuse.schema -eq `$script:PersistentReuseCloseTargetSchema -and
+            `$target.persistentReuse.currentPanelDetected -eq `$true -and
+            [string]`$target.persistentReuse.currentPanelSource -ceq "screenshot-steam-web-panel"
           )
         )
         if (-not `$targetSourceProved) {

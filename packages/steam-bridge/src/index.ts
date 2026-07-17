@@ -8828,6 +8828,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let frameCaptureInFlight = false;
   let frameCaptureReady = false;
   let frameCaptureGeneration = 0;
+  let frameCaptureError: unknown;
   const stateListeners = new Set<() => void>();
 
   const pump = (): void => {
@@ -9451,10 +9452,18 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         const height = normalizeNativeOverlayFrameDimension(frame.height, "captured frame height");
         native().updateNativeOverlayHostFrame(frame.data, width, height);
         frameCaptureReady = true;
+        if (lastError === frameCaptureError) {
+          lastError = undefined;
+        }
+        frameCaptureError = undefined;
         pump();
         schedule(0);
       })
       .catch((error) => {
+        if (closed || generation !== frameCaptureGeneration) {
+          return;
+        }
+        frameCaptureError = error;
         lastError = error;
         emitStateChange();
       })

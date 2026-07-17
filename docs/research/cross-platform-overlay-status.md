@@ -77,9 +77,12 @@ it before publication. The exact package exposed an asynchronous achievement
 clear/store race and web close evidence that could accept a fallback without a
 directly proved Steam glyph. Later development runs also caught an outer-host
 glyph false positive and a progress toast arriving at the old 10-second proof
-boundary. All three tags remain immutable rejected evidence.
+boundary. Exact `v0.2.3` passed main CI `29592224120`, tag CI `29592471104`,
+and Release assembly `29592467768`, but its protected persistent proof
+snapshotted before the third inactive callback and retained a recovered frame
+capture error. All four tags remain immutable rejected evidence.
 
-The `0.2.3` development tree retains the two-state window contract: a parked
+The `0.2.4` development tree retains the two-state window contract: a parked
 presenter is a non-activating transparent tool window, while an interactive
 presenter removes both no-activate and transparent styles, shows normally, and
 takes focus only while its parent is visible and eligible. Repeatable progress
@@ -87,15 +90,25 @@ and unlock probes now wait for a fresh `UserStatsStored` callback and verify the
 achievement remains clear before issuing the next mutation. The passive proof
 window is 20 seconds, which contains Steam's observed delayed progress toast
 without replacing the false-to-true needs-present and parked-state requirements.
+Persistent reuse now awaits a fresh typed active and inactive callback in every
+cycle, retains monotonic callback counters outside the bounded event log,
+serializes privacy-safe nested errors, and clears only the exact recovered
+Electron frame-capture fault after a later upload succeeds. The summary auditor
+accepts the bounded one-sample-per-cycle asynchronous stability projection,
+selects the final sample for shutdown ordering, and rejects missing or excess
+samples.
 
 The current close-readiness boundary requires every managed web route to sample
 the target panel and directly detect Steam's close glyph. The target panel must
 be inset by at least 48 logical pixels from the native host's top and right
 edges, scale through the host DPI, remain inside the captured host, and pass
-independent summary geometry checks. A persistent-reuse cycle may reuse only
-cycle one's direct physical coordinate after proving the same native HWND,
-unchanged host rectangle, a fresh full-screen capture, modal panel insets, and
-a 23-point dark-backdrop sample. Both paths fail closed before input if any
+independent summary geometry checks. Persistent reuse binds later clicks to
+cycle one's direct glyph coordinate only after proving the same native HWND,
+unchanged host rectangle, current DPI and focus, a fresh full-screen capture,
+and a newly detected substantial Steam panel whose top aligns with the baseline
+modal within eight logical pixels. The detector ignores short pointer-glow
+fragments, and the schema-2 packaged auditor independently binds each readiness
+record to its dispatched target. Both paths fail closed before input if any
 condition is missing.
 
 The standalone top-level host now exposes `frameRate`, `setFrameRate(...)`, and
@@ -113,7 +126,17 @@ correct. A rebuilt package then passed focused progress and unlock cases and one
 uninterrupted 16/16 managed-routes run: all web closes used direct inset-modal
 glyph targets, both passive cases recorded their callbacks and needs-present
 transitions before parking, all 16 cases were crash-clean, and task/process/env
-cleanup completed. This is development evidence; fresh `v0.2.3` CI, Release
+cleanup completed. Subsequent protected persistent runs rejected a recovered
+capture-error lifecycle race, a dark pre-modal false-ready frame, a panel miss
+caused by a short pointer fragment, and an omitted case-level schema projection.
+The final exact-source `0.2.4` development package at
+`C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-asar-panel-v4-20260717-101239`
+then passed three physical closes, three active and three inactive callbacks,
+schema-2 current-panel readiness in both reuse cycles, clean final detach, exact
+packaged summary, complete cleanup, and unchanged Steam identity at
+`C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-persistent-panel-v4-20260717-101426`.
+Retained-image regression checks reject both dark pre-modal states and accept the
+rendered Steam modal. This is development evidence; fresh `v0.2.4` CI, Release
 assembly, protected four-profile proof, receipt, and publication checks remain
 mandatory.
 

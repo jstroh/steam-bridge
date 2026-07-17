@@ -355,7 +355,8 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
     },
     presenter: {
       currentFps: 0,
-      overlayActive: false
+      overlayActive: false,
+      lastError: new Error("transient capture failed")
     },
     callback: {
       authorized: true,
@@ -391,6 +392,9 @@ test("electron smoke sanitizer redacts private overlay proof fields", () => {
   assert.equal(sanitized.checkout.hasTransactionId, true);
   assert.equal(sanitized.checkout.hasReturnUrl, true);
   assert.equal(sanitized.presenter.currentFps, 0);
+  assert.equal(sanitized.presenter.lastError.name, "Error");
+  assert.equal(sanitized.presenter.lastError.message, "transient capture failed");
+  assert.equal(Object.hasOwn(sanitized.presenter.lastError, "stack"), false);
   assert.equal(sanitized.callback.authorized, true);
   assert.equal(sanitized.callback.matchesCurrentCheckoutOperation, true);
   assert.equal(sanitized.callback.m_ulOrderID.redacted, true);
@@ -1375,6 +1379,26 @@ test("electron smoke waits for the Windows passive needs-present transition", ()
     waitSource,
     /const renderPathObserved = process\.platform !== "win32" \|\| transitionObserved;[\s\S]*eventSeen && callbacksSeen && renderPathObserved && isParkedPassivePresenter\(presenter\)/,
     "Windows completion should wait for the observed needs-present transition before accepting parked callbacks"
+  );
+});
+
+test("electron smoke persistent reuse waits for each typed activation callback", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const actionStart = exampleMain.indexOf("async function runPresenterPersistentReuseThreeCycle");
+  const actionEnd = exampleMain.indexOf("function persistentReusePresenterEvidence", actionStart);
+  assert.notEqual(actionStart, -1, "persistent reuse action should exist");
+  assert.notEqual(actionEnd, -1, "persistent reuse action should have a stable function boundary");
+
+  const actionSource = exampleMain.slice(actionStart, actionEnd);
+  assert.match(
+    actionSource,
+    /const activeCallbackCount = countOverlayActivationEvents\(true\);[\s\S]*const inactiveCallbackCount = countOverlayActivationEvents\(false\);/,
+    "each cycle should capture typed callback baselines before opening Steam"
+  );
+  assert.match(
+    actionSource,
+    /await requireOverlayActivationCallbackAfter\(true, activeCallbackCount, cycle\);[\s\S]*await requireOverlayActivationCallbackAfter\(false, inactiveCallbackCount, cycle\);/,
+    "each cycle should await its own active and inactive callbacks before completion"
   );
 });
 
@@ -8642,6 +8666,139 @@ test("electron steam overlay manager uses Windows D3D11 native presenter by defa
       "detachNativeOverlayHostView"
     ]
   );
+});
+
+test("Windows presenter clears a recovered Electron frame capture error", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  mockElectronModule(t, {
+    screen: {
+      dipToScreenRect(_window, bounds) {
+        return bounds;
+      }
+    }
+  });
+
+  const captureError = new Error("capturePage was temporarily unavailable");
+  const staleCaptureError = new Error("capture completed after close");
+  let captureAttempts = 0;
+  let resolveRecoveredCapture;
+  const recoveredCapture = new Promise((resolve) => {
+    resolveRecoveredCapture = resolve;
+  });
+  let rejectStaleCapture;
+  const staleCapture = new Promise((_resolve, reject) => {
+    rejectStaleCapture = reject;
+  });
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostViewForOverlay() {
+      hostOpen = true;
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostBounds() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    updateNativeOverlayHostFrame(frame, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    activateOverlayToWebPage() {}
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    isMinimized() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([6, 5, 4, 3]);
+    },
+    getContentBounds() {
+      return { x: 10, y: 20, width: 640, height: 480 };
+    },
+    focus() {},
+    show() {},
+    on() {},
+    off() {},
+    once() {},
+    webContents: {
+      async capturePage() {
+        captureAttempts += 1;
+        if (captureAttempts === 1) {
+          throw captureError;
+        }
+        return recoveredCapture;
+      },
+      invalidate() {},
+      on() {},
+      off() {},
+      once() {},
+      send() {}
+    }
+  };
+
+  t.after(() => {
+    clearSteamBridgeCache();
+  });
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, { pollIntervalMs: 10000 });
+  t.after(() => overlay.close());
+
+  overlay.open({ type: "web", url: "https://store.steampowered.com/app/480/" });
+  assert.equal(await waitForCondition(() => overlay.snapshot().lastError === captureError, 500, 5), true);
+  resolveRecoveredCapture({
+    toBitmap() {
+      return Buffer.alloc(16);
+    },
+    getSize() {
+      return { width: 2, height: 2 };
+    }
+  });
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.some((call) => call.method === "updateNativeOverlayHostFrame"),
+      500,
+      5
+    ),
+    true
+  );
+  assert.ok(captureAttempts >= 2, "the presenter should retry a transient capture failure");
+  assert.equal(overlay.snapshot().lastError, undefined);
+  overlay.close();
+
+  let staleCaptureStarted = false;
+  const staleWindow = {
+    ...window,
+    webContents: {
+      ...window.webContents,
+      capturePage() {
+        staleCaptureStarted = true;
+        return staleCapture;
+      }
+    }
+  };
+  const staleOverlay = steam.overlay.createElectronSteamOverlay(staleWindow, {
+    pollIntervalMs: 10000
+  });
+  t.after(() => staleOverlay.close());
+  staleOverlay.open({ type: "web", url: "https://store.steampowered.com/app/480/" });
+  assert.equal(await waitForCondition(() => staleCaptureStarted, 500, 5), true);
+  staleOverlay.close();
+  rejectStaleCapture(staleCaptureError);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.notEqual(staleOverlay.snapshot().lastError, staleCaptureError);
+  assert.equal(staleOverlay.snapshot().closeReason, "closed");
 });
 
 test("Windows presenter ignores idle needs-present until an operation primes it", async (t) => {

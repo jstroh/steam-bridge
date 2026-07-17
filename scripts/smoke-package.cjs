@@ -1656,8 +1656,11 @@ function runWindowsSmokeHelperStaticChecks() {
     "autorunUserGestureGatePolicy = $AutorunUserGestureGatePolicy",
     '$PersistentReuseGatePolicy = "initial-user-gesture-verify-only-v1"',
     "$PersistentReuseEvidenceSchema = 1",
+    "$PersistentReuseCloseTargetSchema = 2",
     "persistentReuseGatePolicy = $PersistentReuseGatePolicy",
     "supportedPersistentReuseEvidenceSchemas = @($PersistentReuseEvidenceSchema)",
+    "persistentReuseCloseTargetSchema = [int]$_.persistentReuseCloseTargetSchema",
+    "supportedPersistentReuseCloseTargetSchemas = @($PersistentReuseCloseTargetSchema)",
     "$SameProcessUserGestureEvidenceSchema",
     "supportedCloseProbeEvidenceSchemas = @(",
     "supportedExternalForegroundTransitions = @($ExternalForegroundTransition)",
@@ -1681,6 +1684,9 @@ function runWindowsSmokeHelperStaticChecks() {
     "freshScreenshotCaptured = `$true",
     "sameNativeHost = `$true",
     "sameHostRect = `$true",
+    "currentPanelDetected = `$true",
+    'currentPanelSource = "screenshot-steam-web-panel"',
+    "persistentCurrentPanelReady = `$persistentCurrentPanelReady",
     '"initial-user-gesture"',
     '"verify-only"',
     "persistentReuseGate = `$script:UsePersistentReuseGate",
@@ -1889,6 +1895,7 @@ function runWindowsSmokeHelperStaticChecks() {
       persistentGateResolver.includes("$Case.persistentReuseGate -ne $true") &&
       persistentGateResolver.includes("$PersistentReuseGatePolicy") &&
       persistentGateResolver.includes("$PersistentReuseEvidenceSchema") &&
+      persistentGateResolver.includes("$PersistentReuseCloseTargetSchema") &&
       persistentGateResolver.includes('targetId = "autorun-user-gesture-target"'),
     "Windows matrix must isolate persistent reuse behind one exact case/action/policy resolver"
   );

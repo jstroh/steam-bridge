@@ -278,6 +278,8 @@ let managedShortcutOpenSource = "Shift+Tab";
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
 const eventLog = [];
+let overlayActiveEventCount = 0;
+let overlayInactiveEventCount = 0;
 const microTxnCheckoutCorrelation = createMicroTxnCheckoutCorrelationTracker();
 
 function createWindow() {
@@ -2361,6 +2363,8 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
   let finalClosed;
   let finalParked;
   for (let cycle = 1; cycle <= 3; cycle += 1) {
+    const activeCallbackCount = countOverlayActivationEvents(true);
+    const inactiveCallbackCount = countOverlayActivationEvents(false);
     if (!userGesturePersistentReuse) {
       beginNativePresenterForegroundHandoffReuseCycle(cycle);
     }
@@ -2397,6 +2401,7 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
     if (shownResult.ok !== true) {
       throw new Error(`Persistent presenter reuse cycle ${cycle} did not reach shown state.`);
     }
+    await requireOverlayActivationCallbackAfter(true, activeCallbackCount, cycle);
 
     if (!userGesturePersistentReuse) {
       await waitForNativePresenterForegroundHandoffReuseCycle(cycle);
@@ -2412,6 +2417,7 @@ async function runPresenterPersistentReuseThreeCycle(overlay, resolveFirstShown)
     if (openResult.ok !== true) {
       throw openResult.error;
     }
+    await requireOverlayActivationCallbackAfter(false, inactiveCallbackCount, cycle);
     if (!userGesturePersistentReuse) {
       finishNativePresenterForegroundHandoffReuseCycle(cycle);
     }
@@ -4952,6 +4958,14 @@ function recordEvent(type, payload) {
     at: new Date().toISOString(),
     payload
   });
+  if (type === "callback:overlay-activated") {
+    const active = readOverlayActiveValue(payload);
+    if (active === true) {
+      overlayActiveEventCount += 1;
+    } else if (active === false) {
+      overlayInactiveEventCount += 1;
+    }
+  }
   eventLog.push(event);
   eventLog.splice(0, Math.max(0, eventLog.length - 100));
   recordLifecycle(`event:${type}`, payload);
@@ -4964,7 +4978,28 @@ function recordEvent(type, payload) {
 }
 
 function countOverlayActiveEvents() {
-  return eventLog.filter(isOverlayActiveEvent).length;
+  return countOverlayActivationEvents(true);
+}
+
+function countOverlayActivationEvents(active) {
+  return active ? overlayActiveEventCount : overlayInactiveEventCount;
+}
+
+async function requireOverlayActivationCallbackAfter(active, previousCount, cycle) {
+  const timeoutMs = Math.min(MANAGED_OVERLAY_PARK_TIMEOUT_MS, 5000);
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  let count = countOverlayActivationEvents(active);
+  while (count <= previousCount && Date.now() < deadline) {
+    await delay(Math.min(25, Math.max(0, deadline - Date.now())));
+    count = countOverlayActivationEvents(active);
+  }
+  if (count <= previousCount) {
+    const phase = active ? "active" : "inactive";
+    throw new Error(
+      `Persistent presenter reuse cycle ${cycle} timed out waiting for its Steam overlay ${phase} callback.`
+    );
+  }
 }
 
 function isOverlayActiveEvent(event) {

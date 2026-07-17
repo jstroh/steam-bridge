@@ -132,6 +132,11 @@ mutation; `store()` is accepted synchronously, but Steam confirms the state
 change asynchronously. `client.achievement.onStored(...)` reports the later
 progress or unlock notification update.
 
+`overlay.snapshot().lastError` reports an unrecovered presenter fault. A
+transient Electron frame-capture failure is retried and cleared after a later
+capture succeeds; a terminal presenter failure remains available with
+`closeReason: "error"` for diagnostics.
+
 ### Windows game-host mode
 
 Steam renders into a top-level native swap chain on Windows. A Chromium

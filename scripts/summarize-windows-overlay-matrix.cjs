@@ -58,6 +58,7 @@ const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
 const USER_GESTURE_GATE_POLICY = "single-cycle-active-v1";
 const PERSISTENT_REUSE_GATE_POLICY = "initial-user-gesture-verify-only-v1";
 const PERSISTENT_REUSE_EVIDENCE_SCHEMA = 1;
+const PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA = 2;
 const FOREGROUND_GRANT_EVIDENCE_SCHEMA = 1;
 const FOREGROUND_GRANT_REQUEST_KIND = "steam-bridge-windows-foreground-grant-request";
 const FOREGROUND_GRANT_ACK_KIND = "steam-bridge-windows-foreground-grant-ack";
@@ -67,6 +68,7 @@ const PERSISTENT_REUSE_CURRENT_ONLY_FIELDS = Object.freeze([
   "persistentReuseGate",
   "persistentReuseGatePolicy",
   "persistentReuseEvidenceSchema",
+  "persistentReuseCloseTargetSchema",
   "initialUserGestureCycle",
   "verifyOnlyCycles",
   "closeVerificationOrdinals"
@@ -250,6 +252,7 @@ const PERSISTENT_REUSE_GATE_EXPECTATION = Object.freeze({
   action: PERSISTENT_REUSE_ACTION,
   targetId: GENERIC_USER_GESTURE_GATE_TARGET,
   evidenceSchemas: USER_GESTURE_SCHEMA_3_ONLY,
+  closeTargetSchema: PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
   persistentReuse: true
 });
 const WINDOWS_LIGHTWEIGHT_POLL_INTERVAL_MS = 30;
@@ -280,6 +283,8 @@ function hasPersistentReuseContractSignal(manifest, entry) {
   return Boolean(
     hasOwn(manifest, "persistentReuseGatePolicy") ||
       hasOwn(manifest, "supportedPersistentReuseEvidenceSchemas") ||
+      hasOwn(manifest, "persistentReuseCloseTargetSchema") ||
+      hasOwn(manifest, "supportedPersistentReuseCloseTargetSchemas") ||
       PERSISTENT_REUSE_CURRENT_ONLY_FIELDS.some((field) => hasOwn(entry, field)) ||
       entry?.autorunUserGestureGate === true ||
       entry?.closeProbeEvidenceSchema === 3
@@ -806,6 +811,20 @@ function validateManifest(manifest, failures) {
       failures
     );
   }
+  const hasPersistentReuseCloseTargetContract =
+    hasOwn(manifest, "persistentReuseCloseTargetSchema") ||
+    hasOwn(manifest, "supportedPersistentReuseCloseTargetSchemas");
+  if (hasPersistentReuseCloseTargetContract) {
+    expect(
+      manifest.persistentReuseCloseTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA &&
+        Array.isArray(manifest.supportedPersistentReuseCloseTargetSchemas) &&
+        manifest.supportedPersistentReuseCloseTargetSchemas.length === 1 &&
+        manifest.supportedPersistentReuseCloseTargetSchemas[0] ===
+          PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
+      `matrix manifest records persistent reuse close-target schema ${PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA}`,
+      failures
+    );
+  }
   for (const field of ["shortcutName", "shortcutExe", "shortcutStartDir", "shortcutLaunchPrefix", "javaScriptRunnerExe"]) {
     expect(manifest[field] === undefined, `matrix manifest omits raw ${field}`, failures);
   }
@@ -1019,6 +1038,24 @@ function validateManifest(manifest, failures) {
             "matrix manifest current persistent case enables its exact policy and evidence schema",
             failures
           );
+          const hasCloseTargetContract =
+            hasOwn(manifest, "persistentReuseCloseTargetSchema") ||
+            hasOwn(manifest, "supportedPersistentReuseCloseTargetSchemas") ||
+            hasOwn(entry, "persistentReuseCloseTargetSchema");
+          if (hasCloseTargetContract) {
+            expect(
+              manifest.persistentReuseCloseTargetSchema ===
+                  PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA &&
+                Array.isArray(manifest.supportedPersistentReuseCloseTargetSchemas) &&
+                manifest.supportedPersistentReuseCloseTargetSchemas.length === 1 &&
+                manifest.supportedPersistentReuseCloseTargetSchemas[0] ===
+                  PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA &&
+                entry.persistentReuseCloseTargetSchema ===
+                  PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
+              "matrix manifest current persistent case enables exact current-panel close-target evidence",
+              failures
+            );
+          }
           expect(
             entry.autorunUserGestureGate === true &&
               entry.closeProbeEvidenceSchema === 3 &&
@@ -1052,9 +1089,10 @@ function validateManifest(manifest, failures) {
           );
         } else {
           expect(
-            entry.persistentReuseGate !== true &&
+              entry.persistentReuseGate !== true &&
               !entry.persistentReuseGatePolicy &&
               Number(entry.persistentReuseEvidenceSchema || 0) === 0 &&
+              Number(entry.persistentReuseCloseTargetSchema || 0) === 0 &&
               Number(entry.initialUserGestureCycle || 0) === 0 &&
               (!Array.isArray(entry.verifyOnlyCycles) || entry.verifyOnlyCycles.length === 0) &&
               (!Array.isArray(entry.closeVerificationOrdinals) ||
@@ -4301,6 +4339,7 @@ function verifyPersistentCloseProbe(
   failures
 ) {
   const start = events.filter((event) => event && event.type === "probe:start");
+  const readyEvents = events.filter((event) => event && event.type === "probe:web-close-ready");
   const targets = events.filter((event) => event && event.type === "probe:web-close-click-target");
   const focus = events.filter((event) => event && event.type === "probe:native-presenter-focus");
   const dispatchStarts = events.filter(
@@ -4311,6 +4350,7 @@ function verifyPersistentCloseProbe(
   const terminalFailures = events.filter(
     (event) => event && ["probe:close-input-skipped", "probe:incomplete", "probe:timeout"].includes(event.type)
   );
+  const closeTargetSchema = Number(manifestCase?.persistentReuseCloseTargetSchema || 1);
   expect(
     focus.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
     `${caseName}: persistent close probe recorded three focus handoffs`,
@@ -4359,6 +4399,19 @@ function verifyPersistentCloseProbe(
       `${caseName}: persistent manifest and close probe agree on policy and schema`,
       failures
     );
+    if (closeTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA) {
+      expect(
+        startPayload.persistentReuseCloseTargetSchema ===
+          PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
+        `${caseName}: persistent close probe records current-panel close-target schema ${PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA}`,
+        failures
+      );
+      expect(
+        readyEvents.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
+        `${caseName}: persistent close probe records one current-panel readiness proof per cycle`,
+        failures
+      );
+    }
     const dpiAwareness = String(startPayload.dpiAwareness || "");
     expect(
       /(?:^|;)process-per-monitor-v2(?:;|$)/.test(dpiAwareness) &&
@@ -4566,6 +4619,12 @@ function verifyPersistentCloseProbe(
     if (currentPersistentGate) {
       const targetPayload = objectOrEmpty(targets[index] && targets[index].payload);
       const target = objectOrEmpty(targetPayload.target);
+      const cycleReadyEvents = readyEvents.filter(
+        (readyEvent) => Number(objectOrEmpty(readyEvent?.payload).cycle) === ordinal
+      );
+      const cycleReadyEvent = cycleReadyEvents[0];
+      const cycleReadyPayload = objectOrEmpty(cycleReadyEvent?.payload);
+      const cycleReadyAnalysis = objectOrEmpty(cycleReadyPayload.analysis);
       const dispatchStart = dispatchStarts[index];
       const dispatchPayload = objectOrEmpty(dispatchStart?.payload);
       const dispatchPreDispatch = objectOrEmpty(
@@ -4582,7 +4641,8 @@ function verifyPersistentCloseProbe(
       const reusedCycleOneTargetValid = isValidPersistentReuseCycleOneCloseTarget(
         target,
         baselineCloseTarget,
-        ordinal
+        ordinal,
+        closeTargetSchema
       );
       const pointer = objectOrEmpty(payload.nativePointerSent);
       const pointerApproach = objectOrEmpty(pointer.approach);
@@ -4716,6 +4776,19 @@ function verifyPersistentCloseProbe(
         `${caseName}: persistent cycle ${ordinal} orders target, confirmation, dispatch, and close result`,
         failures
       );
+      if (closeTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA) {
+        expect(
+          cycleReadyEvents.length === 1 &&
+            events.indexOf(cycleReadyEvent) < events.indexOf(targets[index]) &&
+            cycleReadyAnalysis.ready === true &&
+            cycleReadyAnalysis.rectSource === "screenshot-steam-web-panel" &&
+            cycleReadyAnalysis.persistentCurrentPanelReady === true &&
+            isDeepStrictEqual(cycleReadyAnalysis.target, target) &&
+            objectOrEmpty(cycleReadyPayload.screenshot).ok === true,
+          `${caseName}: persistent cycle ${ordinal} proves the current Steam panel is rendered before close input`,
+          failures
+        );
+      }
       expect(
         dispatchPayload.cycle === ordinal &&
           dispatchPayload.input === "web-close-click-sendinput" &&
@@ -4792,6 +4865,13 @@ function verifyPersistentCloseProbe(
         expect(
           reusedCycleOneTargetValid,
           `${caseName}: persistent input cycle ${ordinal} binds its exact cycle-one close target to the same host and fresh screenshot`,
+          failures
+        );
+      }
+      if (closeTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA && ordinal > 1) {
+        expect(
+          reusedCycleOneTargetValid,
+          `${caseName}: persistent input cycle ${ordinal} anchors the cycle-one glyph to its current screenshot panel`,
           failures
         );
       }
@@ -4899,7 +4979,12 @@ function verifyPersistentCloseProbe(
         expect(
           isValidWebCloseGlyphTarget(target) ||
             target.source === "screenshot-steam-web-panel" ||
-            isValidPersistentReuseCycleOneCloseTarget(target, baselineTarget, index + 1),
+            isValidPersistentReuseCycleOneCloseTarget(
+              target,
+              baselineTarget,
+              index + 1,
+              closeTargetSchema
+            ),
           `${caseName}: persistent cycle ${index + 1} directly detects, reconstructs, or exactly reuses the cycle-one close glyph on the unchanged host`,
           failures
         );
@@ -7119,6 +7204,10 @@ function summarizeSameProcessUserGestureHandoff({
       completion.ok === true &&
       !containsRawForegroundHandoffIdentifier(completion)
   );
+  const afterCloseStableCountValid = persistentReuseUserGesture
+    ? afterCloseStableEvents.length >= 1 &&
+      afterCloseStableEvents.length <= WINDOWS_PERSISTENT_REUSE_CYCLES
+    : afterCloseStableEvents.length === 1;
   const gracefulShutdownValid = Boolean(
     resultWrittenEvents.length === 1 &&
       resultWrittenPayload.action === expectedAction &&
@@ -7126,7 +7215,7 @@ function summarizeSameProcessUserGestureHandoff({
       keepOpenEvents.length === 1 &&
       keepOpenPayload.action === expectedAction &&
       keepOpenPayload.resultFileWritten === true &&
-      afterCloseStableEvents.length === 1 &&
+      afterCloseStableCountValid &&
       persistentReuseCompleteEvents.length === (persistentReuseUserGesture ? 1 : 0) &&
       completionQuitEvents.length === 1 &&
       completionQuitPayload.action === expectedAction &&
@@ -7203,7 +7292,7 @@ function summarizeSameProcessUserGestureHandoff({
           completeLifecycle.indexOf(resultWrittenEvents[0]) <
             completeLifecycle.indexOf(keepOpenEvents[0]) &&
           completeLifecycle.indexOf(keepOpenEvents[0]) <
-            completeLifecycle.indexOf(completionQuitEvents[0]) &&
+            completeLifecycle.indexOf(afterCloseStableEvent) &&
           completeLifecycle.indexOf(afterCloseStableEvent) <
             completeLifecycle.indexOf(completionQuitEvents[0]) &&
           completeLifecycle.indexOf(completionQuitEvents[0]) <
@@ -7258,7 +7347,7 @@ function summarizeSameProcessUserGestureHandoff({
           lifecycleOrderValid &&
           persistentReuseCompleteAt <= resultWrittenAt &&
           persistentReuseCompleteAt <= focusReturnAt &&
-          afterCloseStableAt <= focusReturnAt &&
+          keepOpenAt <= afterCloseStableAt &&
           resultWrittenAt <= keepOpenAt &&
           keepOpenAt <= completionQuitAt &&
           focusReturnAt <= completionQuitAt &&
@@ -7404,6 +7493,7 @@ function summarizeSameProcessUserGestureHandoff({
     focusShapeValid,
     focusReturnObserved,
     completionHandshakeValid,
+    afterCloseStableCountValid,
     gracefulShutdownValid,
     completionOrderValid,
     orderValid
@@ -7721,28 +7811,74 @@ function isValidWebCloseGlyphTarget(targetValue) {
   );
 }
 
-function isValidPersistentReuseCycleOneCloseTarget(targetValue, baselineValue, cycle) {
+function isValidPersistentReuseCycleOneCloseTarget(
+  targetValue,
+  baselineValue,
+  cycle,
+  closeTargetSchema = 1
+) {
   const target = objectOrEmpty(targetValue);
   const baseline = objectOrEmpty(baselineValue);
   const reuse = objectOrEmpty(target.persistentReuse);
-  return Boolean(
+  const commonValid = Boolean(
     Number.isInteger(cycle) &&
       cycle > 1 &&
       target.source === "persistent-cycle-one-steam-web-close-glyph" &&
       isValidWebCloseGlyphTarget(baseline) &&
-      reuse.schema === 1 &&
       reuse.anchorCycle === 1 &&
       reuse.cycle === cycle &&
       reuse.freshScreenshotCaptured === true &&
       reuse.sameNativeHost === true &&
       reuse.sameHostRect === true &&
+      isDeepStrictEqual(target.glyph, baseline.glyph)
+  );
+  if (!commonValid) {
+    return false;
+  }
+  if (closeTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA) {
+    const panel = normalizeRect(target.panel);
+    const currentPanel = normalizeRect(reuse.currentPanel);
+    const scale = Number(objectOrEmpty(target.scale).value);
+    const expectedTarget = expectedWebCloseTarget(panel, objectOrEmpty(target.panel), scale);
+    const approach = objectOrEmpty(target.approach);
+    const insets = objectOrEmpty(target.insets);
+    const expectedApproachX = panel && Number.isFinite(scale)
+      ? Math.max(panel.left + 1, Number(target.x) - roundMidpointToEven(32 * scale))
+      : NaN;
+    const expectedTopTolerance = Number.isFinite(scale)
+      ? Math.max(4, roundMidpointToEven(8 * scale))
+      : NaN;
+    const observedTopDelta = panel && currentPanel
+      ? Math.abs(currentPanel.top - panel.top)
+      : NaN;
+    return Boolean(
+      reuse.schema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA &&
+        reuse.currentPanelDetected === true &&
+        reuse.currentPanelSource === "screenshot-steam-web-panel" &&
+        currentPanel &&
+        Number(reuse.currentPanelTopDelta) === observedTopDelta &&
+        Number(reuse.currentPanelTopTolerance) === expectedTopTolerance &&
+        observedTopDelta <= expectedTopTolerance &&
+        expectedTarget &&
+        Number(target.x) === expectedTarget.x &&
+        Number(target.y) === expectedTarget.y &&
+        Number(insets.right) === expectedTarget.rightInset &&
+        Number(insets.top) === expectedTarget.topInset &&
+        Number(insets.logicalRight) === 16 &&
+        Number(insets.logicalTop) === 18 &&
+        Number(approach.x) === expectedApproachX &&
+        Number(approach.y) === Number(target.y) &&
+        Number(approach.logicalDistance) === 32
+    );
+  }
+  return Boolean(
+    reuse.schema === 1 &&
       Number(target.x) === Number(baseline.x) &&
       Number(target.y) === Number(baseline.y) &&
       isDeepStrictEqual(target.panel, baseline.panel) &&
       isDeepStrictEqual(target.scale, baseline.scale) &&
       isDeepStrictEqual(target.approach, baseline.approach) &&
-      isDeepStrictEqual(target.insets, baseline.insets) &&
-      isDeepStrictEqual(target.glyph, baseline.glyph)
+      isDeepStrictEqual(target.insets, baseline.insets)
   );
 }
 
@@ -8721,6 +8857,39 @@ function runSelfTest() {
     assert.equal(persistentReuseSummary.cleanup.taskFileGuardOk, true);
     assert.equal(persistentReuseSummary.cleanup.taskFailureStage, "success");
     assert.equal(persistentReuseSummary.cleanup.taskRunnerTerminatedWithoutDone, false);
+    const persistentMultipleStableRoot = path.join(
+      tempRoot,
+      "persistent-reuse-multiple-after-close-stable"
+    );
+    writeCurrentPersistentReuseFixture(persistentMultipleStableRoot, {
+      intermediateStableCycles: [2],
+      focusReturnBeforeFinalStable: true
+    });
+    const persistentMultipleStableSummary = summarizeWindowsOverlayMatrixArtifacts(
+      persistentMultipleStableRoot
+    );
+    assert.deepEqual(persistentMultipleStableSummary.failures, []);
+    assert.equal(
+      persistentMultipleStableSummary.caseSummaries[0].closeProbe.sameProcessUserGestureChecks
+        .afterCloseStableCountValid,
+      true
+    );
+    const persistentTooManyStableRoot = path.join(
+      tempRoot,
+      "persistent-reuse-too-many-after-close-stable"
+    );
+    writeCurrentPersistentReuseFixture(persistentTooManyStableRoot, {
+      intermediateStableCycles: [1, 2, 3]
+    });
+    const persistentTooManyStableSummary = summarizeWindowsOverlayMatrixArtifacts(
+      persistentTooManyStableRoot
+    );
+    assert.equal(
+      persistentTooManyStableSummary.caseSummaries[0].closeProbe.sameProcessUserGestureChecks
+        .afterCloseStableCountValid,
+      false
+    );
+    assert.ok(persistentTooManyStableSummary.failures.length > 0);
     const persistentCycleOneTargetReuseRoot = path.join(
       tempRoot,
       "persistent-reuse-cycle-one-close-target"
@@ -8743,6 +8912,13 @@ function runSelfTest() {
         wrongReusedCloseTargetBindingCycle: 2
       },
       "binds its exact cycle-one close target to the same host and fresh screenshot"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-dark-pre-modal-fallback-readiness",
+      writeCurrentPersistentReuseFixture,
+      { fallbackReadyCycle: 3 },
+      "proves the current Steam panel is rendered before close input"
     );
     const persistentAlternateCallbackRoot = path.join(
       tempRoot,
@@ -8849,6 +9025,11 @@ function runSelfTest() {
       ["wrong-policy", { wrongPersistentPolicy: true }, "persistentReuseGatePolicy is"],
       ["wrong-case-policy", { wrongCasePersistentPolicy: true }, "enables its exact policy and evidence schema"],
       ["wrong-persistent-schema", { wrongPersistentSchema: true }, "enables its exact policy and evidence schema"],
+      [
+        "wrong-persistent-close-target-schema",
+        { wrongPersistentCloseTargetSchema: true },
+        "enables exact current-panel close-target evidence"
+      ],
       ["close-schema-downgrade", { downgradeCloseProbeSchema: true }, "requires one schema-3 same-process user-gesture gate"],
       ["gate-disabled", { disablePersistentGate: true }, "requires one schema-3 same-process user-gesture gate"],
       ["wrong-verify-only-plan", { wrongVerifyOnlyCycles: true }, "records one trusted cycle and ordered verify-only cycles"],
@@ -13040,7 +13221,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     reportedUserGestureTargetId: GENERIC_USER_GESTURE_GATE_TARGET,
     userGestureGate: true,
     alreadyForeground: true,
-    webCloseGlyphEvidence: options.webCloseGlyphEvidence === true
+    webCloseGlyphEvidence: options.webCloseGlyphEvidence !== false
   });
 
   const manifestPath = path.join(root, "matrix-manifest.json");
@@ -13051,6 +13232,10 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     ? "wrong-persistent-policy"
     : PERSISTENT_REUSE_GATE_POLICY;
   manifest.supportedPersistentReuseEvidenceSchemas = [PERSISTENT_REUSE_EVIDENCE_SCHEMA];
+  manifest.persistentReuseCloseTargetSchema = PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA;
+  manifest.supportedPersistentReuseCloseTargetSchemas = [
+    PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
+  ];
   manifest.cleanupContract = {
     processCleanupRequired: true,
     launchEnvRollbackRequired: true,
@@ -13078,6 +13263,9 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     persistentReuseEvidenceSchema: options.wrongPersistentSchema
       ? 2
       : PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+    persistentReuseCloseTargetSchema: options.wrongPersistentCloseTargetSchema
+      ? 1
+      : PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
     initialUserGestureCycle: 1,
     verifyOnlyCycles: options.wrongVerifyOnlyCycles ? [1, 3] : [2, 3],
     closeVerificationOrdinals: [1, 2, 3],
@@ -13100,11 +13288,15 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
   if (options.omitPersistentPolicyMarker) {
     delete manifest.persistentReuseGatePolicy;
     delete manifest.supportedPersistentReuseEvidenceSchemas;
+    delete manifest.persistentReuseCloseTargetSchema;
+    delete manifest.supportedPersistentReuseCloseTargetSchemas;
     delete manifest.cases[0].persistentReuseGatePolicy;
   }
   if (options.stripPersistentContractFields) {
     delete manifest.persistentReuseGatePolicy;
     delete manifest.supportedPersistentReuseEvidenceSchemas;
+    delete manifest.persistentReuseCloseTargetSchema;
+    delete manifest.supportedPersistentReuseCloseTargetSchemas;
     for (const field of PERSISTENT_REUSE_CURRENT_ONLY_FIELDS) {
       delete manifest.cases[0][field];
     }
@@ -13112,12 +13304,15 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
   if (options.falsyPersistentContractFields) {
     delete manifest.persistentReuseGatePolicy;
     delete manifest.supportedPersistentReuseEvidenceSchemas;
+    delete manifest.persistentReuseCloseTargetSchema;
+    delete manifest.supportedPersistentReuseCloseTargetSchemas;
     Object.assign(manifest.cases[0], {
       autorunUserGestureGate: false,
       closeProbeEvidenceSchema: 2,
       persistentReuseGate: false,
       persistentReuseGatePolicy: "",
       persistentReuseEvidenceSchema: 0,
+      persistentReuseCloseTargetSchema: 0,
       initialUserGestureCycle: 0,
       verifyOnlyCycles: [],
       closeVerificationOrdinals: []
@@ -13253,7 +13448,8 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
           presenter: parkedLifecyclePresenter
         }
       },
-      ...(cycle === WINDOWS_PERSISTENT_REUSE_CYCLES
+      ...(Array.isArray(options.intermediateStableCycles) &&
+        options.intermediateStableCycles.includes(cycle)
         ? [
             {
               type: "overlay:presenter-after-close-stable",
@@ -13483,6 +13679,24 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
       payload: { action: PERSISTENT_REUSE_ACTION, resultFileWritten: true }
     },
     {
+      type: "event:overlay:presenter-after-close-stable",
+      at: at(35),
+      pid: 4245,
+      payload: {
+        source: "state-change",
+        sample: 2,
+        presenter: persistentReuseEvidenceFixture({
+          cycle: WINDOWS_PERSISTENT_REUSE_CYCLES,
+          controllerGeneration,
+          leaseGeneration,
+          instanceGeneration,
+          hostToken,
+          phase: "parked",
+          attachCount: 1
+        })
+      }
+    },
+    {
       type: "event:control:user-gesture-completion-quit",
       at: at(37),
       pid: 4245,
@@ -13559,6 +13773,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     persistentReuseEvidenceSchema: options.wrongProbePersistentSchema
       ? 2
       : PERSISTENT_REUSE_EVIDENCE_SCHEMA,
+    persistentReuseCloseTargetSchema: PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
     initialUserGestureCycle: 1,
     verifyOnlyCycles: [2, 3],
     closeVerificationOrdinals: [1, 2, 3]
@@ -13598,24 +13813,53 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     const target = structuredClone(firstTarget);
     target.at = at(baseSecond + 2);
     target.payload.cycle = cycle;
-    if (options.reuseCycleOneCloseTarget && cycle > 1) {
-      target.payload.target.source = "persistent-cycle-one-steam-web-close-glyph";
-      target.payload.target.persistentReuse = {
-        schema: 1,
-        anchorCycle: 1,
-        cycle,
-        freshScreenshotCaptured: true,
-        sameNativeHost: true,
-        sameHostRect: options.wrongReusedCloseTargetBindingCycle === cycle ? false : true
-      };
-    }
     if (options.panelShiftCycle === cycle) {
       const panel = target.payload.target.panel;
       panel.top += 1;
       panel.bottom += 1;
       target.payload.target.y += 1;
-      target.payload.target.source = "screenshot-steam-web-panel";
-      delete target.payload.target.glyph;
+    }
+    if (cycle > 1) {
+      const currentTarget = target.payload.target;
+      const currentPanel = normalizeRect(currentTarget.panel);
+      const currentScale = Number(objectOrEmpty(currentTarget.scale).value);
+      const currentExpected = expectedWebCloseTarget(
+        currentPanel,
+        objectOrEmpty(currentTarget.panel),
+        currentScale
+      );
+      currentTarget.source = "persistent-cycle-one-steam-web-close-glyph";
+      if (currentExpected) {
+        currentTarget.x = currentExpected.x;
+        currentTarget.y = currentExpected.y;
+        currentTarget.insets = {
+          right: currentExpected.rightInset,
+          top: currentExpected.topInset,
+          logicalRight: 16,
+          logicalTop: 18
+        };
+        currentTarget.approach = {
+          x: Math.max(
+            currentPanel.left + 1,
+            currentExpected.x - roundMidpointToEven(32 * currentScale)
+          ),
+          y: currentExpected.y,
+          logicalDistance: 32
+        };
+      }
+      currentTarget.persistentReuse = {
+        schema: PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
+        anchorCycle: 1,
+        cycle,
+        freshScreenshotCaptured: true,
+        sameNativeHost: true,
+        sameHostRect: options.wrongReusedCloseTargetBindingCycle === cycle ? false : true,
+        currentPanelDetected: true,
+        currentPanelSource: "screenshot-steam-web-panel",
+        currentPanel: structuredClone(currentTarget.panel),
+        currentPanelTopDelta: 0,
+        currentPanelTopTolerance: Math.max(4, roundMidpointToEven(8 * currentScale))
+      };
     }
     if (options.wrongCloseTargetCycle === cycle) {
       target.payload.target.x += 1;
@@ -13676,6 +13920,27 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
         ...objectOrEmpty(target.payload.foreground),
         hwnd: "0x1234"
       };
+    }
+    if (cycleScreenshotEvent && options.onlyPostSendScreenshot !== cycle) {
+      const readyEvent = structuredClone(cycleScreenshotEvent);
+      readyEvent.type = "probe:web-close-ready";
+      readyEvent.at = at(baseSecond + 1);
+      readyEvent.payload = {
+        cycle,
+        attempt: 1,
+        foreground: structuredClone(target.payload.foreground),
+        screenshot: structuredClone(cycleScreenshotEvent.payload.screenshot),
+        analysis: {
+          ready: true,
+          rectSource:
+            options.fallbackReadyCycle === cycle
+              ? "foreground-window-steam-web-panel"
+              : "screenshot-steam-web-panel",
+          persistentCurrentPanelReady: options.fallbackReadyCycle === cycle ? false : true,
+          target: structuredClone(target.payload.target)
+        }
+      };
+      closeProbe.push(readyEvent);
     }
     const focus = structuredClone(firstFocus);
     focus.at = at(baseSecond + 3);
@@ -13785,7 +14050,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
       closeProbe[firstSentIndex]
     ];
   }
-  focusReturn.at = at(35);
+  focusReturn.at = at(options.focusReturnBeforeFinalStable ? 34 : 35);
   const probeComplete = {
     type: "probe:complete",
     at: at(36),

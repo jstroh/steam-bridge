@@ -29,6 +29,7 @@ const SAME_PROCESS_HANDOFF = "same-process-user-gesture-v1";
 const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
 const USER_GESTURE_POLICY = "single-cycle-active-v1";
 const PERSISTENT_REUSE_POLICY = "initial-user-gesture-verify-only-v1";
+const PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA = 2;
 const WEB_CLOSE_TARGET_EVIDENCE = "screenshot-close-glyph-v1";
 const FOREGROUND_GRANT_EVIDENCE_SCHEMA = 1;
 const FOREGROUND_GRANT_KEYS = Object.freeze([
@@ -102,6 +103,7 @@ const MATRIX_MANIFEST_KEYS = Object.freeze([
   "overlayProfile",
   "overlayScrubChildEnv",
   "persistentReuseGatePolicy",
+  "persistentReuseCloseTargetSchema",
   "presenterMode",
   "privateEnvImported",
   "requireMicroTxnCallback",
@@ -117,6 +119,7 @@ const MATRIX_MANIFEST_KEYS = Object.freeze([
   "supportedCloseProbeForegroundHandoffs",
   "supportedExternalForegroundTransitions",
   "supportedPersistentReuseEvidenceSchemas",
+  "supportedPersistentReuseCloseTargetSchemas",
   "targetHints",
   "timeoutSeconds",
   "webUrlUsesPublicDefault",
@@ -141,6 +144,7 @@ const CASE_KEYS = Object.freeze([
   "initialUserGestureCycle",
   "managedOverlayResultMode",
   "persistentReuseCycles",
+  "persistentReuseCloseTargetSchema",
   "persistentReuseEvidenceSchema",
   "persistentReuseGate",
   "persistentReuseGatePolicy",
@@ -330,6 +334,13 @@ function validatePublicManifest(manifest, contract, candidateBinding) {
   assert.equal(manifest.autorunUserGestureGatePolicy, USER_GESTURE_POLICY);
   assert.equal(manifest.persistentReuseGatePolicy, PERSISTENT_REUSE_POLICY);
   assert.deepEqual(manifest.supportedPersistentReuseEvidenceSchemas, [1]);
+  assert.equal(
+    manifest.persistentReuseCloseTargetSchema,
+    PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
+  );
+  assert.deepEqual(manifest.supportedPersistentReuseCloseTargetSchemas, [
+    PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
+  ]);
   assert.equal(manifest.closeProbeEvidenceSchema, 2);
   assert.deepEqual(manifest.supportedCloseProbeEvidenceSchemas, [2, 3]);
   assert.equal(manifest.closeProbeForegroundHandoff, OWNER_PROCESS_HANDOFF);
@@ -1130,6 +1141,9 @@ function makeCase(id, action, requireEvent, options = {}) {
     persistentReuseGate: persistentReuse,
     persistentReuseGatePolicy: persistentReuse ? PERSISTENT_REUSE_POLICY : "",
     persistentReuseEvidenceSchema: persistentReuse ? 1 : 0,
+    persistentReuseCloseTargetSchema: persistentReuse
+      ? PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
+      : 0,
     initialUserGestureCycle: persistentReuse ? 1 : 0,
     verifyOnlyCycles: persistentReuse ? [2, 3] : [],
     closeVerificationOrdinals: persistentReuse ? [1, 2, 3] : [],
@@ -1602,6 +1616,10 @@ function createSelfTestManifest(contract, candidateBinding) {
     autorunUserGestureGatePolicy: USER_GESTURE_POLICY,
     persistentReuseGatePolicy: PERSISTENT_REUSE_POLICY,
     supportedPersistentReuseEvidenceSchemas: [1],
+    persistentReuseCloseTargetSchema: PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
+    supportedPersistentReuseCloseTargetSchemas: [
+      PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
+    ],
     closeProbeEvidenceSchema: 2,
     supportedCloseProbeEvidenceSchemas: [2, 3],
     closeProbeForegroundHandoff: OWNER_PROCESS_HANDOFF,

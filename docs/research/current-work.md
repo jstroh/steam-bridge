@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-07-17
 
-Review anchor: `9837ff5` (`Release Windows overlay host fixes as v0.2.2`).
+Review anchor: `fed9b83` (`Fix Windows overlay package smoke contract`).
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.3`, whose code-bearing predecessor adds the verified
+Release-gate `steam-bridge@0.2.4`, whose code-bearing predecessor adds the verified
 Windows top-level D3D11 game host, Electron shared-texture ingestion, native
 input delivery, production window-state behavior, an interactive owned-popup
 focus fix, and display-rate presentation control. The new candidate also makes
@@ -14,7 +14,7 @@ the Windows managed-route proof fail closed on the actual inset Steam modal,
 sequences repeatable achievement mutations through Steam's stored callbacks,
 and gives delayed passive notifications a bounded 20-second evidence window.
 Published `steam-bridge@0.1.6` remains the unchanged predecessor. Exact
-`v0.2.0`, `v0.2.1`, and `v0.2.2` are preserved as rejected evidence; none
+`v0.2.0`, `v0.2.1`, `v0.2.2`, and `v0.2.3` are preserved as rejected evidence; none
 produced a published npm package suitable for use.
 
 ## Current State
@@ -60,7 +60,7 @@ texture updates cannot double-pump the swap chain; the default remains false.
 Automation could not make Steam accept a synthetic global Shift+Tab chord, so
 that run does not claim physical hotkey deactivation. More importantly, this
 consumer run is development evidence, not the repository's publication proof.
-Because `0.2.3` carries the new native host and changes its release evidence,
+Because `0.2.4` carries the new native host and changes its release evidence,
 the exact protected packaged candidate still requires fresh public
 `persistent-reuse`, `checkout`, `shortcut-routes`,
 and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
@@ -84,8 +84,41 @@ progress toast arriving at the old 10-second boundary after a long route
 sequence. The replacement waits for a fresh `UserStatsStored` callback before
 progress or unlock mutation, requires every web close to use a directly detected
 glyph inside an inset modal panel, independently audits that panel geometry,
-and allows 20 seconds for passive toast presentation. None of the three failed
-tags may be moved, reused, or published; `v0.2.3` is the fresh candidate.
+and allows 20 seconds for passive toast presentation. None of the four failed
+tags may be moved, reused, or published. Exact `v0.2.3` then passed main CI
+`29592224120`, tag CI `29592471104`, and Release assembly `29592467768`, but
+its first protected persistent-reuse root exposed a final-cycle lifecycle
+race: the native presenter parked successfully, while the smoke result was
+snapshotted 42 ms before its third typed inactive callback. The same run also
+retained a recovered Electron frame-capture error in `lastError`, causing the
+authenticated final close audit to fail. The `0.2.4` replacement awaits one
+fresh active and inactive callback in every reuse cycle, keeps monotonic
+callback counters outside the bounded event log, serializes nested smoke
+errors, and clears only the exact recovered capture error after a later frame
+upload succeeds. `v0.2.3` remains immutable rejected evidence; `v0.2.4` is the
+fresh candidate. A first corrected development run completed three typed
+callback pairs but exposed a separate proof-auditor assumption: an asynchronous
+stability sample from cycle two can legitimately remain alongside the final
+shutdown sample. The auditor now accepts one to three samples for a three-cycle
+reuse case, selects the final sample for the shutdown handshake, requires that
+sample after result/keep-open and before completion quit, and still rejects zero
+or more than one sample per cycle. Focus return and the final asynchronous
+sample may occur in either order while both remain bounded by reuse completion
+and completion quit.
+
+The next exact development run exposed a second independent race in the
+physical-close harness: cycle three could reuse cycle one's close coordinate
+while Steam was still showing a dark pre-modal frame. The harness now requires
+each later cycle to detect a fresh substantial Steam panel whose top edge aligns
+with cycle one's directly proved modal within eight logical pixels, while still
+binding the click to cycle one's glyph-derived coordinate, the same native HWND,
+unchanged host rectangle, current DPI, focus, and a fresh screenshot. It ignores
+short pointer-glow fragments before looking for the real panel. The packaged
+auditor requires schema 2 at the root and case levels and binds the sole
+`probe:web-close-ready` record in each cycle to the dispatched target. A
+behaviorally clean intermediate run was correctly rejected when the case
+projection omitted that schema field. The final exact-source development package
+and run include the corrected projection.
 
 The true `WS_CHILD` experiment remains diagnostic because Steam activates but
 does not render into its child swap chain. The repaired attached owned popup is
@@ -100,10 +133,11 @@ changes that belong to the user and must remain untouched.
 - `npm run native:build` produced the exact optimized
   `x86_64-pc-windows-msvc` addon and linked it into the package. The
   source-linked consumer resolves the same bytes.
-- `npm test` passes all 204 tests after the callback, modal-geometry, and
+- `npm test` passes all 206 tests after the callback, modal-geometry, and
   passive-notification timing review, plus TypeScript, Electron-version,
-  shortcut, and all Windows package-gate self-tests.
-- `npm run example:package:win` builds the `0.2.3` Electron `43.1.1` unpacked
+  shortcut, all Windows package-gate self-tests, the final-cycle callback
+  regression, and recovered-frame-error regression.
+- `npm run example:package:win` builds the `0.2.4` Electron `43.1.1` unpacked
   app, verifies all 1,127 required native methods and their declaration hash,
   passes the packaged matrix self-test, and loads the exact addon through the
   packaged executable. The package path retains argument-safe npm invocation
@@ -144,6 +178,31 @@ changes that belong to the user and must remain untouched.
   Release assembly `29583614808` for `v0.2.2`. The downloaded exact candidate
   was protected and audited, but the managed-route proof rejected it before
   receipt generation or npm publication. The tag remains immutable evidence.
+- Commit `fed9b83` passed main CI `29592224120`, tag CI `29592471104`, and tag
+  Release assembly `29592467768` for `v0.2.3`. Its exact 114-file protected
+  package completed all three persistent reuse opens and physical closes, but
+  the independent packaged auditor rejected the missing third inactive event
+  in the result projection and a stale recovered `lastError`. No receipt or npm
+  publication was attempted, and the tag remains immutable rejected evidence.
+- Rejected development roots are retained for the recovered-error lifecycle
+  race, dark pre-modal false readiness, pointer-fragment panel miss, and omitted
+  per-case schema projection. They are diagnostic evidence, not release proof.
+- The final protected local `0.2.4` package at
+  `C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-asar-panel-v4-20260717-101239`
+  contains 114 files, all 1,127 native methods, the current callback/error
+  fixes, and the current packaged
+  schema-2 auditor. Exact-source root
+  `C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-persistent-panel-v4-20260717-101426`
+  passed candidate binding, canonical ACL, native/render/readiness gates, one
+  foreground grant, all three overlay opens and physical closes, three active
+  and three inactive callbacks, final clean detach with no unrecovered error,
+  exact packaged summary, task/process/environment cleanup, and unchanged Steam
+  identity. Cycles two and three both proved a current substantial Steam panel
+  aligned to the baseline modal before input. Retained-image checks reject both
+  dark pre-modal frames (39- and 147-logical-pixel top deltas) and accept the
+  rendered modal (one-logical-pixel delta). The auditor regression accepts one
+  legitimate asynchronous stability sample per cycle and rejects missing or
+  excess samples.
 - The corrected Windows verifier self-test passes and accepts the complete
   import table of the exact local 8,130,560-byte addon while continuing to
   reject dynamic MSVC/UCRT and arbitrary non-system dependencies.
@@ -152,9 +211,9 @@ changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Commit and push the reviewed `0.2.3` replacement, wait for exact CI, then
-   create the fresh `v0.2.3` candidate through the tag-triggered Release
-   workflow. Preserve and never move rejected `v0.2.0`, `v0.2.1`, or `v0.2.2`.
+1. Commit and push the reviewed `0.2.4` replacement, wait for exact CI, and
+   create the fresh `v0.2.4` candidate through the tag-triggered Release
+   workflow. Preserve and never move rejected `v0.2.0` through `v0.2.3`.
 2. Run the required candidate-bound Windows public proof profiles without
    private checkout inputs or evidence overrides, generate the sanitized
    receipt, and configure the publish proof.
@@ -164,7 +223,7 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Commit and push the reviewed `0.2.3` replacement, then require clean exact CI
+Commit and push the reviewed `0.2.4` replacement, then require clean exact CI
 before creating the fresh tag. Do not tag or publish if the protected Windows
 live-proof workflow cannot be completed for the same exact candidate.
 
