@@ -1949,10 +1949,10 @@ async function runAutorunAction(action) {
         openNativeWebOverlay();
         return { ok: true, action };
       case "achievement-progress":
-        openAchievementProgress();
+        await openAchievementProgress();
         return { ok: true, action };
       case "achievement-unlock":
-        openAchievementUnlock();
+        await openAchievementUnlock();
         return { ok: true, action };
       case "presenter-ready":
         checkPresenterReady();
@@ -2039,10 +2039,10 @@ async function runAutorunAction(action) {
         openPresenterShortcutOpenAndWaitBridge();
         return { ok: true, action };
       case "presenter-achievement-progress":
-        openPresenterAchievementProgress();
+        await openPresenterAchievementProgress();
         return { ok: true, action };
       case "presenter-achievement-unlock":
-        openPresenterAchievementUnlock();
+        await openPresenterAchievementUnlock();
         return { ok: true, action };
       default:
         throw new Error(`Unsupported autorun action: ${action}`);
@@ -2131,15 +2131,15 @@ function openNativeWebOverlay() {
   return snapshot();
 }
 
-function openAchievementProgress() {
+async function openAchievementProgress() {
   const activeClient = requireClient();
-  recordEvent("achievement:progress", runAchievementProgressSmoke(activeClient));
+  recordEvent("achievement:progress", await runAchievementProgressSmoke(activeClient));
   return snapshot();
 }
 
-function openAchievementUnlock() {
+async function openAchievementUnlock() {
   const activeClient = requireClient();
-  recordEvent("achievement:unlock", runAchievementUnlockSmoke(activeClient));
+  recordEvent("achievement:unlock", await runAchievementUnlockSmoke(activeClient));
   return snapshot();
 }
 
@@ -3820,39 +3820,41 @@ function hasCheckoutDiagnosticFields(value) {
   ].some((key) => Object.prototype.hasOwnProperty.call(value, key));
 }
 
-function openPresenterAchievementProgress() {
+async function openPresenterAchievementProgress() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
   observePassiveNotificationNeedsPresent(overlay, "presenter-achievement-progress");
 
   recordEvent("achievement:progress", {
-    ...runAchievementProgressSmoke(activeClient),
+    ...(await runAchievementProgressSmoke(activeClient)),
     presenter: presenter.snapshot()
   });
   return snapshot();
 }
 
-function openPresenterAchievementUnlock() {
+async function openPresenterAchievementUnlock() {
   const activeClient = requireClient();
   const overlay = ensureElectronSteamOverlay(activeClient);
   const presenter = overlay.presenter;
   observePassiveNotificationNeedsPresent(overlay, "presenter-achievement-unlock");
 
   recordEvent("achievement:unlock", {
-    ...runAchievementUnlockSmoke(activeClient),
+    ...(await runAchievementUnlockSmoke(activeClient)),
     presenter: presenter.snapshot()
   });
   return snapshot();
 }
 
-function runAchievementProgressSmoke(activeClient) {
+async function runAchievementProgressSmoke(activeClient) {
   const candidates = resolveAchievementProgressTargets(activeClient);
   const attempts = [];
 
   for (const target of candidates) {
-    const progressSetup = prepareAchievementProgressTarget(activeClient, target.name, target.unlocked);
-    const indicated = activeClient.achievement.indicateProgress(target.name, target.current, target.max);
+    const progressSetup = await prepareAchievementProgressTarget(activeClient, target.name, target.unlocked);
+    const indicated = progressSetup.clearConfirmedForProgress
+      ? activeClient.achievement.indicateProgress(target.name, target.current, target.max)
+      : false;
     const attempt = {
       name: target.name,
       current: target.current,
@@ -3885,18 +3887,59 @@ function runAchievementProgressSmoke(activeClient) {
   throw new Error("Steam did not accept achievement progress for any available smoke achievement.");
 }
 
-function runAchievementUnlockSmoke(activeClient) {
+async function runAchievementUnlockSmoke(activeClient) {
   const target = resolveAchievementUnlockTarget(activeClient);
+  const storedCallbackCountBeforeClear = countEventType("callback:user-stats-stored");
   const cleared = activeClient.achievement.clear(target.name);
-  const clearStored = activeClient.stats.store();
+  const clearStored = cleared ? activeClient.stats.store() : false;
+  if (!cleared || !clearStored) {
+    throw new Error("Steam did not accept the achievement clear/store prerequisite for unlock proof.");
+  }
+
+  const clearStoreCallback = await waitForEventCountAfter(
+    "callback:user-stats-stored",
+    storedCallbackCountBeforeClear,
+    3000
+  );
+  const afterClear = readValue(() => activeClient.achievement.getAndUnlockTime(target.name));
+  if (!clearStoreCallback.observed || !isAchievementConfirmedClear(afterClear)) {
+    throw new Error("Steam did not confirm the cleared achievement before unlock proof.");
+  }
+
+  // Steam can acknowledge StoreStats before its notification state has fully
+  // settled. Keep the clear and re-unlock as two distinct operations so a
+  // repeated smoke run still produces a fresh unlock toast/needs-present edge.
+  await delay(100);
   const activated = activeClient.achievement.activate(target.name);
   const unlockStored = activeClient.stats.store();
   return {
     ...target,
     cleared,
     clearStored,
+    clearStoreCallback,
+    afterClear,
     activated,
     unlockStored
+  };
+}
+
+function countEventType(type) {
+  return eventLog.reduce((count, event) => count + (event.type === type ? 1 : 0), 0);
+}
+
+async function waitForEventCountAfter(type, previousCount, timeoutMs) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  let count = countEventType(type);
+  while (count <= previousCount && Date.now() < deadline) {
+    await delay(25);
+    count = countEventType(type);
+  }
+  return {
+    observed: count > previousCount,
+    previousCount,
+    count,
+    durationMs: Date.now() - startedAt
   };
 }
 
@@ -4174,15 +4217,40 @@ function resolveAchievementUnlockTarget(activeClient) {
   };
 }
 
-function prepareAchievementProgressTarget(activeClient, name, unlocked) {
+async function prepareAchievementProgressTarget(activeClient, name, unlocked) {
   const wasUnlocked = isAchievementAchieved(unlocked);
+  const storedCallbackCountBeforeClear = countEventType("callback:user-stats-stored");
   const cleared = activeClient.achievement.clear(name);
-  const clearStored = activeClient.stats.store();
+  const clearStored = cleared ? activeClient.stats.store() : false;
+  if (!cleared || !clearStored) {
+    throw new Error("Steam did not accept the achievement clear/store prerequisite for progress proof.");
+  }
+
+  const clearStoreCallback = await waitForEventCountAfter(
+    "callback:user-stats-stored",
+    storedCallbackCountBeforeClear,
+    3000
+  );
+  const unlockedAfterClear = readValue(() => activeClient.achievement.getAndUnlockTime(name));
+  const clearConfirmedForProgress = Boolean(
+    clearStoreCallback.observed &&
+    isAchievementConfirmedClear(unlockedAfterClear)
+  );
+  if (!clearConfirmedForProgress) {
+    throw new Error("Steam did not confirm the cleared achievement before progress proof.");
+  }
+
+  // Keep StoreStats(clear) and IndicateAchievementProgress as two distinct
+  // Steam operations. Repeated live runs otherwise race the clear callback
+  // and Steam can accept the progress call without producing a toast edge.
+  await delay(100);
   return {
     wasUnlocked,
     clearedForProgress: cleared,
     clearStoredForProgress: clearStored,
-    unlockedAfterClear: readValue(() => activeClient.achievement.getAndUnlockTime(name))
+    clearStoreCallback,
+    unlockedAfterClear,
+    clearConfirmedForProgress
   };
 }
 
@@ -4217,6 +4285,10 @@ function orderProgressAchievementNames(activeClient, achievementNames) {
 
 function isAchievementAchieved(unlocked) {
   return Boolean(unlocked && unlocked.ok && unlocked.value && unlocked.value.achieved === true);
+}
+
+function isAchievementConfirmedClear(unlocked) {
+  return Boolean(unlocked && unlocked.ok && unlocked.value && unlocked.value.achieved === false);
 }
 
 function normalizePositiveInteger(value, fallback) {

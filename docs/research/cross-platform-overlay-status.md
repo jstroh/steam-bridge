@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -71,20 +71,32 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 Exact `v0.2.1` passed CI and Release assembly but is rejected and unpublished.
 Its attached interactive presenter still carried `WS_EX_NOACTIVATE`, so formal
 proof correctly refused to treat rendered Steam pixels as an input-capable
-surface. The replacement development tree uses a two-state contract: a parked
+surface. Exact `v0.2.2` also passed main CI `29583417694`, tag CI `29583616413`,
+and Release assembly `29583614808`, but protected managed-route proof rejected
+it before publication. The exact package exposed an asynchronous achievement
+clear/store race and web close evidence that could accept a fallback without a
+directly proved Steam glyph. Later development runs also caught an outer-host
+glyph false positive and a progress toast arriving at the old 10-second proof
+boundary. All three tags remain immutable rejected evidence.
+
+The `0.2.3` development tree retains the two-state window contract: a parked
 presenter is a non-activating transparent tool window, while an interactive
 presenter removes both no-activate and transparent styles, shows normally, and
-takes focus only while its parent is visible and eligible. A source-linked full
-persistent run then passed three overlay show/close/park cycles, focus/input,
-lifecycle, strict summary, crash, and cleanup checks.
+takes focus only while its parent is visible and eligible. Repeatable progress
+and unlock probes now wait for a fresh `UserStatsStored` callback and verify the
+achievement remains clear before issuing the next mutation. The passive proof
+window is 20 seconds, which contains Steam's observed delayed progress toast
+without replacing the false-to-true needs-present and parked-state requirements.
 
-That persistent run also established the current close-readiness boundary.
-Cycle one must directly detect Steam's web close glyph. A later cycle may reuse
-only that exact physical coordinate after proving the same native HWND,
+The current close-readiness boundary requires every managed web route to sample
+the target panel and directly detect Steam's close glyph. The target panel must
+be inset by at least 48 logical pixels from the native host's top and right
+edges, scale through the host DPI, remain inside the captured host, and pass
+independent summary geometry checks. A persistent-reuse cycle may reuse only
+cycle one's direct physical coordinate after proving the same native HWND,
 unchanged host rectangle, a fresh full-screen capture, modal panel insets, and
-a 23-point dark-backdrop sample. The probe fails closed before input if any
-condition is missing, and the summary independently rejects a mismatched reuse
-binding.
+a 23-point dark-backdrop sample. Both paths fail closed before input if any
+condition is missing.
 
 The standalone top-level host now exposes `frameRate`, `setFrameRate(...)`, and
 opt-in `continuousPresent`. The session timer wakes just ahead of the selected
@@ -97,8 +109,13 @@ and restore, application focus loss/return, F11 fullscreen enter/exit, mapped
 game input, one-time purchase overlay open/close, recurring-subscription overlay
 open/cancel, and return to gameplay without authorization. Source aspect ratio,
 native chrome, restored corners, and client-contained Steam rendering remained
-correct. This is development evidence; fresh `v0.2.2` CI, Release assembly,
-protected four-profile proof, receipt, and publication checks remain mandatory.
+correct. A rebuilt package then passed focused progress and unlock cases and one
+uninterrupted 16/16 managed-routes run: all web closes used direct inset-modal
+glyph targets, both passive cases recorded their callbacks and needs-present
+transitions before parking, all 16 cases were crash-clean, and task/process/env
+cleanup completed. This is development evidence; fresh `v0.2.3` CI, Release
+assembly, protected four-profile proof, receipt, and publication checks remain
+mandatory.
 
 Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
 `29488457804`, and protected Release `29488457815` pass. The independently

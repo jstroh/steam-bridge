@@ -2,17 +2,20 @@
 
 Last reviewed: 2026-07-17
 
-Review anchor: `89a881e` (`Fix Windows native-host release verification`).
+Review anchor: `9837ff5` (`Release Windows overlay host fixes as v0.2.2`).
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.2`, whose code-bearing change adds the verified
+Release-gate `steam-bridge@0.2.3`, whose code-bearing predecessor adds the verified
 Windows top-level D3D11 game host, Electron shared-texture ingestion, native
 input delivery, production window-state behavior, an interactive owned-popup
-focus fix, and display-rate presentation control. Published
-`steam-bridge@0.1.6` remains the unchanged predecessor. Exact `v0.2.0` and
-`v0.2.1` are preserved as rejected evidence; neither produced an npm package or
-public GitHub Release suitable for use.
+focus fix, and display-rate presentation control. The new candidate also makes
+the Windows managed-route proof fail closed on the actual inset Steam modal,
+sequences repeatable achievement mutations through Steam's stored callbacks,
+and gives delayed passive notifications a bounded 20-second evidence window.
+Published `steam-bridge@0.1.6` remains the unchanged predecessor. Exact
+`v0.2.0`, `v0.2.1`, and `v0.2.2` are preserved as rejected evidence; none
+produced a published npm package suitable for use.
 
 ## Current State
 
@@ -57,8 +60,9 @@ texture updates cannot double-pump the swap chain; the default remains false.
 Automation could not make Steam accept a synthetic global Shift+Tab chord, so
 that run does not claim physical hotkey deactivation. More importantly, this
 consumer run is development evidence, not the repository's publication proof.
-Because `0.2.2` changes native code, the exact protected packaged candidate
-still requires fresh public `persistent-reuse`, `checkout`, `shortcut-routes`,
+Because `0.2.3` carries the new native host and changes its release evidence,
+the exact protected packaged candidate still requires fresh public
+`persistent-reuse`, `checkout`, `shortcut-routes`,
 and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
 before npm publication.
 
@@ -72,8 +76,16 @@ Exact `v0.2.1` passed CI and Release assembly, but formal proof rejected its
 interactive attached presenter because `WS_EX_NOACTIVATE` remained set. The
 replacement keeps `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT` only while parked,
 removes both while Steam is interactive, and activates only while the visible
-parent permits the surface. Neither failed tag may be moved or reused;
-`v0.2.2` is the fresh candidate.
+parent permits the surface. Exact `v0.2.2` then passed CI and Release assembly,
+but its candidate-bound managed-route proof exposed an asynchronous achievement
+clear/store race and close-glyph evidence that could fall back to an unproved
+target. Development follow-up also caught a false outer-host glyph match and a
+progress toast arriving at the old 10-second boundary after a long route
+sequence. The replacement waits for a fresh `UserStatsStored` callback before
+progress or unlock mutation, requires every web close to use a directly detected
+glyph inside an inset modal panel, independently audits that panel geometry,
+and allows 20 seconds for passive toast presentation. None of the three failed
+tags may be moved, reused, or published; `v0.2.3` is the fresh candidate.
 
 The true `WS_CHILD` experiment remains diagnostic because Steam activates but
 does not render into its child swap chain. The repaired attached owned popup is
@@ -88,10 +100,10 @@ changes that belong to the user and must remain untouched.
 - `npm run native:build` produced the exact optimized
   `x86_64-pc-windows-msvc` addon and linked it into the package. The
   source-linked consumer resolves the same bytes.
-- `npm test` passes all 204 tests after the cadence-owner review, plus
-  TypeScript, Electron-version, shortcut, and all Windows package-gate
-  self-tests.
-- `npm run example:package:win` builds the `0.2.2` Electron `43.1.1` unpacked
+- `npm test` passes all 204 tests after the callback, modal-geometry, and
+  passive-notification timing review, plus TypeScript, Electron-version,
+  shortcut, and all Windows package-gate self-tests.
+- `npm run example:package:win` builds the `0.2.3` Electron `43.1.1` unpacked
   app, verifies all 1,127 required native methods and their declaration hash,
   passes the packaged matrix self-test, and loads the exact addon through the
   packaged executable. The package path retains argument-safe npm invocation
@@ -112,6 +124,13 @@ changes that belong to the user and must remain untouched.
   grant, all three exact close/park cycles, input and lifecycle audits, strict
   verification, cleanup, and unchanged Steam identity. It is development
   evidence and does not replace candidate-bound proof.
+- The rebuilt development package passed focused achievement-progress and
+  achievement-unlock reruns, plus an uninterrupted 16/16 managed-routes run.
+  All 13 active routes had
+  clean close/park lifecycles; every web route directly targeted a glyph inside
+  the scale-aware inset modal panel; progress and unlock both recorded their
+  stored callbacks, false-to-true needs-present transitions, passive parking,
+  zero crashes, complete cleanup, and unchanged Steam continuity.
 - The exhaustive Steam API coverage audit passes against all 1,127 required
   native methods, SDK exports, callback aliases, facade helpers, shim
   references, and generated enum constants. Clean GitHub CI must repeat it
@@ -121,6 +140,10 @@ changes that belong to the user and must remain untouched.
   three platform prebuilds but correctly rejected `v0.2.0` before artifact
   assembly because the Windows system-DLL allowlist lacked the new native host
   imports. Nothing was published.
+- Commit `9837ff5` passed main CI `29583417694`, tag CI `29583616413`, and tag
+  Release assembly `29583614808` for `v0.2.2`. The downloaded exact candidate
+  was protected and audited, but the managed-route proof rejected it before
+  receipt generation or npm publication. The tag remains immutable evidence.
 - The corrected Windows verifier self-test passes and accepts the complete
   import table of the exact local 8,130,560-byte addon while continuing to
   reject dynamic MSVC/UCRT and arbitrary non-system dependencies.
@@ -129,9 +152,9 @@ changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Commit and push the reviewed `0.2.2` replacement, wait for exact CI, then
-   create the fresh `v0.2.2` candidate through the tag-triggered Release
-   workflow. Preserve and never move rejected `v0.2.0` or `v0.2.1`.
+1. Commit and push the reviewed `0.2.3` replacement, wait for exact CI, then
+   create the fresh `v0.2.3` candidate through the tag-triggered Release
+   workflow. Preserve and never move rejected `v0.2.0`, `v0.2.1`, or `v0.2.2`.
 2. Run the required candidate-bound Windows public proof profiles without
    private checkout inputs or evidence overrides, generate the sanitized
    receipt, and configure the publish proof.
@@ -141,7 +164,7 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Commit and push the reviewed `0.2.2` replacement, then require clean exact CI
+Commit and push the reviewed `0.2.3` replacement, then require clean exact CI
 before creating the fresh tag. Do not tag or publish if the protected Windows
 live-proof workflow cannot be completed for the same exact candidate.
 

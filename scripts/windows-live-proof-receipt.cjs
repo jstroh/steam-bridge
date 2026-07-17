@@ -1085,13 +1085,13 @@ function buildProfileContracts() {
       "achievement:progress",
       "overlay:passive-notification-needs-present",
       "overlay:passive-notification-parked"
-    ], { noActivation: true, allowNotReady: true, passive: true, resultDelayMs: 10000 }),
+    ], { noActivation: true, allowNotReady: true, passive: true, resultDelayMs: 20000 }),
     makeCase("26-managed-achievement-unlock", "presenter-achievement-unlock", [
       "overlay:presenter-attach",
       "achievement:unlock",
       "overlay:passive-notification-needs-present",
       "overlay:passive-notification-parked"
-    ], { noActivation: true, allowNotReady: true, passive: true, resultDelayMs: 10000 })
+    ], { noActivation: true, allowNotReady: true, passive: true, resultDelayMs: 20000 })
   ];
   return [
     profileContract("persistent-reuse", persistentReuse),

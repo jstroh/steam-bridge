@@ -1340,7 +1340,7 @@ test("electron smoke duplicate-open guard exercises the generic wait-if-availabl
 
 test("electron smoke resets achievement progress before every repeatable toast probe", () => {
   const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
-  const setupStart = exampleMain.indexOf("function prepareAchievementProgressTarget");
+  const setupStart = exampleMain.indexOf("async function prepareAchievementProgressTarget");
   const setupEnd = exampleMain.indexOf("function orderProgressAchievementNames", setupStart);
   assert.notEqual(setupStart, -1, "achievement progress setup should exist");
   assert.notEqual(setupEnd, -1, "achievement progress setup should have a stable function boundary");
@@ -1348,8 +1348,13 @@ test("electron smoke resets achievement progress before every repeatable toast p
   const setupSource = exampleMain.slice(setupStart, setupEnd);
   assert.match(
     setupSource,
-    /const wasUnlocked = isAchievementAchieved\(unlocked\);[\s\S]*activeClient\.achievement\.clear\(name\);[\s\S]*activeClient\.stats\.store\(\);/,
+    /const wasUnlocked = isAchievementAchieved\(unlocked\);[\s\S]*activeClient\.achievement\.clear\(name\);[\s\S]*const clearStored = cleared \? activeClient\.stats\.store\(\) : false;/,
     "every progress probe should clear and persist the selected achievement before indicating the same progress again"
+  );
+  assert.match(
+    setupSource,
+    /await waitForEventCountAfter\([\s\S]*callback:user-stats-stored[\s\S]*isAchievementConfirmedClear\(unlockedAfterClear\)[\s\S]*clearConfirmedForProgress[\s\S]*await delay\(100\);/,
+    "repeatable progress proof should confirm Steam's clear callback and settle before indicating progress"
   );
   assert.doesNotMatch(
     setupSource,

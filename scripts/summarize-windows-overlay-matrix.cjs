@@ -2345,6 +2345,11 @@ function validateManifestCoverage(
         failures
       );
       expect(
+        row.closeProbe.webClosePanelModalGeometryValid === true,
+        `matrix manifest case ${expected.id} close probe target belongs to an inset Steam modal panel`,
+        failures
+      );
+      expect(
         row.closeProbe.webCloseScaleAxesAgree === true,
         `matrix manifest case ${expected.id} physical/logical presenter scale axes agree`,
         failures
@@ -6064,6 +6069,22 @@ function summarizeCloseProbe(
       targetX === expectedTarget.x &&
       targetY === expectedTarget.y
   );
+  const minimumModalTopInset = Number.isFinite(loggedScaleValue) && nativeHostRect
+    ? Math.max(1, roundMidpointToEven(48 * loggedScaleValue))
+    : NaN;
+  const minimumModalRightInset = Number.isFinite(loggedScaleValue) && nativeHostRect
+    ? Math.max(1, roundMidpointToEven(48 * loggedScaleValue))
+    : NaN;
+  const webClosePanelModalGeometryValid = Boolean(
+    webClosePanel &&
+      nativeHostRect &&
+      Number.isFinite(minimumModalTopInset) &&
+      Number.isFinite(minimumModalRightInset) &&
+      webClosePanel.left >= nativeHostRect.left &&
+      webClosePanel.top >= nativeHostRect.top + minimumModalTopInset &&
+      webClosePanel.right <= nativeHostRect.right - minimumModalRightInset &&
+      webClosePanel.bottom <= nativeHostRect.bottom
+  );
   const webCloseGlyphEvidenceValid = Boolean(
     webCloseTarget.source === "screenshot-steam-web-close-glyph" &&
       Number(webCloseGlyph.schema) === 1 &&
@@ -6216,6 +6237,7 @@ function summarizeCloseProbe(
       targetEventIndex >= 0 && nativePresenterFocusIndex > targetEventIndex,
     webCloseTargetInsidePanel: targetInsidePanel,
     webCloseTargetUsesScaleAwareInsets: targetUsesScaleAwareInsets,
+    webClosePanelModalGeometryValid,
     webCloseTargetSource: String(webCloseTarget.source || ""),
     webCloseGlyphEvidenceValid,
     webCloseGlyphScore: Number.isFinite(Number(webCloseGlyph.score))
@@ -8241,6 +8263,7 @@ function formatCloseProbeSummary(closeProbe) {
       `pointer=${closeProbe.nativePointerSent}/${closeProbe.nativePointerExpected}/${closeProbe.nativePointerLastError} ` +
       `targetInsidePanel=${closeProbe.webCloseTargetInsidePanel} ` +
       `targetScaleAware=${closeProbe.webCloseTargetUsesScaleAwareInsets} ` +
+      `targetModalPanel=${closeProbe.webClosePanelModalGeometryValid} ` +
       `scale=${formatValue(closeProbe.webCloseLoggedScale)}/${formatValue(closeProbe.webCloseDerivedScale)} ` +
       `scaleSource=${formatValue(closeProbe.webCloseScaleSource)} scaleProof=${closeProbe.webCloseScaleEvidence} ` +
       `physicalScreens=${closeProbe.physicalScreenshotProofCount}/${closeProbe.physicalScreenshotBoundsCount} ` +
@@ -8929,12 +8952,20 @@ function runSelfTest() {
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.nativePresenterPreDispatchSanitized, true);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseTargetInsidePanel, true);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseTargetUsesScaleAwareInsets, true);
+    assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webClosePanelModalGeometryValid, true);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseScaleEvidence, true);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.webCloseDerivedScale, 2.25);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotReadableCount, 1);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotDimensionsMatchCount, 1);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.physicalScreenshotProofCount, 1);
     assert.equal(webCloseEvidenceSummary.caseSummaries[0].closeProbe.screenshotContainsNativeHostRect, true);
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-close-false-outer-panel",
+      writeManagedWebCloseEvidenceFixture,
+      { panelFlushToHostTop: true },
+      "close probe target belongs to an inset Steam modal panel"
+    );
 
     const ownerHandoffRoot = path.join(tempRoot, "managed-web-owner-handoff");
     writeManagedWebCloseEvidenceFixture(ownerHandoffRoot, { closeProbeEvidenceSchema: 2 });
@@ -11421,27 +11452,31 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     ? 1200
     : options.screenshotDimensionsMismatch
       ? 4
-      : 300;
+      : 400;
   const screenshotHeight = options.roundingBoundaryScale
     ? 900
     : options.screenshotDimensionsMismatch
       ? 2
-      : 200;
+      : 300;
   if (!options.missingScreenshotFile) {
     writeRgbPng(path.join(caseDir, screenshotName), screenshotWidth, screenshotHeight, []);
   }
 
   const panel = options.unscaledLargeTarget
     ? { left: 834, top: 390, right: 2622, bottom: 1672, width: 1788, height: 1282 }
-    : { left: 20, top: 20, right: 170, bottom: 130, width: 150, height: 110 };
+    : options.panelFlushToHostTop
+      ? { left: 50, top: 10, right: 220, bottom: 250, width: 170, height: 240 }
+      : options.roundingBoundaryScale
+        ? { left: 100, top: 80, right: 800, bottom: 600, width: 700, height: 520 }
+        : { left: 50, top: 130, right: 220, bottom: 250, width: 170, height: 120 };
   const loggedScaleValue = options.roundingBoundaryScale ? 1.25 : 2.25;
   const geometryScale = options.roundingBoundaryScale ? 1.2515 : 2.25;
   const presenterPhysicalRect = options.roundingBoundaryScale
     ? { left: 10, top: 10, width: 1001, height: 751 }
-    : { left: 10, top: 10, width: 180, height: 135 };
+    : { left: 10, top: 10, width: 360, height: 270 };
   const presenterLogicalBounds = options.roundingBoundaryScale
     ? { x: 4, y: 4, width: 800, height: 600 }
-    : { x: 4, y: 4, width: 80, height: 60 };
+    : { x: 4, y: 4, width: 160, height: 120 };
   const expectedTarget = expectedWebCloseTarget(normalizeRect(panel), panel, loggedScaleValue);
   const target = {
     x: options.unscaledLargeTarget ? panel.right - 16 : options.targetOutsidePanel ? panel.right + 5 : expectedTarget.x,
@@ -11487,8 +11522,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     : {
         left: 0,
         top: 0,
-        width: options.roundingBoundaryScale ? 1200 : 300,
-        height: options.roundingBoundaryScale ? 900 : 200
+        width: options.roundingBoundaryScale ? 1200 : 400,
+        height: options.roundingBoundaryScale ? 900 : 300
       };
   const pointer = {
     sent: options.pointerFailed ? 2 : 3,
@@ -12632,10 +12667,10 @@ function attachedWindowsPresenterFixture(options = {}) {
   const backend = options.backend || "windows-d3d11";
   const logicalBounds = options.roundingBoundaryScale
     ? { x: 4, y: 4, width: 800, height: 600 }
-    : { x: 4, y: 4, width: 80, height: 60 };
+    : { x: 4, y: 4, width: 160, height: 120 };
   const nativeRect = options.roundingBoundaryScale
     ? { left: 10, top: 10, width: 1001, height: 751 }
-    : { left: 10, top: 10, width: 180, height: 135 };
+    : { left: 10, top: 10, width: 360, height: 270 };
   return {
     mode: "active",
     attached: true,
@@ -13587,11 +13622,11 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     }
     if (options.outsideHostPanelCycle === cycle) {
       const outsidePanel = {
-        left: 210,
+        left: 380,
         top: 20,
-        right: 290,
+        right: 400,
         bottom: 120,
-        width: 80,
+        width: 20,
         height: 100
       };
       const outsideTarget = expectedWebCloseTarget(

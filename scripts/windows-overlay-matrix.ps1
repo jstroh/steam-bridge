@@ -3165,8 +3165,8 @@ function Get-MatrixCases {
     New-ManagedOpenAndWaitCase -Id "22-managed-user-open-and-wait" -Action "presenter-user-open-and-wait" -AutorunUserGestureGate
     New-Case -Id "23-raw-native-dialog-open-observe" -Action "presenter-dialog" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -DialogOverride $Dialog -CloseProbeOnActivation -ResultDelayMs 12000
     New-Case -Id "24-raw-native-user-open-observe" -Action "presenter-user-native" -RequireEvent @("overlay:presenter-open") -RequireOverlayActivated -UserDialogOverride $UserDialog -CloseProbeOnActivation -ResultDelayMs 12000
-    New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
-    New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 10000
+    New-Case -Id "25-managed-achievement-progress" -Action "presenter-achievement-progress" -RequireEvent @("overlay:presenter-attach", "achievement:progress", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 20000
+    New-Case -Id "26-managed-achievement-unlock" -Action "presenter-achievement-unlock" -RequireEvent @("overlay:presenter-attach", "achievement:unlock", "overlay:passive-notification-needs-present", "overlay:passive-notification-parked") -RequireNoOverlayActivation -AllowOverlayNotReady -RequirePassiveNotification -ResultDelayMs 20000
   )
 
   $shortcutRoutes = @(New-PublicShortcutRouteCases)
@@ -5490,7 +5490,7 @@ function Test-WebClosePanelScreenshot {
   try {
     `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
     `$bounds = `$Screenshot.bounds
-    `$rect = if (`$script:UsePersistentReuseGate -and `$target.panel) {
+    `$rect = if (`$target.panel) {
       `$target.panel
     } else {
       `$panel.rect
@@ -5499,24 +5499,22 @@ function Test-WebClosePanelScreenshot {
     `$scale = [double]`$scaleEvidence.value
     `$minimumModalTopInset = [int][Math]::Max(1, [Math]::Round(48 * `$scale))
     `$minimumModalRightInset = [int][Math]::Max(1, [Math]::Round(48 * `$scale))
-    `$persistentPanelGeometryReady = `$true
-    `$persistentTargetSourceReady = `$true
+    `$webClosePanelGeometryReady = `$false
+    `$persistentTargetSourceReady = if (`$script:UsePersistentReuseGate -and `$script:CloseCycleOrdinal -gt 1) {
+      [string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"
+    } else {
+      [string]`$target.source -ceq "screenshot-steam-web-close-glyph"
+    }
     `$persistentModalBackdropReady = `$true
     `$hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
-    if (`$script:UsePersistentReuseGate) {
-      `$persistentPanelGeometryReady = (
-        `$hostRect -and
-        [int]`$rect.left -ge [int]`$hostRect.left -and
-        [int]`$rect.top -ge ([int]`$hostRect.top + `$minimumModalTopInset) -and
-        [int]`$rect.right -le ([int]`$hostRect.right - `$minimumModalRightInset) -and
-        [int]`$rect.bottom -le [int]`$hostRect.bottom
-      )
-      `$persistentTargetSourceReady = if (`$script:CloseCycleOrdinal -le 1) {
-        [string]`$target.source -ceq "screenshot-steam-web-close-glyph"
-      } else {
-        [string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"
-      }
-    }
+    `$webClosePanelGeometryReady = (
+      `$hostRect -and
+      [int]`$rect.left -ge [int]`$hostRect.left -and
+      [int]`$rect.top -ge ([int]`$hostRect.top + `$minimumModalTopInset) -and
+      [int]`$rect.right -le ([int]`$hostRect.right - `$minimumModalRightInset) -and
+      [int]`$rect.bottom -le [int]`$hostRect.bottom
+    )
+    `$persistentPanelGeometryReady = `$webClosePanelGeometryReady
     `$sampleLeft = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.12)))
     `$sampleRight = [int]([Math]::Round(`$rect.left + (`$rect.width * 0.86)))
     `$sampleTop = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.11)))
@@ -5615,10 +5613,17 @@ function Test-WebClosePanelScreenshot {
     `$chromeReady = (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12)))
     `$contentReady = (`$contentTotal -gt 0 -and (`$contentBright -gt 3 -or `$contentMaxSeen -gt 120))
     [PSCustomObject]@{
-      ready = (`$chromeReady -and `$contentReady -and `$persistentPanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentModalBackdropReady)
+      ready = (`$chromeReady -and `$contentReady -and `$webClosePanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentModalBackdropReady)
       target = `$target
       rectSource = `$panel.source
       foregroundCandidate = Test-WebCloseForegroundCandidate `$Foreground
+      webClosePanelGeometryReady = `$webClosePanelGeometryReady
+      webClosePanelGeometry = [PSCustomObject]@{
+        required = `$true
+        minimumModalTopInset = `$minimumModalTopInset
+        minimumModalRightInset = `$minimumModalRightInset
+        hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
+      }
       persistentPanelGeometryReady = `$persistentPanelGeometryReady
       persistentTargetSourceReady = `$persistentTargetSourceReady
       persistentModalBackdropReady = `$persistentModalBackdropReady
@@ -5699,24 +5704,6 @@ function Wait-WebClosePanelReady {
       })
       return `$analysis
     }
-    if (-not `$script:UsePersistentReuseGate -and `$target -and (-not `$screenshot -or -not `$screenshot.ok -or `$attempt -ge 8)) {
-      `$fallback = [PSCustomObject]@{
-        ready = `$true
-        reason = if (-not `$screenshot -or -not `$screenshot.ok) { "target-ready-screenshot-unavailable" } else { "target-ready-before-content-gate" }
-        target = `$target
-        foregroundCandidate = Test-WebCloseForegroundCandidate `$foreground
-        screenshot = `$screenshot
-      }
-      Write-ProbeEvent "probe:web-close-target-ready" ([PSCustomObject]@{
-        cycle = `$Cycle
-        attempt = `$attempt
-        foreground = `$foreground
-        screenshot = `$screenshot
-        analysis = `$fallback
-      })
-      return `$fallback
-    }
-
     Start-Sleep -Milliseconds 250
   }
 
@@ -6982,13 +6969,12 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         processes = Get-ProbeProcessSnapshot
       })
       if (
-        `$script:UsePersistentReuseGate -and
         '$input' -eq 'web-close-click-sendinput' -and
         (-not `$webCloseReadiness -or `$webCloseReadiness.ready -ne `$true)
       ) {
         Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
           cycle = `$cycle
-          reason = "persistent-web-close-readiness-not-proved"
+          reason = "web-close-readiness-not-proved"
           readiness = `$webCloseReadiness
         })
         `$terminalFailure = `$true
@@ -7023,6 +7009,23 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
           Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
             cycle = `$cycle
             reason = "close-click-coordinate-source-unavailable"
+          })
+          `$terminalFailure = `$true
+          continue
+        }
+        `$targetSourceProved = (
+          [string]`$target.source -ceq "screenshot-steam-web-close-glyph" -or
+          (
+            `$script:UsePersistentReuseGate -and
+            `$cycle -gt 1 -and
+            [string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"
+          )
+        )
+        if (-not `$targetSourceProved) {
+          Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+            cycle = `$cycle
+            reason = "direct-close-glyph-target-not-proved"
+            targetSource = [string]`$target.source
           })
           `$terminalFailure = `$true
           continue

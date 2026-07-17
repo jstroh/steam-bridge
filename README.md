@@ -122,6 +122,16 @@ to the parked state and restores application focus. This keeps the ordinary
 title bar, menus, minimize, maximize, window drag, and rounded-corner behavior
 owned by the Electron window.
 
+The same managed overlay also prepares passive Steam notifications, including
+achievement progress and unlock toasts. The presenter stays transparent,
+click-through, and idle until Steam requests a frame, then parks again without
+an overlay-activation callback. Applications do not need a separate polling or
+repaint loop. When a development tool clears and immediately re-awards an
+achievement, wait for `client.stats.onUserStatsStored(...)` before the next
+mutation; `store()` is accepted synchronously, but Steam confirms the state
+change asynchronously. `client.achievement.onStored(...)` reports the later
+progress or unlock notification update.
+
 ### Windows game-host mode
 
 Steam renders into a top-level native swap chain on Windows. A Chromium

@@ -1432,15 +1432,22 @@ leaving the native presenter black and the smoke process unrecovered.
 Use
 `presenter-achievement-progress` to verify passive Steam notification rendering:
 the action relies on automatic passive priming, keeps the presenter transparent
-and click-through, calls `achievement.indicateProgress(...)`, and records
+and click-through, clears and stores the selected public test achievement,
+waits for a fresh `callback:user-stats-stored`, verifies the achievement is
+still clear, and only then calls `achievement.indicateProgress(...)`. It records
 `achievement:progress` plus `callback:achievement-stored` when Steam accepts the
-progress notification. On macOS, add `--require-passive-notification` to the
+progress notification. The Windows managed matrix allows 20 seconds for the
+needs-present transition because Steam can delay a passive toast after a long
+sequence of overlay launches; the transition and final parked state remain
+mandatory. On macOS, add `--require-passive-notification` to the
 packaged helper command so verification requires both the result snapshot and
 `lifecycle.jsonl` to contain the accepted achievement event and Steam callback,
 with no modal overlay activation and with a passive presenter snapshot.
 Use `presenter-achievement-unlock` to exercise the unlock-toast path through the
-same passive presenter. It clears and re-unlocks the selected public test
-achievement, stores stats, and records `achievement:unlock`; pass
+same passive presenter. It clears and stores the selected public test
+achievement, waits for Steam's stored callback, verifies the clear, then
+re-unlocks and stores it as a separate operation before recording
+`achievement:unlock`; pass
 `--achievement-name <name>` when you want a specific test achievement.
 Use `presenter-shortcut` with
 `--visual-toggle-probe --visual-toggle-input keyboard --visual-close-input toggle`
