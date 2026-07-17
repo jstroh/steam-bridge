@@ -115,6 +115,11 @@ from Electron's main thread. Raw activation helpers remain available for
 native diagnostics, but Electron applications should use the managed overlay
 path for product UI.
 
+Close Chromium DevTools before validating Steam overlay behavior. DevTools can
+change Chromium surface activity and timing; it is not a supported way to make
+the Steam surface repaint, and results collected with it open are not treated as
+release evidence.
+
 On Windows, a managed presenter is non-activating and click-through while it
 is parked. When Steam opens an interactive surface, the presenter becomes
 focusable inside the Electron content bounds; after Steam closes, it returns

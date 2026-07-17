@@ -68,77 +68,64 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
-Exact `v0.2.1` passed CI and Release assembly but is rejected and unpublished.
-Its attached interactive presenter still carried `WS_EX_NOACTIVATE`, so formal
-proof correctly refused to treat rendered Steam pixels as an input-capable
-surface. Exact `v0.2.2` also passed main CI `29583417694`, tag CI `29583616413`,
-and Release assembly `29583614808`, but protected managed-route proof rejected
-it before publication. The exact package exposed an asynchronous achievement
-clear/store race and web close evidence that could accept a fallback without a
-directly proved Steam glyph. Later development runs also caught an outer-host
-glyph false positive and a progress toast arriving at the old 10-second proof
-boundary. Exact `v0.2.3` passed main CI `29592224120`, tag CI `29592471104`,
-and Release assembly `29592467768`, but its protected persistent proof
-snapshotted before the third inactive callback and retained a recovered frame
-capture error. All four tags remain immutable rejected evidence.
+Exact `v0.2.1` through `v0.2.3` passed progressively more CI and Release gates
+but remain rejected and unpublished: the failures covered interactive
+`WS_EX_NOACTIVATE`, asynchronous achievement sequencing and unproved close
+fallbacks, and a final-cycle inactive-callback/recovered-frame-error race.
+Exact `v0.2.4` at commit `c3ea5e9` then passed CI and Release assembly run
+`29600153021`. Its audited npm tarball SHA-256 is
+`73c178853d6702f6bada81257a96bf6a86d7ade07b4074301c38a02737bc6961`;
+its protected 114-file Windows candidate retained content SHA-256
+`2269d27e34d8b9b83c50e379dc900ec1ecacab7e712f5e558e8fb714b22474d4`
+and binding SHA-256
+`7244e3d462f69bde16e2c6a892b001f495e9e6a712086dd0690bc5645e4f7791`.
+Persistent-reuse and synthetic checkout passed against that exact candidate.
+The shortcut-routes profile failed closed before publication because its first
+readiness screenshot preceded Steam's rendered modal; a broad fallback matched
+light smoke-application pixels and the resulting click did not close Steam.
+The failed root is retained, the candidate remained unchanged and protected,
+and no receipt or publication was attempted.
 
-The `0.2.4` development tree retains the two-state window contract: a parked
-presenter is a non-activating transparent tool window, while an interactive
-presenter removes both no-activate and transparent styles, shows normally, and
-takes focus only while its parent is visible and eligible. Repeatable progress
-and unlock probes now wait for a fresh `UserStatsStored` callback and verify the
-achievement remains clear before issuing the next mutation. The passive proof
-window is 20 seconds, which contains Steam's observed delayed progress toast
-without replacing the false-to-true needs-present and parked-state requirements.
-Persistent reuse now awaits a fresh typed active and inactive callback in every
-cycle, retains monotonic callback counters outside the bounded event log,
-serializes privacy-safe nested errors, and clears only the exact recovered
-Electron frame-capture fault after a later upload succeeds. The summary auditor
-accepts the bounded one-sample-per-cycle asynchronous stability projection,
-selects the final sample for shutdown ordering, and rejects missing or excess
-samples.
+Local `0.2.5` retains the verified product window contract and repairs that
+proof boundary. Every direct web close now requires Steam's dimmed modal
+backdrop, constrains a DPI-scaled coarse/refined glyph search to inset host
+geometry, carries the detected panel through one analysis pass, and resolves
+and validates the target again from the exact before-send screenshot. The light
+pre-modal smoke frame is rejected; narrower Friends/community panels and the
+standard store modal resolve their actual X glyph without fixed coordinates.
+Persistent reuse still binds later clicks to cycle one's directly proved glyph
+only after same-host, DPI, focus, current-panel, screenshot, and modal alignment
+checks. Missing geometry or changing pixels fail before input.
 
-The current close-readiness boundary requires every managed web route to sample
-the target panel and directly detect Steam's close glyph. The target panel must
-be inset by at least 48 logical pixels from the native host's top and right
-edges, scale through the host DPI, remain inside the captured host, and pass
-independent summary geometry checks. Persistent reuse binds later clicks to
-cycle one's direct glyph coordinate only after proving the same native HWND,
-unchanged host rectangle, current DPI and focus, a fresh full-screen capture,
-and a newly detected substantial Steam panel whose top aligns with the baseline
-modal within eight logical pixels. The detector ignores short pointer-glow
-fragments, and the schema-2 packaged auditor independently binds each readiness
-record to its dispatched target. Both paths fail closed before input if any
-condition is missing.
+The source-linked protected `0.2.5` managed matrix passed all 16 routes after
+the repair. Web, store, Friends, dialog, mouse and keyboard shortcut, profile,
+players, community, stats, achievements, and user routes each completed the
+active/close/inactive/park lifecycle with focus return; progress and unlock
+passed their passive callback/needs-present gates. Every broker request was
+visually challenge-checked before launch. The task/process/environment cleanup
+and Steam continuity guards passed, and an independent post-run audit retained
+the exact `v0.2.4` development candidate binding and canonical read/execute ACL.
+This proves the new harness against the existing product bytes; it does not
+replace the required exact `v0.2.5` four-profile proof.
 
-The standalone top-level host now exposes `frameRate`, `setFrameRate(...)`, and
-opt-in `continuousPresent`. The session timer wakes just ahead of the selected
-display rate, D3D11 `Present(1)` synchronizes to vertical blank, and the native
-continuous-present debounce no longer caps the host near 31 FPS. Continuous
-mode has one timer-owned present loop; shared-texture uploads update the retained
-source without double-presenting. The optimized addon and Electron `43.1.1`
-consumer passed launch at 1024x768 content size, title drag, maximize, minimize
-and restore, application focus loss/return, F11 fullscreen enter/exit, mapped
-game input, one-time purchase overlay open/close, recurring-subscription overlay
-open/cancel, and return to gameplay without authorization. Source aspect ratio,
-native chrome, restored corners, and client-contained Steam rendering remained
-correct. A rebuilt package then passed focused progress and unlock cases and one
-uninterrupted 16/16 managed-routes run: all web closes used direct inset-modal
-glyph targets, both passive cases recorded their callbacks and needs-present
-transitions before parking, all 16 cases were crash-clean, and task/process/env
-cleanup completed. Subsequent protected persistent runs rejected a recovered
-capture-error lifecycle race, a dark pre-modal false-ready frame, a panel miss
-caused by a short pointer fragment, and an omitted case-level schema projection.
-The final exact-source `0.2.4` development package at
-`C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-asar-panel-v4-20260717-101239`
-then passed three physical closes, three active and three inactive callbacks,
-schema-2 current-panel readiness in both reuse cycles, clean final detach, exact
-packaged summary, complete cleanup, and unchanged Steam identity at
-`C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-persistent-panel-v4-20260717-101426`.
-Retained-image regression checks reject both dark pre-modal states and accept the
-rendered Steam modal. This is development evidence; fresh `v0.2.4` CI, Release
-assembly, protected four-profile proof, receipt, and publication checks remain
-mandatory.
+The standalone top-level host continues to expose `frameRate`,
+`setFrameRate(...)`, and opt-in `continuousPresent`. Electron `43.1.1` local
+testing retains correct 1024x768 launch, source aspect ratio, title drag,
+maximize/minimize/restore, Alt+Tab and focus return, F11 transitions, rounded
+restored corners, cursor suppression, mapped input, client-contained Steam
+rendering, and one-time/recurring checkout open and cancel without
+authorization. Chromium DevTools is excluded from release evidence because it
+changes Chromium surface activity and timing.
+
+`0.2.5` also ships a combined Windows deployment helper. One elevation prompt
+covers source/stage fingerprints, canonical ACL application, same-volume
+transactional activation, rollback retention, active re-audit, and Steam
+identity continuity. A post-activation failure restores the prior active and
+preserves the failed replacement instead of deleting it. The helper, ACL
+self-test, 206 unit/API tests, Windows package build, and packaged 1,127-method
+native load pass locally. The remaining local package-smoke stop is the known
+Git-Bash/Linux shortcut fixture path-translation mismatch; native CI must run
+that POSIX fixture before the `v0.2.5` tag is accepted.
 
 Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
 `29488457804`, and protected Release `29488457815` pass. The independently

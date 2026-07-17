@@ -99,6 +99,12 @@ if (windowsCleanupSelfTestOnly) {
   const tarball = packPackage();
   installConsumer(tarball);
   runConsumerChecks();
+  // Run native Windows contracts before POSIX fixture checks so a Git Bash
+  // path-translation mismatch cannot hide local Windows regressions.
+  runWindowsSmokeHelperStaticChecks();
+  runWindowsCandidateProtectionSelfTest();
+  runWindowsExactProcessStopSelfTest();
+  runWindowsTaskTreeAncestrySelfTest();
   run("bash", [path.join(repoRoot, "scripts", "linux-electron-smoke.sh"), "--mode", "self-test"], {
     cwd: repoRoot
   });
@@ -134,10 +140,6 @@ if (windowsCleanupSelfTestOnly) {
   runMacosPackageSigningStaticChecks();
   runElectronSmokeActionStaticChecks();
   runElectronPreloadUserGestureGateSelfTest();
-  runWindowsSmokeHelperStaticChecks();
-  runWindowsCandidateProtectionSelfTest();
-  runWindowsExactProcessStopSelfTest();
-  runWindowsTaskTreeAncestrySelfTest();
 
   console.log("Packed steam-bridge package smoke test passed.");
 } finally {
@@ -472,6 +474,10 @@ function runWindowsSmokeHelperStaticChecks() {
   const renderHealthHelper = fs.readFileSync(path.join(repoRoot, "scripts", "windows-render-health-probe.ps1"), "utf8");
   const candidateProtectionHelper = fs.readFileSync(
     path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
+    "utf8"
+  );
+  const candidateDeploymentHelper = fs.readFileSync(
+    path.join(repoRoot, "scripts", "windows-deploy-release-candidate.ps1"),
     "utf8"
   );
   const steamAppLaunchOptionsHelper = fs.readFileSync(
@@ -1708,12 +1714,27 @@ function runWindowsSmokeHelperStaticChecks() {
     "webClosePanelGeometry = [PSCustomObject]@{",
     "persistentPanelGeometryReady = `$persistentPanelGeometryReady",
     "persistentTargetSourceReady = `$persistentTargetSourceReady",
-    "persistentModalBackdropReady = `$persistentModalBackdropReady",
+    "modalBackdropReady = `$modalBackdropReady",
+    "persistentModalBackdropReady = `$modalBackdropReady",
+    "modalBackdrop = [PSCustomObject]@{",
     "`$backdropAverageMax -le 96",
     '[string]`$target.source -ceq "screenshot-steam-web-close-glyph"',
     '[string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"',
     'reason = "web-close-readiness-not-proved"',
     'reason = "direct-close-glyph-target-not-proved"',
+    "`$fallbackRadius = [int][Math]::Max(128, [Math]::Round(128 * `$normalizedScale))",
+    '"dpi-scaled-coarse"',
+    '"dpi-scaled-refined"',
+    "[object]`$SearchBounds = `$null",
+    "top = [int](`$Foreground.rect.top + `$minimumModalTopInset + `$topInset)",
+    "right = [int](`$Foreground.rect.right - `$minimumModalRightInset - `$rightInset)",
+    "Find-WebCloseGlyphFromScreenshot -Screenshot `$Screenshot -CandidateX `$targetX -CandidateY `$targetY -Scale `$scale -SearchBounds `$glyphSearchBounds",
+    "detectedPanel = `$panel",
+    "`$detectedPanel = if (`$target) { `$target.detectedPanel } else { `$null }",
+    "Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground -Target `$target -DetectedPanel `$detectedPanel",
+    "`$beforeSendTarget = Get-WebCloseClickTarget -Foreground `$beforeSendForeground -Screenshot `$beforeSendScreenshot",
+    "initialWebCloseReadiness = `$initialWebCloseReadiness",
+    "Test-WebClosePanelScreenshot -Screenshot `$beforeSendScreenshot -Foreground `$beforeSendForeground -Target `$beforeSendTarget -DetectedPanel `$beforeSendDetectedPanel",
     "Resolve-MatrixCaseTimeoutSeconds",
     "Invoke-MatrixCase -Case $Case"
   ]) {
@@ -3008,6 +3029,23 @@ function runWindowsSmokeHelperStaticChecks() {
       `Windows candidate write-protection helper missing ${expected}`
     );
   }
+  for (const expected of [
+    "Start-Process -FilePath $powershellPath -Verb RunAs -WindowStyle Hidden",
+    "Move-DeploymentCandidate",
+    "Restore-DeploymentRollback",
+    "Invoke-CandidateFingerprint",
+    "Invoke-CandidateProtection",
+    "stage-write-protection.json",
+    "active-write-protection.json",
+    "Steam process identity changed during candidate deployment.",
+    "failedCandidatePreserved",
+    "Windows release-candidate deployment self-test passed."
+  ]) {
+    assert.ok(
+      candidateDeploymentHelper.includes(expected),
+      `Windows release-candidate deployment helper missing ${expected}`
+    );
+  }
   const renderHealthEnvironmentStart = renderHealthHelper.indexOf("function New-SmokeEnvironment {");
   const renderHealthCaseStart = renderHealthHelper.indexOf("function Invoke-RenderHealthCase {");
   const renderHealthSummaryStart = renderHealthHelper.indexOf("function New-RenderHealthSummary {");
@@ -3284,6 +3322,19 @@ function runWindowsCandidateProtectionSelfTest() {
       "Bypass",
       "-File",
       path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
+      "-SelfTest"
+    ],
+    { cwd: repoRoot }
+  );
+  run(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      path.join(repoRoot, "scripts", "windows-deploy-release-candidate.ps1"),
       "-SelfTest"
     ],
     { cwd: repoRoot }

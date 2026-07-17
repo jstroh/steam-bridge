@@ -5113,7 +5113,8 @@ function Find-WebCloseGlyphFromScreenshot {
     [object]`$Screenshot,
     [int]`$CandidateX,
     [int]`$CandidateY,
-    [double]`$Scale = 1
+    [double]`$Scale = 1,
+    [object]`$SearchBounds = `$null
   )
 
   if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$Screenshot.bounds) {
@@ -5124,17 +5125,6 @@ function Find-WebCloseGlyphFromScreenshot {
   try {
     `$bitmap = [System.Drawing.Bitmap]::FromFile(`$Screenshot.path)
     `$bounds = `$Screenshot.bounds
-    `$searchLeft = [int][Math]::Max(`$bounds.left, `$CandidateX - 80)
-    `$searchTop = [int][Math]::Max(`$bounds.top, `$CandidateY - 50)
-    `$searchRight = [int][Math]::Min(`$bounds.left + `$bounds.width - 1, `$CandidateX + 80)
-    `$searchBottom = [int][Math]::Min(`$bounds.top + `$bounds.height - 1, `$CandidateY + 50)
-    if ((`$searchLeft % 2) -ne 0) {
-      `$searchLeft += 1
-    }
-    if ((`$searchTop % 2) -ne 0) {
-      `$searchTop += 1
-    }
-
     `$normalizedScale = [Math]::Max(1.0, `$Scale)
     `$logicalSampleDistances = @(2, 3, 4, 5)
     `$sampleDistances = @(
@@ -5142,10 +5132,40 @@ function Find-WebCloseGlyphFromScreenshot {
         ForEach-Object { [int][Math]::Max(1, [Math]::Round(`$_ * `$normalizedScale)) } |
         Select-Object -Unique
     )
+    `$allowedLeft = [int]`$bounds.left
+    `$allowedTop = [int]`$bounds.top
+    `$allowedRight = [int](`$bounds.left + `$bounds.width - 1)
+    `$allowedBottom = [int](`$bounds.top + `$bounds.height - 1)
+    if (`$SearchBounds) {
+      `$allowedLeft = [int][Math]::Max(`$allowedLeft, [int]`$SearchBounds.left)
+      `$allowedTop = [int][Math]::Max(`$allowedTop, [int]`$SearchBounds.top)
+      `$allowedRight = [int][Math]::Min(`$allowedRight, [int]`$SearchBounds.right)
+      `$allowedBottom = [int][Math]::Min(`$allowedBottom, [int]`$SearchBounds.bottom)
+    }
+    if (`$allowedRight -le `$allowedLeft -or `$allowedBottom -le `$allowedTop) {
+      return `$null
+    }
 
-    `$best = `$null
-    foreach (`$y in (`$searchTop..`$searchBottom | Where-Object { (`$_ % 2) -eq 0 })) {
-      foreach (`$x in (`$searchLeft..`$searchRight | Where-Object { (`$_ % 2) -eq 0 })) {
+    `$findBestGlyph = {
+      param(
+        [int]`$SearchLeft,
+        [int]`$SearchTop,
+        [int]`$SearchRight,
+        [int]`$SearchBottom,
+        [int]`$Step,
+        [string]`$Strategy
+      )
+
+      if ((`$SearchLeft % 2) -ne 0) {
+        `$SearchLeft += 1
+      }
+      if ((`$SearchTop % 2) -ne 0) {
+        `$SearchTop += 1
+      }
+
+      `$best = `$null
+      for (`$y = `$SearchTop; `$y -le `$SearchBottom; `$y += `$Step) {
+        for (`$x = `$SearchLeft; `$x -le `$SearchRight; `$x += `$Step) {
         `$score = 0
         foreach (`$distance in `$sampleDistances) {
           foreach (`$offset in @(
@@ -5186,17 +5206,52 @@ function Find-WebCloseGlyphFromScreenshot {
             logicalSampleDistances = `$logicalSampleDistances
             sampleDistances = `$sampleDistances
             scale = `$normalizedScale
+            strategy = `$Strategy
+            step = `$Step
             search = [PSCustomObject]@{
-              left = `$searchLeft
-              top = `$searchTop
-              right = `$searchRight
-              bottom = `$searchBottom
+              left = `$SearchLeft
+              top = `$SearchTop
+              right = `$SearchRight
+              bottom = `$SearchBottom
             }
           }
         }
       }
+      }
+      return `$best
     }
-    return `$best
+
+    # Prefer the tight search used by the long-standing Steam web-panel shape.
+    # Steam can render Friends and other community panels substantially narrower
+    # than the dimmed background run that identifies the modal. If the tight
+    # search misses, make one bounded, DPI-scaled coarse pass and then refine the
+    # unique X-shaped candidate. Close input remains gated on the glyph score.
+    `$localLeft = [int][Math]::Max(`$allowedLeft, `$CandidateX - 80)
+    `$localTop = [int][Math]::Max(`$allowedTop, `$CandidateY - 50)
+    `$localRight = [int][Math]::Min(`$allowedRight, `$CandidateX + 80)
+    `$localBottom = [int][Math]::Min(`$allowedBottom, `$CandidateY + 50)
+    `$best = & `$findBestGlyph `$localLeft `$localTop `$localRight `$localBottom 2 "local"
+    if (`$best) {
+      return `$best
+    }
+
+    `$fallbackRadius = [int][Math]::Max(128, [Math]::Round(128 * `$normalizedScale))
+    `$fallbackLeft = [int][Math]::Max(`$allowedLeft, `$CandidateX - `$fallbackRadius)
+    `$fallbackTop = [int][Math]::Max(`$allowedTop, `$CandidateY - `$fallbackRadius)
+    `$fallbackRight = [int][Math]::Min(`$allowedRight, `$CandidateX + `$fallbackRadius)
+    `$fallbackBottom = [int][Math]::Min(`$allowedBottom, `$CandidateY + `$fallbackRadius)
+    `$coarse = & `$findBestGlyph `$fallbackLeft `$fallbackTop `$fallbackRight `$fallbackBottom 4 "dpi-scaled-coarse"
+    if (-not `$coarse) {
+      return `$null
+    }
+
+    `$refineRadius = [int][Math]::Max(4, [Math]::Round(4 * `$normalizedScale))
+    `$refineLeft = [int][Math]::Max(`$fallbackLeft, `$coarse.x - `$refineRadius)
+    `$refineTop = [int][Math]::Max(`$fallbackTop, `$coarse.y - `$refineRadius)
+    `$refineRight = [int][Math]::Min(`$fallbackRight, `$coarse.x + `$refineRadius)
+    `$refineBottom = [int][Math]::Min(`$fallbackBottom, `$coarse.y + `$refineRadius)
+    `$refined = & `$findBestGlyph `$refineLeft `$refineTop `$refineRight `$refineBottom 2 "dpi-scaled-refined"
+    return `$(if (`$refined) { `$refined } else { `$coarse })
   } catch {
     return `$null
   } finally {
@@ -5471,7 +5526,18 @@ function Get-WebCloseClickTarget {
   } else {
     [int]([Math]::Round(`$rect.top + (`$rect.height * 0.142)))
   }
-  `$glyph = Find-WebCloseGlyphFromScreenshot -Screenshot `$Screenshot -CandidateX `$targetX -CandidateY `$targetY -Scale `$scale
+  `$glyphSearchBounds = `$null
+  if (`$Foreground -and `$Foreground.rect) {
+    `$minimumModalTopInset = [int][Math]::Max(1, [Math]::Round(48 * `$scale))
+    `$minimumModalRightInset = [int][Math]::Max(1, [Math]::Round(48 * `$scale))
+    `$glyphSearchBounds = [PSCustomObject]@{
+      left = [int]`$Foreground.rect.left
+      top = [int](`$Foreground.rect.top + `$minimumModalTopInset + `$topInset)
+      right = [int](`$Foreground.rect.right - `$minimumModalRightInset - `$rightInset)
+      bottom = [int]`$Foreground.rect.bottom
+    }
+  }
+  `$glyph = Find-WebCloseGlyphFromScreenshot -Screenshot `$Screenshot -CandidateX `$targetX -CandidateY `$targetY -Scale `$scale -SearchBounds `$glyphSearchBounds
   if (`$glyph) {
     `$correctedRight = [int][Math]::Min(`$Foreground.rect.right, `$glyph.x + `$rightInset)
     `$correctedTop = [int][Math]::Max(`$Foreground.rect.top, `$glyph.y - `$topInset)
@@ -5490,6 +5556,7 @@ function Get-WebCloseClickTarget {
       y = `$glyph.y
       source = "screenshot-steam-web-close-glyph"
       panel = `$correctedRect
+      detectedPanel = `$panel
       scale = `$scaleEvidence
       approach = [PSCustomObject]@{
         x = `$approachX
@@ -5514,6 +5581,7 @@ function Get-WebCloseClickTarget {
       y = `$targetY
       source = `$panel.source
       panel = `$rect
+      detectedPanel = `$panel
       scale = `$scaleEvidence
       approach = [PSCustomObject]@{
         x = `$approachX
@@ -5534,14 +5602,30 @@ function Get-WebCloseClickTarget {
     y = [int]([Math]::Round(`$rect.top + (`$rect.height * 0.142)))
     source = `$panel.source
     panel = `$rect
+    detectedPanel = `$panel
   }
 }
 
 function Test-WebClosePanelScreenshot {
-  param([object]`$Screenshot, [object]`$Foreground)
+  param(
+    [object]`$Screenshot,
+    [object]`$Foreground,
+    [object]`$Target = `$null,
+    [object]`$DetectedPanel = `$null
+  )
 
-  `$target = Get-WebCloseClickTarget -Foreground `$Foreground -Screenshot `$Screenshot
-  `$panel = Get-WebClosePanelRect -Foreground `$Foreground -Screenshot `$Screenshot
+  `$target = if (`$Target) {
+    `$Target
+  } else {
+    Get-WebCloseClickTarget -Foreground `$Foreground -Screenshot `$Screenshot
+  }
+  `$panel = if (`$DetectedPanel) {
+    `$DetectedPanel
+  } elseif (`$target -and `$target.detectedPanel) {
+    `$target.detectedPanel
+  } else {
+    Get-WebClosePanelRect -Foreground `$Foreground -Screenshot `$Screenshot
+  }
   if (-not `$Screenshot -or -not `$Screenshot.ok -or -not `$target -or -not `$panel -or -not `$panel.rect) {
     return [PSCustomObject]@{
       ready = `$false
@@ -5570,7 +5654,7 @@ function Test-WebClosePanelScreenshot {
     } else {
       [string]`$target.source -ceq "screenshot-steam-web-close-glyph"
     }
-    `$persistentModalBackdropReady = `$true
+    `$modalBackdropReady = `$false
     `$hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
     `$persistentCurrentPanelReady = if (`$script:UsePersistentReuseGate -and `$script:CloseCycleOrdinal -gt 1) {
       `$reuse = `$target.persistentReuse
@@ -5622,7 +5706,11 @@ function Test-WebClosePanelScreenshot {
     `$backdropDark = 0
     `$backdropMaxSum = 0
 
-    if (`$script:UsePersistentReuseGate -and `$hostRect) {
+    # A direct Steam web close target is only valid once Steam has actually
+    # dimmed the presenter behind its modal. Without this gate, the smoke app's
+    # own light buttons can briefly satisfy the diagonal glyph sampler while
+    # Steam is still painting its first frame.
+    if (`$hostRect) {
       `$backdropPoints = New-Object Collections.Generic.List[object]
       `$backdropTopY = [int][Math]::Round(`$hostRect.top + (`$hostRect.height * 0.04))
       foreach (`$fraction in @(0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90)) {
@@ -5653,7 +5741,7 @@ function Test-WebClosePanelScreenshot {
         }
       }
       `$backdropAverageMax = if (`$backdropTotal -gt 0) { `$backdropMaxSum / `$backdropTotal } else { 255 }
-      `$persistentModalBackdropReady = (
+      `$modalBackdropReady = (
         `$backdropTotal -ge 16 -and
         `$backdropAverageMax -le 96 -and
         `$backdropDark -ge [Math]::Ceiling(`$backdropTotal * 0.75)
@@ -5701,7 +5789,7 @@ function Test-WebClosePanelScreenshot {
     `$chromeReady = (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12)))
     `$contentReady = (`$contentTotal -gt 0 -and (`$contentBright -gt 3 -or `$contentMaxSeen -gt 120))
     [PSCustomObject]@{
-      ready = (`$chromeReady -and `$contentReady -and `$webClosePanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentCurrentPanelReady -and `$persistentModalBackdropReady)
+      ready = (`$chromeReady -and `$contentReady -and `$webClosePanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentCurrentPanelReady -and `$modalBackdropReady)
       target = `$target
       rectSource = `$panel.source
       foregroundCandidate = Test-WebCloseForegroundCandidate `$Foreground
@@ -5715,12 +5803,21 @@ function Test-WebClosePanelScreenshot {
       persistentPanelGeometryReady = `$persistentPanelGeometryReady
       persistentTargetSourceReady = `$persistentTargetSourceReady
       persistentCurrentPanelReady = `$persistentCurrentPanelReady
-      persistentModalBackdropReady = `$persistentModalBackdropReady
+      modalBackdropReady = `$modalBackdropReady
+      persistentModalBackdropReady = `$modalBackdropReady
       persistentPanelGeometry = [PSCustomObject]@{
         required = `$script:UsePersistentReuseGate
         minimumModalTopInset = `$minimumModalTopInset
         minimumModalRightInset = `$minimumModalRightInset
         hostRect = if (`$Foreground) { `$Foreground.rect } else { `$null }
+      }
+      modalBackdrop = [PSCustomObject]@{
+        required = `$true
+        total = `$backdropTotal
+        dark = `$backdropDark
+        averageMax = `$backdropAverageMax
+        maximumReadyValue = 96
+        minimumDarkRatio = 0.75
       }
       persistentModalBackdrop = [PSCustomObject]@{
         required = `$script:UsePersistentReuseGate
@@ -5782,7 +5879,8 @@ function Wait-WebClosePanelReady {
     if (`$target) {
       `$lastTarget = `$target
     }
-    `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground
+    `$detectedPanel = if (`$target) { `$target.detectedPanel } else { `$null }
+    `$analysis = Test-WebClosePanelScreenshot -Screenshot `$screenshot -Foreground `$foreground -Target `$target -DetectedPanel `$detectedPanel
     if (`$analysis.ready) {
       Write-ProbeEvent "probe:web-close-ready" ([PSCustomObject]@{
         cycle = `$Cycle
@@ -7051,10 +7149,23 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
       if ('$input' -eq 'web-close-click-sendinput') {
         `$webCloseReadiness = Wait-WebClosePanelReady -Deadline `$deadline -Cycle `$cycle
       }
+      `$initialWebCloseReadiness = `$webCloseReadiness
+      `$beforeSendForeground = Get-ForegroundProbeSnapshot
+      `$beforeSendScreenshot = Capture-ProbeScreen ("cycle-{0:D2}-before-send" -f `$cycle)
+      if ('$input' -eq 'web-close-click-sendinput') {
+        # Resolve and validate the target again from the exact screenshot used
+        # immediately before dispatch. Never reuse coordinates from a prior
+        # frame: Steam's first overlay frame can replace the smoke UI between
+        # captures.
+        `$beforeSendTarget = Get-WebCloseClickTarget -Foreground `$beforeSendForeground -Screenshot `$beforeSendScreenshot
+        `$beforeSendDetectedPanel = if (`$beforeSendTarget) { `$beforeSendTarget.detectedPanel } else { `$null }
+        `$webCloseReadiness = Test-WebClosePanelScreenshot -Screenshot `$beforeSendScreenshot -Foreground `$beforeSendForeground -Target `$beforeSendTarget -DetectedPanel `$beforeSendDetectedPanel
+      }
       Write-ProbeEvent "probe:before-send" ([PSCustomObject]@{
         cycle = `$cycle
-        foreground = Get-ForegroundProbeSnapshot
-        screenshot = Capture-ProbeScreen ("cycle-{0:D2}-before-send" -f `$cycle)
+        foreground = `$beforeSendForeground
+        screenshot = `$beforeSendScreenshot
+        initialWebCloseReadiness = `$initialWebCloseReadiness
         webCloseReadiness = `$webCloseReadiness
         processes = Get-ProbeProcessSnapshot
       })

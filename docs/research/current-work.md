@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-07-17
 
-Review anchor: `fed9b83` (`Fix Windows overlay package smoke contract`).
+Review anchor: `c3ea5e9` (`Release steam-bridge 0.2.4`).
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.4`, whose code-bearing predecessor adds the verified
+Release-gate `steam-bridge@0.2.5`, whose code-bearing predecessor adds the verified
 Windows top-level D3D11 game host, Electron shared-texture ingestion, native
 input delivery, production window-state behavior, an interactive owned-popup
 focus fix, and display-rate presentation control. The new candidate also makes
@@ -14,8 +14,14 @@ the Windows managed-route proof fail closed on the actual inset Steam modal,
 sequences repeatable achievement mutations through Steam's stored callbacks,
 and gives delayed passive notifications a bounded 20-second evidence window.
 Published `steam-bridge@0.1.6` remains the unchanged predecessor. Exact
-`v0.2.0`, `v0.2.1`, `v0.2.2`, and `v0.2.3` are preserved as rejected evidence; none
-produced a published npm package suitable for use.
+`v0.2.0` through `v0.2.3` are preserved as rejected product evidence. Exact
+`v0.2.4` passed CI and Release assembly and its product behavior passed protected
+persistent and checkout profiles, but its immutable proof harness could mistake
+the still-light smoke UI for Steam's first modal frame during shortcut coverage.
+It was not published. `0.2.5` rejects that frame, searches narrower Steam panels
+within bounded DPI-aware geometry, and recomputes the glyph from the exact
+pre-dispatch screenshot. It also combines candidate copy, protection,
+transactional activation, rollback, and re-audit behind one elevation prompt.
 
 ## Current State
 
@@ -60,11 +66,23 @@ texture updates cannot double-pump the swap chain; the default remains false.
 Automation could not make Steam accept a synthetic global Shift+Tab chord, so
 that run does not claim physical hotkey deactivation. More importantly, this
 consumer run is development evidence, not the repository's publication proof.
-Because `0.2.4` carries the new native host and changes its release evidence,
+Because `0.2.5` carries the new native host and changes its release evidence,
 the exact protected packaged candidate still requires fresh public
 `persistent-reuse`, `checkout`, `shortcut-routes`,
 and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
 before npm publication.
+
+The exact protected `v0.2.4` Release candidate passed the persistent-reuse and
+synthetic checkout profiles unchanged. Its shortcut-routes profile then failed
+closed: the first readiness screenshot preceded Steam's rendered modal, a broad
+fallback matched light smoke-application pixels, and the final click did not
+close Steam. The candidate remained byte-identical and write protected. The
+`0.2.5` harness now requires Steam's dimmed modal backdrop for every direct web
+close, carries the detected panel through one analysis pass, and independently
+resolves and validates the target again from the exact before-send frame. A
+fresh source-linked 16/16 managed-routes run passed after that repair, including
+web, store, Friends, dialog, shortcut keyboard, profile, players, community,
+stats, achievements, user, progress, and unlock coverage.
 
 The rejected `v0.2.0` tag exposed two standard Windows imports that the
 fail-closed artifact verifier had not yet classified: `comctl32.dll` for native
@@ -137,7 +155,7 @@ changes that belong to the user and must remain untouched.
   passive-notification timing review, plus TypeScript, Electron-version,
   shortcut, all Windows package-gate self-tests, the final-cycle callback
   regression, and recovered-frame-error regression.
-- `npm run example:package:win` builds the `0.2.4` Electron `43.1.1` unpacked
+- `npm run example:package:win` builds the `0.2.5` Electron `43.1.1` unpacked
   app, verifies all 1,127 required native methods and their declaration hash,
   passes the packaged matrix self-test, and loads the exact addon through the
   packaged executable. The package path retains argument-safe npm invocation
@@ -147,9 +165,11 @@ changes that belong to the user and must remain untouched.
   pass.
 - `npm run check:platform`, `npm run native:check`, and `npm run api:check`
   pass. The API audit retains 1,127 required native methods.
-- `npm run package:smoke` reaches its documented Windows host blocker when the
-  Unix fixture tries to launch `bash`; `WIN-PACKAGE-SMOKE-HOST-001` remains the
-  applicable rerun decision. No WSL or host reconfiguration was introduced.
+- `npm run package:smoke` passes the package consumer, native manifest, Windows
+  helper static contracts, candidate ACL self-test, and combined deployment
+  self-test before reaching the documented Git-Bash/Linux shortcut-discovery
+  path-translation mismatch. Exact CI must run the POSIX fixtures natively. No
+  WSL or host reconfiguration was introduced.
 - The latest manual consumer matrix passed gameplay, mapped input, window-state
   and focus transitions, shared-texture presentation at the current display
   rate, one-time checkout activation/close, and recurring-subscription
@@ -206,14 +226,25 @@ changes that belong to the user and must remain untouched.
 - The corrected Windows verifier self-test passes and accepts the complete
   import table of the exact local 8,130,560-byte addon while continuing to
   reject dynamic MSVC/UCRT and arbitrary non-system dependencies.
+- Exact `v0.2.4` Release run `29600153021` assembled the audited npm tarball and
+  114-file Windows candidate. The protected candidate remained bound to content
+  SHA-256 `2269d27e34d8b9b83c50e379dc900ec1ecacab7e712f5e558e8fb714b22474d4`
+  and binding SHA-256
+  `7244e3d462f69bde16e2c6a892b001f495e9e6a712086dd0690bc5645e4f7791`
+  throughout the partial proof. Persistent-reuse and checkout passed; the
+  shortcut proof failure was preserved and no publication was attempted.
+- Final local `0.2.5` validation passes 206/206 automated tests, Windows package
+  construction, packaged native loading for all 1,127 methods, the packaged
+  deployment-helper self-test, and a protected source-linked 16/16 managed
+  matrix with exact post-run candidate fingerprint and canonical ACL audits.
 - No private app, product, account, transaction, Steam, key, price, checkout
   URL, or fixture identifier is recorded in committed documentation.
 
 ## Next Actions
 
-1. Commit and push the reviewed `0.2.4` replacement, wait for exact CI, and
-   create the fresh `v0.2.4` candidate through the tag-triggered Release
-   workflow. Preserve and never move rejected `v0.2.0` through `v0.2.3`.
+1. Commit and push the reviewed `0.2.5` replacement, wait for exact CI, and
+   create the fresh `v0.2.5` candidate through the tag-triggered Release
+   workflow. Preserve and never move rejected `v0.2.0` through `v0.2.4`.
 2. Run the required candidate-bound Windows public proof profiles without
    private checkout inputs or evidence overrides, generate the sanitized
    receipt, and configure the publish proof.
@@ -223,7 +254,7 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Commit and push the reviewed `0.2.4` replacement, then require clean exact CI
+Commit and push the reviewed `0.2.5` replacement, then require clean exact CI
 before creating the fresh tag. Do not tag or publish if the protected Windows
 live-proof workflow cannot be completed for the same exact candidate.
 

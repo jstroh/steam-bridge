@@ -75,14 +75,32 @@ fingerprints the deployed candidate again after the live batch. The workflow
 must not fabricate this post-live record or run `--publish` automatically.
 
 Before any live Windows candidate launch from a user-writable deployment root,
-run `scripts/windows-protect-release-candidate.ps1 -Mode Apply` with an
-`-EvidencePath` outside the candidate. The helper removes inherited write access
-from the current interactive identity while retaining read/execute access and
-SYSTEM/Administrators maintenance access, resets descendants to inherit that
-canonical ACL, rejects reparse points and running candidate processes, and then
-audits the complete tree. Re-run `-Mode Audit` and the exact content fingerprint
-after transactional activation and after every live profile. Preserve and
-replace a mutated candidate; never delete, exclude, or baseline a runtime file.
+use the combined deployment helper. It performs source and staged fingerprints,
+write protection, same-volume transactional activation, rollback retention,
+active-package fingerprint and ACL audits, and Steam-process continuity under
+one elevation prompt:
+
+```powershell
+.\scripts\windows-deploy-release-candidate.ps1 `
+  -SourceDirectory C:\path\to\candidate `
+  -ActiveDirectory C:\path\to\stable-package `
+  -AuditManifest C:\path\to\package-audit.json `
+  -EvidenceDirectory C:\path\to\new-deployment-evidence
+```
+
+Use a fresh evidence directory for every deployment. The helper never deletes a
+prior or failed candidate: the previous active directory remains as the reported
+rollback, and a post-activation failure restores it while preserving the failed
+replacement beside it. The lower-level
+`scripts/windows-protect-release-candidate.ps1 -Mode Apply` remains available
+for an already deployed candidate, with `-EvidencePath` outside that candidate.
+It removes inherited write access from the current interactive identity while
+retaining read/execute access and SYSTEM/Administrators maintenance access,
+resets descendants to inherit that canonical ACL, rejects reparse points and
+running candidate processes, and then audits the complete tree. Re-run
+`-Mode Audit` and the exact content fingerprint after every live profile.
+Preserve and replace a mutated candidate; never delete, exclude, or baseline a
+runtime file.
 Launch protected live candidates only through the required Limited task; an
 elevated process intentionally retains Administrators maintenance access.
 An installer that already places immutable program bytes under a protected

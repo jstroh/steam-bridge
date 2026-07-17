@@ -358,6 +358,14 @@ function copyTargetHelpers(appPath) {
       path.join(repoRoot, "scripts", "windows-release-candidate-fingerprint.cjs"),
       path.join(appPath, "windows-release-candidate-fingerprint.cjs")
     );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-protect-release-candidate.ps1"),
+      path.join(appPath, "windows-protect-release-candidate.ps1")
+    );
+    fs.copyFileSync(
+      path.join(repoRoot, "scripts", "windows-deploy-release-candidate.ps1"),
+      path.join(appPath, "windows-deploy-release-candidate.ps1")
+    );
     run(process.execPath, [matrixSummaryPath, "--self-test"], appPath);
     fs.copyFileSync(
       path.join(repoRoot, "scripts", "upsert-steam-shortcut.cjs"),
