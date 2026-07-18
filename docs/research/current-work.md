@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-07-17
 
-Review anchor: `44fca9e` (`Fix Windows DPI proof for physical presenter bounds`).
+Review anchor: `6e024a2` (`Harden persistent panel refinement proof`).
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.7`, whose code-bearing predecessor adds the verified
+Release-gate `steam-bridge@0.2.8`, whose code-bearing predecessor adds the verified
 Windows top-level D3D11 game host, Electron shared-texture ingestion, native
 input delivery, production window-state behavior, an interactive owned-popup
 focus fix, and display-rate presentation control. The new candidate also makes
@@ -32,6 +32,12 @@ required cycle one's initial ready-panel bottom edge to equal the later exact
 pre-dispatch frame. `0.2.7` permits only that vertical bottom/height refinement
 while requiring the same glyph-bound target, left/top/right panel anchor,
 physical scale, click containment, and independently valid panel evidence.
+Exact protected `v0.2.7` then passed all 31 cases and 27 active routes, but its
+receipt verifier rejected the runtime's correct `owned-popup` diagnostic
+because it still expected the obsolete `popup-layered` identity. `0.2.8`
+updates that immutable receipt contract, recognizes that passive achievement
+notifications present without enabling the interactive overlay, and adds
+negative regressions for both stale assumptions.
 
 ## Current State
 
@@ -76,7 +82,7 @@ texture updates cannot double-pump the swap chain; the default remains false.
 Automation could not make Steam accept a synthetic global Shift+Tab chord, so
 that run does not claim physical hotkey deactivation. More importantly, this
 consumer run is development evidence, not the repository's publication proof.
-Because `0.2.7` carries the corrected immutable release auditor,
+Because `0.2.8` carries the corrected immutable release auditor,
 the exact protected packaged candidate still requires fresh public
 `persistent-reuse`, `checkout`, `shortcut-routes`,
 and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
@@ -102,6 +108,15 @@ bottom/height refined before the exact pre-dispatch screenshot. The target's
 glyph, coordinates, scale, host, left/top/right panel anchor, and click
 containment were unchanged. No other profile, receipt, or publication was
 attempted; `v0.2.6` remains immutable rejected evidence.
+
+Exact `v0.2.7` at `6e024a2` passed main CI `29624829929`, tag CI
+`29624928103`, and Release assembly `29624928093`. Its exact protected
+candidate completed all four ordered profiles: 31/31 cases, 27/27 active
+routes, canonical ACL checks after every profile, unchanged candidate binding,
+and one continuous Steam identity. Receipt generation then failed closed only
+because the verifier expected `popup-layered` while every attached runtime
+correctly reported `owned-popup`. The failed receipt and all four roots are
+preserved; `v0.2.7` will not be published.
 
 The exact protected `v0.2.4` Release candidate passed the persistent-reuse and
 synthetic checkout profiles unchanged. Its shortcut-routes profile then failed
@@ -274,7 +289,13 @@ changes that belong to the user and must remain untouched.
   three opens, closes, and parks, but the immutable auditor rejected cycle one's
   vertical ready-panel refinement. The failed root and exact candidate remain
   protected and preserved; no receipt or publication was attempted.
-- Local `0.2.7` passes 206/206 tests, platform policy, native formatting and
+- Local `0.2.8` passes 206/206 tests, platform policy, native formatting and
+  compilation, API coverage, Windows example packaging, the packaged all-1,127-
+  method native-load probe, and the receipt self-test. Its corrected local
+  verifier generates a valid four-profile, 31-case / 27-activation sanitized
+  receipt from the preserved exact `v0.2.7` roots; the receipt is recheck
+  evidence only and cannot authorize publication of a different candidate.
+- Exact `v0.2.7` passes 206/206 tests, platform policy, native formatting and
   compilation, API coverage, Windows example packaging, the packaged all-1,127-
   method native-load probe, and the auditor self-test. It re-audits the rejected
   exact `v0.2.6` persistent root plus all four preserved `v0.2.5` roots with zero
@@ -282,8 +303,13 @@ changes that belong to the user and must remain untouched.
   regressions pass; paired target-panel and current-panel horizontal- and
   top-drift regressions fail closed. `package:smoke` reaches and passes every
   applicable Windows package/protection/deployment check before the known
-  native-Windows `bash` environment blocker; exact CI must run the remaining
-  POSIX fixture.
+  native-Windows `bash` environment blocker. Its exact protected candidate also
+  passes all 31 cases and 27 active routes, but the obsolete receipt host-style
+  expectation rejects the correct `owned-popup` runtime, so it remains
+  unpublished. Local `0.2.8` corrects that host-style contract and the masked
+  passive-notification `overlayEnabled` expectation, explicitly rejecting the
+  deprecated runtime identity and an incorrectly enabled passive case; exact CI
+  must run the remaining POSIX fixture before a new candidate is tagged.
 - Local `0.2.6` passed 206/206 tests, platform policy, native formatting and
   compilation, API coverage, Windows example packaging, the packaged all-1,127-
   method native-load probe, the corrected auditor self-test, and all four
@@ -301,10 +327,10 @@ changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Complete local validation, commit and push the `0.2.7` auditor correction,
-   wait for exact CI, and create the fresh `v0.2.7` candidate through the
+1. Complete local validation, commit and push the `0.2.8` receipt correction,
+   wait for exact CI, and create the fresh `v0.2.8` candidate through the
    tag-triggered Release workflow. Preserve and never move rejected `v0.2.0`
-   through `v0.2.6`.
+   through `v0.2.7`.
 2. Repeat the required candidate-bound Windows public proof profiles without
    private checkout inputs or evidence overrides, generate the sanitized
    receipt, and configure the publish proof.
@@ -314,7 +340,7 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Validate, review, commit, and push the `0.2.7` auditor correction, then require clean
+Validate, review, commit, and push the `0.2.8` auditor correction, then require clean
 exact CI before creating the fresh tag. Do not tag or publish if the protected Windows
 live-proof workflow cannot be completed for the same exact candidate.
 

@@ -125,7 +125,9 @@ is parked. When Steam opens an interactive surface, the presenter becomes
 focusable inside the Electron content bounds; after Steam closes, it returns
 to the parked state and restores application focus. This keeps the ordinary
 title bar, menus, minimize, maximize, window drag, and rounded-corner behavior
-owned by the Electron window.
+owned by the Electron window. The interactive surface is an Electron-owned
+popup (`owned-popup` in diagnostics); the release proof rejects the obsolete
+standalone `popup-layered` identity.
 
 The same managed overlay also prepares passive Steam notifications, including
 achievement progress and unlock toasts. The presenter stays transparent,

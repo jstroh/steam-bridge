@@ -22,7 +22,7 @@ const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-live-proof-evidence-v1";
 const RECEIPT_PREFIX = "STEAM_BRIDGE_WINDOWS_LIVE_PROOF_RECEIPT ";
 const PUBLIC_APP_ID = 480;
 const EXPECTED_BACKEND = "windows-d3d11";
-const EXPECTED_HOST_STYLE = "popup-layered";
+const EXPECTED_HOST_STYLE = "owned-popup";
 const EXPECTED_HEALTH_MINUTES = 30;
 const OWNER_PROCESS_HANDOFF = "owner-process-native-show-v1";
 const SAME_PROCESS_HANDOFF = "same-process-user-gesture-v1";
@@ -565,7 +565,10 @@ function validateProfileSummary(summary, contract, candidateBinding) {
     assert.equal(row.steamLaunch, true);
     assert.equal(row.overlayInjection, false);
     assert.equal(row.steamOverlayLaunchMarker, true);
-    assert.equal(row.overlayEnabled, expected.action !== "presenter-ready");
+    assert.equal(
+      row.overlayEnabled,
+      expected.action !== "presenter-ready" && !expected.requirePassiveNotification
+    );
     assert.equal(row.crashDumpCount, 0);
     assert.equal(row.fatalLifecycleEventCount, 0);
     assert.equal(row.initTxnRequestShapePresent, false);
@@ -1490,6 +1493,15 @@ function selfTest() {
     lifecycleCompleteCount: 1
   });
   assert.throws(() => validateProfileSummary(attachedReadyCase, managedRoutesContract, candidateBinding));
+  const passiveOverlayEnabled = createSelfTestSummary(managedRoutesContract, candidateBinding);
+  const passiveCaseIndex = managedRoutesContract.cases.findIndex(
+    (entry) => entry.requirePassiveNotification
+  );
+  assert.ok(passiveCaseIndex >= 0);
+  passiveOverlayEnabled.caseSummaries[passiveCaseIndex].overlayEnabled = true;
+  assert.throws(() =>
+    validateProfileSummary(passiveOverlayEnabled, managedRoutesContract, candidateBinding)
+  );
   const incompleteAttachedRoute = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
   Object.assign(incompleteAttachedRoute.caseSummaries[1].presenterBackendEvidence.result, {
     rendererBackend: "",
@@ -1500,6 +1512,11 @@ function selfTest() {
   const badRuntime = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
   badRuntime.caseSummaries[1].runtimeConfig.nativePathOverride = true;
   assert.throws(() => validateProfileSummary(badRuntime, PROFILE_CONTRACTS[1], candidateBinding));
+  const deprecatedPopupRuntime = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
+  deprecatedPopupRuntime.caseSummaries[1].runtimeConfig.actualNativeHostStyle = "popup-layered";
+  assert.throws(() =>
+    validateProfileSummary(deprecatedPopupRuntime, PROFILE_CONTRACTS[1], candidateBinding)
+  );
   const inheritedCheckoutUrl = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
   inheritedCheckoutUrl.caseSummaries[1].runtimeConfig.hasCheckoutUrl = true;
   assert.throws(() => validateProfileSummary(inheritedCheckoutUrl, PROFILE_CONTRACTS[1], candidateBinding));
@@ -1737,7 +1754,7 @@ function createSelfTestSummary(contract, candidateBinding) {
     steamLaunch: true,
     overlayInjection: false,
     steamOverlayLaunchMarker: true,
-    overlayEnabled: expected.action !== "presenter-ready",
+    overlayEnabled: expected.action !== "presenter-ready" && !expected.requirePassiveNotification,
     overlayActiveEvents: expected.requireOverlayActivated ? 1 : 0,
     crashDumpCount: 0,
     fatalLifecycleEventCount: 0,

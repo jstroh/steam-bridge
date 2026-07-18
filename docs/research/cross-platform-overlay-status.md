@@ -161,14 +161,23 @@ left/top/right panel anchor, DPI scale, host, and click containment remained
 unchanged. The run is preserved, no other profile or receipt was attempted, and
 `v0.2.6` is immutable rejected evidence.
 
-Local `0.2.7` compares only the stable left/top/right/width panel anchor across
+Exact `v0.2.7` compares only the stable left/top/right/width panel anchor across
 ready and exact pre-dispatch frames, independently validates both complete panel
 rectangles and target containment, and still binds the exact glyph, coordinates,
 scale, approach, insets, host, and persistent identity. Vertical bottom/height
 refinement passes; horizontal or top-anchor drift fails closed. Its self-test,
 the rejected `v0.2.6` persistent root, and all four preserved `v0.2.5` roots
-summarize with zero failures and warnings. Exact `v0.2.7` must repeat all four
-profiles before receipt generation or publication.
+summarize with zero failures and warnings. Exact `v0.2.7` therefore had to
+repeat all four profiles before receipt generation or publication, and its
+protected candidate did repeat them successfully: 31/31 cases and 27/27 active
+ACLs, unchanged binding, and one Steam identity. Receipt generation then failed
+closed because the verifier expected obsolete `popup-layered` diagnostics while
+the current managed presenter correctly reported `owned-popup`. `v0.2.7` is
+preserved and unpublished. Local `0.2.8` corrects that immutable expectation
+and the masked assumption that passive achievement notifications enable the
+interactive overlay. Negative regressions reject both stale evidence shapes;
+the exact candidate must repeat all four profiles because the verifier ships
+with it.
 
 Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
 `29488457804`, and protected Release `29488457815` pass. The independently
