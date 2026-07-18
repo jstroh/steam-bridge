@@ -2139,9 +2139,11 @@ three-cycle run before it closes `WIN-PERSISTENT-REUSE-001`.
 Every cycle also requires a distinct readable physical pre-send full-desktop
 screenshot whose declared bounds match its PNG dimensions and contain the
 cycle's native-host rectangle; its detected panel and click must stay inside
-that exact host. The supported per-monitor-DPI or geometry-ratio
-scale and physical/logical bounds must independently match that cycle's
-lifecycle presenter geometry. Ordered timestamps connect active plus shown
+that exact host. The authoritative per-monitor window-DPI scale must
+independently match the authenticated renderer DPR and physical-client/
+renderer-viewport ratio. Windows presenter `bounds` are already physical
+native-host pixels and must not be reinterpreted as logical DIPs. Ordered
+timestamps connect active plus shown
 state, target selection, focus confirmation, the pre-input dispatch boundary,
 inactive/closed state, parking, and cycle completion; each completion precedes
 the next cycle's shown event. Full-desktop captures remain private local

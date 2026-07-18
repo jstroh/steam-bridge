@@ -4608,6 +4608,7 @@ function verifyPersistentCloseProbe(
       objectOrEmpty(lifecycleEvent.payload).active === false
   );
   const baselineCloseTarget = objectOrEmpty(objectOrEmpty(targets[0]?.payload).target);
+  const userGestureScaleGeometry = findUserGestureScaleGeometry(events);
   const persistentScreenshotPathSets = [];
   sent.forEach((event, index) => {
     const payload = objectOrEmpty(event.payload);
@@ -4690,6 +4691,9 @@ function verifyPersistentCloseProbe(
       const cyclePresenter = objectOrEmpty(objectOrEmpty(lifecycleShown?.payload).presenter);
       const cycleNativeHostRect = findNativeHostRect(cyclePresenter, []);
       const cycleScaleGeometry = findPresenterScaleGeometry(cyclePresenter, []);
+      const independentScaleGeometry = currentPersistentGate
+        ? userGestureScaleGeometry
+        : cycleScaleGeometry;
       const cycleLogicalBounds = normalizeRect(cyclePresenter.bounds);
       const loggedPhysicalRect = normalizeRect(targetScale.physicalRect);
       const loggedLogicalBounds = normalizeRect(targetScale.logicalBounds);
@@ -4709,10 +4713,11 @@ function verifyPersistentCloseProbe(
         cycleNativeHostRect &&
           cycleLogicalBounds &&
           cycleScaleGeometry?.axesAgree === true &&
+          independentScaleGeometry?.axesAgree === true &&
           sameRect(loggedPhysicalRect, cycleNativeHostRect) &&
           sameRect(loggedLogicalBounds, cycleLogicalBounds) &&
           Number.isFinite(scale) &&
-          Math.abs(scale - cycleScaleGeometry.scale) <= WINDOWS_CLOSE_SCALE_TOLERANCE &&
+          Math.abs(scale - independentScaleGeometry.scale) <= WINDOWS_CLOSE_SCALE_TOLERANCE &&
           Number.isFinite(loggedRatioX) &&
           Math.abs(loggedRatioX - cycleScaleGeometry.scaleX) <= WINDOWS_CLOSE_SCALE_TOLERANCE &&
           Number.isFinite(loggedRatioY) &&
@@ -4777,13 +4782,27 @@ function verifyPersistentCloseProbe(
         failures
       );
       if (closeTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA) {
+        const cycleReadyTarget = objectOrEmpty(cycleReadyAnalysis.target);
+        const readyTargetMatches =
+          ordinal === 1
+            ? isDeepStrictEqual(cycleReadyTarget, target)
+            : isDeepStrictEqual(
+                persistentCloseTargetStableFields(cycleReadyTarget),
+                persistentCloseTargetStableFields(target)
+              ) &&
+              isValidPersistentReuseCycleOneCloseTarget(
+                cycleReadyTarget,
+                baselineCloseTarget,
+                ordinal,
+                closeTargetSchema
+              );
         expect(
           cycleReadyEvents.length === 1 &&
             events.indexOf(cycleReadyEvent) < events.indexOf(targets[index]) &&
             cycleReadyAnalysis.ready === true &&
             cycleReadyAnalysis.rectSource === "screenshot-steam-web-panel" &&
             cycleReadyAnalysis.persistentCurrentPanelReady === true &&
-            isDeepStrictEqual(cycleReadyAnalysis.target, target) &&
+            readyTargetMatches &&
             objectOrEmpty(cycleReadyPayload.screenshot).ok === true,
           `${caseName}: persistent cycle ${ordinal} proves the current Steam panel is rendered before close input`,
           failures
@@ -6118,7 +6137,9 @@ function summarizeCloseProbe(
   const loggedScale = objectOrEmpty(webCloseTarget.scale);
   const webClosePanel = normalizeRect(loggedPanel);
   const nativeHostRect = findNativeHostRect(nativePresenter, lifecycleEvents);
-  const presenterScaleGeometry = findPresenterScaleGeometry(nativePresenter, lifecycleEvents);
+  const presenterScaleGeometry =
+    findUserGestureScaleGeometry(normalizedEvents) ??
+    findPresenterScaleGeometry(nativePresenter, lifecycleEvents);
   const derivedScale = presenterScaleGeometry ? presenterScaleGeometry.scale : NaN;
   const loggedScaleValue = Number(loggedScale.value);
   const scaleSourceSupported = ["native-host-window-dpi", "presenter-geometry-ratio"].includes(
@@ -7745,6 +7766,56 @@ function findPresenterScaleGeometry(nativePresenter, lifecycleEvents) {
   return fallback;
 }
 
+function findUserGestureScaleGeometry(events) {
+  const preDispatchEvents = (Array.isArray(events) ? events : []).filter(
+    (event) => event?.type === "probe:user-gesture-gate-pre-dispatch"
+  );
+  if (preDispatchEvents.length !== 1) {
+    return null;
+  }
+
+  const payload = objectOrEmpty(preDispatchEvents[0].payload);
+  const dpi = objectOrEmpty(payload.dpi);
+  const client = objectOrEmpty(payload.clientGeometry);
+  const viewport = objectOrEmpty(objectOrEmpty(payload.rendererGeometry).viewport);
+  const scaleX = Number(client.width) / Number(viewport.width);
+  const scaleY = Number(client.height) / Number(viewport.height);
+  const rendererScale = Number(dpi.rendererScale);
+  const windowScale = Number(dpi.windowScale);
+  const devicePixelRatio = Number(viewport.devicePixelRatio);
+  const geometry = {
+    scaleX,
+    scaleY,
+    scale: (scaleX + scaleY) / 2,
+    axesAgree: Math.abs(scaleX - scaleY) <= WINDOWS_CLOSE_SCALE_TOLERANCE
+  };
+  if (
+    dpi.rendererScalePresent !== true ||
+    dpi.windowDpiPresent !== true ||
+    dpi.scaleAgrees !== true ||
+    dpi.clientGeometryAgrees !== true ||
+    !Number.isFinite(scaleX) ||
+    !Number.isFinite(scaleY) ||
+    !Number.isFinite(rendererScale) ||
+    !Number.isFinite(windowScale) ||
+    !Number.isFinite(devicePixelRatio) ||
+    scaleX < 0.5 ||
+    scaleX > 8 ||
+    scaleY < 0.5 ||
+    scaleY > 8 ||
+    rendererScale < 0.5 ||
+    rendererScale > 8 ||
+    !geometry.axesAgree ||
+    Math.abs(rendererScale - windowScale) > WINDOWS_CLOSE_SCALE_TOLERANCE ||
+    Math.abs(rendererScale - devicePixelRatio) > WINDOWS_CLOSE_SCALE_TOLERANCE ||
+    Math.abs(rendererScale - scaleX) > WINDOWS_CLOSE_SCALE_TOLERANCE ||
+    Math.abs(rendererScale - scaleY) > WINDOWS_CLOSE_SCALE_TOLERANCE
+  ) {
+    return null;
+  }
+  return geometry;
+}
+
 function presenterSnapshots(nativePresenter, lifecycleEvents) {
   const presenters = [];
   if (nativePresenter && typeof nativePresenter === "object" && !Array.isArray(nativePresenter)) {
@@ -7856,6 +7927,10 @@ function isValidPersistentReuseCycleOneCloseTarget(
         reuse.currentPanelDetected === true &&
         reuse.currentPanelSource === "screenshot-steam-web-panel" &&
         currentPanel &&
+        Number(target.x) >= currentPanel.left &&
+        Number(target.x) <= currentPanel.right &&
+        Number(target.y) >= currentPanel.top &&
+        Number(target.y) <= currentPanel.bottom &&
         Number(reuse.currentPanelTopDelta) === observedTopDelta &&
         Number(reuse.currentPanelTopTolerance) === expectedTopTolerance &&
         observedTopDelta <= expectedTopTolerance &&
@@ -7880,6 +7955,42 @@ function isValidPersistentReuseCycleOneCloseTarget(
       isDeepStrictEqual(target.approach, baseline.approach) &&
       isDeepStrictEqual(target.insets, baseline.insets)
   );
+}
+
+function persistentCloseTargetStableFields(targetValue) {
+  const target = objectOrEmpty(targetValue);
+  const reuse = objectOrEmpty(target.persistentReuse);
+  const currentPanel = normalizeRect(reuse.currentPanel);
+  return {
+    x: target.x,
+    y: target.y,
+    source: target.source,
+    panel: target.panel,
+    scale: target.scale,
+    approach: target.approach,
+    insets: target.insets,
+    glyph: target.glyph,
+    persistentReuse: {
+      schema: reuse.schema,
+      anchorCycle: reuse.anchorCycle,
+      cycle: reuse.cycle,
+      freshScreenshotCaptured: reuse.freshScreenshotCaptured,
+      sameNativeHost: reuse.sameNativeHost,
+      sameHostRect: reuse.sameHostRect,
+      currentPanelDetected: reuse.currentPanelDetected,
+      currentPanelSource: reuse.currentPanelSource,
+      currentPanelHorizontalAnchor: currentPanel
+        ? {
+            left: currentPanel.left,
+            top: currentPanel.top,
+            right: currentPanel.right,
+            width: currentPanel.width
+          }
+        : null,
+      currentPanelTopDelta: reuse.currentPanelTopDelta,
+      currentPanelTopTolerance: reuse.currentPanelTopTolerance
+    }
+  };
 }
 
 function summarizePhysicalScreenshotEvidence(events, caseDir, nativeHostRect) {
@@ -8857,6 +8968,26 @@ function runSelfTest() {
     assert.equal(persistentReuseSummary.cleanup.taskFileGuardOk, true);
     assert.equal(persistentReuseSummary.cleanup.taskFailureStage, "success");
     assert.equal(persistentReuseSummary.cleanup.taskRunnerTerminatedWithoutDone, false);
+    const persistentPhysicalBoundsRoot = path.join(
+      tempRoot,
+      "persistent-reuse-physical-presenter-bounds"
+    );
+    writeCurrentPersistentReuseFixture(persistentPhysicalBoundsRoot, {
+      boundsPhysical: true,
+      readyPanelHeightDriftCycle: 2
+    });
+    const persistentPhysicalBoundsSummary = summarizeWindowsOverlayMatrixArtifacts(
+      persistentPhysicalBoundsRoot
+    );
+    assert.deepEqual(persistentPhysicalBoundsSummary.failures, []);
+    assert.equal(persistentPhysicalBoundsSummary.caseSummaries[0].persistentReuseProof, true);
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-ready-panel-horizontal-drift",
+      writeCurrentPersistentReuseFixture,
+      { boundsPhysical: true, readyPanelHorizontalDriftCycle: 2 },
+      "persistent cycle 2 proves the current Steam panel is rendered before close input"
+    );
     const persistentMultipleStableRoot = path.join(
       tempRoot,
       "persistent-reuse-multiple-after-close-stable"
@@ -9776,6 +9907,24 @@ function runSelfTest() {
     assert.equal(
       alreadyForegroundSummary.caseSummaries[0].closeProbe.nativePresenterHandoffNativeShowCallCount,
       0
+    );
+
+    const physicalPresenterBoundsRoot = path.join(
+      tempRoot,
+      "managed-web-user-gesture-physical-presenter-bounds"
+    );
+    writeManagedWebCloseEvidenceFixture(physicalPresenterBoundsRoot, {
+      userGestureGate: true,
+      alreadyForeground: true,
+      boundsPhysical: true
+    });
+    const physicalPresenterBoundsSummary = summarizeWindowsOverlayMatrixArtifacts(
+      physicalPresenterBoundsRoot
+    );
+    assert.deepEqual(physicalPresenterBoundsSummary.failures, []);
+    assert.equal(
+      physicalPresenterBoundsSummary.caseSummaries[0].closeProbe.webCloseDerivedScale,
+      2.25
     );
 
     const webCloseRoundingRoot = path.join(tempRoot, "managed-web-close-rounding-boundary");
@@ -11511,13 +11660,15 @@ function writeManagedBackendFixture(root, options = {}) {
     rendererBackend: options.wrongResultRenderer ? "windows-opengl" : "windows-d3d11",
     omitNativeRect: options.omitNativeRect,
     omitLogicalBounds: options.omitLogicalBounds,
-    roundingBoundaryScale: options.roundingBoundaryScale
+    roundingBoundaryScale: options.roundingBoundaryScale,
+    boundsPhysical: options.boundsPhysical
   });
   const lifecyclePresenter = attachedWindowsPresenterFixture({
     rendererBackend: options.wrongLifecycleRenderer ? "windows-opengl" : "windows-d3d11",
     omitNativeRect: options.omitNativeRect,
     omitLogicalBounds: options.omitLogicalBounds,
-    roundingBoundaryScale: options.roundingBoundaryScale
+    roundingBoundaryScale: options.roundingBoundaryScale,
+    boundsPhysical: options.boundsPhysical
   });
   result.snapshot.overlay = {
     nativePresenter: { ok: true, value: resultPresenter }
@@ -11651,13 +11802,21 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         ? { left: 100, top: 80, right: 800, bottom: 600, width: 700, height: 520 }
         : { left: 50, top: 130, right: 220, bottom: 250, width: 170, height: 120 };
   const loggedScaleValue = options.roundingBoundaryScale ? 1.25 : 2.25;
-  const geometryScale = options.roundingBoundaryScale ? 1.2515 : 2.25;
   const presenterPhysicalRect = options.roundingBoundaryScale
     ? { left: 10, top: 10, width: 1001, height: 751 }
     : { left: 10, top: 10, width: 360, height: 270 };
-  const presenterLogicalBounds = options.roundingBoundaryScale
-    ? { x: 4, y: 4, width: 800, height: 600 }
-    : { x: 4, y: 4, width: 160, height: 120 };
+  const presenterLogicalBounds = options.boundsPhysical
+    ? {
+        x: presenterPhysicalRect.left,
+        y: presenterPhysicalRect.top,
+        width: presenterPhysicalRect.width,
+        height: presenterPhysicalRect.height
+      }
+    : options.roundingBoundaryScale
+      ? { x: 4, y: 4, width: 800, height: 600 }
+      : { x: 4, y: 4, width: 160, height: 120 };
+  const geometryScaleX = presenterPhysicalRect.width / presenterLogicalBounds.width;
+  const geometryScaleY = presenterPhysicalRect.height / presenterLogicalBounds.height;
   const expectedTarget = expectedWebCloseTarget(normalizeRect(panel), panel, loggedScaleValue);
   const target = {
     x: options.unscaledLargeTarget ? panel.right - 16 : options.targetOutsidePanel ? panel.right + 5 : expectedTarget.x,
@@ -11673,8 +11832,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
             source: "native-host-window-dpi",
             value: options.scaleMismatch ? 2 : loggedScaleValue,
             dpi: options.scaleMismatch ? 192 : Math.round(loggedScaleValue * 96),
-            ratioX: geometryScale,
-            ratioY: geometryScale,
+            ratioX: geometryScaleX,
+            ratioY: geometryScaleY,
             physicalRect: presenterPhysicalRect,
             logicalBounds: presenterLogicalBounds
           }
@@ -12846,12 +13005,14 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
 
 function attachedWindowsPresenterFixture(options = {}) {
   const backend = options.backend || "windows-d3d11";
-  const logicalBounds = options.roundingBoundaryScale
-    ? { x: 4, y: 4, width: 800, height: 600 }
-    : { x: 4, y: 4, width: 160, height: 120 };
   const nativeRect = options.roundingBoundaryScale
     ? { left: 10, top: 10, width: 1001, height: 751 }
     : { left: 10, top: 10, width: 360, height: 270 };
+  const logicalBounds = options.boundsPhysical
+    ? { x: nativeRect.left, y: nativeRect.top, width: nativeRect.width, height: nativeRect.height }
+    : options.roundingBoundaryScale
+      ? { x: 4, y: 4, width: 800, height: 600 }
+      : { x: 4, y: 4, width: 160, height: 120 };
   return {
     mode: "active",
     attached: true,
@@ -13221,7 +13382,8 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     reportedUserGestureTargetId: GENERIC_USER_GESTURE_GATE_TARGET,
     userGestureGate: true,
     alreadyForeground: true,
-    webCloseGlyphEvidence: options.webCloseGlyphEvidence !== false
+    webCloseGlyphEvidence: options.webCloseGlyphEvidence !== false,
+    boundsPhysical: options.boundsPhysical
   });
 
   const manifestPath = path.join(root, "matrix-manifest.json");
@@ -13331,7 +13493,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
     {
       type: "overlay:presenter-attach",
       at: at(2),
-      payload: { presenter: attachedWindowsPresenterFixture() }
+      payload: { presenter: attachedWindowsPresenterFixture({ boundsPhysical: options.boundsPhysical }) }
     },
     {
       type: "overlay:presenter-persistent-reuse-start",
@@ -13394,11 +13556,11 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
       attachCount: 1
     });
     const shownLifecyclePresenter = {
-      ...attachedWindowsPresenterFixture(),
+      ...attachedWindowsPresenterFixture({ boundsPhysical: options.boundsPhysical }),
       ...shown
     };
     const parkedLifecyclePresenter = {
-      ...attachedWindowsPresenterFixture(),
+      ...attachedWindowsPresenterFixture({ boundsPhysical: options.boundsPhysical }),
       ...parked
     };
     events.push(
@@ -13603,7 +13765,7 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
   if (options.rawResultComplete) {
     events[events.length - 1].payload.nativeHandle = "0x1234";
   }
-  const resultGeometry = attachedWindowsPresenterFixture();
+  const resultGeometry = attachedWindowsPresenterFixture({ boundsPhysical: options.boundsPhysical });
   result.action = { ok: true, action: PERSISTENT_REUSE_ACTION };
   result.snapshot.events = events;
   result.snapshot.overlay = {
@@ -13940,6 +14102,24 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
           target: structuredClone(target.payload.target)
         }
       };
+      if (options.readyPanelHeightDriftCycle === cycle && cycle > 1) {
+        const currentPanel = objectOrEmpty(
+          objectOrEmpty(readyEvent.payload.analysis.target).persistentReuse
+        ).currentPanel;
+        if (currentPanel) {
+          currentPanel.bottom += 40;
+          currentPanel.height += 40;
+        }
+      }
+      if (options.readyPanelHorizontalDriftCycle === cycle && cycle > 1) {
+        const currentPanel = objectOrEmpty(
+          objectOrEmpty(readyEvent.payload.analysis.target).persistentReuse
+        ).currentPanel;
+        if (currentPanel) {
+          currentPanel.right += 40;
+          currentPanel.width += 40;
+        }
+      }
       closeProbe.push(readyEvent);
     }
     const focus = structuredClone(firstFocus);

@@ -127,6 +127,30 @@ native load pass locally. The remaining local package-smoke stop is the known
 Git-Bash/Linux shortcut fixture path-translation mismatch; native CI must run
 that POSIX fixture before the `v0.2.5` tag is accepted.
 
+Exact `v0.2.5` at `29c1653` subsequently passed main CI `29620892207`, tag CI
+`29621012453`, and Release assembly `29621012452`. Its protected 114-file
+candidate completed persistent-reuse, checkout, all ten shortcut routes, and
+all sixteen managed routes: 31/31 cases and 27/27 active overlays closed and
+parked with canonical ACLs, clean teardown, and unchanged Steam identity.
+Receipt generation still failed closed because the immutable auditor treated
+the presenter's deliberately physical Windows `bounds` as logical DIPs,
+deriving scale `1` against authoritative window DPI and authenticated renderer
+DPR `2.25`. A cycle-two ready screenshot and exact pre-dispatch screenshot also
+produced different valid current-panel heights around the same glyph-bound
+target, which the auditor rejected as whole-object inequality. No receipt or
+publication was attempted, and `v0.2.5` remains immutable rejected evidence.
+
+Local `0.2.6` reconciles window DPI with the authenticated renderer DPR and
+physical-client/renderer-viewport ratio, while treating presenter bounds as the
+physical native-host coordinates they now are. Persistent readiness compares
+the stable glyph/coordinate/panel-anchor fields and independently validates
+both current-panel observations, so the exact final screenshot may refine
+panel height without changing the dispatched target. New physical-bounds and
+panel-refinement regressions pass; all four preserved `v0.2.5` roots now
+summarize with zero failures and warnings. Because the auditor ships with the
+Windows proof candidate, exact `v0.2.6` must repeat all four profiles before
+receipt generation or publication.
+
 Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
 `29488457804`, and protected Release `29488457815` pass. The independently
 verified 114-file / 398,180,793-byte candidate retains content SHA-256

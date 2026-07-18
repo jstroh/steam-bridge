@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-07-17
 
-Review anchor: `c3ea5e9` (`Release steam-bridge 0.2.4`).
+Review anchor: `29c1653` (`Harden Windows overlay proof and deployment`).
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.5`, whose code-bearing predecessor adds the verified
+Release-gate `steam-bridge@0.2.6`, whose code-bearing predecessor adds the verified
 Windows top-level D3D11 game host, Electron shared-texture ingestion, native
 input delivery, production window-state behavior, an interactive owned-popup
 focus fix, and display-rate presentation control. The new candidate also makes
@@ -22,6 +22,13 @@ It was not published. `0.2.5` rejects that frame, searches narrower Steam panels
 within bounded DPI-aware geometry, and recomputes the glyph from the exact
 pre-dispatch screenshot. It also combines candidate copy, protection,
 transactional activation, rollback, and re-audit behind one elevation prompt.
+Exact protected `v0.2.5` completed all 31 product cases and 27 active overlay
+routes, but its receipt auditor incorrectly reinterpreted already-physical
+Windows presenter bounds as logical DIPs. `0.2.6` corrects that evidence model
+by independently reconciling native-window DPI with authenticated renderer DPR
+and physical-client/renderer-viewport geometry. It also permits the exact
+pre-dispatch screenshot to refine a persistent cycle's current panel while
+requiring the same glyph-bound target anchor and independently valid panel.
 
 ## Current State
 
@@ -66,11 +73,22 @@ texture updates cannot double-pump the swap chain; the default remains false.
 Automation could not make Steam accept a synthetic global Shift+Tab chord, so
 that run does not claim physical hotkey deactivation. More importantly, this
 consumer run is development evidence, not the repository's publication proof.
-Because `0.2.5` carries the new native host and changes its release evidence,
+Because `0.2.6` carries the corrected immutable release auditor,
 the exact protected packaged candidate still requires fresh public
 `persistent-reuse`, `checkout`, `shortcut-routes`,
 and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
 before npm publication.
+
+The exact protected `v0.2.5` Release candidate passed persistent-reuse,
+checkout, shortcut-routes, and managed-routes behavior. All 31 cases and 27
+active overlays completed with clean candidate/process/task/Steam continuity.
+Receipt generation then failed closed because the auditor derived scale `1`
+from equal physical presenter/native-host bounds while the authoritative window
+DPI and authenticated renderer geometry both proved `2.25`. Cycle two also
+legitimately refined its current-panel height from the exact pre-dispatch frame,
+which the immutable auditor rejected despite an unchanged glyph, coordinate,
+scale, host, and top-edge tolerance. No receipt or publication was attempted;
+`v0.2.5` remains immutable rejected evidence.
 
 The exact protected `v0.2.4` Release candidate passed the persistent-reuse and
 synthetic checkout profiles unchanged. Its shortcut-routes profile then failed
@@ -233,6 +251,19 @@ changes that belong to the user and must remain untouched.
   `7244e3d462f69bde16e2c6a892b001f495e9e6a712086dd0690bc5645e4f7791`
   throughout the partial proof. Persistent-reuse and checkout passed; the
   shortcut proof failure was preserved and no publication was attempted.
+- Exact `v0.2.5` main CI `29620892207`, tag CI `29621012453`, and Release
+  assembly `29621012452` passed. Its protected four-profile live run completed
+  31/31 cases and 27/27 active overlays, but the receipt failed on the physical-
+  bounds scale-model mismatch above. The corrected auditor self-test passes,
+  and all four preserved roots now summarize with zero failures and warnings.
+- Local `0.2.6` passes 206/206 tests, platform policy, native formatting and
+  compilation, API coverage, Windows example packaging, the packaged all-1,127-
+  method native-load probe, the corrected auditor self-test, and all four
+  preserved exact-candidate summaries. Its height-refinement regression accepts
+  the legitimate current-panel change and a paired horizontal-drift regression
+  fails closed. `package:smoke` reaches and passes every applicable Windows
+  package/protection/deployment check before the known native-Windows `bash`
+  environment blocker; exact CI must run the remaining POSIX fixture.
 - Final local `0.2.5` validation passes 206/206 automated tests, Windows package
   construction, packaged native loading for all 1,127 methods, the packaged
   deployment-helper self-test, and a protected source-linked 16/16 managed
@@ -242,10 +273,10 @@ changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Commit and push the reviewed `0.2.5` replacement, wait for exact CI, and
-   create the fresh `v0.2.5` candidate through the tag-triggered Release
-   workflow. Preserve and never move rejected `v0.2.0` through `v0.2.4`.
-2. Run the required candidate-bound Windows public proof profiles without
+1. Commit and push the `0.2.6` auditor correction, wait for exact CI, and create
+   the fresh `v0.2.6` candidate through the tag-triggered Release workflow.
+   Preserve and never move rejected `v0.2.0` through `v0.2.5`.
+2. Repeat the required candidate-bound Windows public proof profiles without
    private checkout inputs or evidence overrides, generate the sanitized
    receipt, and configure the publish proof.
 3. Dispatch the manual npm publication workflow only after the exact candidate
@@ -254,8 +285,8 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Commit and push the reviewed `0.2.5` replacement, then require clean exact CI
-before creating the fresh tag. Do not tag or publish if the protected Windows
+Commit and push the reviewed `0.2.6` auditor correction, then require clean
+exact CI before creating the fresh tag. Do not tag or publish if the protected Windows
 live-proof workflow cannot be completed for the same exact candidate.
 
 Detailed settled platform evidence is in

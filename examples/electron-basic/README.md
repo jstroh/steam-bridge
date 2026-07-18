@@ -441,8 +441,10 @@ Each cycle also needs its own readable physical pre-send full-desktop screenshot
 the declared bounds must match the PNG dimensions, contain that cycle's
 native-host rectangle, and resolve to a path not reused by another cycle. Its
 detected panel and click point must both remain inside that exact host. Its
-per-monitor DPI or geometry-ratio scale and physical/logical bounds must agree
-with the independent lifecycle presenter geometry. Ordered timestamps bind
+authoritative per-monitor window-DPI scale must agree with the independently
+captured renderer DPR and physical-client/renderer-viewport geometry. Windows
+presenter bounds are already physical native-host pixels and must not be
+reinterpreted as logical DIPs. Ordered timestamps bind
 active plus shown state to target selection, focus confirmation, the pre-input
 dispatch boundary, inactive/closed state, parking, and cycle completion; each
 completion must precede the next shown state. Full-desktop captures are private
