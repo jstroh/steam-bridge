@@ -2,20 +2,20 @@
 
 Last reviewed: 2026-07-18
 
-Review anchor: `dc87004` (`Document v0.2.9 release proof`), with an uncommitted,
-source-linked Windows native-host checkout-dialog repair manually proven.
+Review anchor: `6eb634f` (`Handle Steam checkout dialogs in native host`),
+published as immutable `v0.2.10` with exact-candidate Windows live proof.
 
 ## Active Goal
 
-Create a fresh immutable Steam Bridge release containing the proven Windows
-standalone-host checkout-dialog repair, return the Electron consumer to an exact
-registry dependency, and repeat the focused registry-backed manual pass. Do not
-commit the consumer until that registry-backed pass is clean.
+Maintain `steam-bridge@0.2.10` as the supported Windows native-host release and
+preserve the exact candidate, proof roots, publication receipt, and downstream
+registry-backed evidence. Any native/runtime change requires a new immutable
+version and fresh exact-candidate proof.
 
 ## Current State
 
-`steam-bridge@0.2.9` remains npm `latest`, but the downstream registry-backed
-checkout pass exposed one unhandled Steam window shape. Closing a recurring
+`steam-bridge@0.2.10` is npm `latest`. The preceding registry-backed checkout
+pass exposed one unhandled Steam window shape: closing a recurring
 checkout approval surface creates a separate visible, enabled, foreground
 top-level window titled `Steam Dialog`, class `SDL_app`, from
 `steamwebhelper.exe`. It has no owner while the bridge's standalone D3D11 host
@@ -23,7 +23,7 @@ remains dimmed, so the confirmation appears outside the game host instead of
 behaving as its modal. Cancelling the transaction from that dialog closes it,
 returns to the game, and authorizes nothing.
 
-The manually proven repair forwards overlay-active state into the native surface.
+The published repair forwards overlay-active state into the native surface.
 On Windows standalone hosts only, it snapshots matching dialogs when the
 overlay activates, then at a bounded cadence adopts only a newly appearing,
 visible, unowned exact-title/exact-class window whose process image basename is
@@ -50,13 +50,17 @@ Exact `v0.2.0` through `v0.2.7` remain immutable rejected evidence from the
 progressively hardened import, activation-style, lifecycle, modal-target, DPI,
 panel-refinement, and receipt-contract gates. `v0.2.8` corrected the final
 owned-popup and passive-notification receipt assumptions and was published.
-`v0.2.9` is the cursor-suppression successor and carries fresh full live proof.
+`v0.2.9` is the cursor-suppression predecessor. `v0.2.10` adds exact Steam
+checkout-dialog adoption and carries a fresh full live proof and downstream
+registry-backed pass.
 
 ## Consumer Evidence
 
-The Electron game consumer is linked to the local `packages/steam-bridge`
-checkout while the dialog fix is prepared for release. The optimized local
-addon was exercised in live gameplay at 1024 by 768. Manual coverage included:
+The Electron game consumer was first linked to the local
+`packages/steam-bridge` checkout for iteration, then returned to an exact
+non-junction registry install of `steam-bridge@0.2.10`. Both the optimized local
+addon and the published registry package were exercised in live gameplay at
+1024 by 768. Manual coverage included:
 
 - title drag, edge resize, minimize, maximize/restore, fullscreen enter/exit,
   Alt+Tab, focus loss/return, restored rounded corners, and aspect preservation;
@@ -72,38 +76,39 @@ addon was exercised in live gameplay at 1024 by 768. Manual coverage included:
 - a post-checkout ordinary-overlay open/close and maximize/restore stress loop,
   followed by clean Electron shutdown with exit code zero.
 
-The previous registry-backed cancellation run is what exposed the separate
-Steam confirmation HWND. The local fix now passes the focused cancellation and
-broader window/overlay matrix. After publication, unlink the checkout, install
-the exact registry release, verify lockfile integrity and a non-junction package,
-then repeat the focused cancellation and core lifecycle checks before committing
-the consumer.
+The previous registry-backed cancellation run exposed the separate Steam
+confirmation HWND. The published package now passes the focused cancellation
+and broader window/overlay matrix. The consumer lockfile resolves the exact npm
+tarball and integrity, `node_modules/steam-bridge` is a normal directory, the
+packed Windows native runtime bytes equal the registry install, and the final
+manual pass returned from both checkout routes without authorizing a purchase or
+subscription.
 
 ## Exact Release Evidence
 
 Source and automation:
 
-- commit `627e87e4431b3a1d4fbbfe2abe2e99cdfecfaec4`;
-- main CI `29634611326`, tag CI `29634614682`, and Release assembly
-  `29634614621` passed;
-- trusted npm publication `29636032726` passed after restoring the exact
+- commit `6eb634fbcd50989c9f9a949a81e4b89b862776b6`;
+- Release assembly `29638085998` passed, including macOS arm64, Linux x64,
+  Windows x64 prebuilds, package assembly, and packaged Electron validation;
+- trusted npm publication `29639342257` passed after restoring the exact
   candidate-bound receipt in the `npm-production` environment;
-- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.9>.
+- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.10>.
 
 Candidate identity:
 
 - npm tarball SHA-256
-  `df35811beda67c8cff68b8a459090cd6743ce71c86dcd2fadce0831b964c3590`;
+  `5b49ea51b520702782ef231f0091969bc0d11e5fe193c5397164a2ea0ac0ffb2`;
 - Windows archive SHA-256
-  `8429c39cb13813b84b3dc827a56227cf44e04c8197a0b3655c2d72be54b66575`;
-- Windows bundle content: 114 files, 398,231,903 bytes, SHA-256
-  `2b8f0fb63a3059337eebd7421d9a4bf0e308950194c3e71e4f73ff3e60156f4d`;
-- native binding: 1,127 methods, declaration SHA-256
-  `ef216a32eedf680b378cf01a6d84efa8a6c51eab1ac40eb8e693b718eb9507d1`;
+  `f32c452c2defa2a22a41f9c1ed9e715180a7da0ce93cec7e5c5cf5aa10079997`;
+- Windows bundle content: 114 files, 398,249,435 bytes, SHA-256
+  `d83034ebdb474d7d341807e8801b8c3eba838e1c010efb7934cc2e572d95c717`;
+- native binding: 1,128 methods, declaration SHA-256
+  `cc7a8dd5951d2c42f9a76f54f9c82f3a92ea61319d6e20e6539c10a7d39ce949`;
 - candidate binding SHA-256
-  `8595cc73d04d0bb5ccad3f5450c6af5d69558f8ba4c7e47e7540e321d6fb38ef`;
+  `842b1d3b768f86db7a112bc89ff5c1de400ea9e7f5dc8b3a1bcf945aa9492e45`;
 - live-proof receipt semantic SHA-256
-  `bdb3859a761d952c2b2b368ffbaf2f6dcff1e9ba59c75532588205af214d25cb`.
+  `9cb576f6e1caa2a0d894e4cec7eaa778bde2991f9af73fabdb90a11fe2ab821d`.
 
 The exact protected candidate passed the four required profiles in order:
 
@@ -118,14 +123,11 @@ handoff, high-DPI target containment, visible modal-frame checks, clean
 close/park/focus return, canonical candidate protection after every profile,
 one continuous Steam identity, and zero crashes.
 
-The first checkout profile attempt is preserved separately because Steam did
-not consume one otherwise valid injected close click in shortcut checkout and
-the case timed out. Candidate identity, geometry, focus evidence, cleanup, and
-Steam health remained valid. A complete fresh-process rerun passed all four
-cases without changing bytes, configuration, target resolution, or timeout.
-Treat a future repeat as an input-lifecycle regression only if the same miss is
-reproducible under a fresh process state; never splice the failed root into a
-receipt.
+The first pre-receipt launch root is preserved separately because the required
+foreground-grant broker was not yet running, so the matrix correctly failed
+before live evidence was admitted. After the broker started, all four complete
+profiles passed against the unchanged protected candidate and one Steam identity.
+The failed root is not used by the receipt.
 
 The npm registry tarball is byte-identical to the audited Release tarball. `npm
 audit signatures` verifies one registry signature and one SLSA provenance
@@ -144,11 +146,16 @@ Bridge gates for the exact source passed:
   live profiles, receipt generation, trusted publication, registry integrity,
   signature, provenance, and Release-asset digest verification.
 
-Consumer gates on registry `0.2.9` passed:
+Consumer gates on registry `0.2.10` passed:
 
 - 4/4 tests, TypeScript, ESLint, optimized Next renderer build;
 - unpacked Windows electron-builder packaging with the registry package and
-  native runtime files included.
+  exact native runtime files included;
+- live title drag, keyboard resize, minimize/restore, maximize/restore,
+  fullscreen, Alt+Tab/focus return, rounded restored corners, aspect-fit
+  rendering, cursor suppression, ordinary overlay, one-time checkout cancel,
+  recurring checkout dialog cancel, post-checkout lifecycle stress, and clean
+  Electron exit code zero.
 
 ## Operational Notes
 

@@ -127,14 +127,19 @@ excludes exact matching windows already present at activation, and considers
 only a newly visible unowned exact-title/exact-class dialog whose process image
 basename is `steamwebhelper.exe`. It adopts that window as a host-owned popup,
 centers it over the host client area, follows host geometry, restores original
-ownership on deactivation/teardown, and records diagnostic evidence. This is an
-accepted source-linked implementation result: the optimized local addon put the
-recurring-cancellation dialog above the game with its owner equal to the native
-host and its rectangle centered over the host, then removed it cleanly after
-Cancel Transaction. The same run safely closed the one-time checkout, exercised
-ordinary overlay open/close, title drag, minimize/restore, maximize/restore,
-fullscreen, Alt+Tab/focus return, aspect-fit rendering, rounded restored corners,
-cursor suppression, and clean shutdown without a purchase, subscription, purple
+ownership on deactivation/teardown, and records diagnostic evidence. Exact
+published `v0.2.10` now carries the repair. Its protected Windows candidate
+passed 31/31 clean Steam-launched cases and 27 active routes with zero crashes,
+and its npm tarball is byte-identical to the audited Release artifact with a
+verified registry signature and provenance attestation. The optimized local
+addon and final exact-registry Electron consumer both put the recurring-cancel
+dialog above the game, exposed the expected Cancel/Continue controls, removed it
+cleanly after Cancel Transaction, and returned to gameplay without authorization.
+The registry run also safely closed one-time checkout, exercised ordinary
+overlay open/close, title drag, keyboard resize, minimize/restore,
+maximize/restore, fullscreen, Alt+Tab/focus return, aspect-fit rendering,
+rounded restored corners, cursor suppression, and post-checkout stress, then
+closed Electron with exit code zero without a purchase, subscription, purple
 startup frame, tiny overlay surface, flicker, hang, or crash.
 
 `0.2.5` also ships a combined Windows deployment helper. One elevation prompt
