@@ -488,6 +488,20 @@ pub fn set_native_overlay_host_opacity(opaque: bool) -> Result<(), Error> {
     native_surface::set_opaque(opaque)
 }
 
+#[napi(js_name = "setNativeOverlayHostOverlayActive")]
+pub fn set_native_overlay_host_overlay_active(active: bool) -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::set_overlay_active(active)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = active;
+        Ok(())
+    }
+}
+
 #[napi(js_name = "setNativeOverlayHostCursorHidden")]
 pub fn set_native_overlay_host_cursor_hidden(hidden: bool) -> Result<(), Error> {
     native_surface::set_cursor_hidden(hidden)

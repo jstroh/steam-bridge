@@ -1717,6 +1717,7 @@ export interface NativeBinding {
   hideNativeOverlayHostView(): void;
   setNativeOverlayHostInputPassthrough(passThrough: boolean): void;
   setNativeOverlayHostOpacity(opaque: boolean): void;
+  setNativeOverlayHostOverlayActive(active: boolean): void;
   setNativeOverlayHostCursorHidden(hidden: boolean): void;
   setNativeOverlayHostContinuousPresent(continuous: boolean): void;
   setNativeOverlayHostFullScreen(fullScreen: boolean): void;

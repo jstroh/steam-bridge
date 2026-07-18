@@ -15268,6 +15268,9 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     setNativeOverlayHostCursorHidden(hidden) {
       this.calls.push({ method: "setNativeOverlayHostCursorHidden", args: [hidden] });
     },
+    setNativeOverlayHostOverlayActive(active) {
+      this.calls.push({ method: "setNativeOverlayHostOverlayActive", args: [active] });
+    },
     setNativeOverlayHostContinuousPresent(continuous) {
       this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
     },
@@ -15310,6 +15313,10 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     768
   ]);
   assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOverlayActive").map((call) => call.args[0]),
+    [false]
+  );
+  assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostCursorHidden").map((call) => call.args[0]),
     [false]
   );
@@ -15338,6 +15345,10 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   session.setCursorHidden(true);
   fake.callbacks.get(331)({ active: true, app_id: 480 });
   fake.callbacks.get(331)({ active: false, app_id: 480 });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOverlayActive").map((call) => call.args[0]),
+    [false, true, false]
+  );
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostCursorHidden").map((call) => call.args[0]),
     [false, true, false, true]

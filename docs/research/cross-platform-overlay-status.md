@@ -117,6 +117,26 @@ rendering, and one-time/recurring checkout open and cancel without
 authorization. Chromium DevTools is excluded from release evidence because it
 changes Chromium surface activity and timing.
 
+A later registry-backed cancellation pass exposed a distinct Steam-owned
+window shape that those checks had not retained. Closing a recurring approval
+surface created a separate foreground `Steam Dialog`/`SDL_app` top-level HWND
+from `steamwebhelper.exe`, with no owner, while the standalone host remained
+dimmed. Direct cancellation authorized nothing and returned to the game. The
+source-linked repair now passes overlay-active state to the native host,
+excludes exact matching windows already present at activation, and considers
+only a newly visible unowned exact-title/exact-class dialog whose process image
+basename is `steamwebhelper.exe`. It adopts that window as a host-owned popup,
+centers it over the host client area, follows host geometry, restores original
+ownership on deactivation/teardown, and records diagnostic evidence. This is an
+accepted source-linked implementation result: the optimized local addon put the
+recurring-cancellation dialog above the game with its owner equal to the native
+host and its rectangle centered over the host, then removed it cleanly after
+Cancel Transaction. The same run safely closed the one-time checkout, exercised
+ordinary overlay open/close, title drag, minimize/restore, maximize/restore,
+fullscreen, Alt+Tab/focus return, aspect-fit rendering, rounded restored corners,
+cursor suppression, and clean shutdown without a purchase, subscription, purple
+startup frame, tiny overlay surface, flicker, hang, or crash.
+
 `0.2.5` also ships a combined Windows deployment helper. One elevation prompt
 covers source/stage fingerprints, canonical ACL application, same-volume
 transactional activation, rollback retention, active re-audit, and Steam

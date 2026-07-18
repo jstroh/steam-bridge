@@ -1259,7 +1259,9 @@ mod windows {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+    };
     use windows_sys::Win32::Graphics::Dwm::{
         DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
         DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
@@ -1275,18 +1277,22 @@ mod windows {
         PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
     };
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
     use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, GetCapture, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AdjustWindowRectEx, CreateCursor, CreateWindowExW, DefWindowProcW, DestroyCursor,
-        DestroyWindow, DispatchMessageW, GetAncestor, GetClientRect, GetCursorPos,
-        GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW, GetWindowPlacement,
-        GetWindowRect, IsIconic, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW,
-        RegisterClassW, SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetTimer,
-        SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
-        TranslateMessage, CS_OWNDC, GA_ROOTOWNER, GWL_EXSTYLE, GWL_STYLE, HCURSOR, IDC_ARROW,
+        DestroyWindow, DispatchMessageW, EnumWindows, GetAncestor, GetClassNameW, GetClientRect,
+        GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindow, GetWindowLongPtrW,
+        GetWindowPlacement, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+        IsWindow, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
+        SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetTimer, SetWindowLongPtrW,
+        SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow, TranslateMessage, CS_OWNDC,
+        GA_ROOTOWNER, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR, IDC_ARROW,
         LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE, SIZE_MINIMIZED, SM_CXSCREEN, SM_CYSCREEN,
         SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
         SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WINDOWPLACEMENT,
@@ -1327,6 +1333,8 @@ mod windows {
     // only as a duplicate-pump debounce; it must not impose a lower FPS cap.
     const CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis(1);
     const RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
+    const STEAM_DIALOG_SCAN_INTERVAL: Duration = Duration::from_millis(100);
+    const MAX_STEAM_DIALOG_WINDOWS: usize = 16;
     const MODAL_PRESENT_TIMER_ID: usize = 0x5342;
     const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
     const VK_TAB_CODE: i32 = 0x09;
@@ -1372,6 +1380,12 @@ mod windows {
         last_present_at: Option<Instant>,
         present_after_modal_loop: bool,
         overlay_shortcut_down: bool,
+        overlay_active: bool,
+        steam_dialog_baseline: SteamDialogWindowList,
+        adopted_steam_dialog: Option<AdoptedSteamDialog>,
+        last_steam_dialog_scan_at: Option<Instant>,
+        steam_dialog_adoption_count: u64,
+        last_adopted_steam_dialog_hwnd: Option<HWND>,
     }
 
     struct ParentWindowSubclassState {
@@ -1383,6 +1397,35 @@ mod windows {
         width: i32,
         height: i32,
         data: Vec<u8>,
+    }
+
+    #[derive(Clone, Copy)]
+    struct SteamDialogWindowList {
+        hwnds: [HWND; MAX_STEAM_DIALOG_WINDOWS],
+        len: usize,
+    }
+
+    impl Default for SteamDialogWindowList {
+        fn default() -> Self {
+            Self {
+                hwnds: [ptr::null_mut(); MAX_STEAM_DIALOG_WINDOWS],
+                len: 0,
+            }
+        }
+    }
+
+    impl SteamDialogWindowList {
+        fn contains(&self, hwnd: HWND) -> bool {
+            self.hwnds[..self.len].contains(&hwnd)
+        }
+    }
+
+    struct AdoptedSteamDialog {
+        hwnd: HWND,
+        process_id: u32,
+        original_owner_hwnd: HWND,
+        original_rect: RECT,
+        last_host_client_rect: RECT,
     }
 
     enum WindowsSurfaceRenderer {
@@ -1662,6 +1705,22 @@ mod windows {
         })
     }
 
+    pub fn set_overlay_active(active: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.overlay_active == active {
+                return;
+            }
+            surface.overlay_active = active;
+            surface.last_steam_dialog_scan_at = None;
+            if active && surface.host_style == WindowsHostStyle::Standalone {
+                surface.steam_dialog_baseline = enumerate_steam_dialog_windows();
+            } else {
+                restore_adopted_steam_dialog(surface);
+                surface.steam_dialog_baseline = SteamDialogWindowList::default();
+            }
+        })
+    }
+
     pub fn set_continuous_present(continuous: bool) -> Result<(), Error> {
         with_surface(|surface| {
             if surface.continuous_present_requested != continuous {
@@ -1809,6 +1868,7 @@ mod windows {
 
         let result = unsafe {
             update_window_frame(surface);
+            sync_steam_dialog(surface);
             sync_cursor_visibility(surface);
             poll_overlay_shortcut(surface);
             let present_after_modal_loop = mem::take(&mut surface.present_after_modal_loop);
@@ -1981,6 +2041,17 @@ mod windows {
             let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
             let ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
             let renderer = renderer_diagnostics_json(&surface.renderer);
+            let adopted_steam_dialog = surface.adopted_steam_dialog.as_ref().map(|dialog| {
+                json!({
+                    "hwnd": hwnd_hex(dialog.hwnd),
+                    "processId": dialog.process_id,
+                    "ownerHwnd": hwnd_hex(GetWindow(dialog.hwnd, GW_OWNER)),
+                    "originalOwnerHwnd": hwnd_hex(dialog.original_owner_hwnd),
+                    "rect": read_window_rect(dialog.hwnd).map(window_rect_json),
+                    "originalRect": window_rect_json(dialog.original_rect),
+                    "lastHostClientRect": window_rect_json(dialog.last_host_client_rect),
+                })
+            });
             Some(
                 json!({
                     "platform": "win32",
@@ -2015,6 +2086,13 @@ mod windows {
                     "rect": rect,
                     "parentRect": parent_rect,
                     "parentClientRect": parent_client_rect,
+                    "steamDialog": {
+                        "overlayActive": surface.overlay_active,
+                        "baselineCount": surface.steam_dialog_baseline.len,
+                        "adoptionCount": surface.steam_dialog_adoption_count,
+                        "lastAdoptedHwnd": surface.last_adopted_steam_dialog_hwnd.map(hwnd_hex),
+                        "adopted": adopted_steam_dialog,
+                    },
                     "messages": message_diagnostics,
                 })
                 .to_string(),
@@ -2193,6 +2271,12 @@ mod windows {
             last_present_at: None,
             present_after_modal_loop: false,
             overlay_shortcut_down: false,
+            overlay_active: false,
+            steam_dialog_baseline: SteamDialogWindowList::default(),
+            adopted_steam_dialog: None,
+            last_steam_dialog_scan_at: None,
+            steam_dialog_adoption_count: 0,
+            last_adopted_steam_dialog_hwnd: None,
         };
         if let Some(parent_hwnd) = parent_hwnd {
             let subclass_state = Box::into_raw(Box::new(ParentWindowSubclassState {
@@ -2472,6 +2556,289 @@ mod windows {
         sync_surface_visibility(surface);
     }
 
+    unsafe fn sync_steam_dialog(surface: &mut NativeSurface) {
+        if surface.host_style != WindowsHostStyle::Standalone || !surface.overlay_active {
+            restore_adopted_steam_dialog(surface);
+            return;
+        }
+
+        if let Some(dialog) = surface.adopted_steam_dialog.as_mut() {
+            if IsWindow(dialog.hwnd) == 0 || GetWindow(dialog.hwnd, GW_OWNER) != surface.hwnd {
+                surface.adopted_steam_dialog = None;
+                return;
+            }
+            sync_adopted_steam_dialog_position(surface.hwnd, dialog);
+            return;
+        }
+
+        if surface
+            .last_steam_dialog_scan_at
+            .is_some_and(|last_scan_at| last_scan_at.elapsed() < STEAM_DIALOG_SCAN_INTERVAL)
+        {
+            return;
+        }
+        surface.last_steam_dialog_scan_at = Some(Instant::now());
+
+        let candidates = enumerate_steam_dialog_windows();
+        for &hwnd in &candidates.hwnds[..candidates.len] {
+            if surface.steam_dialog_baseline.contains(hwnd) {
+                continue;
+            }
+            let Some(dialog) = adopt_steam_dialog(surface.hwnd, hwnd) else {
+                continue;
+            };
+            surface.steam_dialog_adoption_count =
+                surface.steam_dialog_adoption_count.saturating_add(1);
+            surface.last_adopted_steam_dialog_hwnd = Some(hwnd);
+            surface.adopted_steam_dialog = Some(dialog);
+            break;
+        }
+    }
+
+    unsafe fn enumerate_steam_dialog_windows() -> SteamDialogWindowList {
+        let mut windows = SteamDialogWindowList::default();
+        EnumWindows(
+            Some(collect_steam_dialog_window),
+            &mut windows as *mut SteamDialogWindowList as LPARAM,
+        );
+        windows
+    }
+
+    unsafe extern "system" fn collect_steam_dialog_window(hwnd: HWND, lparam: LPARAM) -> i32 {
+        if !is_matching_steam_dialog(hwnd) {
+            return 1;
+        }
+        let windows = &mut *(lparam as *mut SteamDialogWindowList);
+        if windows.len < windows.hwnds.len() {
+            windows.hwnds[windows.len] = hwnd;
+            windows.len += 1;
+        }
+        1
+    }
+
+    unsafe fn is_matching_steam_dialog(hwnd: HWND) -> bool {
+        if hwnd.is_null()
+            || IsWindow(hwnd) == 0
+            || IsWindowVisible(hwnd) == 0
+            || !GetWindow(hwnd, GW_OWNER).is_null()
+            || !window_text_equals_ascii(hwnd, "Steam Dialog")
+            || !window_class_equals_ascii(hwnd, "SDL_app")
+        {
+            return false;
+        }
+
+        let mut process_id = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut process_id);
+        process_id != 0 && process_image_basename_equals(process_id, "steamwebhelper.exe")
+    }
+
+    unsafe fn window_text_equals_ascii(hwnd: HWND, expected: &str) -> bool {
+        let mut buffer = [0u16; 64];
+        let length = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        length > 0 && wide_equals_ascii(&buffer[..length as usize], expected, false)
+    }
+
+    unsafe fn window_class_equals_ascii(hwnd: HWND, expected: &str) -> bool {
+        let mut buffer = [0u16; 64];
+        let length = GetClassNameW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        length > 0 && wide_equals_ascii(&buffer[..length as usize], expected, false)
+    }
+
+    unsafe fn process_image_basename_equals(process_id: u32, expected: &str) -> bool {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id);
+        if process.is_null() {
+            return false;
+        }
+        let mut buffer = [0u16; 1024];
+        let mut length = buffer.len() as u32;
+        let queried = QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut length) != 0;
+        CloseHandle(process);
+        if !queried || length == 0 {
+            return false;
+        }
+        let path = &buffer[..length as usize];
+        let basename_start = path
+            .iter()
+            .rposition(|value| matches!(*value, 47 | 92))
+            .map_or(0, |index| index + 1);
+        wide_equals_ascii(&path[basename_start..], expected, true)
+    }
+
+    fn wide_equals_ascii(value: &[u16], expected: &str, ignore_ascii_case: bool) -> bool {
+        let expected = expected.as_bytes();
+        value.len() == expected.len()
+            && value.iter().zip(expected).all(|(&actual, &expected)| {
+                if ignore_ascii_case {
+                    ascii_lower_u16(actual) == ascii_lower_u16(expected as u16)
+                } else {
+                    actual == expected as u16
+                }
+            })
+    }
+
+    fn ascii_lower_u16(value: u16) -> u16 {
+        if (b'A' as u16..=b'Z' as u16).contains(&value) {
+            value + (b'a' - b'A') as u16
+        } else {
+            value
+        }
+    }
+
+    unsafe fn adopt_steam_dialog(host_hwnd: HWND, dialog_hwnd: HWND) -> Option<AdoptedSteamDialog> {
+        if !is_matching_steam_dialog(dialog_hwnd) {
+            return None;
+        }
+        let original_rect = read_window_rect(dialog_hwnd)?;
+        let host_client_rect = read_client_rect_in_screen(host_hwnd)?;
+        let mut process_id = 0u32;
+        GetWindowThreadProcessId(dialog_hwnd, &mut process_id);
+
+        SetLastError(0);
+        let original_owner_hwnd =
+            SetWindowLongPtrW(dialog_hwnd, GWLP_HWNDPARENT, host_hwnd as isize) as HWND;
+        if original_owner_hwnd.is_null() && GetLastError() != 0 {
+            return None;
+        }
+
+        let (x, y) = centered_dialog_position(host_hwnd, host_client_rect, original_rect);
+        if SetWindowPos(
+            dialog_hwnd,
+            ptr::null_mut(),
+            x,
+            y,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSIZE | SWP_NOZORDER,
+        ) == 0
+        {
+            SetWindowLongPtrW(dialog_hwnd, GWLP_HWNDPARENT, original_owner_hwnd as isize);
+            return None;
+        }
+
+        Some(AdoptedSteamDialog {
+            hwnd: dialog_hwnd,
+            process_id,
+            original_owner_hwnd,
+            original_rect,
+            last_host_client_rect: host_client_rect,
+        })
+    }
+
+    unsafe fn sync_adopted_steam_dialog_position(host_hwnd: HWND, dialog: &mut AdoptedSteamDialog) {
+        if IsIconic(host_hwnd) != 0 || IsWindowVisible(host_hwnd) == 0 {
+            return;
+        }
+        let Some(host_client_rect) = read_client_rect_in_screen(host_hwnd) else {
+            return;
+        };
+        if rect_equals(host_client_rect, dialog.last_host_client_rect) {
+            return;
+        }
+        let Some(dialog_rect) = read_window_rect(dialog.hwnd) else {
+            return;
+        };
+        let host_size_changed = rect_width(host_client_rect)
+            != rect_width(dialog.last_host_client_rect)
+            || rect_height(host_client_rect) != rect_height(dialog.last_host_client_rect);
+        let (x, y) = if host_size_changed {
+            centered_dialog_position(host_hwnd, host_client_rect, dialog_rect)
+        } else {
+            clamp_dialog_position(
+                host_hwnd,
+                dialog_rect.left + host_client_rect.left - dialog.last_host_client_rect.left,
+                dialog_rect.top + host_client_rect.top - dialog.last_host_client_rect.top,
+                rect_width(dialog_rect),
+                rect_height(dialog_rect),
+            )
+        };
+        if SetWindowPos(
+            dialog.hwnd,
+            ptr::null_mut(),
+            x,
+            y,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSIZE | SWP_NOZORDER,
+        ) != 0
+        {
+            dialog.last_host_client_rect = host_client_rect;
+        }
+    }
+
+    unsafe fn restore_adopted_steam_dialog(surface: &mut NativeSurface) {
+        let Some(dialog) = surface.adopted_steam_dialog.take() else {
+            return;
+        };
+        if IsWindow(dialog.hwnd) == 0 || GetWindow(dialog.hwnd, GW_OWNER) != surface.hwnd {
+            return;
+        }
+        SetWindowLongPtrW(
+            dialog.hwnd,
+            GWLP_HWNDPARENT,
+            dialog.original_owner_hwnd as isize,
+        );
+        SetWindowPos(
+            dialog.hwnd,
+            ptr::null_mut(),
+            dialog.original_rect.left,
+            dialog.original_rect.top,
+            rect_width(dialog.original_rect),
+            rect_height(dialog.original_rect),
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+        );
+    }
+
+    unsafe fn centered_dialog_position(
+        host_hwnd: HWND,
+        host_rect: RECT,
+        dialog_rect: RECT,
+    ) -> (i32, i32) {
+        let width = rect_width(dialog_rect);
+        let height = rect_height(dialog_rect);
+        clamp_dialog_position(
+            host_hwnd,
+            host_rect.left + (rect_width(host_rect) - width) / 2,
+            host_rect.top + (rect_height(host_rect) - height) / 2,
+            width,
+            height,
+        )
+    }
+
+    unsafe fn clamp_dialog_position(
+        host_hwnd: HWND,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> (i32, i32) {
+        let monitor = MonitorFromWindow(host_hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut monitor_info: MONITORINFO = mem::zeroed();
+        monitor_info.cbSize = mem::size_of::<MONITORINFO>() as u32;
+        if monitor.is_null() || GetMonitorInfoW(monitor, &mut monitor_info) == 0 {
+            return (x, y);
+        }
+        let work = monitor_info.rcWork;
+        (
+            x.clamp(work.left, (work.right - width).max(work.left)),
+            y.clamp(work.top, (work.bottom - height).max(work.top)),
+        )
+    }
+
+    fn rect_equals(left: RECT, right: RECT) -> bool {
+        left.left == right.left
+            && left.top == right.top
+            && left.right == right.right
+            && left.bottom == right.bottom
+    }
+
+    fn rect_width(rect: RECT) -> i32 {
+        (rect.right - rect.left).max(1)
+    }
+
+    fn rect_height(rect: RECT) -> i32 {
+        (rect.bottom - rect.top).max(1)
+    }
+
     unsafe fn sync_owned_popup_clip(popup_hwnd: HWND, parent_hwnd: HWND, bounds: RECT) {
         let mut visible_frame: RECT = mem::zeroed();
         let frame_result = DwmGetWindowAttribute(
@@ -2702,7 +3069,8 @@ mod windows {
         SetFocus(surface.hwnd);
     }
 
-    unsafe fn destroy_surface(surface: NativeSurface) {
+    unsafe fn destroy_surface(mut surface: NativeSurface) {
+        restore_adopted_steam_dialog(&mut surface);
         if surface.cursor_suppressed {
             normalize_cursor_display_count(true);
         }

@@ -8103,6 +8103,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let lastError: unknown;
   let overlayActive = false;
   let overlayWasActive = false;
+  let overlayActiveApplied: boolean | undefined;
   let cursorHiddenRequested = false;
   let cursorHiddenApplied: boolean | undefined;
   let continuousPresentApplied: boolean | undefined;
@@ -8191,6 +8192,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
 
+    setNativeOverlayActive(false);
     setNativeCursorHidden(false);
     setNativeContinuousPresent(false);
     try {
@@ -8333,6 +8335,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (typeof event.active === "boolean") {
         overlayActive = event.active;
       }
+      syncNativeOverlayActive();
       if (event.active === true) {
         overlayWasActive = true;
         setHostInputPassthrough(false);
@@ -8432,6 +8435,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (options.nativeWindowHandle) {
       if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
         native().attachNativeOverlayHostView(options.nativeWindowHandle);
+        overlayActiveApplied = undefined;
         cursorHiddenApplied = undefined;
         continuousPresentApplied = undefined;
         fullScreenApplied = undefined;
@@ -8439,6 +8443,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         setHostInputPassthrough(false);
         setHostOpaque(true);
       }
+      syncNativeOverlayActive();
       syncCursorHidden();
       syncFullScreen();
       return true;
@@ -8450,10 +8455,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       } else {
         native().openNativeOverlayProbeWindow(title);
       }
+      overlayActiveApplied = undefined;
       cursorHiddenApplied = undefined;
       continuousPresentApplied = undefined;
       fullScreenApplied = undefined;
     }
+    syncNativeOverlayActive();
     syncCursorHidden();
     syncFullScreen();
     return true;
@@ -8461,6 +8468,32 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
   function syncCursorHidden(): void {
     setNativeCursorHidden(cursorHiddenRequested && !overlayActive);
+  }
+
+  function syncNativeOverlayActive(): void {
+    setNativeOverlayActive(overlayActive);
+  }
+
+  function setNativeOverlayActive(active: boolean): void {
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      nativeHostUnavailableReason !== undefined ||
+      overlayActiveApplied === active
+    ) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostOverlayActive;
+    if (typeof setter !== "function") {
+      return;
+    }
+    try {
+      setter.call(binding, active);
+      overlayActiveApplied = active;
+    } catch (error) {
+      lastError = error;
+    }
   }
 
   function setNativeCursorHidden(hidden: boolean): void {

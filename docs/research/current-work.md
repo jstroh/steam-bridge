@@ -2,29 +2,39 @@
 
 Last reviewed: 2026-07-18
 
-Review anchor: `627e87e` (`Fix native host cursor suppression`), published as
-`steam-bridge@0.2.9` and immutable tag `v0.2.9`.
+Review anchor: `dc87004` (`Document v0.2.9 release proof`), with an uncommitted,
+source-linked Windows native-host checkout-dialog repair manually proven.
 
 ## Active Goal
 
-The Windows native game-host and managed Steam overlay work is released. The
-active downstream task is finishing the FOV4 Electron consumer port on exact
-registry `steam-bridge@0.2.9`, reviewing its complete diff, and committing and
-pushing the consumer only after the registry-backed manual run remains clean.
-
-No bridge implementation change is currently waiting for release. Future
-bridge fixes should follow the same workflow: link the consumer to the local
-package, reproduce and fix locally, run automated and manual consumer coverage,
-then create a fresh immutable package candidate and repeat the candidate-bound
-release proof before publication.
+Create a fresh immutable Steam Bridge release containing the proven Windows
+standalone-host checkout-dialog repair, return the Electron consumer to an exact
+registry dependency, and repeat the focused registry-backed manual pass. Do not
+commit the consumer until that registry-backed pass is clean.
 
 ## Current State
 
-`steam-bridge@0.2.9` is the current npm `latest`. It adds a Windows
-`WM_SETCURSOR` path that reapplies transparent native-cursor suppression while
-`setCursorHidden(true)` is active over the rendered frame or letterbox. The
-native cursor is restored on focus loss, hidden state, and close. This fixes the
-consumer's duplicate OS cursor without altering Steam overlay input ownership.
+`steam-bridge@0.2.9` remains npm `latest`, but the downstream registry-backed
+checkout pass exposed one unhandled Steam window shape. Closing a recurring
+checkout approval surface creates a separate visible, enabled, foreground
+top-level window titled `Steam Dialog`, class `SDL_app`, from
+`steamwebhelper.exe`. It has no owner while the bridge's standalone D3D11 host
+remains dimmed, so the confirmation appears outside the game host instead of
+behaving as its modal. Cancelling the transaction from that dialog closes it,
+returns to the game, and authorizes nothing.
+
+The manually proven repair forwards overlay-active state into the native surface.
+On Windows standalone hosts only, it snapshots matching dialogs when the
+overlay activates, then at a bounded cadence adopts only a newly appearing,
+visible, unowned exact-title/exact-class window whose process image basename is
+`steamwebhelper.exe`. The bridge assigns the game host as owner, centers the
+dialog over the host client area, follows host move/resize, and restores the
+original owner and rectangle on deactivation or host teardown. Existing Steam
+dialogs and attached managed presenters are excluded. Diagnostics retain the
+baseline, adoption count, current owner, and rectangles. In the optimized
+source-linked run, the live dialog's owner exactly equalled the native host, its
+rectangle was centered over the host, Cancel Transaction removed it cleanly,
+and gameplay resumed with the subscription not authorized.
 
 The underlying Windows product path remains the top-level Win32 D3D11 game
 host introduced by the `0.2.x` series. It uses Electron offscreen shared
@@ -44,9 +54,9 @@ owned-popup and passive-notification receipt assumptions and was published.
 
 ## Consumer Evidence
 
-The FOV4 Electron app was linked to the local `packages/steam-bridge` checkout
-while the cursor fix was developed. The optimized native addon was exercised in
-live gameplay at 1024 by 768. Manual coverage included:
+The Electron game consumer is linked to the local `packages/steam-bridge`
+checkout while the dialog fix is prepared for release. The optimized local
+addon was exercised in live gameplay at 1024 by 768. Manual coverage included:
 
 - title drag, edge resize, minimize, maximize/restore, fullscreen enter/exit,
   Alt+Tab, focus loss/return, restored rounded corners, and aspect preservation;
@@ -56,12 +66,18 @@ live gameplay at 1024 by 768. Manual coverage included:
   Windows cursor hidden across the frame and letterbox;
 - Shift+Tab overlay activation and return through Steam's Back to Game control;
 - one-time buy and recurring-subscription routes rendered inside the game
-  client, with subscription cancellation confirmed and no purchase or
-  subscription authorized.
+  client; the recurring confirmation became a correctly centered host-owned
+  dialog and both flows were cancelled with no purchase or subscription
+  authorized;
+- a post-checkout ordinary-overlay open/close and maximize/restore stress loop,
+  followed by clean Electron shutdown with exit code zero.
 
-After publication the consumer dependency and lockfile resolve exact registry
-`steam-bridge@0.2.9`, not a symlink. Its registry integrity is
-`sha512-U/TtIAFLKRXw4OjcH7H2OY8mjgx8PI0uk7YU1uVh0RSV9I1blLiwTf5b6xCGZ/b4771UL4E41du1pDRatKhn9Q==`.
+The previous registry-backed cancellation run is what exposed the separate
+Steam confirmation HWND. The local fix now passes the focused cancellation and
+broader window/overlay matrix. After publication, unlink the checkout, install
+the exact registry release, verify lockfile integrity and a non-junction package,
+then repeat the focused cancellation and core lifecycle checks before committing
+the consumer.
 
 ## Exact Release Evidence
 

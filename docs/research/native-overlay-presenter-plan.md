@@ -2019,6 +2019,20 @@ timer-owned present loop; Electron texture arrivals update retained source
 state but do not create a competing present loop. D3D11 `Present(1)` remains the
 actual vertical-blank synchronization boundary.
 
+Steam checkout confirmation can create a separate cross-process top-level
+`Steam Dialog` rather than compositing that confirmation into the hooked game
+swap chain. For the standalone host, the narrow Windows integration is an owned
+popup, not `WS_CHILD`: snapshot exact matching Steam dialogs at overlay
+activation, adopt only a newly appearing visible unowned `SDL_app` window from
+`steamwebhelper.exe`, preserve its original owner and rectangle, follow host
+geometry, and restore state when the overlay or host ends. Attached managed
+presenters and pre-existing Steam dialogs remain outside this behavior.
+The optimized source-linked Electron run verified that a recurring-cancellation
+dialog was assigned exactly to the native host, centered over its client area,
+and removed cleanly after cancellation; the surrounding ordinary overlay,
+window-state, fullscreen, focus, aspect, cursor, and shutdown checks also passed
+without authorizing a transaction.
+
 Exact `v0.2.1` is preserved as rejected evidence because its interactive owned
 popup retained `WS_EX_NOACTIVATE`; rendered pixels did not prove a focusable
 Steam surface. The replacement focus contract, close-readiness contract, and

@@ -211,6 +211,16 @@ must release any pressed input state. See the native session types and the
 [Electron example guide](examples/electron-basic/README.md) before adopting
 this advanced path.
 
+Steam checkout cancellation can create a separate top-level `Steam Dialog`
+instead of drawing the confirmation inside the hooked swap chain. While a
+standalone host's Steam overlay is active, Steam Bridge narrowly recognizes a
+new visible, unowned `Steam Dialog`/`SDL_app` window from
+`steamwebhelper.exe`, makes it an owned popup of the game host, and keeps it
+centered with the host. Pre-existing Steam dialogs and managed attached
+presenters are excluded, and the original owner and rectangle are restored when
+the overlay or host ends. `session.snapshot().nativeHostDiagnostics.steamDialog`
+reports the baseline and adoption state for troubleshooting.
+
 If the game draws its own cursor, call `session.setCursorHidden(true)` while
 gameplay is active. The host suppresses the Windows cursor across both the
 rendered frame and its aspect-fit letterbox area, reapplies suppression after

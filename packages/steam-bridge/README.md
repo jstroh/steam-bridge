@@ -204,6 +204,16 @@ through the same aspect-fit transform and forward them to the offscreen
 advanced path. Prefer `createElectronSteamOverlay()` unless the application
 needs a standalone game host.
 
+Steam checkout cancellation can create a separate top-level `Steam Dialog`
+instead of drawing the confirmation inside the hooked swap chain. While a
+standalone host's Steam overlay is active, Steam Bridge narrowly recognizes a
+new visible, unowned `Steam Dialog`/`SDL_app` window from
+`steamwebhelper.exe`, makes it an owned popup of the game host, and keeps it
+centered with the host. Pre-existing Steam dialogs and managed attached
+presenters are excluded, and the original owner and rectangle are restored when
+the overlay or host ends. `session.snapshot().nativeHostDiagnostics.steamDialog`
+reports the baseline and adoption state for troubleshooting.
+
 ## Steam Web API
 
 Set `STEAM_WEB_API_KEY` for endpoints that require a publisher key, or provide
