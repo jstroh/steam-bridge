@@ -1,350 +1,148 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-07-18
 
-Review anchor: `6e024a2` (`Harden persistent panel refinement proof`).
+Review anchor: `627e87e` (`Fix native host cursor suppression`), published as
+`steam-bridge@0.2.9` and immutable tag `v0.2.9`.
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.8`, whose code-bearing predecessor adds the verified
-Windows top-level D3D11 game host, Electron shared-texture ingestion, native
-input delivery, production window-state behavior, an interactive owned-popup
-focus fix, and display-rate presentation control. The new candidate also makes
-the Windows managed-route proof fail closed on the actual inset Steam modal,
-sequences repeatable achievement mutations through Steam's stored callbacks,
-and gives delayed passive notifications a bounded 20-second evidence window.
-Published `steam-bridge@0.1.6` remains the unchanged predecessor. Exact
-`v0.2.0` through `v0.2.3` are preserved as rejected product evidence. Exact
-`v0.2.4` passed CI and Release assembly and its product behavior passed protected
-persistent and checkout profiles, but its immutable proof harness could mistake
-the still-light smoke UI for Steam's first modal frame during shortcut coverage.
-It was not published. `0.2.5` rejects that frame, searches narrower Steam panels
-within bounded DPI-aware geometry, and recomputes the glyph from the exact
-pre-dispatch screenshot. It also combines candidate copy, protection,
-transactional activation, rollback, and re-audit behind one elevation prompt.
-Exact protected `v0.2.5` completed all 31 product cases and 27 active overlay
-routes, but its receipt auditor incorrectly reinterpreted already-physical
-Windows presenter bounds as logical DIPs. `0.2.6` corrects that evidence model
-by independently reconciling native-window DPI with authenticated renderer DPR
-and physical-client/renderer-viewport geometry. Exact protected `v0.2.6` then
-completed all three persistent opens and closes, but its packaged auditor
-required cycle one's initial ready-panel bottom edge to equal the later exact
-pre-dispatch frame. `0.2.7` permits only that vertical bottom/height refinement
-while requiring the same glyph-bound target, left/top/right panel anchor,
-physical scale, click containment, and independently valid panel evidence.
-Exact protected `v0.2.7` then passed all 31 cases and 27 active routes, but its
-receipt verifier rejected the runtime's correct `owned-popup` diagnostic
-because it still expected the obsolete `popup-layered` identity. `0.2.8`
-updates that immutable receipt contract, recognizes that passive achievement
-notifications present without enabling the interactive overlay, and adds
-negative regressions for both stale assumptions.
+The Windows native game-host and managed Steam overlay work is released. The
+active downstream task is finishing the FOV4 Electron consumer port on exact
+registry `steam-bridge@0.2.9`, reviewing its complete diff, and committing and
+pushing the consumer only after the registry-backed manual run remains clean.
+
+No bridge implementation change is currently waiting for release. Future
+bridge fixes should follow the same workflow: link the consumer to the local
+package, reproduce and fix locally, run automated and manual consumer coverage,
+then create a fresh immutable package candidate and repeat the candidate-bound
+release proof before publication.
 
 ## Current State
 
-The Windows native host is a normal top-level Win32 window with a two-buffer
-flip-discard D3D11 swap chain. It preserves source aspect ratio, keeps Steam
-inside the native client area, respects Windows 11 restored-window corners,
-and implements title drag, edge resize, maximize/restore, minimize/restore,
-monitor fullscreen, focus parking, DPI changes, modal move/size repaint, and
-cursor suppression. A bounded native queue carries mouse, capture, wheel,
-keyboard, text, focus, blur, close, and window-change events to the JavaScript
-session owner.
+`steam-bridge@0.2.9` is the current npm `latest`. It adds a Windows
+`WM_SETCURSOR` path that reapplies transparent native-cursor suppression while
+`setCursorHidden(true)` is active over the rendered frame or letterbox. The
+native cursor is restored on focus loss, hidden state, and close. This fixes the
+consumer's duplicate OS cursor without altering Steam overlay input ownership.
 
-Electron offscreen frame textures now use the documented process-local NT
-handle path. The bridge reads the shared-resource adapter LUID, creates the
-host on Windows' high-performance DXGI adapter with a compatibility fallback,
-opens every pooled texture with `ID3D11Device1::OpenSharedResource1`, and copies
-it into a bridge-owned shader-resource texture before returning control to
-Electron. The caller can therefore release Electron's pooled texture
-immediately. The previous BGRA `updateFrame()` path remains as a bounded CPU
-fallback; GDI presentation is absent.
+The underlying Windows product path remains the top-level Win32 D3D11 game
+host introduced by the `0.2.x` series. It uses Electron offscreen shared
+textures, a bridge-owned copy before Electron releases its pool texture,
+flip-discard presentation, source-aspect preservation, per-monitor DPI,
+display-rate presentation, Windows 11 restored corners, title drag, edge
+resize, minimize/maximize/restore, monitor fullscreen, focus parking, and the
+managed Electron-owned Steam presenter surface. The diagnostic `WS_CHILD`
+experiment is not the product path because Steam activates but does not render
+reliably into that child swap chain.
 
-The source-linked consumer uses an exact Electron `43.1.1` offscreen shared
-texture and the optimized local addon. Live gameplay rendered at the active
-display rate without purple startup pixels, idle flicker, top-left shrink, or
-aspect distortion. The same run passed title drag, maximize/restore,
-minimize/restore, focus loss/return, Alt+Tab, F11 enter/exit, rounded restored
-corners, native chrome controls, mapped mouse input, one-time purchase overlay,
-and recurring-subscription overlay. Both Steam panels rendered inside the game
-client rather than over native chrome; close/cancel returned to gameplay without
-authorizing a purchase or subscription. Diagnostics retained the selected
-high-performance adapter, D3D feature level 11.1, exact source dimensions,
-successful presents, increasing shared-texture imports, and zero upload
-failures.
+Exact `v0.2.0` through `v0.2.7` remain immutable rejected evidence from the
+progressively hardened import, activation-style, lifecycle, modal-target, DPI,
+panel-refinement, and receipt-contract gates. `v0.2.8` corrected the final
+owned-popup and passive-notification receipt assumptions and was published.
+`v0.2.9` is the cursor-suppression successor and carries fresh full live proof.
 
-Native sessions now accept `frameRate`, expose `setFrameRate(...)`, and report
-their frame rate and pump interval. The timer wakes just ahead of the selected
-display cadence while Windows `Present(1)` synchronizes to vertical blank. The
-native continuous-present debounce is 1 ms instead of a product-level 32 ms
-cap. Opt-in `continuousPresent` has one timer-owned present path, so Electron
-texture updates cannot double-pump the swap chain; the default remains false.
+## Consumer Evidence
 
-Automation could not make Steam accept a synthetic global Shift+Tab chord, so
-that run does not claim physical hotkey deactivation. More importantly, this
-consumer run is development evidence, not the repository's publication proof.
-Because `0.2.8` carries the corrected immutable release auditor,
-the exact protected packaged candidate still requires fresh public
-`persistent-reuse`, `checkout`, `shortcut-routes`,
-and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
-before npm publication.
+The FOV4 Electron app was linked to the local `packages/steam-bridge` checkout
+while the cursor fix was developed. The optimized native addon was exercised in
+live gameplay at 1024 by 768. Manual coverage included:
 
-The exact protected `v0.2.5` Release candidate passed persistent-reuse,
-checkout, shortcut-routes, and managed-routes behavior. All 31 cases and 27
-active overlays completed with clean candidate/process/task/Steam continuity.
-Receipt generation then failed closed because the auditor derived scale `1`
-from equal physical presenter/native-host bounds while the authoritative window
-DPI and authenticated renderer geometry both proved `2.25`. Cycle two also
-legitimately refined its current-panel height from the exact pre-dispatch frame,
-which the immutable auditor rejected despite an unchanged glyph, coordinate,
-scale, host, and top-edge tolerance. No receipt or publication was attempted;
-`v0.2.5` remains immutable rejected evidence.
+- title drag, edge resize, minimize, maximize/restore, fullscreen enter/exit,
+  Alt+Tab, focus loss/return, restored rounded corners, and aspect preservation;
+- current-display-rate presentation with no purple startup frame, periodic
+  flicker, top-left shrink, or native-host crash;
+- mapped mouse and keyboard input plus the game's custom cursor with the native
+  Windows cursor hidden across the frame and letterbox;
+- Shift+Tab overlay activation and return through Steam's Back to Game control;
+- one-time buy and recurring-subscription routes rendered inside the game
+  client, with subscription cancellation confirmed and no purchase or
+  subscription authorized.
 
-Exact `v0.2.6` at `44fca9e` passed main CI `29623694561`, tag CI
-`29623786452`, and Release assembly `29623786437`. Its exact 114-file,
-398,227,165-byte Windows candidate passed transactional deployment and all three
-persistent open/close/park cycles with unchanged candidate and Steam identity.
-The packaged auditor still rejected cycle one because the ready frame's panel
-bottom/height refined before the exact pre-dispatch screenshot. The target's
-glyph, coordinates, scale, host, left/top/right panel anchor, and click
-containment were unchanged. No other profile, receipt, or publication was
-attempted; `v0.2.6` remains immutable rejected evidence.
+After publication the consumer dependency and lockfile resolve exact registry
+`steam-bridge@0.2.9`, not a symlink. Its registry integrity is
+`sha512-U/TtIAFLKRXw4OjcH7H2OY8mjgx8PI0uk7YU1uVh0RSV9I1blLiwTf5b6xCGZ/b4771UL4E41du1pDRatKhn9Q==`.
 
-Exact `v0.2.7` at `6e024a2` passed main CI `29624829929`, tag CI
-`29624928103`, and Release assembly `29624928093`. Its exact protected
-candidate completed all four ordered profiles: 31/31 cases, 27/27 active
-routes, canonical ACL checks after every profile, unchanged candidate binding,
-and one continuous Steam identity. Receipt generation then failed closed only
-because the verifier expected `popup-layered` while every attached runtime
-correctly reported `owned-popup`. The failed receipt and all four roots are
-preserved; `v0.2.7` will not be published.
+## Exact Release Evidence
 
-The exact protected `v0.2.4` Release candidate passed the persistent-reuse and
-synthetic checkout profiles unchanged. Its shortcut-routes profile then failed
-closed: the first readiness screenshot preceded Steam's rendered modal, a broad
-fallback matched light smoke-application pixels, and the final click did not
-close Steam. The candidate remained byte-identical and write protected. The
-`0.2.5` harness now requires Steam's dimmed modal backdrop for every direct web
-close, carries the detected panel through one analysis pass, and independently
-resolves and validates the target again from the exact before-send frame. A
-fresh source-linked 16/16 managed-routes run passed after that repair, including
-web, store, Friends, dialog, shortcut keyboard, profile, players, community,
-stats, achievements, user, progress, and unlock coverage.
+Source and automation:
 
-The rejected `v0.2.0` tag exposed two standard Windows imports that the
-fail-closed artifact verifier had not yet classified: `comctl32.dll` for native
-window subclassing and `d3dcompiler_47.dll` for the D3D presentation shaders.
-The replacement verifier explicitly accepts both system components, retains
-the static CRT and arbitrary third-party DLL rejection rules, and passes both
-its synthetic regression test and the exact locally packaged native binary.
-Exact `v0.2.1` passed CI and Release assembly, but formal proof rejected its
-interactive attached presenter because `WS_EX_NOACTIVATE` remained set. The
-replacement keeps `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT` only while parked,
-removes both while Steam is interactive, and activates only while the visible
-parent permits the surface. Exact `v0.2.2` then passed CI and Release assembly,
-but its candidate-bound managed-route proof exposed an asynchronous achievement
-clear/store race and close-glyph evidence that could fall back to an unproved
-target. Development follow-up also caught a false outer-host glyph match and a
-progress toast arriving at the old 10-second boundary after a long route
-sequence. The replacement waits for a fresh `UserStatsStored` callback before
-progress or unlock mutation, requires every web close to use a directly detected
-glyph inside an inset modal panel, independently audits that panel geometry,
-and allows 20 seconds for passive toast presentation. None of the four failed
-tags may be moved, reused, or published. Exact `v0.2.3` then passed main CI
-`29592224120`, tag CI `29592471104`, and Release assembly `29592467768`, but
-its first protected persistent-reuse root exposed a final-cycle lifecycle
-race: the native presenter parked successfully, while the smoke result was
-snapshotted 42 ms before its third typed inactive callback. The same run also
-retained a recovered Electron frame-capture error in `lastError`, causing the
-authenticated final close audit to fail. The `0.2.4` replacement awaits one
-fresh active and inactive callback in every reuse cycle, keeps monotonic
-callback counters outside the bounded event log, serializes nested smoke
-errors, and clears only the exact recovered capture error after a later frame
-upload succeeds. `v0.2.3` remains immutable rejected evidence; `v0.2.4` is the
-fresh candidate. A first corrected development run completed three typed
-callback pairs but exposed a separate proof-auditor assumption: an asynchronous
-stability sample from cycle two can legitimately remain alongside the final
-shutdown sample. The auditor now accepts one to three samples for a three-cycle
-reuse case, selects the final sample for the shutdown handshake, requires that
-sample after result/keep-open and before completion quit, and still rejects zero
-or more than one sample per cycle. Focus return and the final asynchronous
-sample may occur in either order while both remain bounded by reuse completion
-and completion quit.
+- commit `627e87e4431b3a1d4fbbfe2abe2e99cdfecfaec4`;
+- main CI `29634611326`, tag CI `29634614682`, and Release assembly
+  `29634614621` passed;
+- trusted npm publication `29636032726` passed after restoring the exact
+  candidate-bound receipt in the `npm-production` environment;
+- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.9>.
 
-The next exact development run exposed a second independent race in the
-physical-close harness: cycle three could reuse cycle one's close coordinate
-while Steam was still showing a dark pre-modal frame. The harness now requires
-each later cycle to detect a fresh substantial Steam panel whose top edge aligns
-with cycle one's directly proved modal within eight logical pixels, while still
-binding the click to cycle one's glyph-derived coordinate, the same native HWND,
-unchanged host rectangle, current DPI, focus, and a fresh screenshot. It ignores
-short pointer-glow fragments before looking for the real panel. The packaged
-auditor requires schema 2 at the root and case levels and binds the sole
-`probe:web-close-ready` record in each cycle to the dispatched target. A
-behaviorally clean intermediate run was correctly rejected when the case
-projection omitted that schema field. The final exact-source development package
-and run include the corrected projection.
+Candidate identity:
 
-The true `WS_CHILD` experiment remains diagnostic because Steam activates but
-does not render into its child swap chain. The repaired attached owned popup is
-supported only as the managed, content-bounded overlay presenter; it is not the
-standalone Windows game-host design.
+- npm tarball SHA-256
+  `df35811beda67c8cff68b8a459090cd6743ce71c86dcd2fadce0831b964c3590`;
+- Windows archive SHA-256
+  `8429c39cb13813b84b3dc827a56227cf44e04c8197a0b3655c2d72be54b66575`;
+- Windows bundle content: 114 files, 398,231,903 bytes, SHA-256
+  `2b8f0fb63a3059337eebd7421d9a4bf0e308950194c3e71e4f73ff3e60156f4d`;
+- native binding: 1,127 methods, declaration SHA-256
+  `ef216a32eedf680b378cf01a6d84efa8a6c51eab1ac40eb8e693b718eb9507d1`;
+- candidate binding SHA-256
+  `8595cc73d04d0bb5ccad3f5450c6af5d69558f8ba4c7e47e7540e321d6fb38ef`;
+- live-proof receipt semantic SHA-256
+  `bdb3859a761d952c2b2b368ffbaf2f6dcff1e9ba59c75532588205af214d25cb`.
 
-The checkout contains unrelated local `AGENTS.md`, `.codex`, and input-probe
-changes that belong to the user and must remain untouched.
+The exact protected candidate passed the four required profiles in order:
 
-## Last Verification
+- `persistent-reuse`: 1 case, 3 active open/close/park cycles;
+- `checkout`: 4/4 cases, 3 active routes;
+- `shortcut-routes`: 10/10 active routes;
+- `managed-routes`: 16/16 cases, 13 active routes.
 
-- `npm run native:build` produced the exact optimized
-  `x86_64-pc-windows-msvc` addon and linked it into the package. The
-  source-linked consumer resolves the same bytes.
-- `npm test` passes all 206 tests after the callback, modal-geometry, and
-  passive-notification timing review, plus TypeScript, Electron-version,
-  shortcut, all Windows package-gate self-tests, the final-cycle callback
-  regression, and recovered-frame-error regression.
-- `npm run example:package:win` builds the `0.2.7` Electron `43.1.1` unpacked
-  app, verifies all 1,127 required native methods and their declaration hash,
-  passes the packaged matrix self-test, and loads the exact addon through the
-  packaged executable. The package path retains argument-safe npm invocation
-  on Windows and the matrix summarizer's fingerprint dependency.
-- `npm run native:fmt`, bridge typecheck, consumer typecheck, consumer lint,
-  consumer 4/4 tests, consumer main-process syntax, and `git diff --check`
-  pass.
-- `npm run check:platform`, `npm run native:check`, and `npm run api:check`
-  pass. The API audit retains 1,127 required native methods.
-- `npm run package:smoke` passes the package consumer, native manifest, Windows
-  helper static contracts, candidate ACL self-test, and combined deployment
-  self-test before reaching the documented Git-Bash/Linux shortcut-discovery
-  path-translation mismatch. Exact CI must run the POSIX fixtures natively. No
-  WSL or host reconfiguration was introduced.
-- The latest manual consumer matrix passed gameplay, mapped input, window-state
-  and focus transitions, shared-texture presentation at the current display
-  rate, one-time checkout activation/close, and recurring-subscription
-  activation/cancel without authorization.
-- A full source-linked persistent run passed native/render gates, its foreground
-  grant, all three exact close/park cycles, input and lifecycle audits, strict
-  verification, cleanup, and unchanged Steam identity. It is development
-  evidence and does not replace candidate-bound proof.
-- The rebuilt development package passed focused achievement-progress and
-  achievement-unlock reruns, plus an uninterrupted 16/16 managed-routes run.
-  All 13 active routes had
-  clean close/park lifecycles; every web route directly targeted a glyph inside
-  the scale-aware inset modal panel; progress and unlock both recorded their
-  stored callbacks, false-to-true needs-present transitions, passive parking,
-  zero crashes, complete cleanup, and unchanged Steam continuity.
-- The exhaustive Steam API coverage audit passes against all 1,127 required
-  native methods, SDK exports, callback aliases, facade helpers, shim
-  references, and generated enum constants. Clean GitHub CI must repeat it
-  before a tag candidate is created.
-- GitHub CI run `29575410461` passed the Windows, Linux, macOS, package-smoke,
-  and API gates for commit `2a24089`. Tag Release run `29575564317` built all
-  three platform prebuilds but correctly rejected `v0.2.0` before artifact
-  assembly because the Windows system-DLL allowlist lacked the new native host
-  imports. Nothing was published.
-- Commit `9837ff5` passed main CI `29583417694`, tag CI `29583616413`, and tag
-  Release assembly `29583614808` for `v0.2.2`. The downloaded exact candidate
-  was protected and audited, but the managed-route proof rejected it before
-  receipt generation or npm publication. The tag remains immutable evidence.
-- Commit `fed9b83` passed main CI `29592224120`, tag CI `29592471104`, and tag
-  Release assembly `29592467768` for `v0.2.3`. Its exact 114-file protected
-  package completed all three persistent reuse opens and physical closes, but
-  the independent packaged auditor rejected the missing third inactive event
-  in the result projection and a stale recovered `lastError`. No receipt or npm
-  publication was attempted, and the tag remains immutable rejected evidence.
-- Rejected development roots are retained for the recovered-error lifecycle
-  race, dark pre-modal false readiness, pointer-fragment panel miss, and omitted
-  per-case schema projection. They are diagnostic evidence, not release proof.
-- The final protected local `0.2.4` package at
-  `C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-asar-panel-v4-20260717-101239`
-  contains 114 files, all 1,127 native methods, the current callback/error
-  fixes, and the current packaged
-  schema-2 auditor. Exact-source root
-  `C:\Users\admin\steam-bridge-artifacts\windows-v0.2.4-dev-persistent-panel-v4-20260717-101426`
-  passed candidate binding, canonical ACL, native/render/readiness gates, one
-  foreground grant, all three overlay opens and physical closes, three active
-  and three inactive callbacks, final clean detach with no unrecovered error,
-  exact packaged summary, task/process/environment cleanup, and unchanged Steam
-  identity. Cycles two and three both proved a current substantial Steam panel
-  aligned to the baseline modal before input. Retained-image checks reject both
-  dark pre-modal frames (39- and 147-logical-pixel top deltas) and accept the
-  rendered modal (one-logical-pixel delta). The auditor regression accepts one
-  legitimate asynchronous stability sample per cycle and rejects missing or
-  excess samples.
-- The corrected Windows verifier self-test passes and accepts the complete
-  import table of the exact local 8,130,560-byte addon while continuing to
-  reject dynamic MSVC/UCRT and arbitrary non-system dependencies.
-- Exact `v0.2.4` Release run `29600153021` assembled the audited npm tarball and
-  114-file Windows candidate. The protected candidate remained bound to content
-  SHA-256 `2269d27e34d8b9b83c50e379dc900ec1ecacab7e712f5e558e8fb714b22474d4`
-  and binding SHA-256
-  `7244e3d462f69bde16e2c6a892b001f495e9e6a712086dd0690bc5645e4f7791`
-  throughout the partial proof. Persistent-reuse and checkout passed; the
-  shortcut proof failure was preserved and no publication was attempted.
-- Exact `v0.2.5` main CI `29620892207`, tag CI `29621012453`, and Release
-  assembly `29621012452` passed. Its protected four-profile live run completed
-  31/31 cases and 27/27 active overlays, but the receipt failed on the physical-
-  bounds scale-model mismatch above. The corrected auditor self-test passes,
-  and all four preserved roots now summarize with zero failures and warnings.
-- Exact `v0.2.6` main CI `29623694561`, tag CI `29623786452`, and Release
-  assembly `29623786437` passed. Its protected persistent behavior completed
-  three opens, closes, and parks, but the immutable auditor rejected cycle one's
-  vertical ready-panel refinement. The failed root and exact candidate remain
-  protected and preserved; no receipt or publication was attempted.
-- Local `0.2.8` passes 206/206 tests, platform policy, native formatting and
-  compilation, API coverage, Windows example packaging, the packaged all-1,127-
-  method native-load probe, and the receipt self-test. Its corrected local
-  verifier generates a valid four-profile, 31-case / 27-activation sanitized
-  receipt from the preserved exact `v0.2.7` roots; the receipt is recheck
-  evidence only and cannot authorize publication of a different candidate.
-- Exact `v0.2.7` passes 206/206 tests, platform policy, native formatting and
-  compilation, API coverage, Windows example packaging, the packaged all-1,127-
-  method native-load probe, and the auditor self-test. It re-audits the rejected
-  exact `v0.2.6` persistent root plus all four preserved `v0.2.5` roots with zero
-  failures or warnings. Its cycle-one and later-cycle height-refinement
-  regressions pass; paired target-panel and current-panel horizontal- and
-  top-drift regressions fail closed. `package:smoke` reaches and passes every
-  applicable Windows package/protection/deployment check before the known
-  native-Windows `bash` environment blocker. Its exact protected candidate also
-  passes all 31 cases and 27 active routes, but the obsolete receipt host-style
-  expectation rejects the correct `owned-popup` runtime, so it remains
-  unpublished. Local `0.2.8` corrects that host-style contract and the masked
-  passive-notification `overlayEnabled` expectation, explicitly rejecting the
-  deprecated runtime identity and an incorrectly enabled passive case; exact CI
-  must run the remaining POSIX fixture before a new candidate is tagged.
-- Local `0.2.6` passed 206/206 tests, platform policy, native formatting and
-  compilation, API coverage, Windows example packaging, the packaged all-1,127-
-  method native-load probe, the corrected auditor self-test, and all four
-  preserved exact-candidate summaries. Its height-refinement regression accepts
-  the legitimate current-panel change and a paired horizontal-drift regression
-  fails closed. `package:smoke` reaches and passes every applicable Windows
-  package/protection/deployment check before the known native-Windows `bash`
-  environment blocker; exact CI must run the remaining POSIX fixture.
-- Final local `0.2.5` validation passes 206/206 automated tests, Windows package
-  construction, packaged native loading for all 1,127 methods, the packaged
-  deployment-helper self-test, and a protected source-linked 16/16 managed
-  matrix with exact post-run candidate fingerprint and canonical ACL audits.
-- No private app, product, account, transaction, Steam, key, price, checkout
-  URL, or fixture identifier is recorded in committed documentation.
+That is 31/31 clean cases and 27 active Steam routes with D3D11
+presenter/host/renderer agreement where applicable, authenticated foreground
+handoff, high-DPI target containment, visible modal-frame checks, clean
+close/park/focus return, canonical candidate protection after every profile,
+one continuous Steam identity, and zero crashes.
 
-## Next Actions
+The first checkout profile attempt is preserved separately because Steam did
+not consume one otherwise valid injected close click in shortcut checkout and
+the case timed out. Candidate identity, geometry, focus evidence, cleanup, and
+Steam health remained valid. A complete fresh-process rerun passed all four
+cases without changing bytes, configuration, target resolution, or timeout.
+Treat a future repeat as an input-lifecycle regression only if the same miss is
+reproducible under a fresh process state; never splice the failed root into a
+receipt.
 
-1. Complete local validation, commit and push the `0.2.8` receipt correction,
-   wait for exact CI, and create the fresh `v0.2.8` candidate through the
-   tag-triggered Release workflow. Preserve and never move rejected `v0.2.0`
-   through `v0.2.7`.
-2. Repeat the required candidate-bound Windows public proof profiles without
-   private checkout inputs or evidence overrides, generate the sanitized
-   receipt, and configure the publish proof.
-3. Dispatch the manual npm publication workflow only after the exact candidate
-   and receipt validate. Preserve `0.1.6` as the last known-good package if any
-   gate fails.
+The npm registry tarball is byte-identical to the audited Release tarball. `npm
+audit signatures` verifies one registry signature and one SLSA provenance
+attestation. All five GitHub Release asset digests match their retained local
+files.
 
-## Exact Next Step
+## Verification
 
-Validate, review, commit, and push the `0.2.8` auditor correction, then require clean
-exact CI before creating the fresh tag. Do not tag or publish if the protected Windows
-live-proof workflow cannot be completed for the same exact candidate.
+Bridge gates for the exact source passed:
 
-Detailed settled platform evidence is in
-`docs/research/cross-platform-overlay-status.md`; rerun contracts are in
-`docs/research/test-findings-ledger.md`; architecture is in
-`docs/research/electron-steam-overlay-architecture.md`.
+- `npm test`: 206/206;
+- platform policy, Rust formatting and compilation, API coverage, package
+  smoke/dry-run, diff checks, Windows package assembly, and packaged Electron
+  native-load validation;
+- exact Windows protected deployment, candidate fingerprint/ACL re-audit, four
+  live profiles, receipt generation, trusted publication, registry integrity,
+  signature, provenance, and Release-asset digest verification.
+
+Consumer gates on registry `0.2.9` passed:
+
+- 4/4 tests, TypeScript, ESLint, optimized Next renderer build;
+- unpacked Windows electron-builder packaging with the registry package and
+  native runtime files included.
+
+## Operational Notes
+
+- App ID `480` proves public Steam overlay plumbing and synthetic routing only;
+  it does not prove a real commercial authorization.
+- Opening and cancelling checkout/subscription panels is allowed proof; never
+  finalize a purchase or subscription during smoke testing.
+- Do not move or reuse a release tag. A code or native-runtime change requires a
+  new version, new exact artifacts, and fresh candidate-bound live proof.
+- Preserve failed release roots as diagnostic evidence; receipts may contain
+  only complete clean roots from one unchanged candidate and Steam identity.
+- The checkout contains unrelated user-owned `AGENTS.md`, `.codex`, and input
+  probe files. They must remain unstaged and untouched.
