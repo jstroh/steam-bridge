@@ -282,6 +282,8 @@ test("Windows standalone D3D host uses normal chrome without diagnostic menu UI"
   assert.match(source, /normalize_cursor_display_count\(!should_suppress\)/);
   assert.match(source, /CreateCursor\(/);
   assert.match(source, /SetCursor\(surface\.transparent_cursor\)/);
+  assert.match(source, /message == WM_SETCURSOR && sync_cursor_for_window_message\(hwnd\)/);
+  assert.match(source, /unsafe fn sync_cursor_for_window_message\(hwnd: HWND\) -> bool/);
   assert.match(source, /DestroyCursor\(surface\.transparent_cursor\)/);
   assert.match(source, /surface_has_foreground\(surface\)/);
   assert.match(source, /cursor_is_in_client\(surface\.hwnd\)/);

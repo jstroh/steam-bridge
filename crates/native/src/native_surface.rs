@@ -1294,10 +1294,10 @@ mod windows {
         WM_COMMAND, WM_DPICHANGED, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_KEYDOWN,
         WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
         WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCDESTROY, WM_PAINT,
-        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETFOCUS, WM_SHOWWINDOW, WM_SIZE, WM_SYSKEYDOWN,
-        WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-        WS_OVERLAPPEDWINDOW, WS_POPUP,
+        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SHOWWINDOW, WM_SIZE,
+        WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPCHILDREN,
+        WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
     };
 
     type SubclassProc =
@@ -2776,6 +2776,21 @@ mod windows {
         }
     }
 
+    unsafe fn sync_cursor_for_window_message(hwnd: HWND) -> bool {
+        let Ok(mut guard) = SURFACE.try_lock() else {
+            return false;
+        };
+        let Some(surface) = guard.as_mut().filter(|surface| surface.hwnd == hwnd) else {
+            return false;
+        };
+        sync_cursor_visibility(surface);
+        if !surface.cursor_suppressed {
+            return false;
+        }
+        SetCursor(surface.transparent_cursor);
+        true
+    }
+
     unsafe fn normalize_cursor_display_count(visible: bool) -> i32 {
         let mut display_count = ShowCursor(if visible { 1 } else { 0 });
         for _ in 0..32 {
@@ -2889,6 +2904,9 @@ mod windows {
             && GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_NOACTIVATE != 0
         {
             return MA_NOACTIVATE as LRESULT;
+        }
+        if message == WM_SETCURSOR && sync_cursor_for_window_message(hwnd) {
+            return 1;
         }
         if message == WM_ERASEBKGND {
             render_retained_frame_from_window_message(hwnd, false);

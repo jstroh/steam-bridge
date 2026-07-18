@@ -211,6 +211,12 @@ must release any pressed input state. See the native session types and the
 [Electron example guide](examples/electron-basic/README.md) before adopting
 this advanced path.
 
+If the game draws its own cursor, call `session.setCursorHidden(true)` while
+gameplay is active. The host suppresses the Windows cursor across both the
+rendered frame and its aspect-fit letterbox area, reapplies suppression after
+Windows cursor-reset messages, and restores the native cursor when the host
+loses focus, becomes hidden, or the session closes.
+
 ## Steam Web API
 
 Set `STEAM_WEB_API_KEY` for endpoints that require a publisher key, or provide
