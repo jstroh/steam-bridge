@@ -1280,30 +1280,32 @@ mod windows {
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
-    use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
+    use windows_sys::Win32::UI::HiDpi::{
+        AdjustWindowRectExForDpi, GetDpiForSystem, GetDpiForWindow,
+    };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, GetCapture, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        AdjustWindowRectEx, CreateCursor, CreateWindowExW, DefWindowProcW, DestroyCursor,
-        DestroyWindow, DispatchMessageW, EnumWindows, GetAncestor, GetClassNameW, GetClientRect,
-        GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindow, GetWindowLongPtrW,
-        GetWindowPlacement, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-        IsWindow, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
-        SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetTimer, SetWindowLongPtrW,
-        SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow, TranslateMessage, CS_OWNDC,
-        GA_ROOTOWNER, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR, IDC_ARROW,
-        LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE, SIZE_MINIMIZED, SM_CXSCREEN, SM_CYSCREEN,
-        SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, WINDOWPLACEMENT,
-        WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE,
-        WM_COMMAND, WM_DPICHANGED, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_KEYDOWN,
-        WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
-        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCDESTROY, WM_PAINT,
-        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SHOWWINDOW, WM_SIZE,
-        WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPCHILDREN,
-        WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-        WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
+        CreateCursor, CreateWindowExW, DefWindowProcW, DestroyCursor, DestroyWindow,
+        DispatchMessageW, EnumWindows, GetAncestor, GetClassNameW, GetClientRect, GetCursorPos,
+        GetForegroundWindow, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
+        GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
+        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW, SetCursor,
+        SetForegroundWindow, SetLayeredWindowAttributes, SetTimer, SetWindowLongPtrW,
+        SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow, SystemParametersInfoW,
+        TranslateMessage, CS_OWNDC, GA_ROOTOWNER, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE,
+        GW_OWNER, HCURSOR, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE, SIZE_MINIMIZED,
+        SM_CXSCREEN, SM_CYSCREEN, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
+        SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE,
+        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_ENTERSIZEMOVE,
+        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN,
+        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+        WM_MOVE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+        WM_SHOWWINDOW, WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED,
+        WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
     };
 
     type SubclassProc =
@@ -2167,27 +2169,21 @@ mod windows {
                 (rect.bottom - rect.top).max(1),
             )
         } else if let Some((client_width, client_height)) = standalone_client_size {
+            let dpi = GetDpiForSystem().max(96);
             let mut adjusted = RECT {
                 left: 0,
                 top: 0,
-                right: client_width.max(1),
-                bottom: client_height.max(1),
+                right: logical_pixels_to_physical(client_width, dpi),
+                bottom: logical_pixels_to_physical(client_height, dpi),
             };
-            if AdjustWindowRectEx(&mut adjusted, style, 0, ex_style) == 0 {
+            if AdjustWindowRectExForDpi(&mut adjusted, style, 0, ex_style, dpi) == 0 {
                 return Err(Error::from_reason(
                     "Failed to size the Windows native overlay client area",
                 ));
             }
             let width = (adjusted.right - adjusted.left).max(1);
             let height = (adjusted.bottom - adjusted.top).max(1);
-            let screen_width = GetSystemMetrics(SM_CXSCREEN).max(width);
-            let screen_height = GetSystemMetrics(SM_CYSCREEN).max(height);
-            (
-                ((screen_width - width) / 2).max(0),
-                ((screen_height - height) / 2).max(0),
-                width,
-                height,
-            )
+            centered_window_rect(width, height, &primary_work_area())
         } else {
             (100, 100, 960, 540)
         };
@@ -3690,6 +3686,76 @@ mod windows {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
             .unwrap_or(0)
+    }
+
+    fn logical_pixels_to_physical(value: i32, dpi: u32) -> i32 {
+        let scaled = (i64::from(value.max(1)) * i64::from(dpi.max(96)) + 48) / 96;
+        scaled.clamp(1, i64::from(i32::MAX)) as i32
+    }
+
+    unsafe fn primary_work_area() -> RECT {
+        let mut work_area: RECT = mem::zeroed();
+        if SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            &mut work_area as *mut RECT as *mut std::ffi::c_void,
+            0,
+        ) != 0
+            && work_area.right > work_area.left
+            && work_area.bottom > work_area.top
+        {
+            return work_area;
+        }
+        RECT {
+            left: 0,
+            top: 0,
+            right: GetSystemMetrics(SM_CXSCREEN).max(1),
+            bottom: GetSystemMetrics(SM_CYSCREEN).max(1),
+        }
+    }
+
+    fn centered_window_rect(width: i32, height: i32, work_area: &RECT) -> (i32, i32, i32, i32) {
+        let work_width = (work_area.right - work_area.left).max(1);
+        let work_height = (work_area.bottom - work_area.top).max(1);
+        let width = width.max(1).min(work_width);
+        let height = height.max(1).min(work_height);
+        (
+            work_area.left + (work_width - width) / 2,
+            work_area.top + (work_height - height) / 2,
+            width,
+            height,
+        )
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{centered_window_rect, logical_pixels_to_physical, RECT};
+
+        #[test]
+        fn standalone_client_dimensions_scale_from_logical_pixels() {
+            assert_eq!(logical_pixels_to_physical(1024, 96), 1024);
+            assert_eq!(logical_pixels_to_physical(1024, 216), 2304);
+            assert_eq!(logical_pixels_to_physical(768, 216), 1728);
+            assert_eq!(logical_pixels_to_physical(1, 120), 1);
+        }
+
+        #[test]
+        fn standalone_window_is_centered_and_clamped_to_the_work_area() {
+            let work_area = RECT {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1040,
+            };
+            assert_eq!(
+                centered_window_rect(1280, 760, &work_area),
+                (320, 140, 1280, 760)
+            );
+            assert_eq!(
+                centered_window_rect(2300, 1200, &work_area),
+                (0, 0, 1920, 1040)
+            );
+        }
     }
 
     fn window_class_name() -> Vec<u16> {

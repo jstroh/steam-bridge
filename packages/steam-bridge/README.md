@@ -180,8 +180,8 @@ presentation driver so frame uploads cannot double-pump the swap chain.
 
 ```ts
 const session = steamworks.overlay.startNativeOverlaySession({
-  clientWidth: 1024,
-  clientHeight: 768,
+  clientWidth: 1280,
+  clientHeight: 720,
   frameRate: 60,
   continuousPresent: true,
   onInputEvent(event) {
@@ -195,6 +195,11 @@ function applyDisplayRate(displayFrequency: number | undefined) {
   session.setFrameRate(frameRate);
 }
 ```
+
+`clientWidth` and `clientHeight` are logical pixels. On Windows, Steam Bridge
+scales them to the primary display's DPI at creation and clamps the restored
+window to that display's usable work area. Moving the host between monitors
+preserves its logical size through the normal per-monitor-DPI transition.
 
 The native host owns ordinary Windows movement, resize, maximize, minimize,
 fullscreen, focus visibility, rounded-corner clipping, cursor state, and the

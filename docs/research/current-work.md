@@ -7,10 +7,22 @@ published as immutable `v0.2.10` with exact-candidate Windows live proof.
 
 ## Active Goal
 
-Maintain `steam-bridge@0.2.10` as the supported Windows native-host release and
-preserve the exact candidate, proof roots, publication receipt, and downstream
-registry-backed evidence. Any native/runtime change requires a new immutable
-version and fresh exact-candidate proof.
+Prepare a new immutable candidate for the standalone Windows host's corrected
+initial client sizing on scaled desktops.
+`clientWidth` and `clientHeight` are documented as logical dimensions, but the
+published native host passes them to per-monitor-DPI Win32 APIs as physical
+pixels. At 225% scaling, a requested 1024 by 768 client therefore appears only
+about 455 by 341 logical pixels. The local repair scales the requested client
+dimensions to the system DPI before applying the non-client frame, centers the
+result in the primary work area, and clamps oversized requests to that work
+area. Focused source-linked consumer validation now measures a requested 1280
+by 720 client as a 1282 by 750 logical outer window including the standard
+frame, and the remaining boundary is exact-candidate assembly and proof.
+
+`steam-bridge@0.2.10` remains the supported published Windows native-host
+release. Preserve its exact candidate, proof roots, publication receipt, and
+downstream registry-backed evidence. Any native/runtime change requires a new
+immutable version and fresh exact-candidate proof.
 
 ## Current State
 
@@ -36,6 +48,18 @@ source-linked run, the live dialog's owner exactly equalled the native host, its
 rectangle was centered over the host, Cancel Transaction removed it cleanly,
 and gameplay resumed with the subscription not authorized.
 
+The unreleased local sizing repair treats standalone `clientWidth` and
+`clientHeight` as logical pixels, scales them with the system DPI before
+`AdjustWindowRectExForDpi`, and centers/clamps the resulting outer rectangle in
+the primary usable work area. On the 225%-scaled development display, the
+source-linked game now opens with an exact 1280 by 720 logical client instead
+of a tiny top-left surface. Live restore, maximize/restore, minimize/focus
+return, title drag, mapped input, the custom cursor, and ordinary Steam overlay
+rendering preserve the corrected geometry. The consumer's real checkout URL is
+now routed with Steam's supported modal web-page option; the live one-time Buy
+route rendered as a large centered checkout surface, closed without
+authorization, and left the ordinary Shift+Tab overlay working independently.
+
 The underlying Windows product path remains the top-level Win32 D3D11 game
 host introduced by the `0.2.x` series. It uses Electron offscreen shared
 textures, a bridge-owned copy before Electron releases its pool texture,
@@ -55,6 +79,16 @@ checkout-dialog adoption and carries a fresh full live proof and downstream
 registry-backed pass.
 
 ## Consumer Evidence
+
+The current post-`v0.2.10` iteration links the consumer back to the local
+`packages/steam-bridge` checkout. At 225% Windows scaling, the requested 1280
+by 720 logical client measures 1282 by 750 including native chrome. Live
+maximize/restore and minimize/focus-return cycles preserved rendering and the
+restored dimensions. A one-time Buy route opened through
+`activateToWebPage(url, { modal: true })` as a large centered Steam checkout
+surface and was cancelled without authorization; a subsequent ordinary
+Shift+Tab overlay open/close remained functional. This is source-linked local
+evidence, not a claim about published `v0.2.10`.
 
 The Electron game consumer was first linked to the local
 `packages/steam-bridge` checkout for iteration, then returned to an exact
@@ -135,6 +169,13 @@ attestation. All five GitHub Release asset digests match their retained local
 files.
 
 ## Verification
+
+The current unreleased local tree passes 206/206 repository tests, Rust format
+and compile checks, the API and platform audits, and the focused standalone
+sizing unit tests. The linked consumer passes 4/4 tests, TypeScript, ESLint, and
+the optimized renderer build. Its final restarted process produced an exact
+1280 by 720 shared texture, retained the measured 1282 by 750 outer window, and
+repeated the large centered one-time checkout open/cancel without authorization.
 
 Bridge gates for the exact source passed:
 

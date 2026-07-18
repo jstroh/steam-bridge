@@ -274,7 +274,9 @@ test("Windows standalone D3D host uses normal chrome without diagnostic menu UI"
   );
 
   assert.match(source, /WS_OVERLAPPEDWINDOW \| WS_CLIPSIBLINGS \| WS_CLIPCHILDREN/);
-  assert.match(source, /AdjustWindowRectEx\(&mut adjusted, style, 0, ex_style\)/);
+  assert.match(source, /AdjustWindowRectExForDpi\(&mut adjusted, style, 0, ex_style, dpi\)/);
+  assert.match(source, /logical_pixels_to_physical\(client_width, dpi\)/);
+  assert.match(source, /centered_window_rect\(width, height, &primary_work_area\(\)\)/);
   assert.doesNotMatch(source, /create_native_host_test_menu/);
   assert.doesNotMatch(source, /NATIVE_HOST_INPUT_TEST_COMMAND/);
   assert.match(source, /hCursor: LoadCursorW\(ptr::null_mut\(\), IDC_ARROW\)/);

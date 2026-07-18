@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -67,6 +67,21 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
   Windows matrix without FPS, focus, close, or process-lifetime regressions.
 
 ## Latest Windows Evidence
+
+Local post-`v0.2.10` source-linked testing repaired a high-DPI standalone-host
+initial-size regression. The public `clientWidth` and `clientHeight` contract
+is logical pixels, but the host had passed those values to Win32 as physical
+pixels; at 225% scaling this reproduced a tiny restored game window. The local
+host now scales the requested client through the system DPI, applies
+`AdjustWindowRectExForDpi`, and centers/clamps the outer rectangle to the
+primary usable work area. A requested 1280 by 720 client measured 1282 by 750
+logical pixels including native chrome. Live gameplay retained correct
+rendering through maximize/restore and minimize/focus-return cycles, and the
+ordinary Steam overlay still opened and closed. The consumer also routes real
+checkout URLs through Steam's modal web-page option: a one-time Buy route
+rendered as a large centered surface and was cancelled without authorization.
+This is local evidence only; `v0.2.10` remains the supported published package
+until a new immutable candidate completes the full release proof.
 
 Exact `v0.2.1` through `v0.2.3` passed progressively more CI and Release gates
 but remain rejected and unpublished: the failures covered interactive
