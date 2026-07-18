@@ -2,31 +2,21 @@
 
 Last reviewed: 2026-07-18
 
-Review anchor: `6eb634f` (`Handle Steam checkout dialogs in native host`),
-published as immutable `v0.2.10` with exact-candidate Windows live proof.
+Review anchor: `ea10a22` (`Fix scaled native host sizing`), published as
+immutable `v0.2.11` with exact-candidate Windows live proof.
 
 ## Active Goal
 
-Prepare a new immutable candidate for the standalone Windows host's corrected
-initial client sizing on scaled desktops.
-`clientWidth` and `clientHeight` are documented as logical dimensions, but the
-published native host passes them to per-monitor-DPI Win32 APIs as physical
-pixels. At 225% scaling, a requested 1024 by 768 client therefore appears only
-about 455 by 341 logical pixels. The local repair scales the requested client
-dimensions to the system DPI before applying the non-client frame, centers the
-result in the primary work area, and clamps oversized requests to that work
-area. Focused source-linked consumer validation now measures a requested 1280
-by 720 client as a 1282 by 750 logical outer window including the standard
-frame, and the remaining boundary is exact-candidate assembly and proof.
-
-`steam-bridge@0.2.10` remains the supported published Windows native-host
-release. Preserve its exact candidate, proof roots, publication receipt, and
-downstream registry-backed evidence. Any native/runtime change requires a new
-immutable version and fresh exact-candidate proof.
+Hold `steam-bridge@0.2.11` as the supported standalone Windows native-host
+release and preserve its exact candidate, four proof roots, receipt, public
+Release assets, publication run, and downstream registry-backed evidence. The
+consumer now resolves the exact npm package from a normal non-junction install.
+Repeat the release path only after a material native/runtime change or a focused
+regression; published bytes and tags remain immutable.
 
 ## Current State
 
-`steam-bridge@0.2.10` is npm `latest`. The preceding registry-backed checkout
+`steam-bridge@0.2.11` is npm `latest`. The preceding registry-backed checkout
 pass exposed one unhandled Steam window shape: closing a recurring
 checkout approval surface creates a separate visible, enabled, foreground
 top-level window titled `Steam Dialog`, class `SDL_app`, from
@@ -48,7 +38,7 @@ source-linked run, the live dialog's owner exactly equalled the native host, its
 rectangle was centered over the host, Cancel Transaction removed it cleanly,
 and gameplay resumed with the subscription not authorized.
 
-The unreleased local sizing repair treats standalone `clientWidth` and
+The published sizing repair treats standalone `clientWidth` and
 `clientHeight` as logical pixels, scales them with the system DPI before
 `AdjustWindowRectExForDpi`, and centers/clamps the resulting outer rectangle in
 the primary usable work area. On the 225%-scaled development display, the
@@ -75,74 +65,56 @@ progressively hardened import, activation-style, lifecycle, modal-target, DPI,
 panel-refinement, and receipt-contract gates. `v0.2.8` corrected the final
 owned-popup and passive-notification receipt assumptions and was published.
 `v0.2.9` is the cursor-suppression predecessor. `v0.2.10` adds exact Steam
-checkout-dialog adoption and carries a fresh full live proof and downstream
-registry-backed pass.
+checkout-dialog adoption. `v0.2.11` corrects logical standalone client sizing
+at high DPI and carries a fresh full live proof and downstream registry-backed
+pass.
 
 ## Consumer Evidence
 
-The current post-`v0.2.10` iteration links the consumer back to the local
-`packages/steam-bridge` checkout. At 225% Windows scaling, the requested 1280
-by 720 logical client measures 1282 by 750 including native chrome. Live
-maximize/restore and minimize/focus-return cycles preserved rendering and the
-restored dimensions. A one-time Buy route opened through
-`activateToWebPage(url, { modal: true })` as a large centered Steam checkout
-surface and was cancelled without authorization; a subsequent ordinary
-Shift+Tab overlay open/close remained functional. This is source-linked local
-evidence, not a claim about published `v0.2.10`.
+The Electron game consumer was linked to `packages/steam-bridge` while the
+sizing repair was developed, then returned to an exact non-junction registry
+install of `steam-bridge@0.2.11`. At 225% Windows scaling, the requested 1280 by
+720 logical client measures 1282 by 750 including native chrome. The
+source-linked pass exercised title drag, resize, minimize, maximize/restore,
+focus return, aspect preservation, cursor behavior, ordinary overlay, and the
+real one-time Buy route. The consumer opens checkout URLs through
+`activateToWebPage(url, { modal: true })`; the Buy page rendered as a large
+centered Steam surface and was cancelled without authorization.
 
-The Electron game consumer was first linked to the local
-`packages/steam-bridge` checkout for iteration, then returned to an exact
-non-junction registry install of `steam-bridge@0.2.10`. Both the optimized local
-addon and the published registry package were exercised in live gameplay at
-1024 by 768. Manual coverage included:
-
-- title drag, edge resize, minimize, maximize/restore, fullscreen enter/exit,
-  Alt+Tab, focus loss/return, restored rounded corners, and aspect preservation;
-- current-display-rate presentation with no purple startup frame, periodic
-  flicker, top-left shrink, or native-host crash;
-- mapped mouse and keyboard input plus the game's custom cursor with the native
-  Windows cursor hidden across the frame and letterbox;
-- Shift+Tab overlay activation and return through Steam's Back to Game control;
-- one-time buy and recurring-subscription routes rendered inside the game
-  client; the recurring confirmation became a correctly centered host-owned
-  dialog and both flows were cancelled with no purchase or subscription
-  authorized;
-- a post-checkout ordinary-overlay open/close and maximize/restore stress loop,
-  followed by clean Electron shutdown with exit code zero.
-
-The previous registry-backed cancellation run exposed the separate Steam
-confirmation HWND. The published package now passes the focused cancellation
-and broader window/overlay matrix. The consumer lockfile resolves the exact npm
-tarball and integrity, `node_modules/steam-bridge` is a normal directory, the
-packed Windows native runtime bytes equal the registry install, and the final
-manual pass returned from both checkout routes without authorizing a purchase or
-subscription.
+After npm publication, the consumer lockfile resolved the exact registry
+tarball and integrity and `node_modules/steam-bridge` was verified as a normal
+directory at `0.2.11`. The final registry-backed process repeated the exact
+1280 by 720 client geometry, title drag, maximize/restore, minimize/focus
+return, and ordinary Shift+Tab overlay open/close without a tiny presenter,
+flicker, hang, or crash. The app remained open in its restored windowed state
+for downstream testing.
 
 ## Exact Release Evidence
 
 Source and automation:
 
-- commit `6eb634fbcd50989c9f9a949a81e4b89b862776b6`;
-- Release assembly `29638085998` passed, including macOS arm64, Linux x64,
-  Windows x64 prebuilds, package assembly, and packaged Electron validation;
-- trusted npm publication `29639342257` passed after restoring the exact
+- commit `ea10a228e9af844975f7b4a941ae9bade46965ea`;
+- tag CI `29661177610` and Release assembly `29661177626` passed, including
+  macOS arm64, Linux x64, Windows x64 prebuilds, package assembly, and packaged
+  Electron validation;
+- trusted npm publication `29662440079` passed after restoring the exact
   candidate-bound receipt in the `npm-production` environment;
-- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.10>.
+- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.11>.
 
 Candidate identity:
 
 - npm tarball SHA-256
-  `5b49ea51b520702782ef231f0091969bc0d11e5fe193c5397164a2ea0ac0ffb2`;
+  `90f09b3832b33ecf14cf02e13ab759b5324b54b248c9437647db4c8b722cff27`;
 - Windows archive SHA-256
-  `f32c452c2defa2a22a41f9c1ed9e715180a7da0ce93cec7e5c5cf5aa10079997`;
-- Windows bundle content: 114 files, 398,249,435 bytes, SHA-256
-  `d83034ebdb474d7d341807e8801b8c3eba838e1c010efb7934cc2e572d95c717`;
+  `c7e97276d228f65b49dd8ed59b57fd8a37db797e82e1376c930a1ea435104b28`;
+- Windows bundle content: 114 files, 398,246,875 bytes, SHA-256
+  `9ed387da81ffda664db8103d688106cf46c3bea48963f5f2f19e211080d3cc64`;
 - native binding: 1,128 methods, declaration SHA-256
   `cc7a8dd5951d2c42f9a76f54f9c82f3a92ea61319d6e20e6539c10a7d39ce949`;
 - candidate binding SHA-256
-  `842b1d3b768f86db7a112bc89ff5c1de400ea9e7f5dc8b3a1bcf945aa9492e45`;
+  `b3137d38f3ed3637c1ca039e1bd878dd0b176a10244d5b03214d4bea48808cc3`;
 - live-proof receipt semantic SHA-256
-  `9cb576f6e1caa2a0d894e4cec7eaa778bde2991f9af73fabdb90a11fe2ab821d`.
+  `9c4ad150eca18fcef16318bfe1743f9fa7b7445061aed5b2c37c851f8386869e`.
 
 The exact protected candidate passed the four required profiles in order:
 
@@ -157,25 +129,22 @@ handoff, high-DPI target containment, visible modal-frame checks, clean
 close/park/focus return, canonical candidate protection after every profile,
 one continuous Steam identity, and zero crashes.
 
-The first pre-receipt launch root is preserved separately because the required
-foreground-grant broker was not yet running, so the matrix correctly failed
-before live evidence was admitted. After the broker started, all four complete
-profiles passed against the unchanged protected candidate and one Steam identity.
-The failed root is not used by the receipt.
-
-The npm registry tarball is byte-identical to the audited Release tarball. `npm
-audit signatures` verifies one registry signature and one SLSA provenance
-attestation. All five GitHub Release asset digests match their retained local
-files.
+All four profiles ran in the required order against one unchanged protected
+candidate and one Steam identity. The npm registry tarball is byte-identical to
+the audited Release tarball. npm reports the package's SLSA provenance, and the
+consumer-wide `npm audit signatures` verifies 705 registry signatures and 132
+attestations. All five GitHub Release asset digests match their retained local
+files. The release-scoped GitHub proof secret was deleted after publication.
 
 ## Verification
 
-The current unreleased local tree passes 206/206 repository tests, Rust format
+The published source tree passes 206/206 repository tests, Rust format
 and compile checks, the API and platform audits, and the focused standalone
-sizing unit tests. The linked consumer passes 4/4 tests, TypeScript, ESLint, and
-the optimized renderer build. Its final restarted process produced an exact
-1280 by 720 shared texture, retained the measured 1282 by 750 outer window, and
-repeated the large centered one-time checkout open/cancel without authorization.
+sizing unit tests. The consumer passes 4/4 tests, TypeScript, ESLint, and the
+optimized renderer build. The source-linked process produced the large centered
+one-time checkout open/cancel without authorization. The final registry-backed
+process retained the measured 1282 by 750 outer window for a 1280 by 720 client
+and repeated window-state and ordinary-overlay interaction.
 
 Bridge gates for the exact source passed:
 
@@ -187,16 +156,13 @@ Bridge gates for the exact source passed:
   live profiles, receipt generation, trusted publication, registry integrity,
   signature, provenance, and Release-asset digest verification.
 
-Consumer gates on registry `0.2.10` passed:
+Consumer gates on registry `0.2.11` passed:
 
 - 4/4 tests, TypeScript, ESLint, optimized Next renderer build;
-- unpacked Windows electron-builder packaging with the registry package and
-  exact native runtime files included;
-- live title drag, keyboard resize, minimize/restore, maximize/restore,
-  fullscreen, Alt+Tab/focus return, rounded restored corners, aspect-fit
-  rendering, cursor suppression, ordinary overlay, one-time checkout cancel,
-  recurring checkout dialog cancel, post-checkout lifecycle stress, and clean
-  Electron exit code zero.
+- exact non-junction install, lockfile integrity, registry tarball byte identity,
+  package signatures, and provenance;
+- live 1280 by 720 geometry, title drag, minimize/focus return,
+  maximize/restore, aspect-fit rendering, and ordinary overlay open/close.
 
 ## Operational Notes
 

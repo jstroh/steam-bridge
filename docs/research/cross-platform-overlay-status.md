@@ -68,20 +68,27 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
-Local post-`v0.2.10` source-linked testing repaired a high-DPI standalone-host
-initial-size regression. The public `clientWidth` and `clientHeight` contract
-is logical pixels, but the host had passed those values to Win32 as physical
-pixels; at 225% scaling this reproduced a tiny restored game window. The local
-host now scales the requested client through the system DPI, applies
+Published `v0.2.11` repairs the high-DPI standalone-host initial-size
+regression. The public `clientWidth` and `clientHeight` contract is logical
+pixels, but the host had passed those values to Win32 as physical pixels; at
+225% scaling this reproduced a tiny restored game window. The host now scales
+the requested client through the system DPI, applies
 `AdjustWindowRectExForDpi`, and centers/clamps the outer rectangle to the
 primary usable work area. A requested 1280 by 720 client measured 1282 by 750
-logical pixels including native chrome. Live gameplay retained correct
-rendering through maximize/restore and minimize/focus-return cycles, and the
-ordinary Steam overlay still opened and closed. The consumer also routes real
-checkout URLs through Steam's modal web-page option: a one-time Buy route
-rendered as a large centered surface and was cancelled without authorization.
-This is local evidence only; `v0.2.10` remains the supported published package
-until a new immutable candidate completes the full release proof.
+logical pixels including native chrome. Source-linked gameplay retained correct
+rendering through title drag, maximize/restore, minimize/focus return, and
+ordinary Steam overlay open/close. The consumer also routes checkout URLs
+through Steam's modal web-page option: a one-time Buy route rendered as a large
+centered surface and was cancelled without authorization.
+
+The exact protected `v0.2.11` candidate passed the ordered persistent-reuse,
+checkout, shortcut-routes, and managed-routes profiles: 31/31 clean cases, 27
+active routes, one unchanged candidate and Steam identity, and zero crashes.
+The registry tarball is byte-identical to the audited Release artifact and has
+SLSA provenance. The final non-junction registry consumer repeated 1280 by 720
+geometry, drag, maximize/restore, minimize/focus return, and full-size
+Shift+Tab overlay open/close. All five public Release asset digests match the
+retained local records.
 
 Exact `v0.2.1` through `v0.2.3` passed progressively more CI and Release gates
 but remain rejected and unpublished: the failures covered interactive
