@@ -434,9 +434,12 @@ native-instance, and opaque HWND-identity values in every shown and parked
 snapshot, exactly one attach and no detach before final shutdown, one final
 detach, and exact source-window focus return. Historical marker-absent schema-2
 artifacts remain auditable, but a current schema-3 persistent artifact without
-the persistent policy marker fails. The prior signed live run still stopped
-fail-closed during cycle one on the historical owner-process handoff; the new
-contract has static and native PowerShell proof but no live success claim yet.
+the persistent policy marker fails. Exact `v0.2.6` completed all three live
+persistent opens and closes, but its packaged auditor rejected the initial
+ready-panel height refining before the exact pre-dispatch frame. The corrected
+contract accepts only bottom/height refinement while retaining the same target,
+glyph, scale, and left/top/right/width panel anchor; horizontal or top drift
+still fails closed.
 Each cycle also needs its own readable physical pre-send full-desktop screenshot:
 the declared bounds must match the PNG dimensions, contain that cycle's
 native-host rectangle, and resolve to a path not reused by another cycle. Its
@@ -444,7 +447,9 @@ detected panel and click point must both remain inside that exact host. Its
 authoritative per-monitor window-DPI scale must agree with the independently
 captured renderer DPR and physical-client/renderer-viewport geometry. Windows
 presenter bounds are already physical native-host pixels and must not be
-reinterpreted as logical DIPs. Ordered timestamps bind
+reinterpreted as logical DIPs. Both ready and pre-dispatch panel rectangles must
+be independently valid and contain the target; only bottom/height refinement is
+allowed between them. Ordered timestamps bind
 active plus shown state to target selection, focus confirmation, the pre-input
 dispatch boundary, inactive/closed state, parking, and cycle completion; each
 completion must precede the next shown state. Full-desktop captures are private

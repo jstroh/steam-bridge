@@ -140,16 +140,35 @@ produced different valid current-panel heights around the same glyph-bound
 target, which the auditor rejected as whole-object inequality. No receipt or
 publication was attempted, and `v0.2.5` remains immutable rejected evidence.
 
-Local `0.2.6` reconciles window DPI with the authenticated renderer DPR and
+Before release, local `0.2.6` reconciled window DPI with the authenticated renderer DPR and
 physical-client/renderer-viewport ratio, while treating presenter bounds as the
 physical native-host coordinates they now are. Persistent readiness compares
 the stable glyph/coordinate/panel-anchor fields and independently validates
 both current-panel observations, so the exact final screenshot may refine
 panel height without changing the dispatched target. New physical-bounds and
-panel-refinement regressions pass; all four preserved `v0.2.5` roots now
-summarize with zero failures and warnings. Because the auditor ships with the
-Windows proof candidate, exact `v0.2.6` must repeat all four profiles before
-receipt generation or publication.
+panel-refinement regressions passed; all four preserved `v0.2.5` roots then
+summarized with zero failures and warnings. Because the auditor ships with the
+Windows proof candidate, exact `v0.2.6` still had to produce fresh evidence.
+
+Exact `v0.2.6` at `44fca9e` passed main CI `29623694561`, tag CI
+`29623786452`, and Release assembly `29623786437`. Its exact 114-file,
+398,227,165-byte protected candidate passed transactional deployment and the
+three persistent open/close/park cycles with unchanged candidate, canonical
+ACLs, clean teardown, and unchanged Steam identity. The packaged auditor still
+rejected cycle one because the initial ready panel's bottom/height refined before
+the exact pre-dispatch screenshot. Its target coordinates, glyph score,
+left/top/right panel anchor, DPI scale, host, and click containment remained
+unchanged. The run is preserved, no other profile or receipt was attempted, and
+`v0.2.6` is immutable rejected evidence.
+
+Local `0.2.7` compares only the stable left/top/right/width panel anchor across
+ready and exact pre-dispatch frames, independently validates both complete panel
+rectangles and target containment, and still binds the exact glyph, coordinates,
+scale, approach, insets, host, and persistent identity. Vertical bottom/height
+refinement passes; horizontal or top-anchor drift fails closed. Its self-test,
+the rejected `v0.2.6` persistent root, and all four preserved `v0.2.5` roots
+summarize with zero failures and warnings. Exact `v0.2.7` must repeat all four
+profiles before receipt generation or publication.
 
 Protected `v0.1.4` points to exact `2f797aa`. Exact CI `29488304063`, tag CI
 `29488457804`, and protected Release `29488457815` pass. The independently

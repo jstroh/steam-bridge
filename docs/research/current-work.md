@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-07-17
 
-Review anchor: `29c1653` (`Harden Windows overlay proof and deployment`).
+Review anchor: `44fca9e` (`Fix Windows DPI proof for physical presenter bounds`).
 
 ## Active Goal
 
-Release-gate `steam-bridge@0.2.6`, whose code-bearing predecessor adds the verified
+Release-gate `steam-bridge@0.2.7`, whose code-bearing predecessor adds the verified
 Windows top-level D3D11 game host, Electron shared-texture ingestion, native
 input delivery, production window-state behavior, an interactive owned-popup
 focus fix, and display-rate presentation control. The new candidate also makes
@@ -26,9 +26,12 @@ Exact protected `v0.2.5` completed all 31 product cases and 27 active overlay
 routes, but its receipt auditor incorrectly reinterpreted already-physical
 Windows presenter bounds as logical DIPs. `0.2.6` corrects that evidence model
 by independently reconciling native-window DPI with authenticated renderer DPR
-and physical-client/renderer-viewport geometry. It also permits the exact
-pre-dispatch screenshot to refine a persistent cycle's current panel while
-requiring the same glyph-bound target anchor and independently valid panel.
+and physical-client/renderer-viewport geometry. Exact protected `v0.2.6` then
+completed all three persistent opens and closes, but its packaged auditor
+required cycle one's initial ready-panel bottom edge to equal the later exact
+pre-dispatch frame. `0.2.7` permits only that vertical bottom/height refinement
+while requiring the same glyph-bound target, left/top/right panel anchor,
+physical scale, click containment, and independently valid panel evidence.
 
 ## Current State
 
@@ -73,7 +76,7 @@ texture updates cannot double-pump the swap chain; the default remains false.
 Automation could not make Steam accept a synthetic global Shift+Tab chord, so
 that run does not claim physical hotkey deactivation. More importantly, this
 consumer run is development evidence, not the repository's publication proof.
-Because `0.2.6` carries the corrected immutable release auditor,
+Because `0.2.7` carries the corrected immutable release auditor,
 the exact protected packaged candidate still requires fresh public
 `persistent-reuse`, `checkout`, `shortcut-routes`,
 and `managed-routes` roots and a valid 31-case / 27-activation sanitized receipt
@@ -89,6 +92,16 @@ legitimately refined its current-panel height from the exact pre-dispatch frame,
 which the immutable auditor rejected despite an unchanged glyph, coordinate,
 scale, host, and top-edge tolerance. No receipt or publication was attempted;
 `v0.2.5` remains immutable rejected evidence.
+
+Exact `v0.2.6` at `44fca9e` passed main CI `29623694561`, tag CI
+`29623786452`, and Release assembly `29623786437`. Its exact 114-file,
+398,227,165-byte Windows candidate passed transactional deployment and all three
+persistent open/close/park cycles with unchanged candidate and Steam identity.
+The packaged auditor still rejected cycle one because the ready frame's panel
+bottom/height refined before the exact pre-dispatch screenshot. The target's
+glyph, coordinates, scale, host, left/top/right panel anchor, and click
+containment were unchanged. No other profile, receipt, or publication was
+attempted; `v0.2.6` remains immutable rejected evidence.
 
 The exact protected `v0.2.4` Release candidate passed the persistent-reuse and
 synthetic checkout profiles unchanged. Its shortcut-routes profile then failed
@@ -173,7 +186,7 @@ changes that belong to the user and must remain untouched.
   passive-notification timing review, plus TypeScript, Electron-version,
   shortcut, all Windows package-gate self-tests, the final-cycle callback
   regression, and recovered-frame-error regression.
-- `npm run example:package:win` builds the `0.2.5` Electron `43.1.1` unpacked
+- `npm run example:package:win` builds the `0.2.7` Electron `43.1.1` unpacked
   app, verifies all 1,127 required native methods and their declaration hash,
   passes the packaged matrix self-test, and loads the exact addon through the
   packaged executable. The package path retains argument-safe npm invocation
@@ -256,7 +269,22 @@ changes that belong to the user and must remain untouched.
   31/31 cases and 27/27 active overlays, but the receipt failed on the physical-
   bounds scale-model mismatch above. The corrected auditor self-test passes,
   and all four preserved roots now summarize with zero failures and warnings.
-- Local `0.2.6` passes 206/206 tests, platform policy, native formatting and
+- Exact `v0.2.6` main CI `29623694561`, tag CI `29623786452`, and Release
+  assembly `29623786437` passed. Its protected persistent behavior completed
+  three opens, closes, and parks, but the immutable auditor rejected cycle one's
+  vertical ready-panel refinement. The failed root and exact candidate remain
+  protected and preserved; no receipt or publication was attempted.
+- Local `0.2.7` passes 206/206 tests, platform policy, native formatting and
+  compilation, API coverage, Windows example packaging, the packaged all-1,127-
+  method native-load probe, and the auditor self-test. It re-audits the rejected
+  exact `v0.2.6` persistent root plus all four preserved `v0.2.5` roots with zero
+  failures or warnings. Its cycle-one and later-cycle height-refinement
+  regressions pass; paired target-panel and current-panel horizontal- and
+  top-drift regressions fail closed. `package:smoke` reaches and passes every
+  applicable Windows package/protection/deployment check before the known
+  native-Windows `bash` environment blocker; exact CI must run the remaining
+  POSIX fixture.
+- Local `0.2.6` passed 206/206 tests, platform policy, native formatting and
   compilation, API coverage, Windows example packaging, the packaged all-1,127-
   method native-load probe, the corrected auditor self-test, and all four
   preserved exact-candidate summaries. Its height-refinement regression accepts
@@ -273,9 +301,10 @@ changes that belong to the user and must remain untouched.
 
 ## Next Actions
 
-1. Commit and push the `0.2.6` auditor correction, wait for exact CI, and create
-   the fresh `v0.2.6` candidate through the tag-triggered Release workflow.
-   Preserve and never move rejected `v0.2.0` through `v0.2.5`.
+1. Complete local validation, commit and push the `0.2.7` auditor correction,
+   wait for exact CI, and create the fresh `v0.2.7` candidate through the
+   tag-triggered Release workflow. Preserve and never move rejected `v0.2.0`
+   through `v0.2.6`.
 2. Repeat the required candidate-bound Windows public proof profiles without
    private checkout inputs or evidence overrides, generate the sanitized
    receipt, and configure the publish proof.
@@ -285,7 +314,7 @@ changes that belong to the user and must remain untouched.
 
 ## Exact Next Step
 
-Commit and push the reviewed `0.2.6` auditor correction, then require clean
+Validate, review, commit, and push the `0.2.7` auditor correction, then require clean
 exact CI before creating the fresh tag. Do not tag or publish if the protected Windows
 live-proof workflow cannot be completed for the same exact candidate.
 

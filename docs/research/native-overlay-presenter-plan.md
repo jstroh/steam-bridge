@@ -2142,7 +2142,11 @@ cycle's native-host rectangle; its detected panel and click must stay inside
 that exact host. The authoritative per-monitor window-DPI scale must
 independently match the authenticated renderer DPR and physical-client/
 renderer-viewport ratio. Windows presenter `bounds` are already physical
-native-host pixels and must not be reinterpreted as logical DIPs. Ordered
+native-host pixels and must not be reinterpreted as logical DIPs. Readiness and
+exact pre-dispatch frames must retain the target, glyph, scale, and the panel's
+left/top/right/width anchor. Each full panel rectangle is independently valid
+and contains the target, so only its bottom/height may refine as Steam finishes
+rendering; horizontal or top drift fails closed. Ordered
 timestamps connect active plus shown
 state, target selection, focus confirmation, the pre-input dispatch boundary,
 inactive/closed state, parking, and cycle completion; each completion precedes

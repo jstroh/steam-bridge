@@ -4783,19 +4783,28 @@ function verifyPersistentCloseProbe(
       );
       if (closeTargetSchema === PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA) {
         const cycleReadyTarget = objectOrEmpty(cycleReadyAnalysis.target);
-        const readyTargetMatches =
+        const cycleReadyPanel = normalizeRect(cycleReadyTarget.panel);
+        const readyTargetValid =
           ordinal === 1
-            ? isDeepStrictEqual(cycleReadyTarget, target)
-            : isDeepStrictEqual(
-                persistentCloseTargetStableFields(cycleReadyTarget),
-                persistentCloseTargetStableFields(target)
-              ) &&
-              isValidPersistentReuseCycleOneCloseTarget(
+            ? isValidWebCloseGlyphTarget(cycleReadyTarget)
+            : isValidPersistentReuseCycleOneCloseTarget(
                 cycleReadyTarget,
                 baselineCloseTarget,
                 ordinal,
                 closeTargetSchema
               );
+        const readyTargetMatches = Boolean(
+          readyTargetValid &&
+            cycleReadyPanel &&
+            Number(cycleReadyTarget.x) >= cycleReadyPanel.left &&
+            Number(cycleReadyTarget.x) <= cycleReadyPanel.right &&
+            Number(cycleReadyTarget.y) >= cycleReadyPanel.top &&
+            Number(cycleReadyTarget.y) <= cycleReadyPanel.bottom &&
+            isDeepStrictEqual(
+              persistentCloseTargetStableFields(cycleReadyTarget),
+              persistentCloseTargetStableFields(target)
+            )
+        );
         expect(
           cycleReadyEvents.length === 1 &&
             events.indexOf(cycleReadyEvent) < events.indexOf(targets[index]) &&
@@ -7959,13 +7968,31 @@ function isValidPersistentReuseCycleOneCloseTarget(
 
 function persistentCloseTargetStableFields(targetValue) {
   const target = objectOrEmpty(targetValue);
+  const panel = normalizeRect(target.panel);
+  const detectedPanel = objectOrEmpty(target.detectedPanel);
+  const detectedPanelRect = normalizeRect(detectedPanel.rect);
   const reuse = objectOrEmpty(target.persistentReuse);
   const currentPanel = normalizeRect(reuse.currentPanel);
   return {
     x: target.x,
     y: target.y,
     source: target.source,
-    panel: target.panel,
+    panelAnchor: panel
+      ? { left: panel.left, top: panel.top, right: panel.right, width: panel.width }
+      : null,
+    detectedPanelAnchor: detectedPanelRect
+      ? {
+          source: detectedPanel.source,
+          rect: {
+            left: detectedPanelRect.left,
+            top: detectedPanelRect.top,
+            right: detectedPanelRect.right,
+            width: detectedPanelRect.width
+          },
+          topRun: detectedPanel.topRun,
+          upperBandSampleCount: detectedPanel.upperBandSampleCount
+        }
+      : null,
     scale: target.scale,
     approach: target.approach,
     insets: target.insets,
@@ -8974,6 +9001,7 @@ function runSelfTest() {
     );
     writeCurrentPersistentReuseFixture(persistentPhysicalBoundsRoot, {
       boundsPhysical: true,
+      readyTargetPanelHeightDriftCycle: 1,
       readyPanelHeightDriftCycle: 2
     });
     const persistentPhysicalBoundsSummary = summarizeWindowsOverlayMatrixArtifacts(
@@ -8983,9 +9011,30 @@ function runSelfTest() {
     assert.equal(persistentPhysicalBoundsSummary.caseSummaries[0].persistentReuseProof, true);
     assertFixtureSummaryFailure(
       tempRoot,
+      "persistent-reuse-ready-target-panel-horizontal-drift",
+      writeCurrentPersistentReuseFixture,
+      { boundsPhysical: true, readyTargetPanelHorizontalDriftCycle: 1 },
+      "persistent cycle 1 proves the current Steam panel is rendered before close input"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-ready-target-panel-top-drift",
+      writeCurrentPersistentReuseFixture,
+      { boundsPhysical: true, readyTargetPanelTopDriftCycle: 1 },
+      "persistent cycle 1 proves the current Steam panel is rendered before close input"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
       "persistent-reuse-ready-panel-horizontal-drift",
       writeCurrentPersistentReuseFixture,
       { boundsPhysical: true, readyPanelHorizontalDriftCycle: 2 },
+      "persistent cycle 2 proves the current Steam panel is rendered before close input"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-ready-panel-top-drift",
+      writeCurrentPersistentReuseFixture,
+      { boundsPhysical: true, readyPanelTopDriftCycle: 2 },
       "persistent cycle 2 proves the current Steam panel is rendered before close input"
     );
     const persistentMultipleStableRoot = path.join(
@@ -14102,6 +14151,33 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
           target: structuredClone(target.payload.target)
         }
       };
+      if (options.readyTargetPanelHeightDriftCycle === cycle) {
+        const readyTarget = objectOrEmpty(readyEvent.payload.analysis.target);
+        const panel = objectOrEmpty(readyTarget.panel);
+        const detectedPanelRect = objectOrEmpty(objectOrEmpty(readyTarget.detectedPanel).rect);
+        panel.bottom += 40;
+        panel.height += 40;
+        detectedPanelRect.bottom += 40;
+        detectedPanelRect.height += 40;
+      }
+      if (options.readyTargetPanelHorizontalDriftCycle === cycle) {
+        const readyTarget = objectOrEmpty(readyEvent.payload.analysis.target);
+        const panel = objectOrEmpty(readyTarget.panel);
+        const detectedPanelRect = objectOrEmpty(objectOrEmpty(readyTarget.detectedPanel).rect);
+        panel.right += 40;
+        panel.width += 40;
+        detectedPanelRect.right += 40;
+        detectedPanelRect.width += 40;
+      }
+      if (options.readyTargetPanelTopDriftCycle === cycle) {
+        const readyTarget = objectOrEmpty(readyEvent.payload.analysis.target);
+        const panel = objectOrEmpty(readyTarget.panel);
+        const detectedPanelRect = objectOrEmpty(objectOrEmpty(readyTarget.detectedPanel).rect);
+        panel.top += 1;
+        panel.bottom += 1;
+        detectedPanelRect.top += 1;
+        detectedPanelRect.bottom += 1;
+      }
       if (options.readyPanelHeightDriftCycle === cycle && cycle > 1) {
         const currentPanel = objectOrEmpty(
           objectOrEmpty(readyEvent.payload.analysis.target).persistentReuse
@@ -14118,6 +14194,15 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
         if (currentPanel) {
           currentPanel.right += 40;
           currentPanel.width += 40;
+        }
+      }
+      if (options.readyPanelTopDriftCycle === cycle && cycle > 1) {
+        const reuse = objectOrEmpty(readyEvent.payload.analysis.target).persistentReuse;
+        const currentPanel = objectOrEmpty(reuse).currentPanel;
+        if (currentPanel) {
+          currentPanel.top += 1;
+          currentPanel.bottom += 1;
+          reuse.currentPanelTopDelta = 1;
         }
       }
       closeProbe.push(readyEvent);
