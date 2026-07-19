@@ -7173,12 +7173,18 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         '$input' -eq 'web-close-click-sendinput' -and
         (-not `$webCloseReadiness -or `$webCloseReadiness.ready -ne `$true)
       ) {
-        Write-ProbeEvent "probe:close-input-skipped" ([PSCustomObject]@{
+        # Steam can replace its first rendered overlay frame between the
+        # readiness capture and the exact pre-dispatch capture. Keep the
+        # probe fail-closed, but retry the readiness cycle within the existing
+        # deadline instead of treating that transient frame replacement as a
+        # terminal input failure.
+        Write-ProbeEvent "probe:web-close-readiness-invalidated" ([PSCustomObject]@{
           cycle = `$cycle
-          reason = "web-close-readiness-not-proved"
+          reason = "exact-pre-dispatch-frame-not-ready"
+          initialReadiness = `$initialWebCloseReadiness
           readiness = `$webCloseReadiness
         })
-        `$terminalFailure = `$true
+        Start-Sleep -Milliseconds 250
         continue
       }
       `$target = `$null

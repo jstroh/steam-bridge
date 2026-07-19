@@ -126,6 +126,18 @@ geometry, drag, maximize/restore, minimize/focus return, and full-size
 Shift+Tab overlay open/close. All five public Release asset digests match the
 retained local records.
 
+Immutable unpublished `v0.2.12` passed CI, Release assembly, independent
+tarball verification, protected deployment, native load, render health, and
+public Steam readiness, but is rejected evidence. Its persistent close probe
+proved Steam's initial bright/spinner frame and then observed a blank Steam
+navigation frame in the exact pre-dispatch capture. The probe correctly sent
+no input; the harness incorrectly made this transient proof invalidation
+terminal. The replacement candidate retains exact-frame fail-closed targeting,
+records the invalidation, retries only inside the existing deadline, and
+requires the semantic auditor to account for every superseded readiness proof.
+The failed roots and `v0.2.12` tag remain immutable and cannot support a receipt
+or publication.
+
 Exact `v0.2.1` through `v0.2.3` passed progressively more CI and Release gates
 but remain rejected and unpublished: the failures covered interactive
 `WS_EX_NOACTIVATE`, asynchronous achievement sequencing and unproved close

@@ -4340,6 +4340,9 @@ function verifyPersistentCloseProbe(
 ) {
   const start = events.filter((event) => event && event.type === "probe:start");
   const readyEvents = events.filter((event) => event && event.type === "probe:web-close-ready");
+  const readinessInvalidations = events.filter(
+    (event) => event && event.type === "probe:web-close-readiness-invalidated"
+  );
   const targets = events.filter((event) => event && event.type === "probe:web-close-click-target");
   const focus = events.filter((event) => event && event.type === "probe:native-presenter-focus");
   const dispatchStarts = events.filter(
@@ -4407,8 +4410,9 @@ function verifyPersistentCloseProbe(
         failures
       );
       expect(
-        readyEvents.length === WINDOWS_PERSISTENT_REUSE_CYCLES,
-        `${caseName}: persistent close probe records one current-panel readiness proof per cycle`,
+        readyEvents.length ===
+          WINDOWS_PERSISTENT_REUSE_CYCLES + readinessInvalidations.length,
+        `${caseName}: persistent close probe accounts for every superseded readiness proof`,
         failures
       );
     }
@@ -4623,7 +4627,11 @@ function verifyPersistentCloseProbe(
       const cycleReadyEvents = readyEvents.filter(
         (readyEvent) => Number(objectOrEmpty(readyEvent?.payload).cycle) === ordinal
       );
-      const cycleReadyEvent = cycleReadyEvents[0];
+      const cycleReadinessInvalidations = readinessInvalidations.filter(
+        (invalidation) =>
+          Number(objectOrEmpty(invalidation?.payload).cycle) === ordinal
+      );
+      const cycleReadyEvent = cycleReadyEvents.at(-1);
       const cycleReadyPayload = objectOrEmpty(cycleReadyEvent?.payload);
       const cycleReadyAnalysis = objectOrEmpty(cycleReadyPayload.analysis);
       const dispatchStart = dispatchStarts[index];
@@ -4805,8 +4813,36 @@ function verifyPersistentCloseProbe(
               persistentCloseTargetStableFields(target)
             )
         );
+        const invalidatedReadinessValid = cycleReadinessInvalidations.every(
+          (invalidation, invalidationIndex) => {
+            const invalidationPayload = objectOrEmpty(invalidation?.payload);
+            const initialReadiness = objectOrEmpty(
+              invalidationPayload.initialReadiness
+            );
+            const exactReadiness = objectOrEmpty(invalidationPayload.readiness);
+            const supersededReadyEvent = cycleReadyEvents[invalidationIndex];
+            const nextReadyEvent = cycleReadyEvents[invalidationIndex + 1];
+            const supersededReadyAnalysis = objectOrEmpty(
+              objectOrEmpty(supersededReadyEvent?.payload).analysis
+            );
+            return Boolean(
+              invalidationPayload.reason ===
+                "exact-pre-dispatch-frame-not-ready" &&
+                initialReadiness.ready === true &&
+                isDeepStrictEqual(
+                  initialReadiness,
+                  supersededReadyAnalysis
+                ) &&
+                exactReadiness.ready !== true &&
+                events.indexOf(supersededReadyEvent) <
+                  events.indexOf(invalidation) &&
+                events.indexOf(invalidation) < events.indexOf(nextReadyEvent)
+            );
+          }
+        );
         expect(
-          cycleReadyEvents.length === 1 &&
+          cycleReadyEvents.length === cycleReadinessInvalidations.length + 1 &&
+            invalidatedReadinessValid &&
             events.indexOf(cycleReadyEvent) < events.indexOf(targets[index]) &&
             cycleReadyAnalysis.ready === true &&
             cycleReadyAnalysis.rectSource === "screenshot-steam-web-panel" &&
@@ -8995,6 +9031,32 @@ function runSelfTest() {
     assert.equal(persistentReuseSummary.cleanup.taskFileGuardOk, true);
     assert.equal(persistentReuseSummary.cleanup.taskFailureStage, "success");
     assert.equal(persistentReuseSummary.cleanup.taskRunnerTerminatedWithoutDone, false);
+    const persistentReadinessInvalidationRoot = path.join(
+      tempRoot,
+      "persistent-reuse-readiness-invalidation"
+    );
+    writeCurrentPersistentReuseFixture(persistentReadinessInvalidationRoot, {
+      readinessInvalidationCycle: 1
+    });
+    assert.deepEqual(
+      summarizeWindowsOverlayMatrixArtifacts(persistentReadinessInvalidationRoot)
+        .failures,
+      []
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-unaccounted-readiness-proof",
+      writeCurrentPersistentReuseFixture,
+      { unaccountedReadinessProofCycle: 1 },
+      "accounts for every superseded readiness proof"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "persistent-reuse-malformed-readiness-invalidation",
+      writeCurrentPersistentReuseFixture,
+      { malformedReadinessInvalidationCycle: 1 },
+      "proves the current Steam panel is rendered before close input"
+    );
     const persistentPhysicalBoundsRoot = path.join(
       tempRoot,
       "persistent-reuse-physical-presenter-bounds"
@@ -14206,6 +14268,29 @@ function writeCurrentPersistentReuseFixture(root, options = {}) {
         }
       }
       closeProbe.push(readyEvent);
+      if (
+        options.readinessInvalidationCycle === cycle ||
+        options.malformedReadinessInvalidationCycle === cycle ||
+        options.unaccountedReadinessProofCycle === cycle
+      ) {
+        if (options.unaccountedReadinessProofCycle !== cycle) {
+          closeProbe.push({
+            type: "probe:web-close-readiness-invalidated",
+            at: at(baseSecond + 1),
+            payload: {
+              cycle,
+              reason: "exact-pre-dispatch-frame-not-ready",
+              initialReadiness: structuredClone(readyEvent.payload.analysis),
+              readiness: {
+                ready: options.malformedReadinessInvalidationCycle === cycle
+              }
+            }
+          });
+        }
+        const retriedReadyEvent = structuredClone(readyEvent);
+        retriedReadyEvent.payload.attempt = 2;
+        closeProbe.push(retriedReadyEvent);
+      }
     }
     const focus = structuredClone(firstFocus);
     focus.at = at(baseSecond + 3);

@@ -2,18 +2,19 @@
 
 Last reviewed: 2026-07-19
 
-Review anchor: `ea10a22` (`Fix scaled native host sizing`), published as
-immutable `v0.2.11` with exact-candidate Windows live proof.
+Review anchor: `2b66ef4` (`Improve Windows native host presentation`), retained
+as immutable rejected candidate `v0.2.12` after exact-candidate proof exposed a
+release-harness readiness race.
 
 ## Active Goal
 
-Ship `v0.2.12` with the reviewed Windows standalone-host slice: high-refresh
+Ship `v0.2.13` with the reviewed Windows standalone-host slice: high-refresh
 DXGI pacing, immediate presentation of new Electron frames, logical minimum
 client size, an accessible native application menu, and unambiguous per-
 monitor-DPI transitions. Prove the exact immutable package candidate before
 publication, then replace the Electron consumer's local junction with the exact
-registry package and repeat its critical manual path. Do not change or reuse
-published `v0.2.11` bytes or tag.
+registry package and repeat its critical manual path. Do not move or reuse the
+published `v0.2.11` or rejected `v0.2.12` tags.
 
 ## Current State
 
@@ -129,7 +130,23 @@ owned-popup and passive-notification receipt assumptions and was published.
 `v0.2.9` is the cursor-suppression predecessor. `v0.2.10` adds exact Steam
 checkout-dialog adoption. `v0.2.11` corrects logical standalone client sizing
 at high DPI and carries a fresh full live proof and downstream registry-backed
-pass.
+pass. Exact `v0.2.12` at `2b66ef4` passed CI, Release assembly, independent
+tarball verification, protected deployment, and public Steam readiness, but is
+rejected and unpublished. During persistent-reuse close proof Steam replaced a
+just-proved bright/spinner frame with its blank navigation frame before the
+exact pre-dispatch screenshot. The probe correctly sent no input, but
+incorrectly made that transient invalidation terminal. The retained failed
+roots and immutable tag are diagnostic evidence only.
+
+The `v0.2.13` repair keeps the same fail-closed boundary: input is still
+forbidden unless the exact pre-dispatch screenshot proves the current Steam
+panel and close target. A transient frame replacement now records an explicit
+readiness-invalidation event and retries inside the existing overall deadline.
+The semantic auditor requires every extra readiness proof to have exactly one
+ordered invalidation before the final successful proof for that cycle. Package
+smoke also now derives Steam userdata IDs with native path components instead
+of literal POSIX separators, so the Linux fixture is valid under both POSIX and
+Windows-native Python hosts.
 
 ## Consumer Evidence
 
@@ -235,12 +252,14 @@ files. The release-scoped GitHub proof secret was deleted after publication.
 
 ## Verification
 
-The reviewed `0.2.12` source passes 206/206 repository tests, TypeScript, Rust
+The reviewed `0.2.13` source passes 206/206 repository tests, TypeScript, Rust
 format and compile checks, the platform policy, Steam API coverage, and the
 complete package smoke on Windows with the available Git Bash host. The first
 smoke invocation correctly exposed that `bash` was absent from the default
-PowerShell path; rerunning with the installed Git Bash directory supplied
-completed the gate. Strict workspace Clippy remains an informational baseline
+PowerShell path and that the available Windows-native Python needed an explicit
+Git-Bash path/home adapter; rerunning with those host tools supplied completed
+the gate. The package fixture's separator bug was fixed in source rather than
+hidden by the adapter. Strict workspace Clippy remains an informational baseline
 failure across generated compatibility declarations and longstanding crate-
 wide lints; the required zero-warning release checks are Rust formatting and
 compilation. The consumer passes ESLint, TypeScript, and 4/4 tests. Commit,

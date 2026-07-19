@@ -1720,7 +1720,8 @@ function runWindowsSmokeHelperStaticChecks() {
     "`$backdropAverageMax -le 96",
     '[string]`$target.source -ceq "screenshot-steam-web-close-glyph"',
     '[string]`$target.source -ceq "persistent-cycle-one-steam-web-close-glyph"',
-    'reason = "web-close-readiness-not-proved"',
+    'Write-ProbeEvent "probe:web-close-readiness-invalidated"',
+    'reason = "exact-pre-dispatch-frame-not-ready"',
     'reason = "direct-close-glyph-target-not-proved"',
     "`$fallbackRadius = [int][Math]::Max(128, [Math]::Round(128 * `$normalizedScale))",
     '"dpi-scaled-coarse"',
@@ -1743,6 +1744,35 @@ function runWindowsSmokeHelperStaticChecks() {
       `Windows persistent verify-only gate missing ${expected}`
     );
   }
+  const readinessInvalidationStart = matrixHelper.indexOf(
+    'Write-ProbeEvent "probe:web-close-readiness-invalidated"'
+  );
+  const readinessInvalidationEnd = matrixHelper.indexOf(
+    "      `$target = `$null",
+    readinessInvalidationStart
+  );
+  const readinessInvalidationBlock = matrixHelper.slice(
+    readinessInvalidationStart,
+    readinessInvalidationEnd
+  );
+  assert.ok(
+    readinessInvalidationStart >= 0 &&
+      readinessInvalidationEnd > readinessInvalidationStart &&
+      readinessInvalidationBlock.includes(
+        'reason = "exact-pre-dispatch-frame-not-ready"'
+      ) &&
+      readinessInvalidationBlock.includes(
+        "initialReadiness = `$initialWebCloseReadiness"
+      ) &&
+      readinessInvalidationBlock.includes("Start-Sleep -Milliseconds 250") &&
+      readinessInvalidationBlock.includes("continue"),
+    "Windows close probe must retry a transient exact-frame readiness invalidation"
+  );
+  assert.doesNotMatch(
+    readinessInvalidationBlock,
+    /`\$terminalFailure\s*=\s*`\$true|Send-NativeMouseClick|Send-NativeKeyChord|\.SendKeys\(/,
+    "Windows transient readiness invalidation must remain fail-closed without becoming terminal"
+  );
   assert.doesNotMatch(
     matrixHelper,
     /\[regex\]::Matches\(`\$text, '\"active\"\\s\*:\\s\*(?:true|false)'\)/,

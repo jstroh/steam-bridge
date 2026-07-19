@@ -520,7 +520,9 @@ for path in paths:
         continue
     root_name, offset = read_c_string(data, 1)
     shortcuts, _ = read_object(data, offset)
-    user_id = path.split("/userdata/", 1)[1].split("/", 1)[0]
+    path_parts = os.path.normpath(path).split(os.sep)
+    userdata_index = path_parts.index("userdata")
+    user_id = path_parts[userdata_index + 1]
     for index, entry in shortcuts.items():
         if not isinstance(entry, dict) or entry.get("appname") != app_name:
             continue
