@@ -1714,6 +1714,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "webClosePanelGeometry = [PSCustomObject]@{",
     "persistentPanelGeometryReady = `$persistentPanelGeometryReady",
     "persistentTargetSourceReady = `$persistentTargetSourceReady",
+    "directCloseGlyphReady = `$directCloseGlyphReady",
+    '[int]`$target.glyph.sampleCount -eq 16',
+    '[int]`$target.glyph.score -ge [int]`$target.glyph.minimumScore',
+    '[int]`$target.glyph.score -le [int]`$target.glyph.sampleCount',
     "modalBackdropReady = `$modalBackdropReady",
     "persistentModalBackdropReady = `$modalBackdropReady",
     "modalBackdrop = [PSCustomObject]@{",
@@ -1724,6 +1728,7 @@ function runWindowsSmokeHelperStaticChecks() {
     'reason = "exact-pre-dispatch-frame-not-ready"',
     'reason = "direct-close-glyph-target-not-proved"',
     "`$fallbackRadius = [int][Math]::Max(128, [Math]::Round(128 * `$normalizedScale))",
+    "Preserve each search rectangle's coordinate",
     '"dpi-scaled-coarse"',
     '"dpi-scaled-refined"',
     "[object]`$SearchBounds = `$null",
@@ -1744,6 +1749,11 @@ function runWindowsSmokeHelperStaticChecks() {
       `Windows persistent verify-only gate missing ${expected}`
     );
   }
+  assert.doesNotMatch(
+    matrixHelper,
+    /\$Search(?:Left|Top)\s*%\s*2/,
+    "Windows close-glyph sampling must preserve the search rectangle's coordinate parity"
+  );
   const readinessInvalidationStart = matrixHelper.indexOf(
     'Write-ProbeEvent "probe:web-close-readiness-invalidated"'
   );

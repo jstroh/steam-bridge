@@ -2,19 +2,19 @@
 
 Last reviewed: 2026-07-19
 
-Review anchor: `2b66ef4` (`Improve Windows native host presentation`), retained
-as immutable rejected candidate `v0.2.12` after exact-candidate proof exposed a
-release-harness readiness race.
+Review anchor: `a4e6f03` (`Retry transient Steam close readiness`), retained as
+immutable rejected candidate `v0.2.13` after exact-candidate proof exposed two
+additional screenshot-classifier defects on Steam's Friends surface.
 
 ## Active Goal
 
-Ship `v0.2.13` with the reviewed Windows standalone-host slice: high-refresh
+Ship `v0.2.14` with the reviewed Windows standalone-host slice: high-refresh
 DXGI pacing, immediate presentation of new Electron frames, logical minimum
 client size, an accessible native application menu, and unambiguous per-
 monitor-DPI transitions. Prove the exact immutable package candidate before
 publication, then replace the Electron consumer's local junction with the exact
 registry package and repeat its critical manual path. Do not move or reuse the
-published `v0.2.11` or rejected `v0.2.12` tags.
+published `v0.2.11` or rejected `v0.2.12`/`v0.2.13` tags.
 
 ## Current State
 
@@ -138,7 +138,7 @@ exact pre-dispatch screenshot. The probe correctly sent no input, but
 incorrectly made that transient invalidation terminal. The retained failed
 roots and immutable tag are diagnostic evidence only.
 
-The `v0.2.13` repair keeps the same fail-closed boundary: input is still
+The `v0.2.13` repair kept the same fail-closed boundary: input remained
 forbidden unless the exact pre-dispatch screenshot proves the current Steam
 panel and close target. A transient frame replacement now records an explicit
 readiness-invalidation event and retries inside the existing overall deadline.
@@ -146,7 +146,27 @@ The semantic auditor requires every extra readiness proof to have exactly one
 ordered invalidation before the final successful proof for that cycle. Package
 smoke also now derives Steam userdata IDs with native path components instead
 of literal POSIX separators, so the Linux fixture is valid under both POSIX and
-Windows-native Python hosts.
+Windows-native Python hosts. Exact `v0.2.13` passed main/tag CI, Release
+assembly, independent candidate verification, protected deployment, the
+three-cycle persistent profile, all four checkout cases, and all ten shortcut
+routes. Its managed profile then stopped fail-closed on the fully rendered
+Friends panel. The coarse close-glyph scan had forced an even coordinate
+origin, permanently skipping a valid close glyph centered on the other Y
+phase. After that was repaired, a generic brightness sampler still rejected
+Friends' intentionally near-black navigation strip even though the direct
+close glyph, modal backdrop, geometry, and loaded content were all proved.
+No input was sent in either rejected run, no process crashed, and the tag is
+unpublished diagnostic evidence only.
+
+The `v0.2.14` repair preserves each screenshot search rectangle's coordinate
+phase and accepts the directly sampled, thresholded close glyph as chrome
+evidence for the black-navigation layout. It does not relax dispatch: exact
+glyph score/coordinates, modal containment, dark backdrop, loaded content,
+foreground ownership, and the exact pre-dispatch frame remain independently
+mandatory. A focused protected-candidate Friends rerun found the glyph at its
+actual coordinate with a 15/16 score, dispatched one bounded click, completed
+the active/inactive/park lifecycle, retained Steam continuity, deleted its
+task, and passed the independent semantic summarizer with zero crashes.
 
 ## Consumer Evidence
 
@@ -252,7 +272,7 @@ files. The release-scoped GitHub proof secret was deleted after publication.
 
 ## Verification
 
-The reviewed `0.2.13` source passes 206/206 repository tests, TypeScript, Rust
+The reviewed `0.2.14` source passes 206/206 repository tests, TypeScript, Rust
 format and compile checks, the platform policy, Steam API coverage, and the
 complete package smoke on Windows with the available Git Bash host. The first
 smoke invocation correctly exposed that `bash` was absent from the default

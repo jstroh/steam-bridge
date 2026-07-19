@@ -117,6 +117,13 @@ Close Chromium DevTools before validating Steam overlay behavior. DevTools can
 change Chromium surface activity and timing; it is not a supported way to make
 the Steam surface repaint.
 
+The repository's Windows release matrix is fail-closed around synthetic close
+input. An exact pre-dispatch screenshot must prove the foreground native host,
+contained modal geometry, a DPI-scaled Steam close glyph, the dimmed backdrop,
+and loaded content. Coordinates are never reused across frames. Friends/chat's
+dark navigation layout is accepted only when the close glyph itself passes the
+direct pixel score.
+
 On Windows, a managed presenter is non-activating and click-through while it
 is parked. When Steam opens an interactive surface, the presenter becomes
 focusable inside the Electron content bounds; after Steam closes, it returns

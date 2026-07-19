@@ -5156,13 +5156,6 @@ function Find-WebCloseGlyphFromScreenshot {
         [string]`$Strategy
       )
 
-      if ((`$SearchLeft % 2) -ne 0) {
-        `$SearchLeft += 1
-      }
-      if ((`$SearchTop % 2) -ne 0) {
-        `$SearchTop += 1
-      }
-
       `$best = `$null
       for (`$y = `$SearchTop; `$y -le `$SearchBottom; `$y += `$Step) {
         for (`$x = `$SearchLeft; `$x -le `$SearchRight; `$x += `$Step) {
@@ -5225,7 +5218,10 @@ function Find-WebCloseGlyphFromScreenshot {
     # Steam can render Friends and other community panels substantially narrower
     # than the dimmed background run that identifies the modal. If the tight
     # search misses, make one bounded, DPI-scaled coarse pass and then refine the
-    # unique X-shaped candidate. Close input remains gated on the glyph score.
+    # unique X-shaped candidate. Preserve each search rectangle's coordinate
+    # parity: forcing an even origin can make a coarse pass permanently skip a
+    # valid glyph whose center lies on the other phase. Close input remains gated
+    # on the glyph score.
     `$localLeft = [int][Math]::Max(`$allowedLeft, `$CandidateX - 80)
     `$localTop = [int][Math]::Max(`$allowedTop, `$CandidateY - 50)
     `$localRight = [int][Math]::Min(`$allowedRight, `$CandidateX + 80)
@@ -5786,7 +5782,25 @@ function Test-WebClosePanelScreenshot {
     }
 
     `$averageMax = if (`$total -gt 0) { `$maxSum / `$total } else { 0 }
-    `$chromeReady = (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12)))
+    `$directCloseGlyphReady = (
+      [string]`$target.source -ceq "screenshot-steam-web-close-glyph" -and
+      `$target.glyph -and
+      [int]`$target.glyph.schema -eq 1 -and
+      [int]`$target.glyph.x -eq [int]`$target.x -and
+      [int]`$target.glyph.y -eq [int]`$target.y -and
+      [int]`$target.glyph.sampleCount -eq 16 -and
+      [int]`$target.glyph.minimumScore -eq 10 -and
+      [int]`$target.glyph.score -ge [int]`$target.glyph.minimumScore -and
+      [int]`$target.glyph.score -le [int]`$target.glyph.sampleCount
+    )
+    # Steam Friends renders a deliberately near-black navigation strip. Treat
+    # the directly sampled, thresholded close glyph as chrome evidence in that
+    # layout; backdrop, modal geometry, content, and target-source gates remain
+    # independently mandatory before any input can be dispatched.
+    `$chromeReady = (
+      (`$total -gt 0 -and `$averageMax -gt 16 -and `$nonBlack -gt ([Math]::Max(6, `$total * 0.12))) -or
+      `$directCloseGlyphReady
+    )
     `$contentReady = (`$contentTotal -gt 0 -and (`$contentBright -gt 3 -or `$contentMaxSeen -gt 120))
     [PSCustomObject]@{
       ready = (`$chromeReady -and `$contentReady -and `$webClosePanelGeometryReady -and `$persistentTargetSourceReady -and `$persistentCurrentPanelReady -and `$modalBackdropReady)
@@ -5844,6 +5858,7 @@ function Test-WebClosePanelScreenshot {
       averageMax = `$averageMax
       maxSeen = `$maxSeen
       chromeReady = `$chromeReady
+      directCloseGlyphReady = `$directCloseGlyphReady
       contentTotal = `$contentTotal
       contentBright = `$contentBright
       contentMaxSeen = `$contentMaxSeen

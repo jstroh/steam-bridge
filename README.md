@@ -120,6 +120,14 @@ change Chromium surface activity and timing; it is not a supported way to make
 the Steam surface repaint, and results collected with it open are not treated as
 release evidence.
 
+The Windows release matrix is fail-closed around synthetic close input. Its
+exact pre-dispatch screenshot must prove the foreground native host, contained
+modal geometry, a DPI-scaled Steam close glyph, the dimmed backdrop, and loaded
+content. A transient first-frame replacement is retried within the existing
+deadline, but coordinates are never reused across frames. Friends/chat's dark
+navigation layout is accepted only when the close glyph itself passes the
+direct pixel score; a generic dark rectangle is not sufficient.
+
 On Windows, a managed presenter is non-activating and click-through while it
 is parked. When Steam opens an interactive surface, the presenter becomes
 focusable inside the Electron content bounds; after Steam closes, it returns
