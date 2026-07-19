@@ -75,9 +75,12 @@ function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
     cwd: repoRoot,
     encoding: "utf8",
-    shell: process.platform === "win32"
+    shell: false
   });
 
+  if (metadata.error) {
+    throw metadata.error;
+  }
   if (metadata.status !== 0) {
     process.stderr.write(metadata.stderr || metadata.stdout);
     process.exit(metadata.status ?? 1);
@@ -239,12 +242,15 @@ function assertNativeBindingCoverage() {
 }
 
 function assertSteamworksEnumCoverage() {
-  const check = spawnSync("node", [path.join(repoRoot, "scripts", "generate-steamworks-enums.cjs"), "--check"], {
+  const check = spawnSync(process.execPath, [path.join(repoRoot, "scripts", "generate-steamworks-enums.cjs"), "--check"], {
     cwd: repoRoot,
     encoding: "utf8",
-    shell: process.platform === "win32"
+    shell: false
   });
 
+  if (check.error) {
+    throw check.error;
+  }
   if (check.status !== 0) {
     process.stderr.write(check.stderr || check.stdout);
     process.exit(check.status ?? 1);

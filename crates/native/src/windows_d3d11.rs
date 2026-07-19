@@ -1,7 +1,9 @@
 use std::ffi::c_void;
 use std::slice;
 use windows::core::{Interface, PCSTR};
-use windows::Win32::Foundation::{DXGI_STATUS_OCCLUDED, HANDLE, HMODULE, HWND};
+use windows::Win32::Foundation::{
+    CloseHandle, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE, HWND, WAIT_FAILED, WAIT_OBJECT_0,
+};
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
     ID3DBlob, ID3DInclude, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL,
@@ -10,21 +12,30 @@ use windows::Win32::Graphics::Direct3D::{
 };
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11ClassLinkage, ID3D11DepthStencilView, ID3D11Device, ID3D11Device1,
-    ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader, ID3D11RenderTargetView,
+    ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader, ID3D11Query, ID3D11RenderTargetView,
     ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
-    D3D11_BIND_SHADER_RESOURCE, D3D11_COMPARISON_NEVER, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-    D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
+    D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_COMPARISON_NEVER,
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_QUERY_DESC,
+    D3D11_QUERY_EVENT, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
     D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT, D3D11_VIEWPORT,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC,
+    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
+    DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory6,
-    IDXGIOutput, IDXGISwapChain1, DXGI_CREATE_FACTORY_FLAGS, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-    DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
-    DXGI_SWAP_CHAIN_FLAG, DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_CREATE_FACTORY_FLAGS,
+    DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT,
+    DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+    DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+    DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
+use windows::Win32::System::Threading::WaitForSingleObjectEx;
+
+const FRAME_LATENCY_WAIT_TIMEOUT_MS: u32 = 50;
+const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
+const SHARED_TEXTURE_COPY_TIMEOUT_MS: u128 = 500;
 
 const VERTEX_SHADER: &[u8] = br#"
 struct VertexOutput {
@@ -78,11 +89,22 @@ pub struct WindowsD3d11Renderer {
     source_mode: Option<SourceMode>,
     source_width: u32,
     source_height: u32,
+    source_format: DXGI_FORMAT,
+    source_sample_count: u32,
+    source_sample_quality: u32,
     width: u32,
     height: u32,
     feature_level: D3D_FEATURE_LEVEL,
     adapter_name: String,
     last_present: i32,
+    frame_latency_waitable_object: HANDLE,
+    frame_latency_wait_timeout_count: u64,
+    shared_texture_copy_query: ID3D11Query,
+    shared_texture_copy_slow_count: u64,
+    shared_texture_full_copy_count: u64,
+    shared_texture_partial_copy_count: u64,
+    shared_texture_storage_recreate_count: u64,
+    last_shared_texture_content_rect: [u32; 4],
     cpu_upload_count: u64,
     shared_texture_import_count: u64,
 }
@@ -107,6 +129,7 @@ impl WindowsD3d11Renderer {
         handle: usize,
         source_width: u32,
         source_height: u32,
+        content_rect: (u32, u32, u32, u32),
     ) -> Result<Self, String> {
         let mut failures = Vec::new();
         if let Ok(adapter) = adapter_for_shared_resource(handle) {
@@ -114,7 +137,12 @@ impl WindowsD3d11Renderer {
                 adapter_name(&adapter).unwrap_or_else(|_| "matched DXGI adapter".to_owned());
             match Self::new_with_adapter(hwnd, width, height, Some(adapter), false) {
                 Ok(mut renderer) => {
-                    match renderer.import_shared_texture(handle, source_width, source_height) {
+                    match renderer.import_shared_texture(
+                        handle,
+                        source_width,
+                        source_height,
+                        content_rect,
+                    ) {
                         Ok(()) => return Ok(renderer),
                         Err(error) => failures.push(format!("{label}: {error}")),
                     }
@@ -129,7 +157,12 @@ impl WindowsD3d11Renderer {
                 adapter_name(&adapter).unwrap_or_else(|_| "unnamed DXGI adapter".to_owned());
             match Self::new_with_adapter(hwnd, width, height, Some(adapter), false) {
                 Ok(mut renderer) => {
-                    match renderer.import_shared_texture(handle, source_width, source_height) {
+                    match renderer.import_shared_texture(
+                        handle,
+                        source_width,
+                        source_height,
+                        content_rect,
+                    ) {
                         Ok(()) => return Ok(renderer),
                         Err(error) => failures.push(format!("{label}: {error}")),
                     }
@@ -141,7 +174,12 @@ impl WindowsD3d11Renderer {
         if failures.is_empty() {
             match Self::new_with_adapter(hwnd, width, height, None, false) {
                 Ok(mut renderer) => {
-                    renderer.import_shared_texture(handle, source_width, source_height)?;
+                    renderer.import_shared_texture(
+                        handle,
+                        source_width,
+                        source_height,
+                        content_rect,
+                    )?;
                     return Ok(renderer);
                 }
                 Err(error) => failures.push(format!("default DXGI adapter: {error}")),
@@ -196,6 +234,23 @@ impl WindowsD3d11Renderer {
         let device = device.ok_or_else(|| "D3D11CreateDevice returned no device".to_owned())?;
         let context = context.ok_or_else(|| "D3D11CreateDevice returned no context".to_owned())?;
 
+        // Electron owns and pools the shared texture handles supplied to the
+        // paint callback. A D3D11 CopyResource call only queues GPU work, so an
+        // event query is required to prove that the bridge-owned copy no
+        // longer reads Electron's texture before the callback releases it.
+        let query_desc = D3D11_QUERY_DESC {
+            Query: D3D11_QUERY_EVENT,
+            MiscFlags: 0,
+        };
+        let mut shared_texture_copy_query = None;
+        device
+            .CreateQuery(&query_desc, Some(&mut shared_texture_copy_query))
+            .map_err(|error| {
+                format!("ID3D11Device::CreateQuery for shared texture copies failed: {error}")
+            })?;
+        let shared_texture_copy_query = shared_texture_copy_query
+            .ok_or_else(|| "CreateQuery for shared texture copies returned no query".to_owned())?;
+
         let vertex_shader_bytes = compile_shader(VERTEX_SHADER, b"vs_4_0\0")?;
         let pixel_shader_bytes = compile_shader(PIXEL_SHADER, b"ps_4_0\0")?;
         let mut vertex_shader = None;
@@ -247,11 +302,22 @@ impl WindowsD3d11Renderer {
             source_mode: None,
             source_width: 0,
             source_height: 0,
+            source_format: DXGI_FORMAT_UNKNOWN,
+            source_sample_count: 0,
+            source_sample_quality: 0,
             width: width.max(1),
             height: height.max(1),
             feature_level,
             adapter_name,
             last_present: 0,
+            frame_latency_waitable_object: HANDLE::default(),
+            frame_latency_wait_timeout_count: 0,
+            shared_texture_copy_query,
+            shared_texture_copy_slow_count: 0,
+            shared_texture_full_copy_count: 0,
+            shared_texture_partial_copy_count: 0,
+            shared_texture_storage_recreate_count: 0,
+            last_shared_texture_content_rect: [0; 4],
             cpu_upload_count: 0,
             shared_texture_import_count: 0,
         };
@@ -288,14 +354,39 @@ impl WindowsD3d11Renderer {
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
-            SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            // Preserve each presented buffer for Steam's Present hook and
+            // desktop/remote capture while retaining the modern flip-model,
+            // low-latency waitable-object path.
+            SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
             AlphaMode: DXGI_ALPHA_MODE_IGNORE,
-            Flags: 0,
+            Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
         };
         let swap_chain = factory
             .CreateSwapChainForHwnd(&self.device, hwnd, &desc, None, None::<&IDXGIOutput>)
             .map_err(|error| format!("IDXGIFactory2::CreateSwapChainForHwnd failed: {error}"))?;
-        let render_target = create_render_target(&self.device, &swap_chain)?;
+        let swap_chain2: IDXGISwapChain2 = swap_chain
+            .cast()
+            .map_err(|error| format!("IDXGISwapChain1 to IDXGISwapChain2 failed: {error}"))?;
+        swap_chain2
+            .SetMaximumFrameLatency(1)
+            .map_err(|error| format!("IDXGISwapChain2::SetMaximumFrameLatency failed: {error}"))?;
+        let frame_latency_waitable_object = swap_chain2.GetFrameLatencyWaitableObject();
+        if frame_latency_waitable_object.is_invalid() {
+            return Err(
+                "IDXGISwapChain2::GetFrameLatencyWaitableObject returned no handle".to_owned(),
+            );
+        }
+        let render_target = match create_render_target(&self.device, &swap_chain) {
+            Ok(render_target) => render_target,
+            Err(error) => {
+                let _ = CloseHandle(frame_latency_waitable_object);
+                return Err(error);
+            }
+        };
+        if !self.frame_latency_waitable_object.is_invalid() {
+            let _ = CloseHandle(self.frame_latency_waitable_object);
+        }
+        self.frame_latency_waitable_object = frame_latency_waitable_object;
         self.swap_chain = Some(swap_chain);
         self.render_target = Some(render_target);
         Ok(())
@@ -320,7 +411,7 @@ impl WindowsD3d11Renderer {
                 width,
                 height,
                 DXGI_FORMAT_B8G8R8A8_UNORM,
-                DXGI_SWAP_CHAIN_FLAG(0),
+                DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
             )
             .map_err(|error| format!("IDXGISwapChain::ResizeBuffers failed: {error}"))?;
         self.render_target = Some(create_render_target(&self.device, swap_chain)?);
@@ -398,6 +489,7 @@ impl WindowsD3d11Renderer {
         handle: usize,
         expected_width: u32,
         expected_height: u32,
+        content_rect: (u32, u32, u32, u32),
     ) -> Result<(), String> {
         if handle == 0 {
             return Err("Electron shared texture handle is null".to_owned());
@@ -421,13 +513,35 @@ impl WindowsD3d11Renderer {
                 expected_height.max(1)
             ));
         }
+        let (content_x, content_y, content_width, content_height) = content_rect;
+        let content_right = content_x
+            .checked_add(content_width)
+            .ok_or_else(|| "Electron shared texture content rectangle overflows".to_owned())?;
+        let content_bottom = content_y
+            .checked_add(content_height)
+            .ok_or_else(|| "Electron shared texture content rectangle overflows".to_owned())?;
+        if content_width == 0
+            || content_height == 0
+            || content_right > desc.Width
+            || content_bottom > desc.Height
+        {
+            return Err(format!(
+                "Electron shared texture content rectangle {},{} {}x{} exceeds {}x{}",
+                content_x, content_y, content_width, content_height, desc.Width, desc.Height
+            ));
+        }
         if self.source_mode != Some(SourceMode::SharedTexture)
             || self.source_width != desc.Width
             || self.source_height != desc.Height
+            || self.source_format != desc.Format
+            || self.source_sample_count != desc.SampleDesc.Count
+            || self.source_sample_quality != desc.SampleDesc.Quality
             || self.source_texture.is_none()
         {
+            self.shared_texture_storage_recreate_count =
+                self.shared_texture_storage_recreate_count.saturating_add(1);
             let owned_desc = D3D11_TEXTURE2D_DESC {
-                BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+                BindFlags: (D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET).0 as u32,
                 CPUAccessFlags: 0,
                 MiscFlags: 0,
                 Usage: D3D11_USAGE_DEFAULT,
@@ -442,20 +556,97 @@ impl WindowsD3d11Renderer {
             let owned_texture = owned_texture
                 .ok_or_else(|| "CreateTexture2D for shared copy returned no texture".to_owned())?;
             let view = create_source_view(&self.device, &owned_texture)?;
+            let mut clear_view = None;
+            self.device
+                .CreateRenderTargetView(&owned_texture, None, Some(&mut clear_view))
+                .map_err(|error| {
+                    format!("ID3D11Device::CreateRenderTargetView for shared copy failed: {error}")
+                })?;
+            let clear_view = clear_view.ok_or_else(|| {
+                "CreateRenderTargetView for shared copy returned no view".to_owned()
+            })?;
+            self.context
+                .ClearRenderTargetView(&clear_view, &[0.0, 0.0, 0.0, 1.0]);
             self.source_texture = Some(owned_texture);
             self.source_view = Some(view);
         }
-        self.context.CopyResource(
+        let source_box = D3D11_BOX {
+            left: content_x,
+            top: content_y,
+            front: 0,
+            right: content_right,
+            bottom: content_bottom,
+            back: 1,
+        };
+        self.context.CopySubresourceRegion(
             self.source_texture
                 .as_ref()
                 .ok_or_else(|| "Shared-copy texture was not created".to_owned())?,
+            0,
+            content_x,
+            content_y,
+            0,
             &texture,
+            0,
+            Some(&source_box),
         );
+        self.wait_for_shared_texture_copy()?;
         self.source_mode = Some(SourceMode::SharedTexture);
         self.source_width = desc.Width;
         self.source_height = desc.Height;
+        self.source_format = desc.Format;
+        self.source_sample_count = desc.SampleDesc.Count;
+        self.source_sample_quality = desc.SampleDesc.Quality;
+        self.last_shared_texture_content_rect =
+            [content_x, content_y, content_width, content_height];
+        if content_x == 0
+            && content_y == 0
+            && content_width == desc.Width
+            && content_height == desc.Height
+        {
+            self.shared_texture_full_copy_count =
+                self.shared_texture_full_copy_count.saturating_add(1);
+        } else {
+            self.shared_texture_partial_copy_count =
+                self.shared_texture_partial_copy_count.saturating_add(1);
+        }
         self.shared_texture_import_count = self.shared_texture_import_count.saturating_add(1);
         Ok(())
+    }
+
+    unsafe fn wait_for_shared_texture_copy(&mut self) -> Result<(), String> {
+        self.context.End(&self.shared_texture_copy_query);
+        self.context.Flush();
+
+        let started = std::time::Instant::now();
+        let mut recorded_slow_copy = false;
+        loop {
+            let mut completed = 0i32;
+            self.context
+                .GetData(
+                    &self.shared_texture_copy_query,
+                    Some((&mut completed as *mut i32).cast()),
+                    std::mem::size_of::<i32>() as u32,
+                    0,
+                )
+                .map_err(|error| {
+                    format!("ID3D11DeviceContext::GetData for shared texture copy failed: {error}")
+                })?;
+            if completed != 0 {
+                return Ok(());
+            }
+            if !recorded_slow_copy && started.elapsed().as_millis() >= SHARED_TEXTURE_COPY_SLOW_MS {
+                self.shared_texture_copy_slow_count =
+                    self.shared_texture_copy_slow_count.saturating_add(1);
+                recorded_slow_copy = true;
+            }
+            if started.elapsed().as_millis() >= SHARED_TEXTURE_COPY_TIMEOUT_MS {
+                return Err(format!(
+                    "Timed out waiting {SHARED_TEXTURE_COPY_TIMEOUT_MS} ms for the Electron shared texture copy"
+                ));
+            }
+            std::thread::yield_now();
+        }
     }
 
     pub unsafe fn switch_to_shared_texture_adapter(
@@ -464,11 +655,19 @@ impl WindowsD3d11Renderer {
         handle: usize,
         source_width: u32,
         source_height: u32,
+        content_rect: (u32, u32, u32, u32),
     ) -> Result<(), String> {
         let width = self.width;
         let height = self.height;
-        let mut replacement =
-            Self::new_for_shared_texture(hwnd, width, height, handle, source_width, source_height)?;
+        let mut replacement = Self::new_for_shared_texture(
+            hwnd,
+            width,
+            height,
+            handle,
+            source_width,
+            source_height,
+            content_rect,
+        )?;
         self.context.ClearState();
         self.context.Flush();
         self.render_target = None;
@@ -491,6 +690,26 @@ impl WindowsD3d11Renderer {
     }
 
     pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<i32, String> {
+        if !self.frame_latency_waitable_object.is_invalid() {
+            let wait_result = WaitForSingleObjectEx(
+                self.frame_latency_waitable_object,
+                FRAME_LATENCY_WAIT_TIMEOUT_MS,
+                false,
+            );
+            if wait_result == WAIT_FAILED {
+                return Err("WaitForSingleObjectEx for DXGI frame latency failed".to_owned());
+            }
+            if wait_result != WAIT_OBJECT_0 {
+                self.frame_latency_wait_timeout_count =
+                    self.frame_latency_wait_timeout_count.saturating_add(1);
+            }
+        }
+        // Steam renders its overlay from the Present hook on this device and
+        // can transiently touch rasterizer/scissor and other pipeline state.
+        // Start every game frame from known D3D11 defaults before rebinding
+        // the complete bridge pipeline; otherwise an injected scissor can
+        // clip a later game frame to a narrow overlay-sized slice.
+        self.context.ClearState();
         let render_target = self
             .render_target
             .as_ref()
@@ -536,6 +755,11 @@ impl WindowsD3d11Renderer {
             .swap_chain
             .as_ref()
             .ok_or_else(|| "D3D11 swap chain is unavailable".to_owned())?;
+        // The frame-latency waitable object starts each frame only after the
+        // previous presentation completes. Sync to the next vertical blank as
+        // well: flip-model Present(0) is an unsynchronized path that Microsoft
+        // recommends only with explicit tearing support, which this tear-free
+        // desktop/streaming host intentionally does not request.
         let result = swap_chain.Present(1, DXGI_PRESENT(0));
         self.last_present = result.0;
         if result.is_err() && result != DXGI_STATUS_OCCLUDED {
@@ -583,12 +807,59 @@ impl WindowsD3d11Renderer {
         self.last_present
     }
 
+    pub fn frame_latency_waitable(&self) -> bool {
+        !self.frame_latency_waitable_object.is_invalid()
+    }
+
+    pub fn frame_latency_wait_timeout_count(&self) -> u64 {
+        self.frame_latency_wait_timeout_count
+    }
+
+    pub fn shared_texture_copy_slow_count(&self) -> u64 {
+        self.shared_texture_copy_slow_count
+    }
+
+    pub fn shared_texture_full_copy_count(&self) -> u64 {
+        self.shared_texture_full_copy_count
+    }
+
+    pub fn shared_texture_partial_copy_count(&self) -> u64 {
+        self.shared_texture_partial_copy_count
+    }
+
+    pub fn shared_texture_storage_recreate_count(&self) -> u64 {
+        self.shared_texture_storage_recreate_count
+    }
+
+    pub fn source_format(&self) -> i32 {
+        self.source_format.0
+    }
+
+    pub fn source_sample_count(&self) -> u32 {
+        self.source_sample_count
+    }
+
+    pub fn last_shared_texture_content_rect(&self) -> [u32; 4] {
+        self.last_shared_texture_content_rect
+    }
+
     pub fn cpu_upload_count(&self) -> u64 {
         self.cpu_upload_count
     }
 
     pub fn shared_texture_import_count(&self) -> u64 {
         self.shared_texture_import_count
+    }
+}
+
+impl Drop for WindowsD3d11Renderer {
+    fn drop(&mut self) {
+        if !self.frame_latency_waitable_object.is_invalid() {
+            unsafe {
+                let _ = CloseHandle(self.frame_latency_waitable_object);
+            }
+            self.frame_latency_waitable_object = HANDLE::default();
+        }
     }
 }
 

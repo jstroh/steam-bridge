@@ -193,6 +193,8 @@ mod macos {
         title: Option<String>,
         _client_width: Option<u32>,
         _client_height: Option<u32>,
+        _min_client_width: Option<u32>,
+        _min_client_height: Option<u32>,
     ) -> Result<(), Error> {
         ensure_main_thread()?;
         close();
@@ -366,6 +368,10 @@ mod macos {
         Ok(())
     }
 
+    pub fn set_menu_json(_menu_json: String) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
         Ok(())
     }
@@ -497,7 +503,15 @@ mod macos {
         Ok(())
     }
 
-    pub fn update_shared_texture(_handle: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+    pub fn update_shared_texture(
+        _handle: Buffer,
+        _width: u32,
+        _height: u32,
+        _content_x: Option<u32>,
+        _content_y: Option<u32>,
+        _content_width: Option<u32>,
+        _content_height: Option<u32>,
+    ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Electron shared textures are currently supported only by the Windows D3D11 native host",
         ))
@@ -1188,6 +1202,10 @@ mod fallback {
         Ok(())
     }
 
+    pub fn set_menu_json(_menu_json: String) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
         Ok(())
     }
@@ -1200,6 +1218,10 @@ mod fallback {
         _handle: super::Buffer,
         _width: u32,
         _height: u32,
+        _content_x: Option<u32>,
+        _content_y: Option<u32>,
+        _content_width: Option<u32>,
+        _content_height: Option<u32>,
     ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Electron shared textures are currently supported only by the Windows D3D11 native host",
@@ -1251,16 +1273,17 @@ mod windows {
     use super::{Buffer, Error};
     use crate::windows_d3d11::WindowsD3d11Renderer;
     use once_cell::sync::Lazy;
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
+    use std::collections::HashMap;
     use std::env;
     use std::mem;
     use std::ptr;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
     use windows_sys::Win32::Foundation::{
-        CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+        CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
     };
     use windows_sys::Win32::Graphics::Dwm::{
         DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
@@ -1268,9 +1291,14 @@ mod windows {
         DWMWCP_ROUND, DWMWCP_ROUNDSMALL,
     };
     use windows_sys::Win32::Graphics::Gdi::{
-        BeginPaint, ClientToScreen, CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject,
-        EndPaint, GetDC, GetMonitorInfoW, MonitorFromWindow, ReleaseDC, ScreenToClient,
-        SetWindowRgn, HDC, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, RGN_AND,
+        BeginPaint, ClientToScreen, CombineRgn, CreateFontIndirectW, CreateRectRgn,
+        CreateRoundRectRgn, DeleteObject, DrawFrameControl, DrawTextW, EndPaint, FillRect, GetDC,
+        GetMonitorInfoW, GetStockObject, GetSysColor, GetSysColorBrush, GetTextExtentPoint32W,
+        MonitorFromWindow, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
+        SetWindowRgn, COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_MENU,
+        COLOR_MENUBAR, COLOR_MENUTEXT, DEFAULT_GUI_FONT, DFCS_INACTIVE, DFCS_MENUARROW, DFC_MENU,
+        DT_HIDEPREFIX, DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HDC, MONITORINFO,
+        MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, RGN_AND, TRANSPARENT,
     };
     use windows_sys::Win32::Graphics::OpenGL::{
         ChoosePixelFormat, SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
@@ -1280,32 +1308,46 @@ mod windows {
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    use windows_sys::Win32::UI::Accessibility::{MSAAMENUINFO, MSAA_MENU_SIG};
+    use windows_sys::Win32::UI::Controls::{
+        DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODS_DISABLED, ODS_GRAYED, ODS_NOACCEL, ODS_SELECTED,
+        ODT_MENU,
+    };
     use windows_sys::Win32::UI::HiDpi::{
-        AdjustWindowRectExForDpi, GetDpiForSystem, GetDpiForWindow,
+        AdjustWindowRectExForDpi, AreDpiAwarenessContextsEqual, GetDpiForSystem, GetDpiForWindow,
+        GetSystemMetricsForDpi, GetWindowDpiAwarenessContext, SetThreadDpiAwarenessContext,
+        SystemParametersInfoForDpi, DPI_AWARENESS_CONTEXT,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, GetCapture, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateCursor, CreateWindowExW, DefWindowProcW, DestroyCursor, DestroyWindow,
-        DispatchMessageW, EnumWindows, GetAncestor, GetClassNameW, GetClientRect, GetCursorPos,
-        GetForegroundWindow, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
-        GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
-        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW, SetCursor,
-        SetForegroundWindow, SetLayeredWindowAttributes, SetTimer, SetWindowLongPtrW,
-        SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow, SystemParametersInfoW,
-        TranslateMessage, CS_OWNDC, GA_ROOTOWNER, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE,
-        GW_OWNER, HCURSOR, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MSG, PM_REMOVE, SIZE_MINIMIZED,
-        SM_CXSCREEN, SM_CYSCREEN, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
+        AppendMenuW, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
+        DestroyCursor, DestroyMenu, DestroyWindow, DispatchMessageW, DrawMenuBar, EnumWindows,
+        GetAncestor, GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu,
+        GetMenuBarInfo, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
+        GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic,
+        IsWindow, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
+        SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetMenu, SetTimer,
+        SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
+        SystemParametersInfoW, TranslateMessage, CS_OWNDC, GA_ROOTOWNER, GWLP_HWNDPARENT,
+        GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR, HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE,
+        MENUBARINFO, MENUITEMINFOW, MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR,
+        MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE,
+        MIIM_STRING, MIIM_SUBMENU, MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE,
+        SIZE_MINIMIZED, SM_CXMENUCHECK, SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE,
+        SM_CYSCREEN, SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
         SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
         SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE,
-        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_ENTERSIZEMOVE,
-        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN,
-        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL,
-        WM_MOVE, WM_NCDESTROY, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
-        WM_SHOWWINDOW, WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED,
-        WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
+        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_DRAWITEM,
+        WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP,
+        WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM,
+        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCDESTROY, WM_PAINT,
+        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SHOWWINDOW, WM_SIZE,
+        WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPCHILDREN,
+        WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
     };
 
     type SubclassProc =
@@ -1330,15 +1372,11 @@ mod windows {
     const MK_RBUTTON: u32 = 0x0002;
     const MK_MBUTTON: u32 = 0x0010;
     const PARENT_SUBCLASS_ID: usize = 0x5354_4252_4944_4745;
-    // The JavaScript session pump selects the requested display cadence and
-    // D3D11 Present(1) synchronizes to vertical blank. Keep this native guard
-    // only as a duplicate-pump debounce; it must not impose a lower FPS cap.
-    const CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis(1);
     const RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
     const STEAM_DIALOG_SCAN_INTERVAL: Duration = Duration::from_millis(100);
     const MAX_STEAM_DIALOG_WINDOWS: usize = 16;
     const MODAL_PRESENT_TIMER_ID: usize = 0x5342;
-    const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
+    const MODAL_PRESENT_INTERVAL_MS: u32 = 1;
     const VK_TAB_CODE: i32 = 0x09;
     const VK_SHIFT_CODE: i32 = 0x10;
     const VK_LEFT_SHIFT_CODE: i32 = 0xA0;
@@ -1388,6 +1426,10 @@ mod windows {
         last_steam_dialog_scan_at: Option<Instant>,
         steam_dialog_adoption_count: u64,
         last_adopted_steam_dialog_hwnd: Option<HWND>,
+        standalone_min_client_size: Option<(i32, i32)>,
+        menu: Option<HMENU>,
+        menu_draw_tokens: Vec<usize>,
+        menu_minimum_dpi: Option<u32>,
     }
 
     struct ParentWindowSubclassState {
@@ -1494,11 +1536,16 @@ mod windows {
 
     static SURFACE: Lazy<Mutex<Option<NativeSurface>>> = Lazy::new(|| Mutex::new(None));
     static NEXT_SURFACE_INSTANCE_GENERATION: AtomicU64 = AtomicU64::new(0);
+    static STANDALONE_MIN_CLIENT_SIZE: AtomicU64 = AtomicU64::new(0);
+    static STANDALONE_LOGICAL_CLIENT_SIZE: AtomicU64 = AtomicU64::new(0);
+    static STANDALONE_WINDOW_DPI: AtomicU32 = AtomicU32::new(96);
     static WINDOW_CLASS_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
     static WINDOW_MESSAGE_DIAGNOSTICS: Lazy<Mutex<WindowMessageDiagnostics>> =
         Lazy::new(|| Mutex::new(WindowMessageDiagnostics::default()));
     static WINDOW_INPUT_EVENTS: Lazy<Mutex<Vec<WindowInputEvent>>> =
         Lazy::new(|| Mutex::new(Vec::new()));
+    static MENU_DRAW_ITEMS: Lazy<Mutex<HashMap<usize, Box<NativeMenuOwnerDrawData>>>> =
+        Lazy::new(|| Mutex::new(HashMap::new()));
 
     #[derive(Clone, Default, Serialize)]
     struct WindowMessageCounters {
@@ -1545,24 +1592,123 @@ mod windows {
         x: Option<i32>,
         y: Option<i32>,
         delta_y: Option<i32>,
+        command_id: Option<u32>,
         client_width: i32,
         client_height: i32,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct NativeMenuItem {
+        #[serde(default)]
+        label: String,
+        command_id: Option<u32>,
+        #[serde(default = "menu_item_enabled")]
+        enabled: bool,
+        #[serde(default)]
+        separator: bool,
+        #[serde(default)]
+        items: Vec<NativeMenuItem>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct NativeMenuOptions {
+        items: Vec<NativeMenuItem>,
+        minimum_scale: f64,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NativeMenuDefinition {
+        Items(Vec<NativeMenuItem>),
+        Options(NativeMenuOptions),
+    }
+
+    #[derive(Clone)]
+    struct NativeMenuDrawItem {
+        label: Vec<u16>,
+        measure_label: Vec<u16>,
+        top_level: bool,
+        submenu: bool,
+        separator: bool,
+        minimum_dpi: u32,
+    }
+
+    #[repr(C)]
+    struct NativeMenuOwnerDrawData {
+        // Microsoft Active Accessibility requires this to be the first member of an
+        // owner-drawn menu item's application data.
+        msaa: MSAAMENUINFO,
+        draw: NativeMenuDrawItem,
+        _accessible_text: Box<[u16]>,
+    }
+
+    // The registry owns this allocation for exactly as long as the HMENU can refer to it.
+    // Its embedded MSAA pointer targets its own stable boxed UTF-16 allocation.
+    unsafe impl Send for NativeMenuOwnerDrawData {}
+
+    struct ThreadDpiAwarenessGuard {
+        previous: DPI_AWARENESS_CONTEXT,
+    }
+
+    impl ThreadDpiAwarenessGuard {
+        unsafe fn per_monitor_v2() -> Self {
+            Self {
+                previous: SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2),
+            }
+        }
+    }
+
+    impl Drop for ThreadDpiAwarenessGuard {
+        fn drop(&mut self) {
+            if !self.previous.is_null() {
+                unsafe {
+                    SetThreadDpiAwarenessContext(self.previous);
+                }
+            }
+        }
+    }
+
+    fn menu_item_enabled() -> bool {
+        true
     }
 
     pub fn open(
         title: Option<String>,
         client_width: Option<u32>,
         client_height: Option<u32>,
+        min_client_width: Option<u32>,
+        min_client_height: Option<u32>,
     ) -> Result<(), Error> {
         close();
         let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
-        let client_size = client_width.zip(client_height).map(|(width, height)| {
+        let mut client_size = client_width.zip(client_height).map(|(width, height)| {
             (
                 width.max(1).min(i32::MAX as u32) as i32,
                 height.max(1).min(i32::MAX as u32) as i32,
             )
         });
-        let surface = unsafe { create_surface(&title, None, false, client_size)? };
+        let min_client_size = min_client_width
+            .zip(min_client_height)
+            .map(|(width, height)| {
+                (
+                    width.max(1).min(i32::MAX as u32) as i32,
+                    height.max(1).min(i32::MAX as u32) as i32,
+                )
+            });
+        client_size = clamp_client_size_to_minimum(client_size, min_client_size);
+        set_standalone_min_client_size(min_client_size);
+        set_standalone_logical_client_size(client_size);
+        let surface =
+            match unsafe { create_surface(&title, None, false, client_size, min_client_size) } {
+                Ok(surface) => surface,
+                Err(error) => {
+                    set_standalone_min_client_size(None);
+                    set_standalone_logical_client_size(None);
+                    return Err(error);
+                }
+            };
         *SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned") = Some(surface);
@@ -1584,6 +1730,7 @@ mod windows {
                 "Steam Bridge Native Overlay Host",
                 Some(parent_handle as HWND),
                 true,
+                None,
                 None,
             )?
         };
@@ -1608,6 +1755,7 @@ mod windows {
                 "Steam Bridge Native Overlay Host",
                 Some(parent_handle as HWND),
                 false,
+                None,
                 None,
             )?
         };
@@ -1765,6 +1913,13 @@ mod windows {
                 let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
                 surface.windowed_style = Some(style);
                 surface.windowed_placement = Some(placement);
+                if !set_window_menu_attached(surface, false) {
+                    surface.windowed_style = None;
+                    surface.windowed_placement = None;
+                    return Err(Error::from_reason(
+                        "Failed to hide the native overlay host menu for fullscreen",
+                    ));
+                }
                 SetWindowLongPtrW(
                     surface.hwnd,
                     GWL_STYLE,
@@ -1797,6 +1952,7 @@ mod windows {
                     );
                     surface.windowed_style = None;
                     surface.windowed_placement = None;
+                    set_window_menu_attached(surface, true);
                     return Err(Error::from_reason(
                         "Failed to resize the native overlay host for fullscreen",
                     ));
@@ -1806,6 +1962,11 @@ mod windows {
                     .windowed_style
                     .unwrap_or(WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
                 SetWindowLongPtrW(surface.hwnd, GWL_STYLE, style as isize);
+                if !set_window_menu_attached(surface, true) {
+                    return Err(Error::from_reason(
+                        "Failed to restore the native overlay host menu from fullscreen",
+                    ));
+                }
                 let placement_restored = if let Some(mut placement) = surface.windowed_placement {
                     placement.length = mem::size_of::<WINDOWPLACEMENT>() as u32;
                     SetWindowPlacement(surface.hwnd, &placement) != 0
@@ -1839,6 +2000,90 @@ mod windows {
         if surface.visible {
             unsafe {
                 render_surface(surface)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_menu_json(menu_json: String) -> Result<(), Error> {
+        let definition: NativeMenuDefinition =
+            serde_json::from_str(&menu_json).map_err(|error| {
+                Error::from_reason(format!("Invalid native overlay host menu JSON: {error}"))
+            })?;
+        let (items, minimum_dpi) = match definition {
+            NativeMenuDefinition::Items(items) => (items, None),
+            NativeMenuDefinition::Options(options) => {
+                let minimum_dpi = minimum_menu_dpi(options.minimum_scale)?;
+                (options.items, Some(minimum_dpi))
+            }
+        };
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut() else {
+            return Ok(());
+        };
+        if surface.parent_hwnd.is_some() {
+            return Err(Error::from_reason(
+                "Native overlay host menus require a standalone host window",
+            ));
+        }
+
+        unsafe {
+            let client = read_client_rect(surface.hwnd).ok_or_else(|| {
+                Error::from_reason("Failed to inspect the native overlay host client size")
+            })?;
+            let window = read_window_rect(surface.hwnd).ok_or_else(|| {
+                Error::from_reason("Failed to inspect the native overlay host window size")
+            })?;
+            let mut menu_draw_tokens = Vec::new();
+            let menu = if items.is_empty() {
+                None
+            } else {
+                match build_native_menu(&items, false, minimum_dpi, &mut menu_draw_tokens) {
+                    Ok(menu) => Some(menu),
+                    Err(error) => {
+                        unregister_menu_draw_items(&menu_draw_tokens);
+                        return Err(error);
+                    }
+                }
+            };
+            let menu_handle = menu.unwrap_or(ptr::null_mut());
+            let attached_menu_handle = if surface.full_screen {
+                ptr::null_mut()
+            } else {
+                menu_handle
+            };
+            if SetMenu(surface.hwnd, attached_menu_handle) == 0 {
+                if let Some(menu) = menu {
+                    DestroyMenu(menu);
+                }
+                unregister_menu_draw_items(&menu_draw_tokens);
+                return Err(Error::from_reason(
+                    "Failed to attach the native overlay host menu",
+                ));
+            }
+            DrawMenuBar(surface.hwnd);
+            let previous_draw_tokens =
+                mem::replace(&mut surface.menu_draw_tokens, menu_draw_tokens);
+            surface.menu_minimum_dpi = minimum_dpi;
+            if let Some(previous) = surface.menu.replace(menu_handle) {
+                if !previous.is_null() {
+                    DestroyMenu(previous);
+                }
+            }
+            unregister_menu_draw_items(&previous_draw_tokens);
+            if menu.is_none() {
+                surface.menu = None;
+            }
+            if !surface.full_screen {
+                resize_window_for_client_size(
+                    surface.hwnd,
+                    window.left,
+                    window.top,
+                    (client.right - client.left).max(1),
+                    (client.bottom - client.top).max(1),
+                )?;
             }
         }
         Ok(())
@@ -1920,6 +2165,10 @@ mod windows {
         handle_buffer: Buffer,
         width: u32,
         height: u32,
+        content_x: Option<u32>,
+        content_y: Option<u32>,
+        content_width: Option<u32>,
+        content_height: Option<u32>,
     ) -> Result<(), Error> {
         let handle_size = mem::size_of::<usize>();
         if handle_buffer.len() < handle_size {
@@ -1931,6 +2180,30 @@ mod windows {
         let mut handle_bytes = [0_u8; mem::size_of::<usize>()];
         handle_bytes.copy_from_slice(&handle_buffer[..handle_size]);
         let handle = usize::from_ne_bytes(handle_bytes);
+        let width = width.max(1);
+        let height = height.max(1);
+        let content_rect = (
+            content_x.unwrap_or(0),
+            content_y.unwrap_or(0),
+            content_width.unwrap_or(width),
+            content_height.unwrap_or(height),
+        );
+        let content_right = content_rect.0.checked_add(content_rect.2).ok_or_else(|| {
+            Error::from_reason("Windows shared texture content rectangle overflows")
+        })?;
+        let content_bottom = content_rect.1.checked_add(content_rect.3).ok_or_else(|| {
+            Error::from_reason("Windows shared texture content rectangle overflows")
+        })?;
+        if content_rect.2 == 0
+            || content_rect.3 == 0
+            || content_right > width
+            || content_bottom > height
+        {
+            return Err(Error::from_reason(format!(
+                "Windows shared texture content rectangle {},{} {}x{} exceeds {}x{}",
+                content_rect.0, content_rect.1, content_rect.2, content_rect.3, width, height
+            )));
+        }
 
         let mut guard = SURFACE
             .lock()
@@ -1946,15 +2219,16 @@ mod windows {
                 ..
             } => unsafe {
                 if renderer
-                    .import_shared_texture(handle, width.max(1), height.max(1))
+                    .import_shared_texture(handle, width, height, content_rect)
                     .is_err()
                 {
                     renderer
                         .switch_to_shared_texture_adapter(
                             hwnd.cast(),
                             handle,
-                            width.max(1),
-                            height.max(1),
+                            width,
+                            height,
+                            content_rect,
                         )
                         .map_err(Error::from_reason)?;
                 }
@@ -1967,7 +2241,11 @@ mod windows {
             }
         }
         surface.source_frame = None;
-        surface.source_frame_dirty = false;
+        // Importing updates the retained D3D source, but a non-continuous
+        // session still needs its next pump to present that new source. Keep
+        // shared-texture semantics aligned with update_frame instead of
+        // silently freezing unless continuous presentation is enabled.
+        surface.source_frame_dirty = true;
         Ok(())
     }
 
@@ -2032,6 +2310,29 @@ mod windows {
         unsafe {
             let foreground = GetForegroundWindow();
             let rect = read_window_rect(surface.hwnd).map(window_rect_json);
+            let client_rect = read_client_rect_in_screen(surface.hwnd);
+            let window_dpi = GetDpiForWindow(surface.hwnd).max(96);
+            let window_per_monitor_v2 = AreDpiAwarenessContextsEqual(
+                GetWindowDpiAwarenessContext(surface.hwnd),
+                DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+            ) != 0;
+            let effective_menu_dpi = surface
+                .menu_minimum_dpi
+                .map(|minimum_dpi| minimum_dpi.max(window_dpi));
+            let mut menu_bar_info: MENUBARINFO = mem::zeroed();
+            menu_bar_info.cbSize = mem::size_of::<MENUBARINFO>() as u32;
+            let menu_bar_rect =
+                if GetMenuBarInfo(surface.hwnd, OBJID_MENU, 0, &mut menu_bar_info) != 0 {
+                    Some(window_rect_json(menu_bar_info.rcBar))
+                } else {
+                    None
+                };
+            let logical_client_size = client_rect.map(|rect| {
+                json!({
+                    "width": physical_pixels_to_logical((rect.right - rect.left).max(1), window_dpi),
+                    "height": physical_pixels_to_logical((rect.bottom - rect.top).max(1), window_dpi),
+                })
+            });
             let parent_rect = surface
                 .parent_hwnd
                 .and_then(read_window_rect)
@@ -2054,51 +2355,77 @@ mod windows {
                     "lastHostClientRect": window_rect_json(dialog.last_host_client_rect),
                 })
             });
-            Some(
-                json!({
-                    "platform": "win32",
-                    "backend": surface.backend.as_str(),
-                    "surfaceInstanceGeneration": surface.instance_generation,
-                    "hostStyle": surface.host_style.as_str(),
-                    "renderer": renderer,
-                    "hwnd": hwnd_hex(surface.hwnd),
-                    "parentHwnd": surface.parent_hwnd.map(hwnd_hex),
-                    "foregroundHwnd": hwnd_hex(foreground),
-                    "isForeground": surface.hwnd == foreground,
-                    "style": format!("0x{style:08X}"),
-                    "exStyle": format!("0x{ex_style:08X}"),
-                    "inputPassthrough": surface.input_passthrough,
-                    "opaque": surface.opaque,
-                    "cursorHiddenRequested": surface.cursor_hidden_requested,
-                    "cursorSuppressed": surface.cursor_suppressed,
-                    "cursorDisplayCount": surface.cursor_display_count,
-                    "continuousPresentRequested": surface.continuous_present_requested,
-                    "fullScreen": surface.full_screen,
-                    "presentationReady": surface.presentation_ready,
-                    "requestedVisible": surface.requested_visible,
-                    "visible": surface.visible,
-                    "parentAllowsSurface": parent_allows_surface(surface),
-                    "sourceFrame": surface.source_frame.as_ref().map(|frame| json!({
-                        "width": frame.width,
-                        "height": frame.height,
-                        "bytes": frame.data.len(),
-                    })),
-                    "sourceFrameDirty": surface.source_frame_dirty,
-                    "frame": surface.frame,
-                    "rect": rect,
-                    "parentRect": parent_rect,
-                    "parentClientRect": parent_client_rect,
-                    "steamDialog": {
-                        "overlayActive": surface.overlay_active,
-                        "baselineCount": surface.steam_dialog_baseline.len,
-                        "adoptionCount": surface.steam_dialog_adoption_count,
-                        "lastAdoptedHwnd": surface.last_adopted_steam_dialog_hwnd.map(hwnd_hex),
-                        "adopted": adopted_steam_dialog,
-                    },
-                    "messages": message_diagnostics,
-                })
-                .to_string(),
-            )
+            let mut diagnostics = json!({
+                "platform": "win32",
+                "backend": surface.backend.as_str(),
+                "surfaceInstanceGeneration": surface.instance_generation,
+                "hostStyle": surface.host_style.as_str(),
+                "renderer": renderer,
+                "hwnd": hwnd_hex(surface.hwnd),
+                "parentHwnd": surface.parent_hwnd.map(hwnd_hex),
+                "foregroundHwnd": hwnd_hex(foreground),
+                "isForeground": surface.hwnd == foreground,
+                "style": format!("0x{style:08X}"),
+                "exStyle": format!("0x{ex_style:08X}"),
+                "inputPassthrough": surface.input_passthrough,
+                "opaque": surface.opaque,
+                "cursorHiddenRequested": surface.cursor_hidden_requested,
+                "cursorSuppressed": surface.cursor_suppressed,
+                "cursorDisplayCount": surface.cursor_display_count,
+                "continuousPresentRequested": surface.continuous_present_requested,
+                "fullScreen": surface.full_screen,
+                "presentationReady": surface.presentation_ready,
+                "requestedVisible": surface.requested_visible,
+                "visible": surface.visible,
+                "parentAllowsSurface": parent_allows_surface(surface),
+                "sourceFrame": surface.source_frame.as_ref().map(|frame| json!({
+                    "width": frame.width,
+                    "height": frame.height,
+                    "bytes": frame.data.len(),
+                })),
+                "sourceFrameDirty": surface.source_frame_dirty,
+                "frame": surface.frame,
+                "rect": rect,
+                "clientRect": client_rect.map(window_rect_json),
+                "windowDpi": window_dpi,
+                "logicalClientSize": logical_client_size,
+                "minimumClientSize": surface.standalone_min_client_size.map(|(width, height)| json!({
+                    "width": width,
+                    "height": height,
+                })),
+                "menuConfigured": surface.menu.is_some(),
+                "menuAttached": !GetMenu(surface.hwnd).is_null(),
+                "parentRect": parent_rect,
+                "parentClientRect": parent_client_rect,
+                "steamDialog": {
+                    "overlayActive": surface.overlay_active,
+                    "baselineCount": surface.steam_dialog_baseline.len,
+                    "adoptionCount": surface.steam_dialog_adoption_count,
+                    "lastAdoptedHwnd": surface.last_adopted_steam_dialog_hwnd.map(hwnd_hex),
+                    "adopted": adopted_steam_dialog,
+                },
+                "messages": message_diagnostics,
+            });
+            if let Some(object) = diagnostics.as_object_mut() {
+                object.insert(
+                    "dpiAwareness".to_owned(),
+                    json!({
+                        "systemDpi": GetDpiForSystem().max(96),
+                        "windowPerMonitorV2": window_per_monitor_v2,
+                    }),
+                );
+                object.insert(
+                    "menuMetrics".to_owned(),
+                    json!({
+                        "ownerDrawn": !surface.menu_draw_tokens.is_empty(),
+                        "minimumScale": surface.menu_minimum_dpi.map(|dpi| f64::from(dpi) / 96.0),
+                        "effectiveDpi": effective_menu_dpi,
+                        "metricHeight": effective_menu_dpi.map(|dpi| GetSystemMetricsForDpi(SM_CYMENU, dpi)),
+                        "barRect": menu_bar_rect,
+                    }),
+                );
+            }
+            Some(diagnostics.to_string())
         }
     }
 
@@ -2145,7 +2472,9 @@ mod windows {
         parent_hwnd: Option<HWND>,
         initial_input_passthrough: bool,
         standalone_client_size: Option<(i32, i32)>,
+        standalone_min_client_size: Option<(i32, i32)>,
     ) -> Result<NativeSurface, Error> {
+        let _dpi_awareness = ThreadDpiAwarenessGuard::per_monitor_v2();
         ensure_window_class()?;
         reset_window_message_diagnostics();
         let title = wide_string(title);
@@ -2205,6 +2534,9 @@ mod windows {
             return Err(Error::from_reason(
                 "Failed to create Windows native overlay host window",
             ));
+        }
+        if parent_hwnd.is_none() {
+            STANDALONE_WINDOW_DPI.store(GetDpiForWindow(hwnd).max(96), Ordering::Relaxed);
         }
         if parent_hwnd.is_none() {
             let transitions_disabled = 1i32;
@@ -2273,6 +2605,10 @@ mod windows {
             last_steam_dialog_scan_at: None,
             steam_dialog_adoption_count: 0,
             last_adopted_steam_dialog_hwnd: None,
+            standalone_min_client_size,
+            menu: None,
+            menu_draw_tokens: Vec::new(),
+            menu_minimum_dpi: None,
         };
         if let Some(parent_hwnd) = parent_hwnd {
             let subclass_state = Box::into_raw(Box::new(ParentWindowSubclassState {
@@ -2497,9 +2833,16 @@ mod windows {
                 "width": renderer.width(),
                 "height": renderer.height(),
                 "format": "bgra8-unorm",
-                "presentationMode": "flip-discard",
+                "presentationMode": "flip-sequential",
                 "bufferCount": 2,
                 "gdiCompatible": false,
+                "frameLatencyWaitable": renderer.frame_latency_waitable(),
+                "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),
+                "sharedTextureCopySlowCount": renderer.shared_texture_copy_slow_count(),
+                "sharedTextureFullCopyCount": renderer.shared_texture_full_copy_count(),
+                "sharedTexturePartialCopyCount": renderer.shared_texture_partial_copy_count(),
+                "sharedTextureStorageRecreateCount": renderer.shared_texture_storage_recreate_count(),
+                "lastSharedTextureContentRect": renderer.last_shared_texture_content_rect(),
                 "featureLevel": format!("0x{:04X}", renderer.feature_level()),
                 "adapter": renderer.adapter_name(),
                 "lastPresent": format!("0x{:08X}", renderer.last_present() as u32),
@@ -2508,6 +2851,8 @@ mod windows {
                 "sourceMode": renderer.source_mode(),
                 "sourceWidth": renderer.source_width(),
                 "sourceHeight": renderer.source_height(),
+                "sourceFormat": renderer.source_format(),
+                "sourceSampleCount": renderer.source_sample_count(),
                 "cpuUploadCount": renderer.cpu_upload_count(),
                 "sharedTextureImportCount": renderer.shared_texture_import_count(),
             }),
@@ -3080,12 +3425,22 @@ mod windows {
         if let Some(subclass_state) = surface.parent_subclass_state {
             drop(Box::from_raw(subclass_state));
         }
+        if let Some(menu) = surface.menu.take() {
+            SetMenu(surface.hwnd, ptr::null_mut());
+            DestroyMenu(menu);
+        }
+        unregister_menu_draw_items(&surface.menu_draw_tokens);
         release_renderer(surface.renderer, surface.hwnd);
         if !surface.hwnd.is_null() {
             DestroyWindow(surface.hwnd);
         }
         if !surface.transparent_cursor.is_null() {
             DestroyCursor(surface.transparent_cursor);
+        }
+        if surface.parent_hwnd.is_none() {
+            set_standalone_min_client_size(None);
+            set_standalone_logical_client_size(None);
+            STANDALONE_WINDOW_DPI.store(96, Ordering::Relaxed);
         }
     }
 
@@ -3094,11 +3449,10 @@ mod windows {
             return true;
         }
 
-        if surface.continuous_present_requested
-            && surface.last_present_at.is_none_or(|last_present_at| {
-                last_present_at.elapsed() >= CONTINUOUS_PRESENT_INTERVAL
-            })
-        {
+        // The DXGI frame-latency waitable object is the cadence boundary for the
+        // D3D11 host. Continuous presentation keeps the retained frame eligible;
+        // new Electron frames also arrive through the immediate update path.
+        if surface.continuous_present_requested {
             return true;
         }
 
@@ -3240,6 +3594,214 @@ mod windows {
         }
     }
 
+    fn dpi_scaled(value: i32, dpi: u32) -> i32 {
+        ((i64::from(value) * i64::from(dpi.max(96)) + 48) / 96).clamp(1, i64::from(i32::MAX)) as i32
+    }
+
+    unsafe fn with_menu_font<T>(dpi: u32, run: impl FnOnce(isize) -> T) -> T {
+        let mut metrics: NONCLIENTMETRICSW = mem::zeroed();
+        metrics.cbSize = mem::size_of::<NONCLIENTMETRICSW>() as u32;
+        let font = if SystemParametersInfoForDpi(
+            SPI_GETNONCLIENTMETRICS,
+            metrics.cbSize,
+            &mut metrics as *mut NONCLIENTMETRICSW as *mut std::ffi::c_void,
+            0,
+            dpi,
+        ) != 0
+        {
+            CreateFontIndirectW(&metrics.lfMenuFont) as isize
+        } else {
+            0
+        };
+        let owns_font = font != 0;
+        let font = if owns_font {
+            font
+        } else {
+            GetStockObject(DEFAULT_GUI_FONT) as isize
+        };
+        let result = run(font);
+        if owns_font {
+            DeleteObject(font as *mut std::ffi::c_void);
+        }
+        result
+    }
+
+    unsafe fn menu_text_extent(hdc: HDC, text: &[u16]) -> SIZE {
+        let mut size: SIZE = mem::zeroed();
+        if !text.is_empty() {
+            GetTextExtentPoint32W(hdc, text.as_ptr(), text.len() as i32, &mut size);
+        }
+        size
+    }
+
+    fn split_menu_text(text: &[u16]) -> (&[u16], &[u16]) {
+        match text.iter().position(|value| *value == b'\t' as u16) {
+            Some(index) => (&text[..index], &text[index + 1..]),
+            None => (text, &[]),
+        }
+    }
+
+    unsafe fn measure_native_menu_item(hwnd: HWND, measure: &mut MEASUREITEMSTRUCT) -> bool {
+        if measure.CtlType != ODT_MENU || measure.itemData == 0 {
+            return false;
+        }
+        let Some(item) = read_menu_draw_item(measure.itemData) else {
+            return false;
+        };
+        let dpi = GetDpiForWindow(hwnd).max(96).max(item.minimum_dpi);
+        if item.separator {
+            measure.itemWidth = dpi_scaled(8, dpi) as u32;
+            measure.itemHeight = dpi_scaled(7, dpi) as u32;
+            return true;
+        }
+
+        let hdc = GetDC(hwnd);
+        if hdc.is_null() {
+            return false;
+        }
+        let (left_text, accelerator_text) = split_menu_text(&item.measure_label);
+        let (left_size, accelerator_size) = with_menu_font(dpi, |font| {
+            let previous = SelectObject(hdc, font as *mut std::ffi::c_void);
+            let sizes = (
+                menu_text_extent(hdc, left_text),
+                menu_text_extent(hdc, accelerator_text),
+            );
+            if !previous.is_null() {
+                SelectObject(hdc, previous);
+            }
+            sizes
+        });
+        ReleaseDC(hwnd, hdc);
+
+        let horizontal_padding = dpi_scaled(if item.top_level { 8 } else { 6 }, dpi);
+        let vertical_padding = dpi_scaled(3, dpi);
+        let text_height = left_size.cy.max(accelerator_size.cy).max(1);
+        let item_height =
+            GetSystemMetricsForDpi(SM_CYMENU, dpi).max(text_height + vertical_padding * 2);
+        let item_width = if item.top_level {
+            left_size.cx + horizontal_padding * 2
+        } else {
+            let check_width = GetSystemMetricsForDpi(SM_CXMENUCHECK, dpi).max(dpi_scaled(12, dpi));
+            let arrow_width = GetSystemMetricsForDpi(SM_CXMENUSIZE, dpi).max(dpi_scaled(12, dpi));
+            check_width
+                + left_size.cx
+                + if accelerator_text.is_empty() {
+                    0
+                } else {
+                    dpi_scaled(24, dpi) + accelerator_size.cx
+                }
+                + arrow_width
+                + horizontal_padding * 4
+        };
+        measure.itemWidth = item_width.max(1) as u32;
+        measure.itemHeight = item_height.max(1) as u32;
+        true
+    }
+
+    unsafe fn draw_native_menu_item(hwnd: HWND, draw: &DRAWITEMSTRUCT) -> bool {
+        if draw.CtlType != ODT_MENU || draw.itemData == 0 || draw.hDC.is_null() {
+            return false;
+        }
+        let Some(item) = read_menu_draw_item(draw.itemData) else {
+            return false;
+        };
+        let dpi = GetDpiForWindow(hwnd).max(96).max(item.minimum_dpi);
+        let selected = draw.itemState & ODS_SELECTED != 0;
+        let disabled = draw.itemState & (ODS_DISABLED | ODS_GRAYED) != 0;
+        let background_color = if selected {
+            COLOR_HIGHLIGHT
+        } else if item.top_level {
+            COLOR_MENUBAR
+        } else {
+            COLOR_MENU
+        };
+        FillRect(draw.hDC, &draw.rcItem, GetSysColorBrush(background_color));
+
+        if item.separator {
+            let mut line = draw.rcItem;
+            let center = line.top + (line.bottom - line.top) / 2;
+            line.left += dpi_scaled(18, dpi);
+            line.right -= dpi_scaled(6, dpi);
+            line.top = center;
+            line.bottom = center + 1;
+            FillRect(draw.hDC, &line, GetSysColorBrush(COLOR_GRAYTEXT));
+            return true;
+        }
+
+        let text_color = if disabled {
+            COLOR_GRAYTEXT
+        } else if selected {
+            COLOR_HIGHLIGHTTEXT
+        } else {
+            COLOR_MENUTEXT
+        };
+        SetBkMode(draw.hDC, TRANSPARENT as i32);
+        SetTextColor(draw.hDC, GetSysColor(text_color));
+        let horizontal_padding = dpi_scaled(if item.top_level { 8 } else { 6 }, dpi);
+        let check_width = if item.top_level {
+            0
+        } else {
+            GetSystemMetricsForDpi(SM_CXMENUCHECK, dpi).max(dpi_scaled(12, dpi))
+        };
+        let arrow_width = if item.top_level {
+            0
+        } else {
+            GetSystemMetricsForDpi(SM_CXMENUSIZE, dpi).max(dpi_scaled(12, dpi))
+        };
+        let (left_text, accelerator_text) = split_menu_text(&item.label);
+        let mut format = DT_SINGLELINE | DT_VCENTER;
+        if draw.itemState & ODS_NOACCEL != 0 {
+            format |= DT_HIDEPREFIX;
+        }
+
+        with_menu_font(dpi, |font| {
+            let previous = SelectObject(draw.hDC, font as *mut std::ffi::c_void);
+            let mut left_rect = draw.rcItem;
+            left_rect.left += horizontal_padding + check_width;
+            left_rect.right -= horizontal_padding + arrow_width;
+            DrawTextW(
+                draw.hDC,
+                left_text.as_ptr(),
+                left_text.len() as i32,
+                &mut left_rect,
+                format | DT_LEFT,
+            );
+            if !accelerator_text.is_empty() {
+                let mut accelerator_rect = left_rect;
+                accelerator_rect.left += dpi_scaled(24, dpi);
+                DrawTextW(
+                    draw.hDC,
+                    accelerator_text.as_ptr(),
+                    accelerator_text.len() as i32,
+                    &mut accelerator_rect,
+                    format | DT_RIGHT,
+                );
+            }
+            if !previous.is_null() {
+                SelectObject(draw.hDC, previous);
+            }
+        });
+
+        if item.submenu && !item.top_level {
+            let mut arrow_rect = draw.rcItem;
+            arrow_rect.left = arrow_rect.right - arrow_width - horizontal_padding;
+            arrow_rect.right -= horizontal_padding;
+            let arrow_size = GetSystemMetricsForDpi(SM_CYMENUSIZE, dpi)
+                .max(dpi_scaled(12, dpi))
+                .min((arrow_rect.bottom - arrow_rect.top).max(1));
+            let center = arrow_rect.top + (arrow_rect.bottom - arrow_rect.top) / 2;
+            arrow_rect.top = center - arrow_size / 2;
+            arrow_rect.bottom = arrow_rect.top + arrow_size;
+            DrawFrameControl(
+                draw.hDC,
+                &mut arrow_rect,
+                DFC_MENU,
+                DFCS_MENUARROW | if disabled { DFCS_INACTIVE } else { 0 },
+            );
+        }
+        true
+    }
+
     unsafe extern "system" fn window_proc(
         hwnd: HWND,
         message: u32,
@@ -3248,6 +3810,18 @@ mod windows {
     ) -> LRESULT {
         record_window_message(hwnd, message, wparam, lparam);
         record_window_input(hwnd, message, wparam, lparam);
+        if message == WM_MEASUREITEM && lparam != 0 {
+            let measure = &mut *(lparam as *mut MEASUREITEMSTRUCT);
+            if measure_native_menu_item(hwnd, measure) {
+                return 1;
+            }
+        }
+        if message == WM_DRAWITEM && lparam != 0 {
+            let draw = &*(lparam as *const DRAWITEMSTRUCT);
+            if draw_native_menu_item(hwnd, draw) {
+                return 1;
+            }
+        }
         if matches!(message, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN) {
             SetCapture(hwnd);
         }
@@ -3259,6 +3833,14 @@ mod windows {
         }
         if message == WM_CANCELMODE && GetCapture() == hwnd {
             ReleaseCapture();
+        }
+        if message == WM_GETMINMAXINFO && lparam != 0 {
+            if let Some((width, height)) = minimum_window_track_size(hwnd) {
+                let min_max_info = &mut *(lparam as *mut MINMAXINFO);
+                min_max_info.ptMinTrackSize.x = min_max_info.ptMinTrackSize.x.max(width);
+                min_max_info.ptMinTrackSize.y = min_max_info.ptMinTrackSize.y.max(height);
+                return 0;
+            }
         }
         if message == WM_CLOSE {
             ShowWindow(hwnd, SW_HIDE);
@@ -3280,6 +3862,30 @@ mod windows {
             render_retained_frame_from_window_message(hwnd, false);
         }
         if message == WM_DPICHANGED && lparam != 0 {
+            let new_dpi = (wparam as u32 & 0xffff).max(96);
+            let previous_dpi = STANDALONE_WINDOW_DPI
+                .swap(new_dpi, Ordering::Relaxed)
+                .max(96);
+            // GetDpiForWindow and owner-drawn menu metrics can already reflect
+            // the new DPI before WM_DPICHANGED reaches this procedure. Reading
+            // the client rect here therefore loses pixels from the old logical
+            // viewport. Keep the last normal logical client size separately so
+            // a DPI transition cannot reinterpret new non-client metrics as a
+            // user resize.
+            let logical_client_size = standalone_logical_client_size().or_else(|| {
+                read_client_rect(hwnd).map(|client| {
+                    (
+                        physical_pixels_to_logical(
+                            (client.right - client.left).max(1),
+                            previous_dpi,
+                        ),
+                        physical_pixels_to_logical(
+                            (client.bottom - client.top).max(1),
+                            previous_dpi,
+                        ),
+                    )
+                })
+            });
             let suggested = &*(lparam as *const RECT);
             SetWindowPos(
                 hwnd,
@@ -3290,6 +3896,19 @@ mod windows {
                 (suggested.bottom - suggested.top).max(1),
                 SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
             );
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+            if IsZoomed(hwnd) == 0 && style & WS_OVERLAPPEDWINDOW != 0 {
+                if let Some((logical_width, logical_height)) = logical_client_size {
+                    let _ = resize_window_for_client_size(
+                        hwnd,
+                        suggested.left,
+                        suggested.top,
+                        logical_pixels_to_physical(logical_width, new_dpi),
+                        logical_pixels_to_physical(logical_height, new_dpi),
+                    );
+                }
+            }
+            DrawMenuBar(hwnd);
             render_retained_frame_from_window_message(hwnd, true);
             return 0;
         }
@@ -3311,6 +3930,7 @@ mod windows {
         }
         if message == WM_EXITSIZEMOVE {
             KillTimer(hwnd, MODAL_PRESENT_TIMER_ID);
+            remember_standalone_logical_client_size(hwnd);
             render_retained_frame_from_window_message(hwnd, true);
         }
         if message == WM_MOVE {
@@ -3465,6 +4085,7 @@ mod windows {
             x: None,
             y: None,
             delta_y: None,
+            command_id: None,
             client_width: (client.right - client.left).max(1),
             client_height: (client.bottom - client.top).max(1),
         };
@@ -3493,6 +4114,7 @@ mod windows {
             WM_SETFOCUS => "focus",
             WM_KILLFOCUS => "blur",
             WM_CAPTURECHANGED | WM_CANCELMODE => "captureLost",
+            WM_COMMAND => "menuCommand",
             WM_CLOSE => "close",
             WM_MOVE | WM_SIZE => "windowChanged",
             _ => return,
@@ -3541,6 +4163,7 @@ mod windows {
             y,
             delta_y: (message == WM_MOUSEWHEEL)
                 .then(|| ((wparam as u32 >> 16) as u16 as i16) as i32),
+            command_id: (message == WM_COMMAND).then(|| wparam as u32 & u16::MAX as u32),
             client_width: (client.right - client.left).max(1),
             client_height: (client.bottom - client.top).max(1),
         };
@@ -3688,9 +4311,427 @@ mod windows {
             .unwrap_or(0)
     }
 
+    fn minimum_menu_dpi(scale: f64) -> Result<u32, Error> {
+        if !scale.is_finite() || !(1.0..=4.0).contains(&scale) {
+            return Err(Error::from_reason(
+                "Native overlay host minimum menu scale must be between 1 and 4",
+            ));
+        }
+        Ok((scale * 96.0).round().clamp(96.0, 384.0) as u32)
+    }
+
+    fn menu_text_without_mnemonics(label: &str) -> Vec<u16> {
+        let mut text = String::with_capacity(label.len());
+        let mut characters = label.chars().peekable();
+        while let Some(character) = characters.next() {
+            if character == '&' {
+                if characters.peek() == Some(&'&') {
+                    text.push('&');
+                    characters.next();
+                }
+                continue;
+            }
+            text.push(character);
+        }
+        text.encode_utf16().collect()
+    }
+
+    fn register_menu_draw_item(item: NativeMenuDrawItem) -> usize {
+        let mut accessible_text = if item.separator {
+            Vec::new().into_boxed_slice()
+        } else {
+            let mut text = item.measure_label.clone();
+            text.push(0);
+            text.into_boxed_slice()
+        };
+        let mut data = Box::new(NativeMenuOwnerDrawData {
+            msaa: MSAAMENUINFO {
+                dwMSAASignature: MSAA_MENU_SIG as u32,
+                cchWText: accessible_text.len().saturating_sub(1) as u32,
+                pszWText: if accessible_text.is_empty() {
+                    ptr::null_mut()
+                } else {
+                    accessible_text.as_mut_ptr()
+                },
+            },
+            draw: item,
+            _accessible_text: accessible_text,
+        });
+        let token = ptr::addr_of_mut!(data.msaa) as usize;
+        MENU_DRAW_ITEMS
+            .lock()
+            .expect("Steam overlay menu draw item lock poisoned")
+            .insert(token, data);
+        token
+    }
+
+    fn unregister_menu_draw_items(tokens: &[usize]) {
+        if tokens.is_empty() {
+            return;
+        }
+        let mut items = MENU_DRAW_ITEMS
+            .lock()
+            .expect("Steam overlay menu draw item lock poisoned");
+        for token in tokens {
+            items.remove(token);
+        }
+    }
+
+    fn read_menu_draw_item(token: usize) -> Option<NativeMenuDrawItem> {
+        MENU_DRAW_ITEMS
+            .lock()
+            .ok()?
+            .get(&token)
+            .map(|data| data.draw.clone())
+    }
+
+    unsafe fn build_native_menu(
+        items: &[NativeMenuItem],
+        popup: bool,
+        minimum_dpi: Option<u32>,
+        draw_tokens: &mut Vec<usize>,
+    ) -> Result<HMENU, Error> {
+        let menu = if popup {
+            CreatePopupMenu()
+        } else {
+            CreateMenu()
+        };
+        if menu.is_null() {
+            return Err(Error::from_reason(
+                "Failed to create the native overlay host menu",
+            ));
+        }
+
+        for (position, item) in items.iter().enumerate() {
+            if !item.separator && item.label.is_empty() {
+                DestroyMenu(menu);
+                return Err(Error::from_reason(
+                    "Native overlay host menu labels cannot be empty",
+                ));
+            }
+            if let Some(minimum_dpi) = minimum_dpi {
+                let submenu = if item.items.is_empty() {
+                    None
+                } else {
+                    match build_native_menu(&item.items, true, Some(minimum_dpi), draw_tokens) {
+                        Ok(submenu) => Some(submenu),
+                        Err(error) => {
+                            DestroyMenu(menu);
+                            return Err(error);
+                        }
+                    }
+                };
+                let label = item.label.encode_utf16().collect::<Vec<_>>();
+                let token = register_menu_draw_item(NativeMenuDrawItem {
+                    measure_label: menu_text_without_mnemonics(&item.label),
+                    label,
+                    top_level: !popup,
+                    submenu: submenu.is_some(),
+                    separator: item.separator,
+                    minimum_dpi,
+                });
+                draw_tokens.push(token);
+                let mut info: MENUITEMINFOW = mem::zeroed();
+                info.cbSize = mem::size_of::<MENUITEMINFOW>() as u32;
+                info.fMask = MIIM_FTYPE | MIIM_STATE | MIIM_DATA;
+                info.fType = MFT_OWNERDRAW | if item.separator { MFT_SEPARATOR } else { 0 };
+                info.fState = if item.enabled {
+                    MFS_ENABLED
+                } else {
+                    MFS_DISABLED
+                };
+                info.dwItemData = token;
+                let submenu_handle = submenu.unwrap_or(ptr::null_mut());
+                if !submenu_handle.is_null() {
+                    info.fMask |= MIIM_SUBMENU;
+                    info.hSubMenu = submenu_handle;
+                } else if !item.separator {
+                    let Some(command_id) = item
+                        .command_id
+                        .filter(|value| (1..=u16::MAX as u32).contains(value))
+                    else {
+                        DestroyMenu(menu);
+                        return Err(Error::from_reason(
+                            "Native overlay host menu command IDs must be between 1 and 65535",
+                        ));
+                    };
+                    info.fMask |= MIIM_ID;
+                    info.wID = command_id;
+                }
+                if !item.separator {
+                    let mut accessible_label = wide_string(&item.label);
+                    info.fMask |= MIIM_STRING;
+                    info.dwTypeData = accessible_label.as_mut_ptr();
+                    info.cch = accessible_label.len().saturating_sub(1) as u32;
+                    if InsertMenuItemW(menu, position as u32, 1, &info) == 0 {
+                        if !submenu_handle.is_null() {
+                            DestroyMenu(submenu_handle);
+                        }
+                        DestroyMenu(menu);
+                        return Err(Error::from_reason(
+                            "Failed to append an owner-drawn native overlay host menu item",
+                        ));
+                    }
+                } else if InsertMenuItemW(menu, position as u32, 1, &info) == 0 {
+                    if !submenu_handle.is_null() {
+                        DestroyMenu(submenu_handle);
+                    }
+                    DestroyMenu(menu);
+                    return Err(Error::from_reason(
+                        "Failed to append an owner-drawn native overlay host menu item",
+                    ));
+                }
+                continue;
+            }
+
+            if item.separator {
+                if AppendMenuW(menu, MF_SEPARATOR, 0, ptr::null()) == 0 {
+                    DestroyMenu(menu);
+                    return Err(Error::from_reason(
+                        "Failed to append a native overlay host menu separator",
+                    ));
+                }
+                continue;
+            }
+            let label = wide_string(&item.label);
+            let enabled_flag = if item.enabled { 0 } else { MF_GRAYED };
+            if !item.items.is_empty() {
+                let submenu = match build_native_menu(&item.items, true, None, draw_tokens) {
+                    Ok(submenu) => submenu,
+                    Err(error) => {
+                        DestroyMenu(menu);
+                        return Err(error);
+                    }
+                };
+                if AppendMenuW(
+                    menu,
+                    MF_STRING | MF_POPUP | enabled_flag,
+                    submenu as usize,
+                    label.as_ptr(),
+                ) == 0
+                {
+                    DestroyMenu(submenu);
+                    DestroyMenu(menu);
+                    return Err(Error::from_reason(
+                        "Failed to append a native overlay host submenu",
+                    ));
+                }
+                continue;
+            }
+
+            let Some(command_id) = item
+                .command_id
+                .filter(|value| (1..=u16::MAX as u32).contains(value))
+            else {
+                DestroyMenu(menu);
+                return Err(Error::from_reason(
+                    "Native overlay host menu command IDs must be between 1 and 65535",
+                ));
+            };
+            if AppendMenuW(
+                menu,
+                MF_STRING | enabled_flag,
+                command_id as usize,
+                label.as_ptr(),
+            ) == 0
+            {
+                DestroyMenu(menu);
+                return Err(Error::from_reason(
+                    "Failed to append a native overlay host menu command",
+                ));
+            }
+        }
+        Ok(menu)
+    }
+
+    unsafe fn set_window_menu_attached(surface: &NativeSurface, attached: bool) -> bool {
+        let menu = if attached {
+            surface.menu.unwrap_or(ptr::null_mut())
+        } else {
+            ptr::null_mut()
+        };
+        if GetMenu(surface.hwnd) == menu {
+            return true;
+        }
+        SetMenu(surface.hwnd, menu) != 0 && DrawMenuBar(surface.hwnd) != 0
+    }
+
+    unsafe fn resize_window_for_client_size(
+        hwnd: HWND,
+        x: i32,
+        y: i32,
+        client_width: i32,
+        client_height: i32,
+    ) -> Result<(), Error> {
+        let window_dpi = GetDpiForWindow(hwnd);
+        let dpi = if window_dpi == 0 {
+            GetDpiForSystem().max(96)
+        } else {
+            window_dpi.max(96)
+        };
+        let mut adjusted = RECT {
+            left: 0,
+            top: 0,
+            right: client_width.max(1),
+            bottom: client_height.max(1),
+        };
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let has_menu = i32::from(!GetMenu(hwnd).is_null());
+        if AdjustWindowRectExForDpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
+            return Err(Error::from_reason(
+                "Failed to preserve the native overlay host client size after changing its menu",
+            ));
+        }
+        let mut window_width = (adjusted.right - adjusted.left).max(1);
+        let mut window_height = (adjusted.bottom - adjusted.top).max(1);
+        for _ in 0..3 {
+            if SetWindowPos(
+                hwnd,
+                ptr::null_mut(),
+                x,
+                y,
+                window_width,
+                window_height,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+            ) == 0
+            {
+                return Err(Error::from_reason(
+                    "Failed to preserve the native overlay host client size after changing its menu",
+                ));
+            }
+            let Some(client) = read_client_rect(hwnd) else {
+                break;
+            };
+            let actual_width = (client.right - client.left).max(1);
+            let actual_height = (client.bottom - client.top).max(1);
+            let width_delta = client_width.max(1) - actual_width;
+            let height_delta = client_height.max(1) - actual_height;
+            if width_delta == 0 && height_delta == 0 {
+                return Ok(());
+            }
+            window_width = (window_width + width_delta).max(1);
+            window_height = (window_height + height_delta).max(1);
+        }
+        let client = read_client_rect(hwnd).ok_or_else(|| {
+            Error::from_reason("Failed to verify the native overlay host client size")
+        })?;
+        if (client.right - client.left).max(1) != client_width.max(1)
+            || (client.bottom - client.top).max(1) != client_height.max(1)
+        {
+            return Err(Error::from_reason(
+                "Native overlay host client size did not stabilize after changing its menu",
+            ));
+        }
+        Ok(())
+    }
+
     fn logical_pixels_to_physical(value: i32, dpi: u32) -> i32 {
         let scaled = (i64::from(value.max(1)) * i64::from(dpi.max(96)) + 48) / 96;
         scaled.clamp(1, i64::from(i32::MAX)) as i32
+    }
+
+    fn physical_pixels_to_logical(value: i32, dpi: u32) -> i32 {
+        let dpi = dpi.max(96);
+        let scaled = (i64::from(value.max(1)) * 96 + i64::from(dpi / 2)) / i64::from(dpi);
+        scaled.clamp(1, i64::from(i32::MAX)) as i32
+    }
+
+    fn clamp_client_size_to_minimum(
+        client_size: Option<(i32, i32)>,
+        min_client_size: Option<(i32, i32)>,
+    ) -> Option<(i32, i32)> {
+        match (client_size, min_client_size) {
+            (Some((width, height)), Some((min_width, min_height))) => {
+                Some((width.max(min_width), height.max(min_height)))
+            }
+            (None, Some(minimum)) => Some(minimum),
+            (client_size, _) => client_size,
+        }
+    }
+
+    fn set_standalone_min_client_size(size: Option<(i32, i32)>) {
+        let packed = size.map_or(0, |(width, height)| {
+            ((width.max(1) as u64) << 32) | height.max(1) as u32 as u64
+        });
+        STANDALONE_MIN_CLIENT_SIZE.store(packed, Ordering::Relaxed);
+    }
+
+    fn standalone_min_client_size() -> Option<(i32, i32)> {
+        let packed = STANDALONE_MIN_CLIENT_SIZE.load(Ordering::Relaxed);
+        if packed == 0 {
+            return None;
+        }
+        Some(((packed >> 32) as u32 as i32, packed as u32 as i32))
+    }
+
+    fn set_standalone_logical_client_size(size: Option<(i32, i32)>) {
+        let packed = size.map_or(0, |(width, height)| {
+            ((width.max(1) as u64) << 32) | height.max(1) as u32 as u64
+        });
+        STANDALONE_LOGICAL_CLIENT_SIZE.store(packed, Ordering::Relaxed);
+    }
+
+    fn standalone_logical_client_size() -> Option<(i32, i32)> {
+        let packed = STANDALONE_LOGICAL_CLIENT_SIZE.load(Ordering::Relaxed);
+        if packed == 0 {
+            return None;
+        }
+        Some(((packed >> 32) as u32 as i32, packed as u32 as i32))
+    }
+
+    unsafe fn remember_standalone_logical_client_size(hwnd: HWND) {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        if style & WS_OVERLAPPEDWINDOW == 0 || IsIconic(hwnd) != 0 || IsZoomed(hwnd) != 0 {
+            return;
+        }
+        let dpi = GetDpiForWindow(hwnd).max(96);
+        if let Some(client) = read_client_rect(hwnd) {
+            set_standalone_logical_client_size(Some((
+                physical_pixels_to_logical((client.right - client.left).max(1), dpi),
+                physical_pixels_to_logical((client.bottom - client.top).max(1), dpi),
+            )));
+        }
+    }
+
+    unsafe fn minimum_window_track_size(hwnd: HWND) -> Option<(i32, i32)> {
+        let (client_width, client_height) = standalone_min_client_size()?;
+        let window_dpi = GetDpiForWindow(hwnd);
+        let dpi = if window_dpi == 0 {
+            GetDpiForSystem().max(96)
+        } else {
+            window_dpi.max(96)
+        };
+        let target_client_width = logical_pixels_to_physical(client_width, dpi);
+        let target_client_height = logical_pixels_to_physical(client_height, dpi);
+        if let (Some(window), Some(client)) = (read_window_rect(hwnd), read_client_rect(hwnd)) {
+            let non_client_width =
+                ((window.right - window.left) - (client.right - client.left)).max(0);
+            let non_client_height =
+                ((window.bottom - window.top) - (client.bottom - client.top)).max(0);
+            return Some((
+                target_client_width.saturating_add(non_client_width).max(1),
+                target_client_height
+                    .saturating_add(non_client_height)
+                    .max(1),
+            ));
+        }
+        let mut adjusted = RECT {
+            left: 0,
+            top: 0,
+            right: target_client_width,
+            bottom: target_client_height,
+        };
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let has_menu = i32::from(!GetMenu(hwnd).is_null());
+        if AdjustWindowRectExForDpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
+            return None;
+        }
+        Some((
+            (adjusted.right - adjusted.left).max(1),
+            (adjusted.bottom - adjusted.top).max(1),
+        ))
     }
 
     unsafe fn primary_work_area() -> RECT {
@@ -3729,7 +4770,12 @@ mod windows {
 
     #[cfg(test)]
     mod tests {
-        use super::{centered_window_rect, logical_pixels_to_physical, RECT};
+        use super::{
+            centered_window_rect, clamp_client_size_to_minimum, logical_pixels_to_physical,
+            menu_text_without_mnemonics, minimum_menu_dpi, physical_pixels_to_logical,
+            set_standalone_logical_client_size, set_standalone_min_client_size,
+            standalone_logical_client_size, standalone_min_client_size, RECT,
+        };
 
         #[test]
         fn standalone_client_dimensions_scale_from_logical_pixels() {
@@ -3737,6 +4783,44 @@ mod windows {
             assert_eq!(logical_pixels_to_physical(1024, 216), 2304);
             assert_eq!(logical_pixels_to_physical(768, 216), 1728);
             assert_eq!(logical_pixels_to_physical(1, 120), 1);
+            assert_eq!(physical_pixels_to_logical(2304, 216), 1024);
+            assert_eq!(physical_pixels_to_logical(1728, 216), 768);
+        }
+
+        #[test]
+        fn standalone_minimum_client_dimensions_round_trip_atomically() {
+            set_standalone_min_client_size(Some((640, 480)));
+            assert_eq!(standalone_min_client_size(), Some((640, 480)));
+            set_standalone_min_client_size(None);
+            assert_eq!(standalone_min_client_size(), None);
+        }
+
+        #[test]
+        fn standalone_logical_client_dimensions_round_trip_atomically() {
+            set_standalone_logical_client_size(Some((1280, 720)));
+            assert_eq!(standalone_logical_client_size(), Some((1280, 720)));
+            set_standalone_logical_client_size(None);
+            assert_eq!(standalone_logical_client_size(), None);
+        }
+
+        #[test]
+        fn standalone_initial_client_size_respects_its_minimum() {
+            assert_eq!(
+                clamp_client_size_to_minimum(Some((320, 700)), Some((640, 480))),
+                Some((640, 700))
+            );
+            assert_eq!(
+                clamp_client_size_to_minimum(Some((1280, 720)), Some((640, 480))),
+                Some((1280, 720))
+            );
+            assert_eq!(
+                clamp_client_size_to_minimum(Some((320, 240)), None),
+                Some((320, 240))
+            );
+            assert_eq!(
+                clamp_client_size_to_minimum(None, Some((640, 480))),
+                Some((640, 480))
+            );
         }
 
         #[test]
@@ -3754,6 +4838,27 @@ mod windows {
             assert_eq!(
                 centered_window_rect(2300, 1200, &work_area),
                 (0, 0, 1920, 1040)
+            );
+        }
+
+        #[test]
+        fn standalone_menu_scale_is_a_bounded_dpi_floor() {
+            assert_eq!(minimum_menu_dpi(1.0).unwrap(), 96);
+            assert_eq!(minimum_menu_dpi(1.25).unwrap(), 120);
+            assert_eq!(minimum_menu_dpi(1.5).unwrap(), 144);
+            assert!(minimum_menu_dpi(0.99).is_err());
+            assert!(minimum_menu_dpi(4.01).is_err());
+        }
+
+        #[test]
+        fn owner_drawn_menu_measurement_ignores_mnemonic_markers() {
+            assert_eq!(
+                String::from_utf16(&menu_text_without_mnemonics("&File")).unwrap(),
+                "File"
+            );
+            assert_eq!(
+                String::from_utf16(&menu_text_without_mnemonics("Save && E&xit\tAlt+F4")).unwrap(),
+                "Save & Exit\tAlt+F4"
             );
         }
     }
@@ -3807,6 +4912,8 @@ mod linux {
         title: Option<String>,
         _client_width: Option<u32>,
         _client_height: Option<u32>,
+        _min_client_width: Option<u32>,
+        _min_client_height: Option<u32>,
     ) -> Result<(), Error> {
         close();
 
@@ -3950,6 +5057,10 @@ mod linux {
         Ok(())
     }
 
+    pub fn set_menu_json(_menu_json: String) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
         Ok(())
     }
@@ -3958,7 +5069,15 @@ mod linux {
         Ok(())
     }
 
-    pub fn update_shared_texture(_handle: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
+    pub fn update_shared_texture(
+        _handle: Buffer,
+        _width: u32,
+        _height: u32,
+        _content_x: Option<u32>,
+        _content_y: Option<u32>,
+        _content_width: Option<u32>,
+        _content_height: Option<u32>,
+    ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Electron shared textures are currently supported only by the Windows D3D11 native host",
         ))

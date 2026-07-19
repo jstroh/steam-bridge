@@ -248,7 +248,7 @@ test("Windows native presenter parks without activation and accepts input while 
   assert.match(source, /surface\.presentation_ready = false/);
   assert.match(source, /surface\.opaque && surface\.presentation_ready/);
   assert.match(source, /SetLayeredWindowAttributes\(surface\.hwnd, 0, 0, LWA_ALPHA\)/);
-  assert.match(d3dSource, /DXGI_SWAP_EFFECT_FLIP_DISCARD/);
+  assert.match(d3dSource, /DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL/);
   assert.match(d3dSource, /BufferCount: 2/);
   assert.match(d3dSource, /OpenSharedResource1/);
   assert.match(d3dSource, /UpdateSubresource/);
@@ -267,9 +267,13 @@ test("Windows native presenter parks without activation and accepts input while 
   assert.doesNotMatch(source, /SWP_SHOWWINDOW/);
 });
 
-test("Windows standalone D3D host uses normal chrome without diagnostic menu UI", () => {
+test("Windows standalone D3D host uses native chrome, app menus, and high-refresh presentation", () => {
   const source = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const d3dSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "windows_d3d11.rs"),
     "utf8"
   );
 
@@ -290,11 +294,40 @@ test("Windows standalone D3D host uses normal chrome without diagnostic menu UI"
   assert.match(source, /surface_has_foreground\(surface\)/);
   assert.match(source, /cursor_is_in_client\(surface\.hwnd\)/);
   assert.match(source, /source_frame_dirty \|\| !surface\.presentation_ready/);
-  assert.match(source, /CONTINUOUS_PRESENT_INTERVAL: Duration = Duration::from_millis\(1\)/);
   assert.match(source, /RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis\(250\)/);
   assert.match(source, /last_present_at\.elapsed\(\) >= RETAINED_FRAME_REFRESH_INTERVAL/);
   assert.match(source, /surface\.source_frame_dirty \|\| surface\.continuous_present_requested/);
   assert.match(source, /surface\.continuous_present_requested != continuous/);
+  assert.match(source, /CreateMenu\(\)/);
+  assert.match(source, /AppendMenuW\(/);
+  assert.match(source, /SetMenu\(surface\.hwnd, attached_menu_handle\)/);
+  assert.match(source, /WM_COMMAND => "menuCommand"/);
+  assert.match(source, /i32::from\(!GetMenu\(hwnd\)\.is_null\(\)\)/);
+  assert.match(source, /SetThreadDpiAwarenessContext\(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2\)/);
+  assert.match(source, /AreDpiAwarenessContextsEqual\(/);
+  assert.match(source, /message == WM_DPICHANGED/);
+  assert.match(source, /standalone_logical_client_size\(\)/);
+  assert.match(source, /set_standalone_logical_client_size\(client_size\)/);
+  assert.match(source, /surface\.source_frame = None;[\s\S]*surface\.source_frame_dirty = true;/);
+  assert.match(source, /SystemParametersInfoForDpi\(/);
+  assert.match(source, /MFT_OWNERDRAW/);
+  assert.match(source, /MSAAMENUINFO/);
+  assert.match(source, /MSAA_MENU_SIG/);
+  assert.match(
+    source,
+    /if InsertMenuItemW\(menu,[\s\S]*?if !submenu_handle\.is_null\(\) \{\s*DestroyMenu\(submenu_handle\);\s*\}\s*DestroyMenu\(menu\);/
+  );
+  assert.match(source, /GetMenuBarInfo\(/);
+  assert.match(source, /for _ in 0\.\.3/);
+  assert.match(d3dSource, /DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT/);
+  assert.match(d3dSource, /SetMaximumFrameLatency\(1\)/);
+  assert.match(d3dSource, /WaitForSingleObjectEx\(/);
+  assert.match(d3dSource, /\.Present\(1, DXGI_PRESENT\(0\)\)/);
+  assert.match(d3dSource, /D3D11_QUERY_EVENT/);
+  assert.match(d3dSource, /CopySubresourceRegion\(/);
+  assert.match(d3dSource, /wait_for_shared_texture_copy\(\)/);
+  assert.match(d3dSource, /SHARED_TEXTURE_COPY_TIMEOUT_MS/);
+  assert.match(d3dSource, /\.GetData\(/);
   assert.match(source, /renderer\.upload_cpu_frame/);
   assert.match(source, /renderer\.has_source\(\)/);
   assert.match(source, /ex_style &= !\(WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE \| WS_EX_TOPMOST\)/);
@@ -2809,6 +2842,13 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
   const targetScript = fs.readFileSync(path.join(repoRoot, "scripts", "assert-supported-targets.cjs"), "utf8");
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
+  const buildNativeScript = fs.readFileSync(path.join(repoRoot, "scripts", "build-native.cjs"), "utf8");
+  const checkNativeScript = fs.readFileSync(path.join(repoRoot, "scripts", "check-native.cjs"), "utf8");
+  const apiAuditScript = fs.readFileSync(path.join(repoRoot, "scripts", "audit-steam-api-coverage.cjs"), "utf8");
+  const enumGeneratorScript = fs.readFileSync(
+    path.join(repoRoot, "scripts", "generate-steamworks-enums.cjs"),
+    "utf8"
+  );
   const prepareMacosScript = fs.readFileSync(
     path.join(repoRoot, "packages", "steam-bridge", "bin", "prepare-macos-app.cjs"),
     "utf8"
@@ -2878,6 +2918,10 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(packagerScript, /command: process\.execPath, args: \[npmCli, \.\.\.args\]/);
   assert.match(packagerScript, /shell: false/);
   assert.doesNotMatch(packagerScript, /shell: process\.platform === "win32"/);
+  for (const script of [buildNativeScript, checkNativeScript, apiAuditScript, enumGeneratorScript]) {
+    assert.match(script, /shell: false/);
+    assert.doesNotMatch(script, /shell: process\.platform === "win32"/);
+  }
   assert.match(packagerScript, /windows-release-candidate-fingerprint\.cjs/);
   assert.match(
     packagerScript,
@@ -2905,6 +2949,8 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(initClientTxnScript, /App ID 480 only proves generic checkout routing/);
   assert.match(launcherTemplate, /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
   assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
+  assert.match(linkScript, /path\.join\(dir, "deps", config\.nativeLibrary\)/);
+  assert.match(linkScript, /mtimeMs/);
 });
 
 test("native loader prefers the physical ASAR-unpacked addon mirror", (t) => {
@@ -15264,8 +15310,19 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     updateNativeOverlayHostFrame(frame, width, height) {
       this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
     },
-    updateNativeOverlayHostSharedTexture(handle, width, height) {
-      this.calls.push({ method: "updateNativeOverlayHostSharedTexture", args: [handle, width, height] });
+    updateNativeOverlayHostSharedTexture(
+      handle,
+      width,
+      height,
+      contentX,
+      contentY,
+      contentWidth,
+      contentHeight
+    ) {
+      this.calls.push({
+        method: "updateNativeOverlayHostSharedTexture",
+        args: [handle, width, height, contentX, contentY, contentWidth, contentHeight]
+      });
     },
     setNativeOverlayHostCursorHidden(hidden) {
       this.calls.push({ method: "setNativeOverlayHostCursorHidden", args: [hidden] });
@@ -15281,6 +15338,9 @@ test("native overlay session presents shared textures and owned CPU fallback fra
       if (fullScreen === failFullScreenTransition) {
         throw new Error(`fullscreen ${fullScreen} failed`);
       }
+    },
+    setNativeOverlayHostMenuJson(menuJson) {
+      this.calls.push({ method: "setNativeOverlayHostMenuJson", args: [menuJson] });
     },
     drainNativeOverlayHostInputEventsJson() {
       return JSON.stringify(queuedInputEvents.splice(0));
@@ -15299,11 +15359,48 @@ test("native overlay session presents shared textures and owned CPU fallback fra
 
   t.after(clearSteamBridgeCache);
 
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ minClientWidth: 640 }),
+    /minClientWidth and minClientHeight must be provided together/
+  );
+  assert.throws(
+    () =>
+      steam.overlay.startNativeOverlaySession({
+        menu: [
+          { label: "&File", items: [{ label: "First", commandId: 1 }] },
+          { label: "&Edit", items: [{ label: "Second", commandId: 1 }] }
+        ]
+      }),
+    /commandId 1 is duplicated/
+  );
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ menu: [{ label: "&File", items: [] }] }),
+    /submenu "&File" must contain items/
+  );
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ minimumMenuScale: 0.75 }),
+    /minimumMenuScale must be a finite number from 1 through 4/
+  );
+  assert.throws(
+    () => steam.overlay.startNativeOverlaySession({ minimumMenuScale: 5 }),
+    /minimumMenuScale must be a finite number from 1 through 4/
+  );
+  assert.equal(fake.calls.length, 0);
+
   const receivedInputEvents = [];
   const session = steam.overlay.startNativeOverlaySession({
     pumpIntervalMs: 10000,
     clientWidth: 1024,
     clientHeight: 768,
+    minClientWidth: 640,
+    minClientHeight: 480,
+    minimumMenuScale: 1.25,
+    menu: [
+      {
+        label: "&File",
+        items: [{ label: "E&xit", commandId: 1 }]
+      }
+    ],
     onInputEvent(event) {
       receivedInputEvents.push(event);
     }
@@ -15312,8 +15409,23 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   assert.deepEqual(fake.calls.find((call) => call.method === "openNativeOverlayProbeWindow").args, [
     "Steam Bridge Native Overlay",
     1024,
-    768
+    768,
+    640,
+    480
   ]);
+  assert.deepEqual(
+    JSON.parse(fake.calls.find((call) => call.method === "setNativeOverlayHostMenuJson").args[0]),
+    {
+      minimumScale: 1.25,
+      items: [
+        {
+          label: "&File",
+          enabled: true,
+          items: [{ label: "E&xit", commandId: 1, enabled: true }]
+        }
+      ]
+    }
+  );
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostOverlayActive").map((call) => call.args[0]),
     [false]
@@ -15379,6 +15491,14 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     deltaY: 120,
     clientWidth: 960,
     clientHeight: 540
+  }, {
+    kind: "menuCommand",
+    message: 273,
+    wparam: 1,
+    lparam: 0,
+    commandId: 1,
+    clientWidth: 960,
+    clientHeight: 540
   });
 
   session.updateFrame({ data: frame, width: 1, height: 1 });
@@ -15387,10 +15507,15 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   assert.equal(upload.args[0], frame);
   assert.deepEqual(upload.args.slice(1), [1, 1]);
   const sharedHandle = Buffer.from([9, 8, 7, 6, 5, 4, 3, 2]);
-  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  session.updateSharedTexture({
+    handle: sharedHandle,
+    width: 1024,
+    height: 768,
+    contentRect: { x: 4, y: 5, width: 1000, height: 700 }
+  });
   const sharedUpload = fake.calls.find((call) => call.method === "updateNativeOverlayHostSharedTexture");
   assert.equal(sharedUpload.args[0], sharedHandle);
-  assert.deepEqual(sharedUpload.args.slice(1), [1024, 768]);
+  assert.deepEqual(sharedUpload.args.slice(1), [1024, 768, 4, 5, 1000, 700]);
   assert.throws(
     () => session.updateFrame({ data: frame, width: Number.NaN, height: 1 }),
     /frame width must be a finite number/
@@ -15398,6 +15523,16 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   assert.throws(
     () => session.updateSharedTexture({ handle: sharedHandle, width: Number.POSITIVE_INFINITY, height: 1 }),
     /shared texture width must be a finite number/
+  );
+  assert.throws(
+    () =>
+      session.updateSharedTexture({
+        handle: sharedHandle,
+        width: 1024,
+        height: 768,
+        contentRect: { x: 1000, y: 0, width: 100, height: 768 }
+      }),
+    /contentRect 1000,0 100x768 exceeds 1024x768/
   );
   assert.equal(
     fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
@@ -15422,6 +15557,15 @@ test("native overlay session presents shared textures and owned CPU fallback fra
       x: 10,
       y: 20,
       deltaY: 120,
+      clientWidth: 960,
+      clientHeight: 540
+    },
+    {
+      kind: "menuCommand",
+      message: 273,
+      wparam: 1,
+      lparam: 0,
+      commandId: 1,
       clientWidth: 960,
       clientHeight: 540
     }
@@ -15494,7 +15638,7 @@ test("native overlay session retargets its presentation timer by frame rate", as
   assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
 
   session.updateFrame({ data: Buffer.alloc(4), width: 1, height: 1 });
-  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
+  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 2);
 
   session.setFrameRate(120);
   assert.equal(session.snapshot().frameRate, 120);

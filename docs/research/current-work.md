@@ -1,20 +1,81 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-19
 
 Review anchor: `ea10a22` (`Fix scaled native host sizing`), published as
 immutable `v0.2.11` with exact-candidate Windows live proof.
 
 ## Active Goal
 
-Hold `steam-bridge@0.2.11` as the supported standalone Windows native-host
-release and preserve its exact candidate, four proof roots, receipt, public
-Release assets, publication run, and downstream registry-backed evidence. The
-consumer now resolves the exact npm package from a normal non-junction install.
-Repeat the release path only after a material native/runtime change or a focused
-regression; published bytes and tags remain immutable.
+Ship `v0.2.12` with the reviewed Windows standalone-host slice: high-refresh
+DXGI pacing, immediate presentation of new Electron frames, logical minimum
+client size, an accessible native application menu, and unambiguous per-
+monitor-DPI transitions. Prove the exact immutable package candidate before
+publication, then replace the Electron consumer's local junction with the exact
+registry package and repeat its critical manual path. Do not change or reuse
+published `v0.2.11` bytes or tag.
 
 ## Current State
+
+The source-linked Windows host now creates a frame-latency-waitable flip-model
+swap chain, sets maximum frame latency to one, waits on the DXGI object, and
+submits through `Present(1)` on a two-buffer flip-sequential chain. New shared
+textures and CPU frames pump
+immediately; the scheduled pump remains a retained-frame and Steam-overlay
+fallback. On the development display's native 1920 by 1200, 165 Hz mode, DWM
+reported 164.766 Hz. An opt-in renderer animation produced 145-149 game-surface
+FPS and 162-165 native presents during gameplay. With the Steam checkout
+overlay active, the source remained at 147-150 FPS and the native presenter at
+163-165 FPS. Both phases had zero frame-latency wait timeouts and zero slow
+shared-texture copies on the matching discrete-GPU adapter. The animation runs
+only under the local FPS-report flag and is absent from normal development and
+release execution. The shared-texture fence wait now has a hard upper bound so
+a wedged GPU copy fails instead of spinning the Electron main thread forever;
+swap-chain setup also closes a newly acquired wait handle on every failure path.
+
+The standalone host also accepts a validated menu tree, attaches a real Win32
+menu, dispatches command IDs as `menuCommand` input events, preserves client
+size when the menu changes, removes it in fullscreen, and restores it on return
+to windowed mode. `WM_GETMINMAXINFO` enforces a logical minimum client size with
+menu- and DPI-aware non-client adjustment. The source-linked consumer exposes
+File/Edit/View, reports an exact 1280 by 720 client and 640 by 480 minimum at 96
+DPI, and manually passed every File/Edit/View menu click, title drag,
+maximize/restore, minimize/focus return, aspect-fit fullscreen, exact windowed
+placement restore, rounded restored corners, and both minimum resize axes. The
+instrumented host stopped at a 642 by 532 visible frame,
+exactly the 640 by 480 client plus border/title/menu chrome. The menu/fullscreen
+round trip returned to 162-165 native presents with zero wait timeouts.
+
+The DPI follow-up keeps the standalone thread in per-monitor-v2 awareness,
+reports the effective window/menu DPI, and stores the last normal logical
+client size independently of whichever menu metrics Windows has already
+switched during `WM_DPICHANGED`. It applies the suggested monitor rectangle and
+then restores that stored logical client size with the new DPI's non-client
+metrics. A live 100%-to-125%-to-100% transition retained an exact 1280 by 720
+logical host (1600 by 900 physical at 125%, then 1280 by 720 physical at 100%)
+and a 640 by 480 logical minimum. The menu can apply a consumer-requested 1.25
+scale floor without changing the title bar, renderer, process scale, Windows
+settings, or higher monitor scale. Its owner-drawn path retains the real HMENU,
+system colors/font, keyboard mnemonics, command routing, and `MSAAMENUINFO`
+accessibility metadata.
+
+Shared-texture imports now mark the copied source frame dirty before Electron's
+pooled texture is released. This closes the non-continuous-session hole where
+the frame was copied but never presented. With the consumer's production
+policy changed to `continuousPresent: false`, ordinary animated gameplay drove
+both source and native presentation at roughly 159-165 FPS on the 165 Hz
+display. Activating the real checkout automatically restored overlay-driven
+continuous presentation: the source ran roughly 140-146 FPS and native
+presentation roughly 155-162 FPS, with zero frame-latency wait timeouts and
+zero slow shared-texture copies. Checkout was cancelled without authorization.
+
+The local native linker now considers both Cargo's target release directory and
+its `deps` directory and chooses the newest matching addon, preventing a stale
+top-level DLL from masking current source changes. Native build/check and API
+audit subprocesses no longer use deprecated Windows shell argument handling.
+The final native review also closes an error-only ownership gap: if Windows
+rejects insertion of a newly built owner-drawn menu item, the still-unattached
+submenu is destroyed before the partial parent menu is torn down.
 
 `steam-bridge@0.2.11` is npm `latest`. The preceding registry-backed checkout
 pass exposed one unhandled Steam window shape: closing a recurring
@@ -53,7 +114,8 @@ authorization, and left the ordinary Shift+Tab overlay working independently.
 The underlying Windows product path remains the top-level Win32 D3D11 game
 host introduced by the `0.2.x` series. It uses Electron offscreen shared
 textures, a bridge-owned copy before Electron releases its pool texture,
-flip-discard presentation, source-aspect preservation, per-monitor DPI,
+two-buffer flip-sequential presentation, source-aspect preservation,
+per-monitor DPI,
 display-rate presentation, Windows 11 restored corners, title drag, edge
 resize, minimize/maximize/restore, monitor fullscreen, focus parking, and the
 managed Electron-owned Steam presenter surface. The diagnostic `WS_CHILD`
@@ -70,6 +132,41 @@ at high DPI and carries a fresh full live proof and downstream registry-backed
 pass.
 
 ## Consumer Evidence
+
+The Electron game consumer is currently linked to the local
+`packages/steam-bridge` workspace while this unreleased slice is validated; its
+manifest and lockfile still name registry version `0.2.11` for the eventual
+return to an exact package. The opt-in FPS report measured both Electron paint/
+shared-texture arrivals and native presenter frames across game and checkout-
+overlay phases without changing normal execution. The source ran at roughly
+146-150 FPS while the native presenter held roughly 163-165 FPS against the
+164.766 Hz DWM cadence. Native diagnostics measured a 1280 by 720 logical
+client, 640 by 480 logical minimum, attached menu, 96 DPI, and the 165 Hz
+target. File/Edit/View menu interaction, title drag, maximize/restore,
+minimize/focus return, fullscreen round trip, and an exact 640 by 480
+minimum-client resize passed. A fresh 2026-07-19 clean restart repeated the
+exact 1280 by 720 default client, keyboard and mouse menu traversal, title drag,
+minimum resize, maximize/restore, minimize/focus return, and fullscreen aspect
+preservation. Buy and subscription routes opened at the correct size in both
+default and manually resized hosts; Escape closed them without authorization,
+and the adopted Steam confirmation dialog remained centered after a focus
+round trip. The process then shut down cleanly. A prior synthetic Shift+Tab
+injection was not accepted by Steam, so it is not counted as ordinary-overlay
+proof.
+
+The final DPI and presentation pass removed the process-wide Chromium
+`force-device-scale-factor` override. The bridge owns PMv2 conversion,
+non-client/menu metrics, minimum tracking, DPI-transition geometry, and the
+one-shot/continuous presentation contract; the consumer owns the 1280 by 720
+logical viewport, 640 by 480 minimum, 1.25 menu floor, and non-continuous game
+policy. The hidden Electron renderer reconciles its content size after a host
+DPI change without changing the game aspect ratio. Live testing at 100%, 125%,
+and the earlier 225% environment passed title drag, edge resize, minimum size,
+rounded corners, maximize/restore, minimize/focus return, fullscreen round
+trip, menu keyboard/mouse input, aspect-preserving rendering, and real checkout
+open/cancel at both default and manually resized host sizes. The overlay stayed
+inside the game client and did not collapse into the former tiny top-right
+surface.
 
 The Electron game consumer was linked to `packages/steam-bridge` while the
 sizing repair was developed, then returned to an exact non-junction registry
@@ -137,6 +234,18 @@ attestations. All five GitHub Release asset digests match their retained local
 files. The release-scoped GitHub proof secret was deleted after publication.
 
 ## Verification
+
+The reviewed `0.2.12` source passes 206/206 repository tests, TypeScript, Rust
+format and compile checks, the platform policy, Steam API coverage, and the
+complete package smoke on Windows with the available Git Bash host. The first
+smoke invocation correctly exposed that `bash` was absent from the default
+PowerShell path; rerunning with the installed Git Bash directory supplied
+completed the gate. Strict workspace Clippy remains an informational baseline
+failure across generated compatibility declarations and longstanding crate-
+wide lints; the required zero-warning release checks are Rust formatting and
+compilation. The consumer passes ESLint, TypeScript, and 4/4 tests. Commit,
+exact candidate proof, publication, and the final registry-backed consumer pass
+remain pending.
 
 The published source tree passes 206/206 repository tests, Rust format
 and compile checks, the API and platform audits, and the focused standalone

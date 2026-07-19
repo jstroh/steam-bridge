@@ -56,9 +56,12 @@ function findSteamworksSysRoot() {
   const metadata = spawnSync("cargo", ["metadata", "--format-version", "1"], {
     cwd: repoRoot,
     encoding: "utf8",
-    shell: process.platform === "win32"
+    shell: false
   });
 
+  if (metadata.error) {
+    throw metadata.error;
+  }
   if (metadata.status !== 0) {
     process.stderr.write(metadata.stderr || metadata.stdout);
     process.exit(metadata.status ?? 1);

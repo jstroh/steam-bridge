@@ -1585,9 +1585,9 @@ export interface OverlayWebPageOptions {
 export interface NativeOverlaySessionOptions {
   title?: string;
   /**
-   * Target presentation rate for the native host. The session timer runs just
-   * ahead of this rate and the Windows D3D11 backend synchronizes Present to
-   * the display's vertical blank. Takes precedence over pumpIntervalMs.
+   * Target presentation rate for the native host. The session compensates for
+   * time spent inside each pump, and the Windows D3D11 backend synchronizes
+   * Present to the display's vertical blank. Takes precedence over pumpIntervalMs.
    */
   frameRate?: number;
   pumpIntervalMs?: number;
@@ -1599,12 +1599,34 @@ export interface NativeOverlaySessionOptions {
   continuousPresent?: boolean;
   clientWidth?: number;
   clientHeight?: number;
+  /** Minimum standalone native-host client size in logical pixels. */
+  minClientWidth?: number;
+  /** Minimum standalone native-host client size in logical pixels. */
+  minClientHeight?: number;
+  /** Windows menu bar shown by a standalone native host. */
+  menu?: readonly NativeOverlayMenuItem[];
+  /**
+   * Optional minimum visual scale for a Windows standalone-host menu. The
+   * menu continues to follow per-monitor DPI above this floor. For example,
+   * 1.25 keeps menu text readable on dense displays configured at 100%.
+   */
+  minimumMenuScale?: number;
   nativeWindowHandle?: Buffer;
   getBounds?: NativeOverlayBoundsProvider;
   onInputEvent?: (event: NativeOverlayInputEvent) => void;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
+}
+
+export interface NativeOverlayMenuItem {
+  /** Menu label. Use & before a character to define its Windows mnemonic. */
+  label?: string;
+  /** Command ID returned through a menuCommand input event. */
+  commandId?: number;
+  enabled?: boolean;
+  separator?: boolean;
+  items?: readonly NativeOverlayMenuItem[];
 }
 
 export type NativeOverlayWebPageSessionOptions = NativeOverlaySessionOptions & OverlayWebPageOptions;
@@ -1637,6 +1659,8 @@ export interface NativeOverlaySharedTexture {
   handle: Buffer;
   width: number;
   height: number;
+  /** Electron contentRect/dirtyRect populated by this shared texture update. */
+  contentRect?: NativeOverlayBounds;
 }
 
 export type NativeOverlayInputEventKind =
@@ -1654,6 +1678,7 @@ export type NativeOverlayInputEventKind =
   | "focus"
   | "blur"
   | "captureLost"
+  | "menuCommand"
   | "overlayShortcut"
   | "windowChanged"
   | "close";
@@ -1666,6 +1691,7 @@ export interface NativeOverlayInputEvent {
   x?: number;
   y?: number;
   deltaY?: number;
+  commandId?: number;
   clientWidth: number;
   clientHeight: number;
 }
@@ -7796,11 +7822,25 @@ export function activateOverlayToWebPage(url: string, options: OverlayWebPageOpt
   native().activateOverlayToWebPage(url, options.modal);
 }
 
-export function openNativeOverlayProbeWindow(title?: string, clientWidth?: number, clientHeight?: number): void {
+export function openNativeOverlayProbeWindow(
+  title?: string,
+  clientWidth?: number,
+  clientHeight?: number,
+  minClientWidth?: number,
+  minClientHeight?: number
+): void {
   runRawNativeOverlaySurfaceOpen(
     "probe",
     () => {
-      if (clientWidth !== undefined && clientHeight !== undefined) {
+      if (minClientWidth !== undefined && minClientHeight !== undefined) {
+        native().openNativeOverlayProbeWindow(
+          title,
+          clientWidth,
+          clientHeight,
+          minClientWidth,
+          minClientHeight
+        );
+      } else if (clientWidth !== undefined && clientHeight !== undefined) {
         native().openNativeOverlayProbeWindow(title, clientWidth, clientHeight);
       } else {
         native().openNativeOverlayProbeWindow(title);
@@ -7869,14 +7909,35 @@ export function updateNativeOverlayHostFrame(frame: Buffer, width: number, heigh
   runRawNativeOverlaySurfaceMutation(() => native().updateNativeOverlayHostFrame(frame, width, height));
 }
 
-export function updateNativeOverlayHostSharedTexture(handle: Buffer, width: number, height: number): void {
+export function updateNativeOverlayHostSharedTexture(
+  handle: Buffer,
+  width: number,
+  height: number,
+  contentRect?: NativeOverlayBounds
+): void {
   runRawNativeOverlaySurfaceMutation(() => {
     const binding = native();
     const update = binding.updateNativeOverlayHostSharedTexture;
     if (typeof update !== "function") {
       throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
     }
-    update.call(binding, handle, Math.max(1, Math.round(width)), Math.max(1, Math.round(height)));
+    const normalizedWidth = normalizeNativeOverlayFrameDimension(width, "shared texture width");
+    const normalizedHeight = normalizeNativeOverlayFrameDimension(height, "shared texture height");
+    const normalizedContentRect = normalizeNativeOverlayContentRect(
+      contentRect,
+      normalizedWidth,
+      normalizedHeight
+    );
+    update.call(
+      binding,
+      handle,
+      normalizedWidth,
+      normalizedHeight,
+      normalizedContentRect.x,
+      normalizedContentRect.y,
+      normalizedContentRect.width,
+      normalizedContentRect.height
+    );
   });
 }
 
@@ -8091,6 +8152,22 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpIntervalMs = resolveNativeOverlayPumpIntervalMs(options);
   const clientWidth = normalizeNativeOverlayClientDimension(options.clientWidth);
   const clientHeight = normalizeNativeOverlayClientDimension(options.clientHeight);
+  const minClientWidth = normalizeNativeOverlayClientDimension(options.minClientWidth);
+  const minClientHeight = normalizeNativeOverlayClientDimension(options.minClientHeight);
+  if ((minClientWidth === undefined) !== (minClientHeight === undefined)) {
+    throw new TypeError(
+      "Steam Bridge native overlay minClientWidth and minClientHeight must be provided together."
+    );
+  }
+  const minimumMenuScale = normalizeNativeOverlayMinimumMenuScale(options.minimumMenuScale);
+  const menuJson = options.menu === undefined
+    ? undefined
+    : JSON.stringify(minimumMenuScale === undefined
+      ? normalizeNativeOverlayMenu(options.menu)
+      : {
+          items: normalizeNativeOverlayMenu(options.menu),
+          minimumScale: minimumMenuScale
+        });
   const usesNativeHostView = Boolean(options.nativeWindowHandle);
   const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
   const continuousPresentRequested = options.continuousPresent === true;
@@ -8109,6 +8186,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let continuousPresentApplied: boolean | undefined;
   let fullScreenRequested = false;
   let fullScreenApplied: boolean | undefined;
+  let menuApplied = false;
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let nativeHostUnavailableReason: NativeOverlayHostUnavailableReason | undefined;
   let macOverlayEnvironment: MacOverlayEnvironment | undefined;
@@ -8208,7 +8286,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     macOverlayEnvironment = undefined;
 
     if (pumpTimer) {
-      clearInterval(pumpTimer);
+      clearTimeout(pumpTimer);
       pumpTimer = undefined;
     }
 
@@ -8259,9 +8337,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const width = normalizeNativeOverlayFrameDimension(frame.width, "frame width");
     const height = normalizeNativeOverlayFrameDimension(frame.height, "frame height");
     native().updateNativeOverlayHostFrame(frame.data, width, height);
-    if (!continuousPresentRequested) {
-      pump();
-    }
+    // A newly captured game frame is the lowest-latency presentation trigger.
+    // Keep the scheduled pump as a retained-frame/Steam-overlay fallback, but
+    // do not make active rendering compete with that JavaScript timer.
+    pump();
   };
 
   const updateSharedTexture = (texture: NativeOverlaySharedTexture): void => {
@@ -8276,15 +8355,20 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (typeof update !== "function") {
       throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
     }
+    const width = normalizeNativeOverlayFrameDimension(texture.width, "shared texture width");
+    const height = normalizeNativeOverlayFrameDimension(texture.height, "shared texture height");
+    const contentRect = normalizeNativeOverlayContentRect(texture.contentRect, width, height);
     update.call(
       binding,
       texture.handle,
-      normalizeNativeOverlayFrameDimension(texture.width, "shared texture width"),
-      normalizeNativeOverlayFrameDimension(texture.height, "shared texture height")
+      width,
+      height,
+      contentRect.x,
+      contentRect.y,
+      contentRect.width,
+      contentRect.height
     );
-    if (!continuousPresentRequested) {
-      pump();
-    }
+    pump();
   };
 
   const setCursorHidden = (hidden: boolean): void => {
@@ -8406,15 +8490,33 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
     if (pumpTimer) {
-      clearInterval(pumpTimer);
+      clearTimeout(pumpTimer);
     }
-    pumpTimer = setInterval(() => {
+    const runScheduledPump = (): void => {
+      pumpTimer = undefined;
+      const pumpStartedAt = performance.now();
       try {
         pump();
       } catch {
         // The thrown error is stored in the session snapshot and the session closes itself.
       }
-    }, pumpIntervalMs);
+      if (closed) {
+        return;
+      }
+      const pumpDurationMs = performance.now() - pumpStartedAt;
+      const displaySynchronizedStandaloneHost =
+        process.platform === "win32" && continuousPresentRequested && !usesNativeHostView;
+      // Wake the Windows standalone host ahead of its target only on this
+      // display-synchronized path. DXGI's frame-latency waitable object gates
+      // the actual Present, while other platforms keep the requested cadence.
+      const scheduledIntervalMs = displaySynchronizedStandaloneHost
+        ? Math.max(1, Math.floor(pumpIntervalMs / 2))
+        : pumpIntervalMs;
+      const nextDelayMs = Math.max(0, scheduledIntervalMs - pumpDurationMs);
+      pumpTimer = setTimeout(runScheduledPump, nextDelayMs);
+      pumpTimer.unref?.();
+    };
+    pumpTimer = setTimeout(runScheduledPump, pumpIntervalMs);
     pumpTimer.unref?.();
   }
 
@@ -8439,6 +8541,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         cursorHiddenApplied = undefined;
         continuousPresentApplied = undefined;
         fullScreenApplied = undefined;
+        menuApplied = false;
         native().showNativeOverlayHostView();
         setHostInputPassthrough(false);
         setHostOpaque(true);
@@ -8450,7 +8553,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
 
     if (!safeBoolean(() => native().isNativeOverlayProbeWindowOpen())) {
-      if (clientWidth !== undefined && clientHeight !== undefined) {
+      if (minClientWidth !== undefined && minClientHeight !== undefined) {
+        native().openNativeOverlayProbeWindow(
+          title,
+          clientWidth,
+          clientHeight,
+          minClientWidth,
+          minClientHeight
+        );
+      } else if (clientWidth !== undefined && clientHeight !== undefined) {
         native().openNativeOverlayProbeWindow(title, clientWidth, clientHeight);
       } else {
         native().openNativeOverlayProbeWindow(title);
@@ -8459,11 +8570,26 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       cursorHiddenApplied = undefined;
       continuousPresentApplied = undefined;
       fullScreenApplied = undefined;
+      menuApplied = false;
     }
+    syncNativeHostMenu();
     syncNativeOverlayActive();
     syncCursorHidden();
     syncFullScreen();
     return true;
+  }
+
+  function syncNativeHostMenu(): void {
+    if (menuApplied || menuJson === undefined || usesNativeHostView) {
+      return;
+    }
+    const binding = native();
+    const setMenu = binding.setNativeOverlayHostMenuJson;
+    if (typeof setMenu !== "function") {
+      throw new Error("Steam Bridge native host menu support is unavailable in this native build.");
+    }
+    setMenu.call(binding, menuJson);
+    menuApplied = true;
   }
 
   function syncCursorHidden(): void {
@@ -8662,6 +8788,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         ...(typeof source.y === "number" && Number.isFinite(source.y) ? { y: source.y } : {}),
         ...(typeof source.deltaY === "number" && Number.isFinite(source.deltaY)
           ? { deltaY: source.deltaY }
+          : {}),
+        ...(typeof source.commandId === "number" && Number.isInteger(source.commandId)
+          ? { commandId: source.commandId }
           : {})
       };
       try {
@@ -8712,6 +8841,18 @@ function normalizeNativeOverlayClientDimension(value: number | undefined): numbe
   return Math.max(1, Math.round(value));
 }
 
+function normalizeNativeOverlayMinimumMenuScale(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(value) || value < 1 || value > 4) {
+    throw new RangeError(
+      "Steam Bridge native overlay minimumMenuScale must be a finite number from 1 through 4."
+    );
+  }
+  return value;
+}
+
 function normalizeNativeOverlayFrameRate(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new TypeError("Steam Bridge native overlay frame rate must be a positive finite number.");
@@ -8727,9 +8868,8 @@ function normalizeNativeOverlayPumpInterval(value: number): number {
 }
 
 function nativeOverlayPumpIntervalForFrameRate(frameRate: number): number {
-  // Wake just ahead of the target cadence. Present(1) performs the actual
-  // display synchronization on Windows, so this avoids undershooting rates
-  // such as 60 Hz or 144 Hz due to whole-millisecond timer rounding.
+  // Use a whole-millisecond target interval. The Windows standalone scheduler
+  // may wake ahead of this cadence, but DXGI remains its presentation boundary.
   return Math.max(1, Math.floor(1000 / frameRate));
 }
 
@@ -8762,6 +8902,108 @@ function normalizeNativeOverlayFrameDimension(value: number, label: string): num
   return dimension;
 }
 
+function normalizeNativeOverlayContentRect(
+  contentRect: NativeOverlayBounds | undefined,
+  codedWidth: number,
+  codedHeight: number
+): NativeOverlayBounds {
+  if (contentRect === undefined) {
+    return { x: 0, y: 0, width: codedWidth, height: codedHeight };
+  }
+  if (!contentRect || typeof contentRect !== "object") {
+    throw new TypeError("Steam Bridge shared texture contentRect must be a rectangle.");
+  }
+  const values = [contentRect.x, contentRect.y, contentRect.width, contentRect.height];
+  if (!values.every(Number.isFinite)) {
+    throw new TypeError("Steam Bridge shared texture contentRect must contain finite numbers.");
+  }
+  const normalized = {
+    x: Math.round(contentRect.x),
+    y: Math.round(contentRect.y),
+    width: Math.round(contentRect.width),
+    height: Math.round(contentRect.height)
+  };
+  if (
+    normalized.x < 0 ||
+    normalized.y < 0 ||
+    normalized.width < 1 ||
+    normalized.height < 1 ||
+    normalized.x + normalized.width > codedWidth ||
+    normalized.y + normalized.height > codedHeight
+  ) {
+    throw new RangeError(
+      `Steam Bridge shared texture contentRect ${normalized.x},${normalized.y} ` +
+        `${normalized.width}x${normalized.height} exceeds ${codedWidth}x${codedHeight}.`
+    );
+  }
+  return normalized;
+}
+
+function normalizeNativeOverlayMenu(items: readonly NativeOverlayMenuItem[]): NativeOverlayMenuItem[] {
+  if (!Array.isArray(items)) {
+    throw new TypeError("Steam Bridge native overlay menu must be an array.");
+  }
+  const commandIds = new Set<number>();
+  let itemCount = 0;
+
+  const normalizeItems = (
+    sourceItems: readonly NativeOverlayMenuItem[],
+    depth: number
+  ): NativeOverlayMenuItem[] => {
+    if (depth > 8) {
+      throw new RangeError("Steam Bridge native overlay menus support at most 8 nested levels.");
+    }
+    return sourceItems.map((item) => {
+      itemCount += 1;
+      if (itemCount > 256) {
+        throw new RangeError("Steam Bridge native overlay menus support at most 256 items.");
+      }
+      if (!item || typeof item !== "object") {
+        throw new TypeError("Steam Bridge native overlay menu items must be objects.");
+      }
+      if (item.separator === true) {
+        return { separator: true };
+      }
+      const label = item.label?.trim();
+      if (!label) {
+        throw new TypeError("Steam Bridge native overlay menu item labels cannot be empty.");
+      }
+      if (item.items !== undefined) {
+        if (!Array.isArray(item.items) || item.items.length === 0) {
+          throw new TypeError(`Steam Bridge native overlay submenu "${label}" must contain items.`);
+        }
+        return {
+          label,
+          enabled: item.enabled !== false,
+          items: normalizeItems(item.items, depth + 1)
+        };
+      }
+      const commandId = item.commandId;
+      if (
+        typeof commandId !== "number" ||
+        !Number.isInteger(commandId) ||
+        commandId < 1 ||
+        commandId > 0xffff
+      ) {
+        throw new RangeError(
+          `Steam Bridge native overlay menu command "${label}" needs an integer commandId from 1 to 65535.`
+        );
+      }
+      if (commandIds.has(commandId)) {
+        throw new RangeError(`Steam Bridge native overlay menu commandId ${commandId} is duplicated.`);
+      }
+      commandIds.add(commandId);
+      return {
+        label,
+        commandId,
+        enabled: item.enabled !== false
+      };
+    });
+  };
+
+  return normalizeItems(items, 1);
+}
+
 function isNativeOverlayInputEventKind(value: unknown): value is NativeOverlayInputEventKind {
   return (
     value === "mouseMove" ||
@@ -8778,6 +9020,7 @@ function isNativeOverlayInputEventKind(value: unknown): value is NativeOverlayIn
     value === "focus" ||
     value === "blur" ||
     value === "captureLost" ||
+    value === "menuCommand" ||
     value === "overlayShortcut" ||
     value === "windowChanged" ||
     value === "close"

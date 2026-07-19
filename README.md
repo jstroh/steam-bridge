@@ -168,30 +168,52 @@ const gameWindow = new BrowserWindow({
 ```
 
 For each frame paint event, pass the frame texture's
-`textureInfo.handle.ntHandle`, coded width, and coded height to
-`session.updateSharedTexture()`, then release Electron's texture immediately
-in a `finally` block. Steam Bridge copies the pooled texture before the call
-returns, selects the matching high-performance DXGI adapter, preserves the
-source aspect ratio, and presents with a two-buffer flip-discard swap chain.
+`textureInfo.handle.ntHandle`, coded width and height, and
+`textureInfo.contentRect` (or the paint event's dirty rectangle) to
+`session.updateSharedTexture()`. Electron only guarantees that update region
+was populated, so Steam Bridge copies it into a retained bridge-owned texture
+without erasing unchanged pixels. The call uses a bounded GPU query wait and
+fails instead of hanging if the copy does not complete; release Electron's
+texture in a `finally` block after it returns. Steam Bridge
+then selects the matching high-performance DXGI adapter, preserves the source
+aspect ratio, and presents with a two-buffer flip-sequential swap chain.
 `updateFrame()` remains available as a BGRA CPU fallback.
 
 Set `frameRate` to the active display's refresh rate and update it with
 `session.setFrameRate(...)` when the native host moves to another monitor. The
-whole-millisecond session timer wakes just ahead of that cadence; Windows
-`Present(1)` performs the vertical-blank synchronization. Set
+Windows standalone host uses a DXGI frame-latency waitable swap chain as its
+presentation boundary and submits tear-free frames with `Present(1)`. Waiting
+on DXGI before each frame avoids relying on JavaScript timer precision while
+still following the active display's refresh cadence.
+New CPU frames and shared textures are marked dirty and pump at least once
+immediately, including when `continuousPresent` is `false`; the session timer
+remains the retained-frame and Steam-overlay fallback. Set
 `continuousPresent: true` for game-streaming or desktop-capture hosts that must
 keep exposing a retained frame while the Electron source is static. It is
-`false` by default, and in continuous mode the cadence timer is the sole
-presentation driver so frame uploads cannot double-pump the swap chain.
+`false` by default. DXGI gates continuous Windows presentation to the display
+instead of relying on millisecond timer precision.
 
 ```ts
 const session = steamworks.overlay.startNativeOverlaySession({
   clientWidth: 1280,
   clientHeight: 720,
+  minClientWidth: 640,
+  minClientHeight: 480,
+  minimumMenuScale: 1.25,
   frameRate: 60,
   continuousPresent: true,
+  menu: [
+    {
+      label: "&File",
+      items: [{ label: "E&xit", commandId: 1 }]
+    }
+  ],
   onInputEvent(event) {
-    // Forward mapped input to gameWindow.webContents.
+    if (event.kind === "menuCommand" && event.commandId === 1) {
+      app.quit();
+      return;
+    }
+    // Forward other mapped input to gameWindow.webContents.
   }
 });
 
@@ -206,6 +228,29 @@ function applyDisplayRate(displayFrequency: number | undefined) {
 scales them to the primary display's DPI at creation and clamps the restored
 window to that display's usable work area. Moving the host between monitors
 preserves its logical size through the normal per-monitor-DPI transition.
+When both `minClientWidth` and `minClientHeight` are provided, the standalone
+Windows host enforces that minimum logical client size during edge and corner
+resize operations and clamps a smaller initial client request to that minimum.
+The two minimum dimensions must be provided together.
+
+The optional `menu` tree creates a real Windows menu bar on a standalone host.
+Leaf `commandId` values are returned as `menuCommand` input events. The menu is
+removed in fullscreen, restored when returning to windowed mode, and changing
+it preserves the existing client size. By default Windows draws the menu at the
+monitor's configured scale. A consumer may opt into `minimumMenuScale` (from
+`1` through `4`) when its product design needs a larger menu at low Windows
+scale settings. The floor affects only that menu: it does not override Chromium,
+the native title bar, the game client area, or the user's system settings, and a
+monitor with a higher effective scale still wins. The scaled path keeps the
+native `HMENU`, command routing, keyboard mnemonics, system colors, and Microsoft
+Active Accessibility metadata.
+
+Steam Bridge owns the generic per-monitor-DPI mechanics and exact logical-to-
+physical client sizing. The application owns policy: its logical game size,
+minimum client size, and whether to request a menu scale floor. Do not use a
+process-wide Chromium `force-device-scale-factor` switch to compensate for one
+piece of native chrome; it also changes browser UI and content and creates two
+competing coordinate systems.
 
 The standalone host owns window movement, resize, maximize, minimize,
 fullscreen, focus visibility, rounded-corner clipping, cursor state, and the
@@ -282,6 +327,10 @@ npm install
 npm run native:build
 npm test
 ```
+
+`native:build` links the newest matching Cargo artifact from either the target
+release directory or its `deps` directory, which keeps source-linked consumer
+testing from accidentally loading an older addon.
 
 The normal repository checks are documented in [Contributing](CONTRIBUTING.md).
 

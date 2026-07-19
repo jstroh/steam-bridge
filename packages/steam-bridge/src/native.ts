@@ -1708,7 +1708,13 @@ export interface NativeBinding {
   overlayActivateInviteDialog(lobbyId: bigint): void;
   overlayActivateToStore(appId: number, flag: number): void;
 
-  openNativeOverlayProbeWindow(title?: string, clientWidth?: number, clientHeight?: number): void;
+  openNativeOverlayProbeWindow(
+    title?: string,
+    clientWidth?: number,
+    clientHeight?: number,
+    minClientWidth?: number,
+    minClientHeight?: number
+  ): void;
   attachNativeOverlayHostView(nativeWindowHandle: Buffer): void;
   attachNativeOverlayHostViewForOverlay(nativeWindowHandle: Buffer): void;
   pumpNativeOverlayProbeWindow(): void;
@@ -1721,9 +1727,18 @@ export interface NativeBinding {
   setNativeOverlayHostCursorHidden(hidden: boolean): void;
   setNativeOverlayHostContinuousPresent(continuous: boolean): void;
   setNativeOverlayHostFullScreen(fullScreen: boolean): void;
+  setNativeOverlayHostMenuJson(menuJson: string): void;
   setNativeOverlayHostBounds(x: number, y: number, width: number, height: number): void;
   updateNativeOverlayHostFrame(frame: Buffer, width: number, height: number): void;
-  updateNativeOverlayHostSharedTexture(handle: Buffer, width: number, height: number): void;
+  updateNativeOverlayHostSharedTexture(
+    handle: Buffer,
+    width: number,
+    height: number,
+    contentX?: number,
+    contentY?: number,
+    contentWidth?: number,
+    contentHeight?: number
+  ): void;
   drainNativeOverlayHostInputEventsJson(): string;
   closeNativeOverlayProbeWindow(): void;
   detachNativeOverlayHostView(): void;

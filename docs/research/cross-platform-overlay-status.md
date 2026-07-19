@@ -68,6 +68,42 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+A 2026-07-18 source-linked Electron `43.1.1` follow-up used the development
+machine's native 1920 by 1200, 165 Hz mode as a high-refresh stress case. DWM
+composition timing reported 164.766 Hz. The standalone D3D11 swap chain now
+uses `DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT`, maximum frame
+latency one, a two-buffer flip-sequential chain, and `Present(1)`; new shared
+textures and CPU frames pump immediately while the scheduled session pump
+remains a retained-frame and Steam-overlay fallback. With an explicitly opt-in
+one-pixel renderer animation keeping Chromium paint active, the game surface
+produced 145-149 FPS and the native presenter produced 162-165 FPS. During a
+live Steam checkout overlay, the game surface held 147-150 FPS and the native
+presenter held 163-165 FPS. Both phases had zero frame-latency wait timeouts and
+zero slow shared-texture copies on the matching discrete-GPU adapter. This
+follows Microsoft's documented
+[waitable swap-chain pacing](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_3/nf-dxgi1_3-idxgiswapchain2-getframelatencywaitableobject)
+and [flip-model guidance](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model).
+The diagnostic animation is gated by an environment flag and is absent from
+normal development and release execution; static production content can paint
+less often without implying that the display changed refresh rate.
+
+The same run added a real Win32 File/Edit/View menu to the top-level host and
+routed command IDs back through native input events. The menu preserved an
+exact 1280 by 720 client at 96 DPI, native diagnostics retained a 640 by 480
+logical minimum, and a windowed/fullscreen/windowed cycle removed the menu in
+fullscreen, aspect-fit the 16:9 game on the 16:10 monitor, then restored the
+menu, exact placement, exact client size, title drag, and rounded bottom
+corners. File and View menus opened through native pointer input and the View
+full-screen command completed the round trip. This is source-linked live
+evidence, not a new protected candidate or publication claim.
+
+The final normal uninstrumented build then exercised the Windows keyboard-size
+path against both minimum axes. Its visible frame stopped at 642 by 532,
+exactly matching the 640 by 480 client plus border/title/menu chrome, while the
+16:9 source remained aspect-fit and the menu and rounded corners stayed
+correct. A clean restart returned the handoff window to the default 1280 by 720
+client at the same 165 Hz display target.
+
 Published `v0.2.11` repairs the high-DPI standalone-host initial-size
 regression. The public `clientWidth` and `clientHeight` contract is logical
 pixels, but the host had passed those values to Win32 as physical pixels; at

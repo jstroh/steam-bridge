@@ -124,14 +124,15 @@ function releaseDirs() {
 }
 
 function findNativeLibrary() {
-  for (const dir of releaseDirs()) {
-    const candidate = path.join(dir, config.nativeLibrary);
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
+  const candidates = releaseDirs()
+    .flatMap((dir) => [
+      path.join(dir, config.nativeLibrary),
+      path.join(dir, "deps", config.nativeLibrary)
+    ])
+    .filter((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile())
+    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs);
 
-  return undefined;
+  return candidates[0];
 }
 
 function findSteamRedistributable(runtimeLibrary) {

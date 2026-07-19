@@ -439,9 +439,17 @@ pub fn open_native_overlay_probe_window(
     title: Option<String>,
     client_width: Option<u32>,
     client_height: Option<u32>,
+    min_client_width: Option<u32>,
+    min_client_height: Option<u32>,
 ) -> Result<(), Error> {
     state::ensure_initialized()?;
-    native_surface::open(title, client_width, client_height)
+    native_surface::open(
+        title,
+        client_width,
+        client_height,
+        min_client_width,
+        min_client_height,
+    )
 }
 
 #[napi(js_name = "attachNativeOverlayHostView")]
@@ -517,6 +525,11 @@ pub fn set_native_overlay_host_full_screen(full_screen: bool) -> Result<(), Erro
     native_surface::set_full_screen(full_screen)
 }
 
+#[napi(js_name = "setNativeOverlayHostMenuJson")]
+pub fn set_native_overlay_host_menu_json(menu_json: String) -> Result<(), Error> {
+    native_surface::set_menu_json(menu_json)
+}
+
 #[napi(js_name = "setNativeOverlayHostBounds")]
 pub fn set_native_overlay_host_bounds(
     x: i32,
@@ -541,8 +554,20 @@ pub fn update_native_overlay_host_shared_texture(
     handle: Buffer,
     width: u32,
     height: u32,
+    content_x: Option<u32>,
+    content_y: Option<u32>,
+    content_width: Option<u32>,
+    content_height: Option<u32>,
 ) -> Result<(), Error> {
-    native_surface::update_shared_texture(handle, width, height)
+    native_surface::update_shared_texture(
+        handle,
+        width,
+        height,
+        content_x,
+        content_y,
+        content_width,
+        content_height,
+    )
 }
 
 #[napi(js_name = "drainNativeOverlayHostInputEventsJson")]
