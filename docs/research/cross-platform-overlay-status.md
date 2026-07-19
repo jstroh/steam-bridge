@@ -138,6 +138,24 @@ requires the semantic auditor to account for every superseded readiness proof.
 The failed roots and `v0.2.12` tag remain immutable and cannot support a receipt
 or publication.
 
+Published `v0.2.14` is the current exact Windows candidate. Commit `3d0678b`,
+tag CI `29681862974`, Release assembly `29681862973`, and trusted npm publish
+`29682898297` all passed. Its protected 114-file Windows bundle has content
+SHA-256 `de6d5e5166d9f1b2efe23ae471815d2c0ce1b2a2d43cea9acef9ca69a859ef12`
+and candidate binding SHA-256
+`b80aa46d8ea63d70d48bb13fa9fe5ccfe5af5d374a294d627697d6c40876dbe8`.
+The ordered persistent-reuse, checkout, shortcut-routes, and managed-routes
+profiles passed 31/31 clean cases and 27 active routes against one unchanged
+candidate and Steam identity with zero crashes. This includes the repaired
+transient close-readiness retry and the Friends panel's opposite-phase close
+glyph/black-navigation classification without weakening exact-frame input
+gating. Receipt semantic SHA-256 is
+`3daadf8eca5ca79efc71b000c7b69198ee7917498b8d8ca5d1f514676d6d4509`.
+The registry tarball is byte-identical to the audited Release artifact, carries
+provenance, and passed the final non-junction consumer path including native
+menus, drag, minimum resize, maximize/minimize/focus, fullscreen aspect fit,
+and real checkout open/cancel at default and exact 640 by 480 client sizes.
+
 Exact `v0.2.1` through `v0.2.3` passed progressively more CI and Release gates
 but remain rejected and unpublished: the failures covered interactive
 `WS_EX_NOACTIVATE`, asynchronous achievement sequencing and unproved close

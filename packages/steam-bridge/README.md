@@ -194,6 +194,16 @@ keep exposing a retained frame while the Electron source is static. It is
 `false` by default. DXGI gates continuous Windows presentation to the display
 instead of relying on millisecond timer precision.
 
+Steam can hook both the hidden Electron offscreen surface and the visible
+native host when they live in the same Windows process. If the offscreen paint
+already contains Steam UI, forwarding it while the host hook is also active
+composites the overlay twice; different source and host sizes make the duplicate
+obvious. Track `onGameOverlayActivated(...)` in this topology. While it reports
+active, release incoming Electron paint textures without forwarding them so the
+session retains its last clean game frame and Steam composites only into the
+visible host. When it reports inactive, invalidate the offscreen
+`webContents` once to resume fresh game frames.
+
 ```ts
 const session = steamworks.overlay.startNativeOverlaySession({
   clientWidth: 1280,

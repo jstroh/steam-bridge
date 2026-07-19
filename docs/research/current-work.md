@@ -2,19 +2,19 @@
 
 Last reviewed: 2026-07-19
 
-Review anchor: `a4e6f03` (`Retry transient Steam close readiness`), retained as
-immutable rejected candidate `v0.2.13` after exact-candidate proof exposed two
-additional screenshot-classifier defects on Steam's Friends surface.
+Review anchor: `3d0678b` (`Fix Steam Friends release readiness`), published as
+`v0.2.14` after exact-candidate proof, registry verification, and downstream
+consumer adoption.
 
 ## Active Goal
 
-Ship `v0.2.14` with the reviewed Windows standalone-host slice: high-refresh
-DXGI pacing, immediate presentation of new Electron frames, logical minimum
-client size, an accessible native application menu, and unambiguous per-
-monitor-DPI transitions. Prove the exact immutable package candidate before
-publication, then replace the Electron consumer's local junction with the exact
-registry package and repeat its critical manual path. Do not move or reuse the
-published `v0.2.11` or rejected `v0.2.12`/`v0.2.13` tags.
+Maintain published `v0.2.14` as the supported Windows standalone-host release.
+Its immutable package includes high-refresh DXGI pacing, immediate presentation
+of new Electron frames, logical minimum client sizing, an accessible native
+application menu, unambiguous per-monitor-DPI transitions, and the repaired
+Friends readiness classifier. The Electron consumer now uses the exact registry
+package. Do not move or reuse published tags or the rejected
+`v0.2.12`/`v0.2.13` tags.
 
 ## Current State
 
@@ -78,8 +78,8 @@ The final native review also closes an error-only ownership gap: if Windows
 rejects insertion of a newly built owner-drawn menu item, the still-unattached
 submenu is destroyed before the partial parent menu is torn down.
 
-`steam-bridge@0.2.11` is npm `latest`. The preceding registry-backed checkout
-pass exposed one unhandled Steam window shape: closing a recurring
+`steam-bridge@0.2.14` is npm `latest`. The earlier registry-backed checkout pass
+that led to `v0.2.10` exposed one unhandled Steam window shape: closing a recurring
 checkout approval surface creates a separate visible, enabled, foreground
 top-level window titled `Steam Dialog`, class `SDL_app`, from
 `steamwebhelper.exe`. It has no owner while the bridge's standalone D3D11 host
@@ -167,13 +167,16 @@ mandatory. A focused protected-candidate Friends rerun found the glyph at its
 actual coordinate with a 15/16 score, dispatched one bounded click, completed
 the active/inactive/park lifecycle, retained Steam continuity, deleted its
 task, and passed the independent semantic summarizer with zero crashes.
+The final immutable candidate then passed all four ordered profiles: 31/31
+clean cases, 27 active Steam routes, one unchanged protected candidate and
+Steam identity, and zero crashes. The exact npm tarball and five GitHub Release
+assets were independently verified before and after trusted publication.
 
 ## Consumer Evidence
 
-The Electron game consumer is currently linked to the local
-`packages/steam-bridge` workspace while this unreleased slice is validated; its
-manifest and lockfile still name registry version `0.2.11` for the eventual
-return to an exact package. The opt-in FPS report measured both Electron paint/
+The Electron game consumer now has an exact non-junction registry install of
+`steam-bridge@0.2.14`; its manifest and lockfile bind the published tarball and
+integrity. The opt-in FPS report measured both Electron paint/
 shared-texture arrivals and native presenter frames across game and checkout-
 overlay phases without changing normal execution. The source ran at roughly
 146-150 FPS while the native presenter held roughly 163-165 FPS against the
@@ -217,38 +220,44 @@ centered Steam surface and was cancelled without authorization.
 
 After npm publication, the consumer lockfile resolved the exact registry
 tarball and integrity and `node_modules/steam-bridge` was verified as a normal
-directory at `0.2.11`. The final registry-backed process repeated the exact
-1280 by 720 client geometry, title drag, maximize/restore, minimize/focus
-return, and ordinary Shift+Tab overlay open/close without a tiny presenter,
-flicker, hang, or crash. The app remained open in its restored windowed state
-for downstream testing.
+directory at `0.2.14`. The final registry-backed process repeated the exact
+1280 by 720 client geometry, native File/Edit/View menus, title drag,
+maximize/restore, minimize/focus return, aspect-fit fullscreen, exact 640 by
+480 minimum-client sizing, and checkout open/cancel without flicker, hang, or
+crash. The minimum-size checkout pass exposed a consumer compositor issue:
+Steam hooked both the fixed offscreen Electron surface and the visible native
+host, so differently scaled viewports revealed the same overlay twice. The
+consumer now retains its last clean game frame while Steam is active and lets
+Steam composite only into the visible host. A repeat at the exact minimum
+showed one centered checkout surface; Escape returned to a fresh game frame and
+authorized no transaction. Consumer commit `44b8928` is pushed to `master`.
 
 ## Exact Release Evidence
 
 Source and automation:
 
-- commit `ea10a228e9af844975f7b4a941ae9bade46965ea`;
-- tag CI `29661177610` and Release assembly `29661177626` passed, including
+- commit `3d0678bbe4d8c98c3511904aedcbdbead0250cf6`;
+- tag CI `29681862974` and Release assembly `29681862973` passed, including
   macOS arm64, Linux x64, Windows x64 prebuilds, package assembly, and packaged
   Electron validation;
-- trusted npm publication `29662440079` passed after restoring the exact
+- trusted npm publication `29682898297` passed after restoring the exact
   candidate-bound receipt in the `npm-production` environment;
-- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.11>.
+- public GitHub Release: <https://github.com/jstroh/steam-bridge/releases/tag/v0.2.14>.
 
 Candidate identity:
 
 - npm tarball SHA-256
-  `90f09b3832b33ecf14cf02e13ab759b5324b54b248c9437647db4c8b722cff27`;
+  `70de36d8b5c9e5f76a4957f4392023ffdd825d94a101de20336513a6840b8947`;
 - Windows archive SHA-256
-  `c7e97276d228f65b49dd8ed59b57fd8a37db797e82e1376c930a1ea435104b28`;
-- Windows bundle content: 114 files, 398,246,875 bytes, SHA-256
-  `9ed387da81ffda664db8103d688106cf46c3bea48963f5f2f19e211080d3cc64`;
-- native binding: 1,128 methods, declaration SHA-256
-  `cc7a8dd5951d2c42f9a76f54f9c82f3a92ea61319d6e20e6539c10a7d39ce949`;
+  `6498a57fa8921677f82e47af1ec3747abb2304ab3d2f3aa14bb7ff803b70b7a2`;
+- Windows bundle content: 114 files, 398,368,378 bytes, SHA-256
+  `de6d5e5166d9f1b2efe23ae471815d2c0ce1b2a2d43cea9acef9ca69a859ef12`;
+- native binding: 1,129 methods, declaration SHA-256
+  `7cce9c4c750e754c8b804e6cb7d9ba6a0526d0e03cd16adb8c3f78c5a3c23bf8`;
 - candidate binding SHA-256
-  `b3137d38f3ed3637c1ca039e1bd878dd0b176a10244d5b03214d4bea48808cc3`;
+  `b80aa46d8ea63d70d48bb13fa9fe5ccfe5af5d374a294d627697d6c40876dbe8`;
 - live-proof receipt semantic SHA-256
-  `9c4ad150eca18fcef16318bfe1743f9fa7b7445061aed5b2c37c851f8386869e`.
+  `3daadf8eca5ca79efc71b000c7b69198ee7917498b8d8ca5d1f514676d6d4509`.
 
 The exact protected candidate passed the four required profiles in order:
 
@@ -282,9 +291,9 @@ the gate. The package fixture's separator bug was fixed in source rather than
 hidden by the adapter. Strict workspace Clippy remains an informational baseline
 failure across generated compatibility declarations and longstanding crate-
 wide lints; the required zero-warning release checks are Rust formatting and
-compilation. The consumer passes ESLint, TypeScript, and 4/4 tests. Commit,
-exact candidate proof, publication, and the final registry-backed consumer pass
-remain pending.
+compilation. The consumer passes ESLint, TypeScript, 4/4 tests, and its
+optimized renderer build. Commit, exact-candidate proof, publication, release
+assembly, registry verification, and the final consumer pass are complete.
 
 The published source tree passes 206/206 repository tests, Rust format
 and compile checks, the API and platform audits, and the focused standalone
@@ -304,13 +313,14 @@ Bridge gates for the exact source passed:
   live profiles, receipt generation, trusted publication, registry integrity,
   signature, provenance, and Release-asset digest verification.
 
-Consumer gates on registry `0.2.11` passed:
+Consumer gates on registry `0.2.14` passed:
 
 - 4/4 tests, TypeScript, ESLint, optimized Next renderer build;
 - exact non-junction install, lockfile integrity, registry tarball byte identity,
   package signatures, and provenance;
 - live 1280 by 720 geometry, title drag, minimize/focus return,
-  maximize/restore, aspect-fit rendering, and ordinary overlay open/close.
+  maximize/restore, aspect-fit fullscreen, exact 640 by 480 minimum sizing,
+  single-surface checkout at default and minimum size, and clean cancel return.
 
 ## Operational Notes
 
