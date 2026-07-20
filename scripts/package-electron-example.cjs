@@ -55,10 +55,12 @@ if (!config) {
 }
 assertSupportedPackageHost(target);
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
 
 function assertSupportedPackageHost(target) {
   if (target !== "aarch64-apple-darwin") {
@@ -396,19 +398,32 @@ function compileMacSteamEnvLauncher(appPath) {
   );
 }
 
-function resolvePackageArtifactSources(target, fileNames) {
+function resolvePackageArtifactSources(target, fileNames, options = {}) {
+  const artifactRoot = options.packageRoot || packageRoot;
+  const hostTarget = options.currentTarget || currentHostTarget();
+  const preferLocalNative = options.preferLocalNative ?? !artifactsDir;
   const sources = new Map();
 
   for (const fileName of fileNames) {
-    const filePath = path.join(packageRoot, fileName);
-    if (isNonEmptyFile(filePath)) {
-      sources.set(fileName, filePath);
+    const filePath = path.join(artifactRoot, fileName);
+    const localNativePath = path.join(artifactRoot, "steam_bridge_native.local.node");
+
+    // `npm run native:build` deliberately links the just-built host addon under
+    // this stable local name. Prefer it on the current host so a target-named
+    // artifact left by a previous release assembly cannot silently win. Cross-
+    // target packages still require the target-named release artifact below.
+    if (
+      preferLocalNative &&
+      fileName.endsWith(".node") &&
+      hostTarget === target &&
+      isNonEmptyFile(localNativePath)
+    ) {
+      sources.set(fileName, localNativePath);
       continue;
     }
 
-    const localNativePath = path.join(packageRoot, "steam_bridge_native.local.node");
-    if (fileName.endsWith(".node") && isCurrentHostTarget(target) && isNonEmptyFile(localNativePath)) {
-      sources.set(fileName, localNativePath);
+    if (isNonEmptyFile(filePath)) {
+      sources.set(fileName, filePath);
       continue;
     }
 
@@ -423,6 +438,14 @@ function resolvePackageArtifactSources(target, fileNames) {
   }
 
   return sources;
+}
+
+function currentHostTarget() {
+  try {
+    return currentTarget();
+  } catch {
+    return undefined;
+  }
 }
 
 function copyStagePackageArtifacts(stageDir, artifactSources) {
@@ -525,3 +548,7 @@ function resolveCommand(command, args) {
   }
   return { command: process.execPath, args: [npmCli, ...args] };
 }
+
+module.exports = {
+  resolvePackageArtifactSources
+};

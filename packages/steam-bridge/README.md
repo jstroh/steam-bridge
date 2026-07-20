@@ -55,6 +55,16 @@ Intel macOS, Rosetta, and universal macOS builds are not supported. Build and
 run macOS test apps only on native `darwin/arm64` Apple Silicon hosts.
 Do not package, launch, or verify macOS smoke apps through Rosetta.
 
+### Cross-platform live QA
+
+Run one Steam client at a time during live qualification. Before launching a
+target platform, force-close the Steam client and its web/overlay descendants on
+every other test machine and verify that none remain. Common process names
+include `Steam.exe`/`steam`, `steam_osx`, `steamwebhelper`, and
+`gameoverlayui`. Reopen Steam only on the target. This clean client handoff
+prevents a competing session from invalidating launch, focus, overlay-routing,
+or client-health evidence.
+
 ## Quick start
 
 ```ts
@@ -113,9 +123,69 @@ controlled from Electron's main thread. Raw activation helpers remain
 available for diagnostics, but Electron product UI should use the managed
 overlay path.
 
+### Linux and Steam Deck
+
+Use the managed browser/dialog API in Steam Deck Desktop Mode. Native-Wayland
+Electron handles are not X11 window IDs, so Steam Bridge creates one transparent
+Xwayland/GLX Steam surface and aligns it to the BrowserWindow content rectangle
+instead of parsing that handle. On KDE Plasma, a session-local KWin script
+mirrors authoritative client geometry, fullscreen state, and relevant minimize
+transitions. The presenter also follows bounds and visibility, preserving the
+Electron/KWin title bar while move, resize, maximize, fullscreen,
+minimize/restore, focus, and close reuse one Steam target. Windowed hosts clip
+their bottom corners; fullscreen hosts remain rectangular.
+
+Parked hosts are input-empty, transparent, omitted from shell window lists, and
+idle at zero FPS. Passive Steam notification pulses remain transparent so a
+compositor toast cannot expose a black GLX frame over the Electron client. The
+application owns size policy—for example `1280x720`, `minWidth: 640`, and
+`minHeight: 480`—while Steam Bridge follows the resulting content bounds.
+
+On a freshly launched Linux game, Steam can report the overlay enabled shortly
+before its injected helper is safe to call. The managed Wayland/Xwayland path
+uses a 3000 ms activation warmup by default: `open*IfAvailable()` returns
+`null`, while `open*AndWait()` reserves the managed open against duplicates
+and waits with the host transparent, input-empty, and idle at zero FPS.
+Presenter activation begins only after readiness is proven. `electronOverlay`
+snapshots report `activationWarmupMs`, `activationWarmupRemainingMs`, and
+`activationWarmupReady`. Create and reuse the controller with the game window;
+prefer the wait helpers for Store, browser, and checkout UI. Override
+`activationWarmupMs` only when platform evidence supports another value.
+
+Native Wayland still requires an Xwayland `DISPLAY` for Steam's GLX hook. A
+requested `presenterMode: "session"` is internally promoted to the proven
+persistent surface on this path; snapshots expose
+`electronOverlay.effectivePresenterMode: "persistent"`. Game Mode is a
+different contract: Gamescope/SteamUI can present compositor-native surfaces
+such as Store, but the current managed web control does not activate there.
+Qualification proves presenter readiness plus native Store activation, close,
+and focus return, not parity with the Desktop browser/dialog matrix. Games that
+expose both lanes can use `client.utils.isSteamInBigPictureMode()` and
+`isSteamRunningOnSteamDeck()` to choose the native Game Mode action instead of
+retrying the managed web route. The `steam-bridge/electron` subpath exports
+`getKWinWaylandOverlayHostSyncStatus()` for diagnostics.
+
 Close Chromium DevTools before validating Steam overlay behavior. DevTools can
 change Chromium surface activity and timing; it is not a supported way to make
 the Steam surface repaint.
+
+### macOS managed window states
+
+The application owns macOS window transitions. Reuse one managed overlay
+controller while the `BrowserWindow` moves through restored, maximized,
+minimized, and fullscreen states; Steam Bridge follows the content bounds and
+treats either Electron native fullscreen or simple fullscreen as fullscreen
+geometry. Native Spaces fullscreen can depend on the current interactive
+session and did not enter reliably for the Steam-launched qualification app;
+`setSimpleFullScreen(true)` is the proved fallback when an application does not
+need a separate macOS Space. Do not have Steam Bridge force that product choice.
+
+Retina coordinates remain in Electron display-independent pixels while the
+native Metal host uses the corresponding physical backing scale. Do not add a
+process-wide Chromium scale override to compensate for the overlay. macOS also
+keeps Steam's needs-present poll disabled because current Steam clients crash in
+that path; managed presentation and lifecycle callbacks require no app polling
+loop.
 
 The repository's Windows release matrix is fail-closed around synthetic close
 input. An exact pre-dispatch screenshot must prove the foreground native host,
@@ -154,15 +224,26 @@ Steam renders into a top-level native swap chain on Windows. A Chromium
 offscreen surface or Win32 child window is not a complete Steam presentation
 target. Games that need native title-bar behavior and continuous rendering
 while Steam is open can use `startNativeOverlaySession()` as a standalone D3D11
-host and render the game in a hidden Electron window created with:
+host and render the game in a hidden Electron window. Electron 42 and newer
+default Windows offscreen rendering to a scale factor of `1`, even on a scaled
+display. Live WebGL content can turn black after resize in that configuration.
+Capture the launch display scale once, apply it to the hidden renderer, and keep
+that renderer scale stable while the native presenter handles later monitor DPI
+changes:
 
 ```ts
+const offscreenScaleFactor = Math.max(
+  0.1,
+  screen.getPrimaryDisplay().scaleFactor || 1
+);
+
 const gameWindow = new BrowserWindow({
   show: false,
   webPreferences: {
     offscreen: {
       useSharedTexture: true,
-      sharedTexturePixelFormat: "argb"
+      sharedTexturePixelFormat: "argb",
+      deviceScaleFactor: offscreenScaleFactor
     }
   }
 });
@@ -171,12 +252,39 @@ const gameWindow = new BrowserWindow({
 For every frame paint event, pass the frame texture's
 `textureInfo.handle.ntHandle`, coded width and height, and
 `textureInfo.contentRect` (or the paint event's dirty rectangle) to
-`session.updateSharedTexture()`. Electron only guarantees that update region
-was populated, so Steam Bridge copies it into a retained bridge-owned texture
-without erasing unchanged pixels. The call uses a bounded GPU query wait and
-fails instead of hanging if the copy does not complete; release Electron's
-texture in a `finally` block after it returns. Steam Bridge
-then uses the matching high-performance DXGI adapter, aspect-fits the source,
+`session.updateSharedTexture()`. Chromium can allocate a coded texture one
+logical pixel larger than the application viewport. When it does, pass a
+`presentationRect` for the exact viewport in physical pixels; Steam Bridge crops
+that region before fitting it to the native client. If omitted, the full coded
+texture is presented for backward compatibility.
+
+```ts
+session.updateSharedTexture({
+  handle: textureInfo.handle.ntHandle,
+  width: textureInfo.codedSize.width,
+  height: textureInfo.codedSize.height,
+  contentRect: textureInfo.contentRect,
+  presentationRect: {
+    x: 0,
+    y: 0,
+    width: Math.min(
+      textureInfo.codedSize.width,
+      Math.round(viewportWidth * offscreenScaleFactor)
+    ),
+    height: Math.min(
+      textureInfo.codedSize.height,
+      Math.round(viewportHeight * offscreenScaleFactor)
+    )
+  }
+});
+```
+
+Electron only guarantees that the update region was populated, so Steam Bridge
+copies it into a retained bridge-owned texture without erasing unchanged pixels.
+The call uses a bounded GPU query wait and fails instead of hanging if the copy
+does not complete; release Electron's texture in a `finally` block after it
+returns. Steam Bridge then uses the matching high-performance DXGI adapter,
+crops the explicit presentation region, preserves that region's aspect ratio,
 and presents through a two-buffer flip-sequential swap chain.
 `updateFrame()` remains available as a BGRA CPU fallback.
 

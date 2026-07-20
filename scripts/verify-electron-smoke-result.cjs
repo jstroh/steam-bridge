@@ -222,6 +222,9 @@ if (options.requirePassiveNotification) {
 if (options.requireDirectOpenReadinessStatus) {
   verifyDirectOpenReadinessStatus();
 }
+if (options.requireCheckoutOperationReadinessStatus) {
+  verifyCheckoutOperationReadinessStatus();
+}
 
 if (failures.length > 0) {
   for (const failure of failures) {
@@ -436,6 +439,69 @@ function verifyDirectOpenReadinessStatus() {
   const readyDiagnostics = ready && ready.diagnostics && typeof ready.diagnostics === "object" ? ready.diagnostics : {};
   if (ready && Object.prototype.hasOwnProperty.call(readyDiagnostics, "overlayEnabled")) {
     expect(readyDiagnostics.overlayEnabled === true, "direct presenter open wait completed with overlayEnabled=true");
+  }
+}
+
+function verifyCheckoutOperationReadinessStatus() {
+  expect(expectedActionName === "presenter-checkout", "checkout operation readiness status verifies presenter-checkout");
+  const lifecycleEntries = readLifecycleEntries();
+  const statusEvent =
+    findEvent(events, "overlay:presenter-direct-open-status") ||
+    findEvent(lifecycleEntries, lifecycleEventType("overlay:presenter-direct-open-status"));
+  expect(Boolean(statusEvent), "checkout operation readiness status event emitted");
+  if (!statusEvent) {
+    return;
+  }
+
+  const payload = statusEvent.payload && typeof statusEvent.payload === "object" ? statusEvent.payload : {};
+  const status = payload.status && typeof payload.status === "object" ? payload.status : undefined;
+  expect(Boolean(status), "checkout operation readiness status payload present");
+  if (!status) {
+    return;
+  }
+
+  expect(typeof status.canOpen === "boolean", "checkout operation readiness status canOpen is boolean");
+  expect(typeof status.canWait === "boolean", "checkout operation readiness status canWait is boolean");
+  expect(
+    typeof status.canStartOperation === "boolean",
+    "checkout operation readiness status canStartOperation is boolean"
+  );
+  expectNoRawTargetValues(status, "checkout operation readiness status");
+  const targetSnapshot = objectField(status, "targetSnapshot");
+  expect(Boolean(targetSnapshot), "checkout operation readiness status includes sanitized targetSnapshot");
+  if (targetSnapshot) {
+    expect(targetSnapshot.type === "checkout", "checkout operation readiness targetSnapshot has checkout type");
+    expectNoRawTargetValues(targetSnapshot, "checkout operation readiness targetSnapshot");
+  }
+
+  if (status.canStartOperation !== true) {
+    expect(status.canWait === true, "checkout operation can wait when it cannot start immediately");
+    expect(
+      status.reason === "overlay-not-ready",
+      "checkout operation readiness status is either ready or waiting for overlay-not-ready"
+    );
+  }
+
+  const operationStart =
+    findEvent(events, "checkout:managed-operation-start") ||
+    findEvent(lifecycleEntries, lifecycleEventType("checkout:managed-operation-start"));
+  expect(Boolean(operationStart), "checkout managed operation started after readiness handling");
+  if (!operationStart) {
+    return;
+  }
+  const operationPayload =
+    operationStart.payload && typeof operationStart.payload === "object" ? operationStart.payload : {};
+  expect(operationPayload.api === "openCheckoutAndWait", "checkout readiness used openCheckoutAndWait");
+  const presenter = objectField(operationPayload, "presenter");
+  expect(Boolean(presenter), "checkout managed operation start includes presenter state");
+  if (presenter) {
+    expect(presenter.mode === "active", "checkout presenter is active before the operation starts");
+  }
+
+  const statusAt = Date.parse(statusEvent.at);
+  const operationAt = Date.parse(operationStart.at);
+  if (Number.isFinite(statusAt) && Number.isFinite(operationAt)) {
+    expect(operationAt >= statusAt, "checkout managed operation starts after its readiness status");
   }
 }
 
@@ -756,6 +822,7 @@ function parseArgs(args) {
     requireNoCrashes: false,
     requirePassiveNotification: false,
     requireDirectOpenReadinessStatus: false,
+    requireCheckoutOperationReadinessStatus: false,
     requireSteamLaunch: false,
     requireSteamDeck: false,
     requiredEvents: []
@@ -815,6 +882,9 @@ function parseArgs(args) {
         break;
       case "--require-direct-open-readiness-status":
         parsed.requireDirectOpenReadinessStatus = true;
+        break;
+      case "--require-checkout-operation-readiness-status":
+        parsed.requireCheckoutOperationReadinessStatus = true;
         break;
       case "--require-idle-presenter":
         parsed.requireIdlePresenter = true;

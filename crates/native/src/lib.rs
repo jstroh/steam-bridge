@@ -466,6 +466,30 @@ pub fn attach_native_overlay_host_view_for_overlay(
     native_surface::attach_to_parent_for_overlay(native_handle_from_buffer(&native_window_handle)?)
 }
 
+#[napi(js_name = "attachNativeOverlayHostWindow")]
+pub fn attach_native_overlay_host_window(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    full_screen: Option<bool>,
+) -> Result<(), Error> {
+    state::ensure_initialized()?;
+
+    #[cfg(target_os = "linux")]
+    {
+        native_surface::attach_to_root(x, y, width, height, full_screen.unwrap_or(false))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (x, y, width, height, full_screen);
+        Err(Error::from_reason(
+            "A standalone managed overlay host window is currently supported only on Linux",
+        ))
+    }
+}
+
 #[napi(js_name = "pumpNativeOverlayProbeWindow")]
 pub fn pump_native_overlay_probe_window() -> Result<(), Error> {
     native_surface::pump()
@@ -558,6 +582,10 @@ pub fn update_native_overlay_host_shared_texture(
     content_y: Option<u32>,
     content_width: Option<u32>,
     content_height: Option<u32>,
+    presentation_x: Option<u32>,
+    presentation_y: Option<u32>,
+    presentation_width: Option<u32>,
+    presentation_height: Option<u32>,
 ) -> Result<(), Error> {
     native_surface::update_shared_texture(
         handle,
@@ -567,6 +595,10 @@ pub fn update_native_overlay_host_shared_texture(
         content_y,
         content_width,
         content_height,
+        presentation_x,
+        presentation_y,
+        presentation_width,
+        presentation_height,
     )
 }
 

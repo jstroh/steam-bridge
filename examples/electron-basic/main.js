@@ -4,7 +4,7 @@ const { execFileSync } = require("node:child_process");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
-const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
+const { app, BrowserWindow, crashReporter, ipcMain, screen } = require("electron");
 const steamworks = require("steam-bridge");
 const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 const { serializeSmokeError } = require("./smoke-error.cjs");
@@ -275,6 +275,7 @@ let pendingManagedOverlayLifecycle;
 let pendingManagedOverlayCompletionWait;
 let pendingShortcutOpenLifecycleWait;
 let managedShortcutOpenSource = "Shift+Tab";
+let latestRendererFrameRateSample;
 const managedOverlayWaitControllers = new Set();
 const callbackHandles = [];
 const eventLog = [];
@@ -288,9 +289,11 @@ function createWindow() {
   const showAfterFirstRender = process.platform !== "win32";
   const window = new BrowserWindow({
     width: 1060,
-    height: 760,
-    minWidth: 860,
-    minHeight: 640,
+    // Electron's Linux size is the client area; leave room for both KWin's
+    // title bar and the Plasma panel so visual proofs include the bottom edge.
+    height: 700,
+    minWidth: 640,
+    minHeight: 480,
     fullscreen,
     frame,
     show: !showAfterFirstRender,
@@ -359,6 +362,7 @@ app.whenReady().then(async () => {
 });
 
 ipcMain.handle("steam-smoke:snapshot", () => snapshot());
+ipcMain.handle("steam-smoke:renderer-frame-rate", () => measureRendererFrameRate());
 ipcMain.handle("steam-smoke:auth-ticket", async () => {
   const activeClient = requireClient();
   const ticket = await activeClient.auth.getAuthTicketForWebApi(AUTH_IDENTITY);
@@ -1930,6 +1934,20 @@ async function runAutorunAction(action) {
       case "none":
         recordEvent("autorun:action", { action });
         return { ok: true, action };
+      case "renderer-frame-rate":
+        return { ok: true, action, measurement: await measureRendererFrameRate() };
+      case "window-fullscreen":
+        return { ok: true, action, window: await setSmokeWindowState("fullscreen") };
+      case "window-windowed":
+        return { ok: true, action, window: await setSmokeWindowState("windowed") };
+      case "window-maximize":
+        return { ok: true, action, window: await setSmokeWindowState("maximize") };
+      case "window-unmaximize":
+        return { ok: true, action, window: await setSmokeWindowState("unmaximize") };
+      case "window-minimize":
+        return { ok: true, action, window: await setSmokeWindowState("minimize") };
+      case "window-restore":
+        return { ok: true, action, window: await setSmokeWindowState("restore") };
       case "store":
         openStoreOverlay();
         return { ok: true, action };
@@ -4359,6 +4377,331 @@ function closeNativeOverlaySession() {
   nativeOverlaySession = undefined;
 }
 
+function activeDisplaySnapshot() {
+  if (!app.isReady() || !mainWindow || mainWindow.isDestroyed()) {
+    return null;
+  }
+
+  try {
+    const display = screen.getDisplayMatching(mainWindow.getBounds());
+    return {
+      id: display.id,
+      bounds: display.bounds,
+      workArea: display.workArea,
+      scaleFactor: display.scaleFactor,
+      rotation: display.rotation,
+      internal: display.internal,
+      displayFrequency: Number(display.displayFrequency) || 0,
+      colorSpace: display.colorSpace || null,
+      colorDepth: display.colorDepth,
+      depthPerComponent: display.depthPerComponent,
+      monochrome: display.monochrome,
+      accelerometerSupport: display.accelerometerSupport,
+      touchSupport: display.touchSupport
+    };
+  } catch (error) {
+    return { error: serializeError(error) };
+  }
+}
+
+async function measureRendererFrameRate() {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) {
+    throw new Error("Cannot measure renderer frame rate without the smoke window.");
+  }
+
+  const sampleDurationMs = 3000;
+  const wallStartedAt = Date.now();
+  const rendererMeasurement = await Promise.race([
+    window.webContents.executeJavaScript(`
+      new Promise((resolve) => {
+        const sampleDurationMs = ${sampleDurationMs};
+        const timestamps = [];
+        const marker = document.createElement("div");
+        marker.setAttribute("data-steam-bridge-frame-rate-probe", "");
+        Object.assign(marker.style, {
+          position: "fixed",
+          right: "0",
+          bottom: "0",
+          width: "12px",
+          height: "12px",
+          zIndex: "2147483647",
+          pointerEvents: "none",
+          background: "#ff2d55",
+          transform: "translateX(0px)"
+        });
+        (document.body || document.documentElement).appendChild(marker);
+
+        let settled = false;
+        const finish = (timedOut) => {
+          if (settled) return;
+          settled = true;
+          marker.remove();
+          const intervals = [];
+          for (let index = 1; index < timestamps.length; index += 1) {
+            intervals.push(timestamps[index] - timestamps[index - 1]);
+          }
+          const sorted = intervals.slice().sort((a, b) => a - b);
+          const percentile = (value) => {
+            if (sorted.length === 0) return null;
+            return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * value) - 1))];
+          };
+          const elapsedMs = timestamps.length > 1 ? timestamps[timestamps.length - 1] - timestamps[0] : 0;
+          resolve({
+            timedOut,
+            frameCount: timestamps.length,
+            elapsedMs,
+            framesPerSecond: elapsedMs > 0 ? ((timestamps.length - 1) * 1000) / elapsedMs : 0,
+            meanIntervalMs: intervals.length > 0 ? intervals.reduce((sum, value) => sum + value, 0) / intervals.length : null,
+            p50IntervalMs: percentile(0.5),
+            p95IntervalMs: percentile(0.95),
+            p99IntervalMs: percentile(0.99),
+            minIntervalMs: sorted[0] ?? null,
+            maxIntervalMs: sorted[sorted.length - 1] ?? null,
+            visibilityState: document.visibilityState,
+            devicePixelRatio: window.devicePixelRatio,
+            viewport: { width: window.innerWidth, height: window.innerHeight }
+          });
+        };
+        const timeout = setTimeout(() => finish(true), sampleDurationMs + 2000);
+        const startedAt = performance.now();
+        const tick = (now) => {
+          if (settled) return;
+          timestamps.push(now);
+          marker.style.background = timestamps.length % 2 === 0 ? "#0a84ff" : "#ff2d55";
+          marker.style.transform = "translateX(" + -Math.min(48, timestamps.length % 49) + "px)";
+          if (now - startedAt >= sampleDurationMs) {
+            clearTimeout(timeout);
+            finish(false);
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      })
+    `),
+    delay(sampleDurationMs + 7000).then(() => ({
+      timedOut: true,
+      frameCount: 0,
+      elapsedMs: 0,
+      framesPerSecond: 0,
+      error: "main-process-timeout"
+    }))
+  ]);
+
+  const display = activeDisplaySnapshot();
+  const electronDisplayFrequency = Number(display?.displayFrequency) || 0;
+  const resolvedDisplayFrequency = resolveDisplayFrequency(display);
+  const displayFrequency = resolvedDisplayFrequency.value;
+  if (display && typeof display === "object" && !display.error) {
+    display.electronDisplayFrequency = electronDisplayFrequency;
+    display.displayFrequency = displayFrequency;
+    display.displayFrequencySource = resolvedDisplayFrequency.source;
+  }
+  const framesPerSecond = Number(rendererMeasurement?.framesPerSecond) || 0;
+  const expectedIntervalMs = displayFrequency > 0 ? 1000 / displayFrequency : null;
+  const presenter = electronSteamOverlay && electronSteamOverlay.isOpen() ? electronSteamOverlay.snapshot() : null;
+  const measurement = sanitize({
+    measuredAt: new Date().toISOString(),
+    wallDurationMs: Date.now() - wallStartedAt,
+    phase: presenter?.overlayActive ? "overlay-active" : presenter ? "presenter-passive" : "no-presenter",
+    display,
+    configuredWebContentsFrameRate:
+      typeof window.webContents.getFrameRate === "function" ? window.webContents.getFrameRate() : null,
+    renderer: rendererMeasurement,
+    rendererToDisplayRatio: displayFrequency > 0 ? framesPerSecond / displayFrequency : null,
+    expectedIntervalMs,
+    presenter: presenter
+      ? {
+          backend: presenter.backend,
+          mode: presenter.mode,
+          overlayActive: presenter.overlayActive,
+          currentFps: presenter.currentFps,
+          pumpCount: presenter.pumpCount
+        }
+      : null
+  });
+  latestRendererFrameRateSample = measurement;
+  recordEvent("renderer:frame-rate-sample", measurement);
+  return measurement;
+}
+
+function resolveDisplayFrequency(display) {
+  const electronFrequency = Number(display?.displayFrequency) || 0;
+  if (electronFrequency > 0) {
+    return { value: electronFrequency, source: "electron-screen" };
+  }
+
+  if (process.platform === "linux") {
+    const kwinFrequency = readKWinDisplayFrequency(display?.bounds);
+    if (kwinFrequency > 0) {
+      return { value: kwinFrequency, source: "kwin-support-information" };
+    }
+
+    const xrandrFrequency = readXrandrDisplayFrequency();
+    if (xrandrFrequency > 0) {
+      return { value: xrandrFrequency, source: "xrandr-current-mode" };
+    }
+  }
+
+  return { value: 0, source: "unavailable" };
+}
+
+function readKWinDisplayFrequency(displayBounds) {
+  for (const command of ["qdbus6", "qdbus"]) {
+    let output;
+    try {
+      output = execFileSync(command, ["org.kde.KWin", "/KWin", "supportInformation"], {
+        encoding: "utf8",
+        timeout: 3000,
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+    } catch {
+      continue;
+    }
+
+    const screens = String(output).split(/\nScreen \d+:\n-+\n/).slice(1);
+    for (const screenInfo of screens) {
+      const geometry = screenInfo.match(/\n?Geometry:\s*(-?\d+),(-?\d+),(\d+)x(\d+)/);
+      const refresh = screenInfo.match(/\n?Refresh Rate:\s*([\d.]+)/);
+      if (!refresh) {
+        continue;
+      }
+      if (geometry && displayBounds) {
+        const [, x, y, width, height] = geometry.map(Number);
+        if (
+          x !== Number(displayBounds.x) ||
+          y !== Number(displayBounds.y) ||
+          width !== Number(displayBounds.width) ||
+          height !== Number(displayBounds.height)
+        ) {
+          continue;
+        }
+      }
+
+      const rawFrequency = Number(refresh[1]);
+      if (Number.isFinite(rawFrequency) && rawFrequency > 0) {
+        return rawFrequency > 1000 ? rawFrequency / 1000 : rawFrequency;
+      }
+    }
+  }
+  return 0;
+}
+
+function readXrandrDisplayFrequency() {
+  let output;
+  try {
+    output = execFileSync("xrandr", ["--current"], {
+      encoding: "utf8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+  } catch {
+    return 0;
+  }
+
+  const currentMode = String(output).match(/^\s+\d+x\d+\s+([^\n]*\*[^\n]*)$/m);
+  if (!currentMode) {
+    return 0;
+  }
+  const currentRate = currentMode[1]
+    .split(/\s+/)
+    .find((entry) => entry.includes("*"));
+  const frequency = Number(String(currentRate || "").replace(/[^\d.].*$/, ""));
+  return Number.isFinite(frequency) && frequency > 0 ? frequency : 0;
+}
+
+async function setSmokeWindowState(state) {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) {
+    throw new Error("Cannot change window state without the smoke window.");
+  }
+
+  const macSimpleFullScreen = process.platform === "darwin" && typeof window.setSimpleFullScreen === "function";
+  const isAnyFullScreen = () =>
+    window.isFullScreen() || (typeof window.isSimpleFullScreen === "function" && window.isSimpleFullScreen());
+  const desired = {
+    fullscreen: isAnyFullScreen,
+    windowed: () => !isAnyFullScreen(),
+    maximize: () => window.isMaximized(),
+    unmaximize: () => !window.isMaximized(),
+    minimize: () => window.isMinimized(),
+    restore: () => !window.isMinimized()
+  }[state];
+  if (!desired) {
+    throw new Error(`Unsupported smoke window state: ${state}`);
+  }
+
+  switch (state) {
+    case "fullscreen":
+      if (macSimpleFullScreen) {
+        window.setSimpleFullScreen(true);
+      } else {
+        window.setFullScreen(true);
+      }
+      break;
+    case "windowed":
+      if (macSimpleFullScreen) {
+        window.setSimpleFullScreen(false);
+      }
+      window.setFullScreen(false);
+      break;
+    case "maximize":
+      window.maximize();
+      break;
+    case "unmaximize":
+      window.unmaximize();
+      break;
+    case "minimize":
+      window.minimize();
+      break;
+    case "restore":
+      window.restore();
+      window.show();
+      window.focus();
+      break;
+  }
+
+  const deadline = Date.now() + 10000;
+  while (!window.isDestroyed() && Date.now() < deadline && !desired()) {
+    await delay(50);
+  }
+  if (window.isDestroyed() || !desired()) {
+    throw new Error(`Smoke window did not reach state ${state}.`);
+  }
+
+  await delay(250);
+  const result = smokeWindowSnapshot();
+  recordEvent("window:state", { requested: state, window: result });
+  return result;
+}
+
+function smokeWindowSnapshot() {
+  const windowAvailable = Boolean(mainWindow && !mainWindow.isDestroyed());
+  return {
+    present: windowAvailable,
+    visible: Boolean(windowAvailable && mainWindow.isVisible()),
+    focused: Boolean(windowAvailable && mainWindow.isFocused()),
+    minimized: Boolean(windowAvailable && mainWindow.isMinimized()),
+    maximized: Boolean(windowAvailable && mainWindow.isMaximized()),
+    fullScreen: Boolean(
+      windowAvailable &&
+        (mainWindow.isFullScreen() ||
+          (typeof mainWindow.isSimpleFullScreen === "function" && mainWindow.isSimpleFullScreen()))
+    ),
+    nativeFullScreen: Boolean(windowAvailable && mainWindow.isFullScreen()),
+    simpleFullScreen: Boolean(
+      windowAvailable &&
+        typeof mainWindow.isSimpleFullScreen === "function" &&
+        mainWindow.isSimpleFullScreen()
+    ),
+    bounds: windowAvailable ? mainWindow.getBounds() : null,
+    contentBounds: windowAvailable ? mainWindow.getContentBounds() : null,
+    display: activeDisplaySnapshot(),
+    latestRendererFrameRateSample: latestRendererFrameRateSample || null
+  };
+}
+
 function snapshot() {
   const base = {
     app: {
@@ -4430,12 +4773,7 @@ function snapshot() {
     launch: STARTUP_LAUNCH_CONTEXT,
     crashDiagnostics: collectCrashDiagnostics(),
     overlayProcesses: collectOverlayProcessSnapshot(),
-    window: {
-      present: Boolean(mainWindow && !mainWindow.isDestroyed()),
-      visible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
-      focused: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
-      minimized: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized())
-    },
+    window: smokeWindowSnapshot(),
     steam: {
       initialized: Boolean(client),
       initError
@@ -5285,7 +5623,7 @@ function isOverlayAction(action) {
 }
 
 function isImmediateSmokeAction(action) {
-  return action === "presenter-ready";
+  return action === "presenter-ready" || action === "renderer-frame-rate" || action.startsWith("window-");
 }
 
 function isPassiveNotificationAction(action) {

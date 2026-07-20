@@ -4766,6 +4766,9 @@ const legacyElectronOverlayMetadata: ElectronSteamOverlaySnapshot["electronOverl
   restoreFocusDelayMs: 0,
   activationBoostMs: 0,
   activeGraceMs: 0,
+  activationWarmupMs: 0,
+  activationWarmupRemainingMs: 0,
+  activationWarmupReady: true,
   overlayShortcut: {
     enabled: false,
     preventDefault: true,
@@ -4941,11 +4944,22 @@ function assertExecutableFile(filePath) {
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  let executable = command;
+  let executableArgs = args;
+  if (process.platform === "win32" && command === "node") {
+    executable = process.execPath;
+  } else if (process.platform === "win32" && command === "npm") {
+    const npmCli = process.env.npm_execpath;
+    assert.ok(npmCli, "npm_execpath is required to run package smoke checks on Windows");
+    executable = process.execPath;
+    executableArgs = [npmCli, ...args];
+  }
+
+  const result = spawnSync(executable, executableArgs, {
     cwd: options.cwd,
     encoding: options.encoding,
     stdio: options.encoding ? ["ignore", "pipe", "inherit"] : "inherit",
-    shell: process.platform === "win32"
+    windowsHide: true
   });
 
   if (result.status !== 0) {

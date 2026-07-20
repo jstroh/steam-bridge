@@ -2,21 +2,105 @@
 
 Last reviewed: 2026-07-19
 
-Review anchor: `3d0678b` (`Fix Steam Friends release readiness`), published as
-`v0.2.14` after exact-candidate proof, registry verification, and downstream
-consumer adoption.
+Review anchor: `3da802d` (`Document Steam Bridge 0.2.14 release`), after
+`v0.2.14` exact-candidate proof, registry verification, and downstream consumer
+adoption.
 
 ## Active Goal
 
-Maintain published `v0.2.14` as the supported Windows standalone-host release.
-Its immutable package includes high-refresh DXGI pacing, immediate presentation
-of new Electron frames, logical minimum client sizing, an accessible native
-application menu, unambiguous per-monitor-DPI transitions, and the repaired
-Friends readiness classifier. The Electron consumer now uses the exact registry
-package. Do not move or reuse published tags or the rejected
+Finish and publish the replacement for `v0.2.14` after the Windows architecture
+changes are requalified on Linux x64, Steam Deck Desktop Mode, Steam Deck Game
+Mode, and native Apple Silicon macOS. Use each platform's settled contract:
+Linux native/package loading, the managed Desktop matrix, the bounded two-case
+Game Mode matrix, and the signed Apple Silicon matrix. Do not revive rejected
+raw overlay/input variants, Wayland-handle-as-XID or child-window paths,
+on-demand GLX creation inside Steam's injected call stack, or macOS
+needs-present polling. Fix regressions in their owning layer, rerun every
+affected platform contract, and publish only an exact reviewed and proved
+candidate. Do not move or reuse published tags or the rejected
 `v0.2.12`/`v0.2.13` tags.
 
 ## Current State
+
+Steam Deck requalification is complete for the current working candidate. The
+Desktop core passed 21/21 routes and 42 screenshots; focused move, resize,
+fullscreen, minimize/restore, same-host reuse, bottom-corner, progress-toast,
+and unlock-toast proofs also passed. A true cold launch found that Steam can
+report the overlay enabled before Linux `gameoverlayui` is safe to call;
+immediate web activation crashed at address zero. The managed Wayland path now
+has a configurable 3000 ms activation warmup, fail-closed synchronous helpers,
+and wait-aware asynchronous helpers. Managed waits reserve the operation
+without activating the presenter, leaving the host transparent, input-empty,
+and at zero FPS until readiness is proven. The exact rebuilt package passed a
+fresh 6/6 Desktop matrix with 11 screenshots and the bounded 2/2 Game Mode
+readiness/compositor-native Store contract at 1280x800. The final checkout
+reservation fix then passed the focused exact-candidate duplicate-open guard:
+one target, duplicate suppression, visible activation, Escape close,
+`active=false`, focus return, stable zero-FPS parking, and no crashes. The SSH
+close probe found during that run now discovers and authenticates the active
+Xauthority before sending input, and its self-test passes locally and on Deck.
+
+Deck Desktop frame pacing is measured against KWin's authoritative output
+state because Electron reports `displayFrequency=0` in this Wayland session.
+KWin reports 90.004 Hz. Before presenter attachment the renderer measured
+90.000 FPS (99.996% of refresh, 11.1 ms p50/p99). While the Steam browser was
+visibly active it measured 86.68 and 86.84 FPS (96.3-96.5% of refresh), with
+11.1 ms p50 and sparse 22.2-88.9 ms tail stalls. After Escape, the presenter
+was conclusively parked at `currentFps=0` and its `pumpCount` remained exactly
+2567, while the renderer measured 86.35 then 83.36 FPS. The remaining tail
+stalls therefore occur while Steam's injected `gameoverlayui` process remains
+attached, not from passive presenter pumping. A fresh app without that
+post-activation process returns to the 90 FPS baseline.
+
+Current Apple Silicon qualification uses the signed arm64 package on
+`jeromystroh@Jeromys-MacBook-Pro.local`. Metal host readiness, Steam
+launch/injection, direct web activation, native window transitions, and frame
+pacing all pass. The 120.000 Hz Retina display (scale factor 2) measured
+120.004 FPS before activation, 118.676 FPS with the browser overlay active, and
+118.367 FPS after close. Restored, maximized, minimized/restored, and simple
+fullscreen states retained exact content/host geometry and one native host
+attachment; simple fullscreen measured 116.92 FPS and maximized measured
+118.35 FPS. Steam-launched native Spaces fullscreen did not enter reliably, so
+the smoke app uses Electron simple fullscreen while Steam Bridge recognizes
+both native and simple fullscreen as fullscreen geometry. Window-state policy
+remains application-owned.
+
+The exact signed Apple Silicon full route matrix is now complete: 55/55 checks
+passed at `/tmp/steam-bridge-macos-overlay-matrix-full-exact-final-20260719`.
+It verified screen-pixel visibility, input close, focus return, capture health,
+route lifecycle, passive parking, crash diagnostics, and all 1,130 native
+methods against contract hash
+`25cfd24fac158d8768732933c153bab01aa1618ac44a6f39eeba23920a443ba4`.
+Earlier attempts correctly stopped at macOS TCC boundaries until Screen & System
+Audio Recording and Accessibility were granted to the SSH automation host; the
+accepted run used those permissions and did not weaken the proof fallback.
+
+The Mac checkout is now fast-forwarded to the same `3da802d`/`0.2.14` baseline
+as the Windows working tree and the modified runtime inputs match by SHA-256.
+That exact rebuild exposed a package-source precedence bug: an old
+target-named addon could override the fresh `steam_bridge_native.local.node`
+created by `npm run native:build`. For ordinary current-host builds, the example
+packager now prefers that local addon. Cross-target packages and explicit
+`--artifacts-dir` release assemblies retain target-named artifact precedence.
+Regression coverage proves all three branches. The
+rebuilt signed arm64 package verifies all 1,130 expected native methods with
+contract hash `25cfd24fac158d8768732933c153bab01aa1618ac44a6f39eeba23920a443ba4`,
+and its launcher/Electron pair pass the arm64, signing, entitlement, launcher,
+helper, and matrix self-test gates without starting Steam.
+
+Live qualification uses one Steam client at a time. The Deck and macOS Steam
+sessions were stopped before final Windows consumer QA. After the latest code
+edits, all 213 unit tests, TypeScript build, consumer CJS/ESM/TypeScript package
+smoke, Linux/Deck/macOS/Windows helper and matrix self-tests, API/platform
+audits, Rust format/check, `git diff --check`, and the 35-entry npm dry-run pack
+pass. The package smoke uses
+Git Bash plus a real Python interpreter on Windows; the Microsoft Store
+`python3` alias is not a valid POSIX-fixture runtime. The manual/live platform
+gate is complete. Repeat the final checks against the versioned `0.3.0`
+candidate, then perform final review, exact release assembly, commit, push, tag,
+GitHub Release, trusted npm publication, and downstream registry verification.
+The published Windows `v0.2.14` evidence below remains valid historical evidence
+while this replacement is in progress.
 
 The source-linked Windows host now creates a frame-latency-waitable flip-model
 swap chain, sets maximum frame latency to one, waits on the DXGI object, and
@@ -33,6 +117,34 @@ only under the local FPS-report flag and is absent from normal development and
 release execution. The shared-texture fence wait now has a hard upper bound so
 a wedged GPU copy fails instead of spinning the Electron main thread forever;
 swap-chain setup also closes a newly acquired wait handle on every failure path.
+
+The final actual-game Windows pass used the production Electron `43.1.1`
+consumer at 225% desktop scale. Electron's hidden renderer produced a
+2883-by-1623 coded shared texture for a 1280-by-720 logical viewport, and
+3459-by-2172 in fullscreen; the extra logical pixel was Chromium allocation
+padding, not game content. Forwarding the full coded texture created narrow
+side bars and a bottom overrun. Steam Bridge now accepts an explicit
+`presentationRect`, crops that viewport into its retained texture, and then
+presents it without imposing a browser-client aspect policy. The consumer sets
+Electron 42+ offscreen `deviceScaleFactor` to the launch display scale and keeps
+that renderer scale stable; scale factor 1 on Electron 42/43 reproducibly turned
+live WebGL captures black after resize in both CPU and D3D forwarding, while
+Electron 41 native scale and Electron 42/43 explicit native scale passed. The
+corrected production game remained live through 1280-by-720 windowed,
+1536-by-964 fullscreen, and restored 1280-by-720 transitions at 59-60 game and
+native FPS against the current 60 Hz desktop, with zero bitmap fallbacks,
+frame-latency wait timeouts, or slow shared-texture copies.
+
+That same actual-game run passed native title drag, edge resize and the retained
+640-by-480 logical minimum, rounded restored corners, File/View menu input,
+maximize/restore, minimize/restore, fullscreen/restore, focus loss to Steam and
+return, Win11 Snap Layout dismissal, and clean exit. Real checkout and
+subscription routes opened at the correct centered size. Rapid repeated Buy
+clicks had stacked multiple Steam pages, so the consumer now owns a request gate
+that admits one pending/active web overlay and releases on close, activation
+failure, or a bounded no-activation timeout. A triple-click then opened one
+checkout and one close returned directly to gameplay; the next subscription
+route proved gate release. No purchase or subscription was authorized.
 
 The standalone host also accepts a validated menu tree, attaches a real Win32
 menu, dispatches command IDs as `menuCommand` input events, preserves client

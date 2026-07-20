@@ -1,3 +1,7 @@
+import { ensureKWinWaylandOverlayHostSync } from "./kwin";
+export { getKWinWaylandOverlayHostSyncStatus } from "./kwin";
+export type { KWinWaylandOverlayHostSyncStatus } from "./kwin";
+
 export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "repaint" | "compatibility";
 
 export interface ElectronOverlayOptions {
@@ -39,6 +43,8 @@ export interface ElectronNativeOverlaySessionOptions {
   continuousPresent?: boolean;
   nativeWindowHandle?: Buffer;
   getBounds?: () => ElectronOverlayBounds | undefined;
+  getFullScreen?: () => boolean;
+  useStandaloneLinuxHost?: boolean;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
@@ -48,6 +54,8 @@ export interface ElectronOverlayPresenterOptions {
   title?: string;
   nativeWindowHandle?: Buffer;
   getBounds?: () => ElectronOverlayBounds | undefined;
+  getFullScreen?: () => boolean;
+  useStandaloneLinuxHost?: boolean;
   captureFrame?: () => Promise<ElectronOverlayFrame | undefined>;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
@@ -91,6 +99,8 @@ interface ElectronWindow {
   focus?(): void;
   getBounds?(): ElectronOverlayBounds;
   getContentBounds?(): ElectronOverlayBounds;
+  isFullScreen?(): boolean;
+  isSimpleFullScreen?(): boolean;
   getNativeWindowHandle?(): Buffer;
   webContents: {
     once(event: "did-finish-load", handler: () => void): void;
@@ -252,14 +262,20 @@ function splitSteamOverlayPreloadEntries(key: string, value: string): string[] {
 
 export function electronNativeOverlaySessionOptions(
   window: ElectronWindow,
-  options: Omit<ElectronNativeOverlaySessionOptions, "nativeWindowHandle" | "getBounds" | "restoreFocus"> = {}
+  options: Omit<
+    ElectronNativeOverlaySessionOptions,
+    "nativeWindowHandle" | "getBounds" | "getFullScreen" | "useStandaloneLinuxHost" | "restoreFocus"
+  > = {}
 ): ElectronNativeOverlaySessionOptions {
   return electronWindowNativeOverlayOptions(window, options);
 }
 
 export function electronOverlayPresenterOptions(
   window: ElectronWindow,
-  options: Omit<ElectronOverlayPresenterOptions, "nativeWindowHandle" | "getBounds" | "restoreFocus"> = {}
+  options: Omit<
+    ElectronOverlayPresenterOptions,
+    "nativeWindowHandle" | "getBounds" | "getFullScreen" | "useStandaloneLinuxHost" | "restoreFocus"
+  > = {}
 ): ElectronOverlayPresenterOptions {
   return electronWindowNativeOverlayOptions(window, options);
 }
@@ -268,21 +284,36 @@ function electronWindowNativeOverlayOptions<
   T extends {
     nativeWindowHandle?: Buffer;
     getBounds?: () => ElectronOverlayBounds | undefined;
+    getFullScreen?: () => boolean;
+    useStandaloneLinuxHost?: boolean;
     captureFrame?: () => Promise<ElectronOverlayFrame | undefined>;
     restoreFocus?: () => void;
   }
 >(
   window: ElectronWindow,
-  options: Omit<T, "nativeWindowHandle" | "getBounds" | "restoreFocus">
+  options: Omit<
+    T,
+    "nativeWindowHandle" | "getBounds" | "getFullScreen" | "useStandaloneLinuxHost" | "restoreFocus"
+  >
 ): T {
-  if (typeof window.getNativeWindowHandle !== "function") {
+  const standaloneLinuxHost = electronUsesStandaloneLinuxOverlayHost();
+  if (standaloneLinuxHost) {
+    ensureKWinWaylandOverlayHostSync();
+  }
+  if (!standaloneLinuxHost && typeof window.getNativeWindowHandle !== "function") {
     throw new Error("Electron BrowserWindow does not expose getNativeWindowHandle().");
   }
 
+  const nativeWindowHandle = standaloneLinuxHost
+    ? undefined
+    : window.getNativeWindowHandle?.();
+
   return {
     ...options,
-    nativeWindowHandle: window.getNativeWindowHandle(),
+    ...(nativeWindowHandle ? { nativeWindowHandle } : {}),
     getBounds: () => readElectronWindowBounds(window),
+    getFullScreen: () => window.isFullScreen?.() === true || window.isSimpleFullScreen?.() === true,
+    ...(standaloneLinuxHost ? { useStandaloneLinuxHost: true } : {}),
     captureFrame: () => captureElectronWindowFrame(window),
     restoreFocus: () => {
       if (window.isDestroyed()) {
@@ -296,6 +327,33 @@ function electronWindowNativeOverlayOptions<
       window.webContents.invalidate();
     }
   } as T;
+}
+
+export function electronUsesStandaloneLinuxOverlayHost(): boolean {
+  if (process.platform !== "linux") {
+    return false;
+  }
+
+  let requestedOzonePlatform: string | undefined;
+  for (let index = 0; index < process.argv.length; index += 1) {
+    const argument = process.argv[index];
+    if (argument.startsWith("--ozone-platform=")) {
+      requestedOzonePlatform = argument.slice("--ozone-platform=".length).trim().toLowerCase();
+    } else if (argument === "--ozone-platform" && index + 1 < process.argv.length) {
+      requestedOzonePlatform = process.argv[index + 1].trim().toLowerCase();
+    }
+  }
+  if (requestedOzonePlatform === "x11") {
+    return false;
+  }
+  if (requestedOzonePlatform === "wayland") {
+    return true;
+  }
+
+  return (
+    process.env.XDG_SESSION_TYPE?.trim().toLowerCase() === "wayland" &&
+    Boolean(process.env.WAYLAND_DISPLAY?.trim())
+  );
 }
 
 async function captureElectronWindowFrame(window: ElectronWindow): Promise<ElectronOverlayFrame | undefined> {

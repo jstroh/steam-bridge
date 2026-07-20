@@ -105,6 +105,7 @@ pub struct WindowsD3d11Renderer {
     shared_texture_partial_copy_count: u64,
     shared_texture_storage_recreate_count: u64,
     last_shared_texture_content_rect: [u32; 4],
+    last_shared_texture_presentation_rect: [u32; 4],
     cpu_upload_count: u64,
     shared_texture_import_count: u64,
 }
@@ -130,6 +131,7 @@ impl WindowsD3d11Renderer {
         source_width: u32,
         source_height: u32,
         content_rect: (u32, u32, u32, u32),
+        presentation_rect: (u32, u32, u32, u32),
     ) -> Result<Self, String> {
         let mut failures = Vec::new();
         if let Ok(adapter) = adapter_for_shared_resource(handle) {
@@ -142,6 +144,7 @@ impl WindowsD3d11Renderer {
                         source_width,
                         source_height,
                         content_rect,
+                        presentation_rect,
                     ) {
                         Ok(()) => return Ok(renderer),
                         Err(error) => failures.push(format!("{label}: {error}")),
@@ -162,6 +165,7 @@ impl WindowsD3d11Renderer {
                         source_width,
                         source_height,
                         content_rect,
+                        presentation_rect,
                     ) {
                         Ok(()) => return Ok(renderer),
                         Err(error) => failures.push(format!("{label}: {error}")),
@@ -179,6 +183,7 @@ impl WindowsD3d11Renderer {
                         source_width,
                         source_height,
                         content_rect,
+                        presentation_rect,
                     )?;
                     return Ok(renderer);
                 }
@@ -318,6 +323,7 @@ impl WindowsD3d11Renderer {
             shared_texture_partial_copy_count: 0,
             shared_texture_storage_recreate_count: 0,
             last_shared_texture_content_rect: [0; 4],
+            last_shared_texture_presentation_rect: [0; 4],
             cpu_upload_count: 0,
             shared_texture_import_count: 0,
         };
@@ -490,6 +496,7 @@ impl WindowsD3d11Renderer {
         expected_width: u32,
         expected_height: u32,
         content_rect: (u32, u32, u32, u32),
+        presentation_rect: (u32, u32, u32, u32),
     ) -> Result<(), String> {
         if handle == 0 {
             return Err("Electron shared texture handle is null".to_owned());
@@ -530,17 +537,42 @@ impl WindowsD3d11Renderer {
                 content_x, content_y, content_width, content_height, desc.Width, desc.Height
             ));
         }
-        if self.source_mode != Some(SourceMode::SharedTexture)
-            || self.source_width != desc.Width
-            || self.source_height != desc.Height
+        let (presentation_x, presentation_y, presentation_width, presentation_height) =
+            presentation_rect;
+        let presentation_right = presentation_x
+            .checked_add(presentation_width)
+            .ok_or_else(|| "Electron shared texture presentation rectangle overflows".to_owned())?;
+        let presentation_bottom = presentation_y
+            .checked_add(presentation_height)
+            .ok_or_else(|| "Electron shared texture presentation rectangle overflows".to_owned())?;
+        if presentation_width == 0
+            || presentation_height == 0
+            || presentation_right > desc.Width
+            || presentation_bottom > desc.Height
+        {
+            return Err(format!(
+                "Electron shared texture presentation rectangle {},{} {}x{} exceeds {}x{}",
+                presentation_x,
+                presentation_y,
+                presentation_width,
+                presentation_height,
+                desc.Width,
+                desc.Height
+            ));
+        }
+        let storage_recreated = self.source_mode != Some(SourceMode::SharedTexture)
+            || self.source_width != presentation_width
+            || self.source_height != presentation_height
             || self.source_format != desc.Format
             || self.source_sample_count != desc.SampleDesc.Count
             || self.source_sample_quality != desc.SampleDesc.Quality
-            || self.source_texture.is_none()
-        {
+            || self.source_texture.is_none();
+        if storage_recreated {
             self.shared_texture_storage_recreate_count =
                 self.shared_texture_storage_recreate_count.saturating_add(1);
             let owned_desc = D3D11_TEXTURE2D_DESC {
+                Width: presentation_width,
+                Height: presentation_height,
                 BindFlags: (D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET).0 as u32,
                 CPUAccessFlags: 0,
                 MiscFlags: 0,
@@ -570,46 +602,62 @@ impl WindowsD3d11Renderer {
             self.source_texture = Some(owned_texture);
             self.source_view = Some(view);
         }
-        let source_box = D3D11_BOX {
-            left: content_x,
-            top: content_y,
-            front: 0,
-            right: content_right,
-            bottom: content_bottom,
-            back: 1,
+        let presentation_changed = self.last_shared_texture_presentation_rect
+            != [
+                presentation_x,
+                presentation_y,
+                presentation_width,
+                presentation_height,
+            ];
+        let copy_rect = if storage_recreated || presentation_changed {
+            Some(presentation_rect)
+        } else {
+            intersect_rect(content_rect, presentation_rect)
         };
-        self.context.CopySubresourceRegion(
-            self.source_texture
-                .as_ref()
-                .ok_or_else(|| "Shared-copy texture was not created".to_owned())?,
-            0,
-            content_x,
-            content_y,
-            0,
-            &texture,
-            0,
-            Some(&source_box),
-        );
-        self.wait_for_shared_texture_copy()?;
+        if let Some((copy_x, copy_y, copy_width, copy_height)) = copy_rect {
+            let source_box = D3D11_BOX {
+                left: copy_x,
+                top: copy_y,
+                front: 0,
+                right: copy_x + copy_width,
+                bottom: copy_y + copy_height,
+                back: 1,
+            };
+            self.context.CopySubresourceRegion(
+                self.source_texture
+                    .as_ref()
+                    .ok_or_else(|| "Shared-copy texture was not created".to_owned())?,
+                0,
+                copy_x - presentation_x,
+                copy_y - presentation_y,
+                0,
+                &texture,
+                0,
+                Some(&source_box),
+            );
+            self.wait_for_shared_texture_copy()?;
+            if copy_rect == Some(presentation_rect) {
+                self.shared_texture_full_copy_count =
+                    self.shared_texture_full_copy_count.saturating_add(1);
+            } else {
+                self.shared_texture_partial_copy_count =
+                    self.shared_texture_partial_copy_count.saturating_add(1);
+            }
+        }
         self.source_mode = Some(SourceMode::SharedTexture);
-        self.source_width = desc.Width;
-        self.source_height = desc.Height;
+        self.source_width = presentation_width;
+        self.source_height = presentation_height;
         self.source_format = desc.Format;
         self.source_sample_count = desc.SampleDesc.Count;
         self.source_sample_quality = desc.SampleDesc.Quality;
         self.last_shared_texture_content_rect =
             [content_x, content_y, content_width, content_height];
-        if content_x == 0
-            && content_y == 0
-            && content_width == desc.Width
-            && content_height == desc.Height
-        {
-            self.shared_texture_full_copy_count =
-                self.shared_texture_full_copy_count.saturating_add(1);
-        } else {
-            self.shared_texture_partial_copy_count =
-                self.shared_texture_partial_copy_count.saturating_add(1);
-        }
+        self.last_shared_texture_presentation_rect = [
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+        ];
         self.shared_texture_import_count = self.shared_texture_import_count.saturating_add(1);
         Ok(())
     }
@@ -656,6 +704,7 @@ impl WindowsD3d11Renderer {
         source_width: u32,
         source_height: u32,
         content_rect: (u32, u32, u32, u32),
+        presentation_rect: (u32, u32, u32, u32),
     ) -> Result<(), String> {
         let width = self.width;
         let height = self.height;
@@ -667,6 +716,7 @@ impl WindowsD3d11Renderer {
             source_width,
             source_height,
             content_rect,
+            presentation_rect,
         )?;
         self.context.ClearState();
         self.context.Flush();
@@ -841,6 +891,10 @@ impl WindowsD3d11Renderer {
 
     pub fn last_shared_texture_content_rect(&self) -> [u32; 4] {
         self.last_shared_texture_content_rect
+    }
+
+    pub fn last_shared_texture_presentation_rect(&self) -> [u32; 4] {
+        self.last_shared_texture_presentation_rect
     }
 
     pub fn cpu_upload_count(&self) -> u64 {
@@ -1018,4 +1072,15 @@ fn aspect_fit(
         width,
         height,
     )
+}
+
+fn intersect_rect(
+    first: (u32, u32, u32, u32),
+    second: (u32, u32, u32, u32),
+) -> Option<(u32, u32, u32, u32)> {
+    let left = first.0.max(second.0);
+    let top = first.1.max(second.1);
+    let right = (first.0 + first.2).min(second.0 + second.2);
+    let bottom = (first.1 + first.3).min(second.1 + second.3);
+    (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
 }

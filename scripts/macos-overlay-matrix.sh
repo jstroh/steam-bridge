@@ -396,6 +396,12 @@ case_block() {
 run_self_test() {
   local self_path minimal_output core_output full_output persistent_output unavailable_output wait_output preflight_output steam_health_output opengl_output checkout_json_output checkout_callback_output callback_missing_json_output checkout_missing_file_output invalid_checkout_json_file invalid_checkout_json_output passive_case checkout_case checkout_prepare_case checkout_json_case checkout_callback_case checkout_callback_checkout_block checkout_callback_prepare_block checkout_callback_web_block shortcut_checkout_json_case direct_web_case direct_store_case direct_friends_case direct_dialog_case direct_profile_case direct_players_case direct_community_case direct_stats_case direct_achievements_case direct_user_case web_case duplicate_guard_case full_shortcut_open_wait_case full_shortcut_checkout_open_wait_case full_shortcut_user_open_wait_case full_shortcut_dialog_open_wait_case persistent_web_case persistent_duplicate_guard_case persistent_checkout_prepare_case persistent_direct_profile_case persistent_direct_players_case persistent_direct_community_case persistent_direct_stats_case persistent_direct_achievements_case persistent_direct_user_case persistent_shortcut_open_wait_case persistent_shortcut_checkout_open_wait_case persistent_shortcut_user_open_wait_case persistent_shortcut_dialog_open_wait_case unavailable_web_case unavailable_checkout_case unavailable_checkout_prepare_case unavailable_shortcut_case unavailable_passive_case
   self_path="${BASH_SOURCE[0]}"
+  if ! grep -q 'require_checkout_operation_readiness_status="0"' "$script_dir/macos-electron-smoke.sh" ||
+    ! grep -q -- '--require-checkout-operation-readiness-status)' "$script_dir/macos-electron-smoke.sh" ||
+    ! grep -q 'args+=("--require-checkout-operation-readiness-status")' "$script_dir/macos-electron-smoke.sh"; then
+    echo "Self-test failed: macOS smoke helper must parse and forward checkout operation readiness verification." >&2
+    exit 1
+  fi
   minimal_output="$(
     bash "$self_path" \
       --mode steam-launch \
@@ -899,7 +905,8 @@ run_self_test() {
   require_contains "$passive_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."
   require_not_contains "$passive_case" "--close-probe" "passive toast should not require modal close proof."
   require_contains "$checkout_case" "--close-probe" "checkout proof should close and verify parked state."
-  require_contains "$checkout_case" "--require-direct-open-readiness-status" "checkout proof should require direct readiness status evidence."
+  require_contains "$checkout_case" "--require-checkout-operation-readiness-status" "checkout proof should require wait-aware operation readiness evidence."
+  require_not_contains "$checkout_case" "--require-direct-open-readiness-status" "checkout proof must not apply the direct-open wait-event contract to openCheckoutAndWait."
   require_contains "$checkout_prepare_case" "--require-event overlay:presenter-checkout-ready" "checkout prepare proof should require the ready event."
   require_contains "$checkout_prepare_case" "--require-no-overlay-activation" "checkout prepare proof should reject modal overlay activation."
   require_contains "$checkout_prepare_case" "--require-idle-presenter" "checkout prepare proof should require the presenter to release back to idle."
@@ -918,6 +925,7 @@ run_self_test() {
   require_not_contains "$checkout_suite_prepare_case" "--checkout-json-file" "checkout suite prepare proof must not use private checkout input."
   require_not_contains "$checkout_suite_prepare_case" "--close-probe" "checkout suite prepare proof must not run an overlay close probe."
   require_contains "$checkout_suite_checkout_case" "--checkout-json-file REDACTED" "checkout suite direct proof should use JSON-file handoff without printing its path."
+  require_contains "$checkout_suite_checkout_case" "--require-checkout-operation-readiness-status" "checkout suite direct proof should require wait-aware operation readiness evidence."
   require_contains "$checkout_suite_checkout_case" "--close-probe" "checkout suite direct proof should close and verify parked state."
   require_contains "$checkout_suite_checkout_block" "REQUIRE_MICROTXN_CALLBACK direct-checkout" "checkout suite callback requirement should apply to direct checkout."
   require_contains "$checkout_suite_shortcut_case" "--shortcut-target checkout" "checkout suite Shift+Tab proof should target checkout."
@@ -2563,7 +2571,7 @@ run_persistent_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
-    --require-direct-open-readiness-status \
+    --require-checkout-operation-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2767,7 +2775,7 @@ run_checkout_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
-    --require-direct-open-readiness-status \
+    --require-checkout-operation-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe
@@ -2973,7 +2981,7 @@ run_matrix() {
     --require-overlay-injection \
     --require-overlay-enabled \
     --require-overlay-activated \
-    --require-direct-open-readiness-status \
+    --require-checkout-operation-readiness-status \
     --require-event overlay:presenter-open \
     --require-no-crashes \
     --close-probe

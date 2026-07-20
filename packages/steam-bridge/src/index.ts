@@ -3,7 +3,8 @@ import {
   electronEnableSteamOverlay as electronEnableSteamOverlayImpl,
   electronNativeOverlaySessionOptions as electronNativeOverlaySessionOptionsImpl,
   electronOverlayPresenterOptions as electronOverlayPresenterOptionsImpl,
-  electronScrubSteamOverlayChildProcessEnv as electronScrubSteamOverlayChildProcessEnvImpl
+  electronScrubSteamOverlayChildProcessEnv as electronScrubSteamOverlayChildProcessEnvImpl,
+  electronUsesStandaloneLinuxOverlayHost
 } from "./electron";
 import { isMainThread } from "node:worker_threads";
 import { SteamworksEnums } from "./generated-steamworks-enums";
@@ -1613,6 +1614,13 @@ export interface NativeOverlaySessionOptions {
   minimumMenuScale?: number;
   nativeWindowHandle?: Buffer;
   getBounds?: NativeOverlayBoundsProvider;
+  getFullScreen?: () => boolean;
+  /**
+   * Use Steam Bridge's bounds-backed Xwayland host instead of interpreting an
+   * Electron native-Wayland handle as an X11 window ID. Electron helpers set
+   * this automatically; other callers should normally leave it unset.
+   */
+  useStandaloneLinuxHost?: boolean;
   onInputEvent?: (event: NativeOverlayInputEvent) => void;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
@@ -1661,6 +1669,8 @@ export interface NativeOverlaySharedTexture {
   height: number;
   /** Electron contentRect/dirtyRect populated by this shared texture update. */
   contentRect?: NativeOverlayBounds;
+  /** Region of the coded texture to present. Defaults to the full coded texture. */
+  presentationRect?: NativeOverlayBounds;
 }
 
 export type NativeOverlayInputEventKind =
@@ -1747,6 +1757,9 @@ export interface NativeOverlayPresenterOptions {
   title?: string;
   nativeWindowHandle?: Buffer;
   getBounds?: NativeOverlayBoundsProvider;
+  getFullScreen?: () => boolean;
+  /** @see NativeOverlaySessionOptions.useStandaloneLinuxHost */
+  useStandaloneLinuxHost?: boolean;
   captureFrame?: NativeOverlayFrameProvider;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
@@ -2059,6 +2072,11 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
   electronOverlay: {
     controllerGeneration?: number;
     presenterMode: ElectronSteamOverlayPresenterMode;
+    /**
+     * Present only when Steam Bridge promotes the requested mode to a safer
+     * platform implementation while preserving the requested lifecycle API.
+     */
+    effectivePresenterMode?: ElectronSteamOverlayPresenterMode;
     closeWithWindow: boolean;
     autoPrepareForNotifications: boolean;
     scrubSteamOverlayChildProcessEnv: boolean;
@@ -2066,6 +2084,14 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
     restoreFocusDelayMs: number;
     activationBoostMs: number;
     activeGraceMs: number;
+    /**
+     * Cold-start guard applied before the first managed activation. Steam's
+     * Linux overlay helper can report enabled shortly before its injected
+     * presentation path is actually callable.
+     */
+    activationWarmupMs: number;
+    activationWarmupRemainingMs: number;
+    activationWarmupReady: boolean;
     overlayShortcut: ElectronSteamOverlayShortcutSnapshot;
   };
 }
@@ -2445,6 +2471,8 @@ function isNativeOverlayHostUnavailableReason(value: unknown): value is NativeOv
 
 export type ElectronOverlayWindow = Parameters<typeof electronOverlayPresenterOptionsImpl>[0] & {
   isFocused?(): boolean;
+  isMinimized?(): boolean;
+  isVisible?(): boolean;
   on?(event: ElectronOverlayWindowGeometryEvent, handler: () => void): void;
   off?(event: ElectronOverlayWindowGeometryEvent | "closed", handler: () => void): void;
   removeListener?(event: ElectronOverlayWindowGeometryEvent | "closed", handler: () => void): void;
@@ -2490,6 +2518,12 @@ export type ElectronSteamOverlayOptions = NonNullable<Parameters<typeof electron
   presenterMode?: ElectronSteamOverlayPresenterMode;
   autoPrepareForNotifications?: boolean;
   scrubSteamOverlayChildProcessEnv?: boolean;
+  /**
+   * Minimum time after controller creation before managed overlay activation.
+   * Defaults to 3000 ms for Electron's standalone Linux/Xwayland host and 0 on
+   * other presenter paths.
+   */
+  activationWarmupMs?: number;
 };
 
 export interface ElectronSteamOverlay extends CallbackHandle {
@@ -7913,7 +7947,8 @@ export function updateNativeOverlayHostSharedTexture(
   handle: Buffer,
   width: number,
   height: number,
-  contentRect?: NativeOverlayBounds
+  contentRect?: NativeOverlayBounds,
+  presentationRect?: NativeOverlayBounds
 ): void {
   runRawNativeOverlaySurfaceMutation(() => {
     const binding = native();
@@ -7928,6 +7963,12 @@ export function updateNativeOverlayHostSharedTexture(
       normalizedWidth,
       normalizedHeight
     );
+    const normalizedPresentationRect = normalizeNativeOverlayContentRect(
+      presentationRect,
+      normalizedWidth,
+      normalizedHeight,
+      "presentationRect"
+    );
     update.call(
       binding,
       handle,
@@ -7936,7 +7977,11 @@ export function updateNativeOverlayHostSharedTexture(
       normalizedContentRect.x,
       normalizedContentRect.y,
       normalizedContentRect.width,
-      normalizedContentRect.height
+      normalizedContentRect.height,
+      normalizedPresentationRect.x,
+      normalizedPresentationRect.y,
+      normalizedPresentationRect.width,
+      normalizedPresentationRect.height
     );
   });
 }
@@ -8168,7 +8213,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           items: normalizeNativeOverlayMenu(options.menu),
           minimumScale: minimumMenuScale
         });
-  const usesNativeHostView = Boolean(options.nativeWindowHandle);
+  const usesStandaloneLinuxHost = shouldUseStandaloneLinuxNativeHost(options);
+  const usesNativeHostView = Boolean(options.nativeWindowHandle) || usesStandaloneLinuxHost;
   const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
   const continuousPresentRequested = options.continuousPresent === true;
   const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
@@ -8184,7 +8230,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let cursorHiddenRequested = false;
   let cursorHiddenApplied: boolean | undefined;
   let continuousPresentApplied: boolean | undefined;
-  let fullScreenRequested = false;
+  let fullScreenRequested = safeBoolean(() => options.getFullScreen?.() === true);
   let fullScreenApplied: boolean | undefined;
   let menuApplied = false;
   let lastOverlayEvent: GameOverlayActivated | undefined;
@@ -8196,6 +8242,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let overlayHandle: CallbackHandle | undefined;
   let surfaceLease: NativeOverlaySurfaceLease | undefined;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
+  let lastNativeHostBounds: NativeOverlayBounds | undefined;
   const stateListeners = new Set<() => void>();
 
   const pump = (): void => {
@@ -8207,6 +8254,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (!ensureNativeOverlaySurfaceReady()) {
         return;
       }
+      syncElectronFullScreenState();
+      syncNativeHostBounds();
       syncContinuousPresent();
       syncFullScreen();
       native().pumpNativeOverlayProbeWindow();
@@ -8358,6 +8407,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const width = normalizeNativeOverlayFrameDimension(texture.width, "shared texture width");
     const height = normalizeNativeOverlayFrameDimension(texture.height, "shared texture height");
     const contentRect = normalizeNativeOverlayContentRect(texture.contentRect, width, height);
+    const presentationRect = normalizeNativeOverlayContentRect(
+      texture.presentationRect,
+      width,
+      height,
+      "presentationRect"
+    );
     update.call(
       binding,
       texture.handle,
@@ -8366,7 +8421,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       contentRect.x,
       contentRect.y,
       contentRect.width,
-      contentRect.height
+      contentRect.height,
+      presentationRect.x,
+      presentationRect.y,
+      presentationRect.width,
+      presentationRect.height
     );
     pump();
   };
@@ -8534,18 +8593,48 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return false;
     }
 
-    if (options.nativeWindowHandle) {
+    if (usesNativeHostView) {
       if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
-        native().attachNativeOverlayHostView(options.nativeWindowHandle);
+        if (usesStandaloneLinuxHost) {
+          const bounds = readNativeOverlayBounds(options.getBounds);
+          if (!bounds) {
+            throw new Error(
+              "Steam Bridge needs valid Electron content bounds before attaching its Linux Xwayland overlay host."
+            );
+          }
+          const binding = native();
+          const attachWindow = binding.attachNativeOverlayHostWindow;
+          if (typeof attachWindow !== "function") {
+            throw new Error(
+              "The loaded Steam Bridge native payload does not support the Linux Xwayland overlay host."
+            );
+          }
+          attachWindow.call(
+            binding,
+            bounds.x,
+            bounds.y,
+            bounds.width,
+            bounds.height,
+            fullScreenRequested
+          );
+          lastNativeHostBounds = bounds;
+        } else {
+          native().attachNativeOverlayHostView(options.nativeWindowHandle!);
+        }
         overlayActiveApplied = undefined;
         cursorHiddenApplied = undefined;
         continuousPresentApplied = undefined;
         fullScreenApplied = undefined;
         menuApplied = false;
         native().showNativeOverlayHostView();
-        setHostInputPassthrough(false);
-        setHostOpaque(true);
+        // A managed host must remain invisible and input-empty until Steam
+        // confirms an interactive overlay. This matters most for the
+        // standalone Xwayland host, which is a real top-level compositor
+        // surface even though the Electron game remains the visual owner.
+        setHostInputPassthrough(!overlayActive);
+        setHostOpaque(overlayActive);
       }
+      syncNativeHostBounds();
       syncNativeOverlayActive();
       syncCursorHidden();
       syncFullScreen();
@@ -8590,6 +8679,50 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     setMenu.call(binding, menuJson);
     menuApplied = true;
+  }
+
+  function syncElectronFullScreenState(): void {
+    if (typeof options.getFullScreen !== "function") {
+      return;
+    }
+    fullScreenRequested = safeBoolean(() => options.getFullScreen?.() === true);
+  }
+
+  function syncNativeHostBounds(): void {
+    if (
+      !usesStandaloneLinuxHost ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+    ) {
+      return;
+    }
+    const bounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (!bounds) {
+      return;
+    }
+    const normalizedBounds: NativeOverlayBounds = {
+      x: Math.round(bounds.x),
+      y: Math.round(bounds.y),
+      width: Math.max(1, Math.round(bounds.width)),
+      height: Math.max(1, Math.round(bounds.height))
+    };
+    if (
+      lastNativeHostBounds?.x === normalizedBounds.x &&
+      lastNativeHostBounds.y === normalizedBounds.y &&
+      lastNativeHostBounds.width === normalizedBounds.width &&
+      lastNativeHostBounds.height === normalizedBounds.height
+    ) {
+      return;
+    }
+    native().setNativeOverlayHostBounds(
+      normalizedBounds.x,
+      normalizedBounds.y,
+      normalizedBounds.width,
+      normalizedBounds.height
+    );
+    lastNativeHostBounds = normalizedBounds;
   }
 
   function syncCursorHidden(): void {
@@ -8905,17 +9038,18 @@ function normalizeNativeOverlayFrameDimension(value: number, label: string): num
 function normalizeNativeOverlayContentRect(
   contentRect: NativeOverlayBounds | undefined,
   codedWidth: number,
-  codedHeight: number
+  codedHeight: number,
+  label = "contentRect"
 ): NativeOverlayBounds {
   if (contentRect === undefined) {
     return { x: 0, y: 0, width: codedWidth, height: codedHeight };
   }
   if (!contentRect || typeof contentRect !== "object") {
-    throw new TypeError("Steam Bridge shared texture contentRect must be a rectangle.");
+    throw new TypeError(`Steam Bridge shared texture ${label} must be a rectangle.`);
   }
   const values = [contentRect.x, contentRect.y, contentRect.width, contentRect.height];
   if (!values.every(Number.isFinite)) {
-    throw new TypeError("Steam Bridge shared texture contentRect must contain finite numbers.");
+    throw new TypeError(`Steam Bridge shared texture ${label} must contain finite numbers.`);
   }
   const normalized = {
     x: Math.round(contentRect.x),
@@ -8932,7 +9066,7 @@ function normalizeNativeOverlayContentRect(
     normalized.y + normalized.height > codedHeight
   ) {
     throw new RangeError(
-      `Steam Bridge shared texture contentRect ${normalized.x},${normalized.y} ` +
+      `Steam Bridge shared texture ${label} ${normalized.x},${normalized.y} ` +
         `${normalized.width}x${normalized.height} exceeds ${codedWidth}x${codedHeight}.`
     );
   }
@@ -9054,7 +9188,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   const title = options.title ?? "Steam Bridge Overlay Presenter";
   const backend = resolveNativeOverlayBackend(options);
-  const usesNativeHostView = Boolean(options.nativeWindowHandle);
+  const usesStandaloneLinuxHost = shouldUseStandaloneLinuxNativeHost(options);
+  const usesNativeHostView = Boolean(options.nativeWindowHandle) || usesStandaloneLinuxHost;
   const idleFps = normalizedFps(options.idleFps, 0);
   const needsPresentFps = normalizedFps(options.needsPresentFps, 30);
   const activeOverlayFps = normalizedFps(options.activeOverlayFps, 30);
@@ -9089,17 +9224,20 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let macOverlayEnvironment: MacOverlayEnvironment | undefined;
   let hostInputPassthrough = usesNativeHostView;
   let hostOpaque = !usesNativeHostView;
+  let standaloneLinuxHostMapped = false;
   let hostActivationMode: NativeOverlayPresenterActivationMode = "passive";
   let suppressNeedsPresentOpacity = false;
   let boostUntil = 0;
   let activationHoldCount = 0;
   let timer: NodeJS.Timeout | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
+  let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
   let surfaceLease: NativeOverlaySurfaceLease | undefined;
   let nativeSurfaceAttachCount = 0;
   let nativeSurfaceDetachCount = 0;
   let lastNativeHostBounds: NativeOverlayBounds | undefined;
+  let lastNativeHostFullScreen: boolean | undefined;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
   let frameCaptureInFlight = false;
   let frameCaptureReady = false;
@@ -9123,6 +9261,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         emitStateChange();
         return;
       }
+      syncNativeHostFullScreen();
       syncNativeHostBounds();
       native().pumpNativeOverlayProbeWindow();
       pumpCount += 1;
@@ -9147,8 +9286,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           emitStateChange();
           return;
         }
+        syncNativeHostFullScreen();
         syncNativeHostBounds();
         native().showNativeOverlayHostView();
+        if (usesStandaloneLinuxHost) {
+          standaloneLinuxHostMapped = true;
+        }
       } else {
         if (!updateNativeOverlayHostAvailability()) {
           visible = true;
@@ -9174,6 +9317,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     try {
       if (usesNativeHostView) {
         native().hideNativeOverlayHostView();
+        if (usesStandaloneLinuxHost) {
+          standaloneLinuxHostMapped = false;
+        }
       } else {
         native().closeNativeOverlayProbeWindow();
       }
@@ -9214,6 +9360,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       activationHoldCount += 1;
       focusSourceWindowForActivation(activationMode);
       ensureNativeOverlaySurfaceReadyForActivation(activationMode);
+      showStandaloneLinuxHostForActivation();
       if (!visible) {
         show();
       }
@@ -9263,6 +9410,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     try {
       focusSourceWindowForActivation(activationMode);
       ensureNativeOverlaySurfaceReadyForActivation(activationMode);
+      showStandaloneLinuxHostForActivation();
       if (!visible) {
         show();
       }
@@ -9288,6 +9436,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     try {
       ensureNativeOverlaySurfaceReady();
+      showStandaloneLinuxHostForActivation();
       if (!visible) {
         show();
       }
@@ -9399,6 +9548,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       restoreFocusTimer = undefined;
     }
 
+    if (standaloneLinuxHostRemapTimer) {
+      clearTimeout(standaloneLinuxHostRemapTimer);
+      standaloneLinuxHostRemapTimer = undefined;
+    }
+
     try {
       overlayHandle?.disconnect();
     } catch (error) {
@@ -9458,9 +9612,14 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         hostActivationMode = "passive";
         suppressNeedsPresentOpacity = true;
         boostUntil = Date.now() + activeGraceMs;
-        scheduleRestoreFocus();
         currentFps = selectCurrentFps();
         syncHostInputMode();
+        if (usesStandaloneLinuxHost && standaloneLinuxHostMapped) {
+          native().hideNativeOverlayHostView();
+          standaloneLinuxHostMapped = false;
+        }
+        scheduleRestoreFocus();
+        scheduleStandaloneLinuxHostPassiveRemap();
         schedule(0);
         emitStateChange();
       }
@@ -9642,7 +9801,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       hostActivationMode === "interactive"
         ? shouldAcceptInput || needsPresent
         : hostActivationMode === "passive"
-          ? needsPresent && !suppressNeedsPresentOpacity
+          // Steam Desktop emits Linux notification toasts as separate
+          // compositor windows. Exposing our depth-24 standalone GLX surface
+          // for the accompanying needs-present pulse would cover the Wayland
+          // Electron client with black; keep pumping it, but leave it fully
+          // transparent until Steam reports an interactive overlay.
+          ? !usesStandaloneLinuxHost && needsPresent && !suppressNeedsPresentOpacity
           : false;
     setHostInputPassthrough(!shouldAcceptInput);
     setHostOpaque(shouldShowHost);
@@ -9836,7 +10000,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   function syncNativeHostBounds(force = false): void {
     if (
-      process.platform !== "win32" ||
+      (process.platform !== "win32" && !usesStandaloneLinuxHost) ||
       !usesNativeHostView ||
       !ownsNativeOverlaySurface(surfaceLease) ||
       !safeBoolean(() => native().isNativeOverlayHostViewOpen())
@@ -9879,6 +10043,82 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       normalizedBounds.height
     );
     lastNativeHostBounds = normalizedBounds;
+  }
+
+  function syncNativeHostFullScreen(force = false): void {
+    if (
+      !usesStandaloneLinuxHost ||
+      !usesNativeHostView ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+    ) {
+      return;
+    }
+
+    const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+    if (!force && lastNativeHostFullScreen === fullScreen) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostFullScreen;
+    if (typeof setter !== "function") {
+      return;
+    }
+    setter.call(binding, fullScreen);
+    lastNativeHostFullScreen = fullScreen;
+  }
+
+  function showStandaloneLinuxHostForActivation(): void {
+    if (standaloneLinuxHostRemapTimer) {
+      clearTimeout(standaloneLinuxHostRemapTimer);
+      standaloneLinuxHostRemapTimer = undefined;
+    }
+    if (
+      !usesStandaloneLinuxHost ||
+      standaloneLinuxHostMapped ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+    ) {
+      return;
+    }
+    syncNativeHostFullScreen();
+    syncNativeHostBounds();
+    native().showNativeOverlayHostView();
+    standaloneLinuxHostMapped = true;
+  }
+
+  function scheduleStandaloneLinuxHostPassiveRemap(): void {
+    if (!usesStandaloneLinuxHost || closed || standaloneLinuxHostMapped) {
+      return;
+    }
+    if (standaloneLinuxHostRemapTimer) {
+      clearTimeout(standaloneLinuxHostRemapTimer);
+    }
+    standaloneLinuxHostRemapTimer = setTimeout(() => {
+      standaloneLinuxHostRemapTimer = undefined;
+      if (
+        closed ||
+        !visible ||
+        overlayActive ||
+        activationHoldCount > 0 ||
+        hostActivationMode !== "passive" ||
+        standaloneLinuxHostMapped ||
+        !ownsNativeOverlaySurface(surfaceLease) ||
+        !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+      ) {
+        return;
+      }
+      try {
+        syncNativeHostFullScreen();
+        syncNativeHostBounds();
+        native().showNativeOverlayHostView();
+        standaloneLinuxHostMapped = true;
+        emitStateChange();
+      } catch (error) {
+        lastError = error;
+      }
+    }, 50);
+    standaloneLinuxHostRemapTimer.unref?.();
   }
 
   function shouldDeferWindowsNativeHostAttach(): boolean {
@@ -9935,12 +10175,34 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return false;
     }
 
-    if (options.nativeWindowHandle) {
+    if (usesNativeHostView) {
       if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
-        native().attachNativeOverlayHostView(options.nativeWindowHandle);
+        if (usesStandaloneLinuxHost) {
+          const bounds = readNativeOverlayBounds(options.getBounds);
+          if (!bounds) {
+            throw new Error(
+              "Steam Bridge needs valid Electron content bounds before attaching its Linux Xwayland overlay host."
+            );
+          }
+          const binding = native();
+          const attachWindow = binding.attachNativeOverlayHostWindow;
+          if (typeof attachWindow !== "function") {
+            throw new Error(
+              "The loaded Steam Bridge native payload does not support the Linux Xwayland overlay host."
+            );
+          }
+          const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+          attachWindow.call(binding, bounds.x, bounds.y, bounds.width, bounds.height, fullScreen);
+          lastNativeHostBounds = bounds;
+          lastNativeHostFullScreen = fullScreen;
+          standaloneLinuxHostMapped = true;
+        } else {
+          native().attachNativeOverlayHostView(options.nativeWindowHandle!);
+        }
         nativeSurfaceAttachCount += 1;
         frameCaptureReady = false;
         lastNativeHostBounds = undefined;
+        syncNativeHostFullScreen(true);
         syncNativeHostBounds(true);
         if (visible) {
           native().showNativeOverlayHostView();
@@ -9978,6 +10240,19 @@ function resolveNativeOverlayBackend(options: { nativeWindowHandle?: Buffer } = 
   }
 
   return "none";
+}
+
+function shouldUseStandaloneLinuxNativeHost(options: {
+  nativeWindowHandle?: Buffer;
+  getBounds?: NativeOverlayBoundsProvider;
+  useStandaloneLinuxHost?: boolean;
+}): boolean {
+  return (
+    process.platform === "linux" &&
+    options.useStandaloneLinuxHost === true &&
+    !options.nativeWindowHandle &&
+    typeof options.getBounds === "function"
+  );
 }
 
 function resolveWindowsNativeOverlayBackend(): NativeOverlayBackend {
@@ -10560,8 +10835,10 @@ function createElectronSteamOverlayWithLease(
     presenterMode: modeOption,
     autoPrepareForNotifications = true,
     scrubSteamOverlayChildProcessEnv = true,
+    activationWarmupMs: activationWarmupMsOption,
     ...presenterOptions
   } = options;
+  const controllerCreatedAt = Date.now();
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
   const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
   let scrubbedEnvKeys: string[] = [];
@@ -10575,26 +10852,56 @@ function createElectronSteamOverlayWithLease(
     activeGraceMs
   };
   const shouldUseDirectPresenter = process.platform === "win32" && presenterMode === "session";
+  // Steam's Linux overlay hooks require the native Xwayland surface to exist
+  // before activation. Creating that GLX surface on demand from an injected
+  // native-Wayland Electron process can crash inside Steam's hook. Keep the
+  // requested session lifecycle at the controller boundary, but back it with
+  // the already-proven persistent presenter on this one platform path.
+  const usesStandaloneLinuxOverlayHost = electronUsesStandaloneLinuxOverlayHost();
+  const shouldPromoteWaylandSessionPresenter = presenterMode === "session" && usesStandaloneLinuxOverlayHost;
+  const effectivePresenterMode: ElectronSteamOverlayPresenterMode =
+    shouldPromoteWaylandSessionPresenter ? "persistent" : presenterMode;
+  const activationWarmupMs = Math.max(
+    0,
+    finiteNumber(activationWarmupMsOption, usesStandaloneLinuxOverlayHost ? 3000 : 0)
+  );
+  const activationReadyAt = controllerCreatedAt + activationWarmupMs;
   const presenter =
     shouldUseDirectPresenter
       ? createDirectSteamOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions))
-      : presenterMode === "session"
-      ? createNativeOverlaySessionPresenter(electronNativeOverlaySessionOptions(window, {
-          title: managedPresenterOptions.title,
-          restoreFocusDelayMs: managedPresenterOptions.restoreFocusDelayMs
-        }))
-      : attachOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions));
+      : shouldPromoteWaylandSessionPresenter
+        ? attachOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions))
+        : presenterMode === "session"
+          ? createNativeOverlaySessionPresenter(electronNativeOverlaySessionOptions(window, {
+              title: managedPresenterOptions.title,
+              restoreFocusDelayMs: managedPresenterOptions.restoreFocusDelayMs
+            }))
+          : attachOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions));
   let removeShortcutListener: (() => void) | undefined;
   let removeWindowSyncListeners: (() => void) | undefined;
   let removeWindowClosedListener: (() => void) | undefined;
   let notificationPresenterHandle: CallbackHandle | undefined;
   let presenterTerminalHandle: CallbackHandle | undefined;
   const shortcutOpenState: ElectronSteamOverlayShortcutOpenState = { opening: false };
+  let managedOpenPendingCount = 0;
   let closed = false;
   const assertOpen = (): void => {
     if (closed || !presenter.isOpen()) {
       throw new Error("Electron Steam overlay is closed.");
     }
+  };
+  const reserveManagedOpen = (): CallbackHandle => {
+    managedOpenPendingCount += 1;
+    let released = false;
+    return {
+      disconnect(): void {
+        if (released) {
+          return;
+        }
+        released = true;
+        managedOpenPendingCount = Math.max(0, managedOpenPendingCount - 1);
+      }
+    };
   };
   const controller: ElectronSteamOverlay = {
     presenter,
@@ -10602,7 +10909,7 @@ function createElectronSteamOverlayWithLease(
       return electronSteamOverlayNativeHostAvailability(controller.snapshot());
     },
     getOpenStatus(target: SteamOverlayTarget): ElectronSteamOverlayOpenStatus {
-      return electronSteamOverlayOpenStatus(controller, target);
+      return electronSteamOverlayOpenStatus(controller, target, managedOpenPendingCount > 0);
     },
     getWebOpenStatus(
       url: string,
@@ -10650,13 +10957,18 @@ function createElectronSteamOverlayWithLease(
       return controller.getOpenStatus({ ...targetOptions, type: "checkout" });
     },
     getCheckoutOperationStatus(): ElectronSteamOverlayCheckoutOperationStatus {
-      return electronSteamOverlayCheckoutOperationStatus(controller);
+      return electronSteamOverlayCheckoutOperationStatus(controller, managedOpenPendingCount > 0);
     },
     getDialogOpenStatus(targetOptions: ElectronSteamOverlayDialogTargetOptions = {}): ElectronSteamOverlayOpenStatus {
       return controller.getOpenStatus({ ...targetOptions, type: "dialog" });
     },
     getShortcutOpenStatus(): ElectronSteamOverlayShortcutStatus {
-      return electronSteamOverlayShortcutStatus(controller, shortcut, shortcutOpenState);
+      return electronSteamOverlayShortcutStatus(
+        controller,
+        shortcut,
+        shortcutOpenState,
+        managedOpenPendingCount > 0
+      );
     },
     openIfAvailable(target: SteamOverlayTarget): NativeOverlayPresenter | null {
       const status = controller.getOpenStatus(target);
@@ -11076,7 +11388,7 @@ function createElectronSteamOverlayWithLease(
       assertOpen();
       const { modal, returnUrl, expectedAppId: expectedAppIdOption, ...waitOptions } = options;
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
-      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      const status = controller.getCheckoutOperationStatus();
       if (!status.canStartOperation && status.reason !== "overlay-not-ready") {
         throw annotateSteamOverlayTargetSnapshotError(
           electronSteamOverlayCheckoutOperationStatusError(status),
@@ -11090,9 +11402,10 @@ function createElectronSteamOverlayWithLease(
       assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
-      const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
+      let activationHandle: CallbackHandle | undefined;
       let activationReleased = false;
       let shownObservation: ElectronSteamOverlayShownObservation | undefined;
+      const managedOpenReservation = reserveManagedOpen();
       const releaseActivation = (): void => {
         if (activationReleased) {
           return;
@@ -11102,10 +11415,13 @@ function createElectronSteamOverlayWithLease(
       };
 
       try {
-        await controller.waitForOverlayReady({
-          timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
-          signal: waitOptions.signal
-        });
+        if (status.reason === "overlay-not-ready") {
+          await controller.waitForOverlayReady({
+            timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
+            signal: waitOptions.signal
+          });
+        }
+        activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
         shownObservation = observeElectronSteamOverlayShown(controller);
         const transaction = await runElectronSteamOverlayAbortableOperation(
           controller,
@@ -11129,15 +11445,17 @@ function createElectronSteamOverlayWithLease(
         };
       } catch (error) {
         shownObservation?.disconnect();
-        releaseActivation();
         throw annotateSteamOverlayTargetSnapshotError(error, pendingCheckoutTargetSnapshot);
+      } finally {
+        releaseActivation();
+        managedOpenReservation.disconnect();
       }
     },
     async openCheckoutAndWaitIfAvailable<T extends ElectronSteamOverlayCheckoutOperationResult>(
       operation: () => T | Promise<T>,
       options: ElectronSteamOverlayCheckoutAndWaitOptions = {}
     ): Promise<ElectronSteamOverlayCheckoutAndWaitResult<T> | null> {
-      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      const status = controller.getCheckoutOperationStatus();
       if (!status.canStartOperation && !status.canWait) {
         return null;
       }
@@ -11149,7 +11467,7 @@ function createElectronSteamOverlayWithLease(
           return operation();
         }, options);
       } catch (error) {
-        const currentStatus = electronSteamOverlayCheckoutOperationStatus(controller);
+        const currentStatus = controller.getCheckoutOperationStatus();
         if (!operationStarted && !currentStatus.canStartOperation && !currentStatus.canWait) {
           return null;
         }
@@ -11162,7 +11480,7 @@ function createElectronSteamOverlayWithLease(
     ): Promise<T> {
       assertOpen();
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
-      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      const status = controller.getCheckoutOperationStatus();
       if (!status.canStartOperation && status.reason !== "overlay-not-ready") {
         throw annotateSteamOverlayTargetSnapshotError(
           electronSteamOverlayCheckoutOperationStatusError(status),
@@ -11173,15 +11491,19 @@ function createElectronSteamOverlayWithLease(
       assertElectronSteamOverlayCheckoutNativeHostAvailable(snapshot);
       assertElectronSteamOverlayNotBusy(snapshot);
       const presenterInternal = presenter as NativeOverlayPresenterInternal;
-      const activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
-      if (!activationHandle) {
-        presenter.prepareForOverlay(options.durationMs);
-      }
+      let activationHandle: CallbackHandle | undefined;
+      const managedOpenReservation = reserveManagedOpen();
       try {
-        await controller.waitForOverlayReady({
-          timeoutMs: finiteNumber(options.timeoutMs, 15000),
-          signal: options.signal
-        });
+        if (status.reason === "overlay-not-ready") {
+          await controller.waitForOverlayReady({
+            timeoutMs: finiteNumber(options.timeoutMs, 15000),
+            signal: options.signal
+          });
+        }
+        activationHandle = presenterInternal.beginOverlayActivation?.("interactive");
+        if (!activationHandle) {
+          presenter.prepareForOverlay(options.durationMs);
+        }
         return await runElectronSteamOverlayAbortableOperation(
           controller,
           "finish checkout preparation operation",
@@ -11193,12 +11515,13 @@ function createElectronSteamOverlayWithLease(
         throw annotateSteamOverlayTargetSnapshotError(error, pendingCheckoutTargetSnapshot);
       } finally {
         activationHandle?.disconnect();
+        managedOpenReservation.disconnect();
       }
     },
     prepareForCheckout(durationMs?: number): NativeOverlayPresenter {
       assertOpen();
       const pendingCheckoutTargetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
-      const status = electronSteamOverlayCheckoutOperationStatus(controller);
+      const status = controller.getCheckoutOperationStatus();
       if (!status.canStartOperation) {
         throw annotateSteamOverlayTargetSnapshotError(
           electronSteamOverlayCheckoutOperationStatusError(status),
@@ -11221,7 +11544,8 @@ function createElectronSteamOverlayWithLease(
       return waitForElectronSteamOverlayState(
         controller,
         "be ready",
-        (snapshot) => snapshot.diagnostics?.overlayEnabled === true,
+        (snapshot) =>
+          snapshot.diagnostics?.overlayEnabled === true && electronSteamOverlayActivationWarmupReady(snapshot),
         options,
         {
           forcePolling: true,
@@ -11265,6 +11589,7 @@ function createElectronSteamOverlayWithLease(
         return;
       }
       closed = true;
+      managedOpenPendingCount = 0;
       try {
         presenterTerminalHandle?.disconnect();
       } catch {
@@ -11318,11 +11643,13 @@ function createElectronSteamOverlayWithLease(
       return !closed && presenter.isOpen();
     },
     snapshot(): ElectronSteamOverlaySnapshot {
+      const activationWarmupRemainingMs = Math.max(0, activationReadyAt - Date.now());
       return {
         ...presenter.snapshot(),
         electronOverlay: {
           controllerGeneration: controllerLease.generation,
           presenterMode,
+          ...(effectivePresenterMode !== presenterMode ? { effectivePresenterMode } : {}),
           closeWithWindow,
           autoPrepareForNotifications,
           scrubSteamOverlayChildProcessEnv,
@@ -11330,6 +11657,9 @@ function createElectronSteamOverlayWithLease(
           restoreFocusDelayMs,
           activationBoostMs,
           activeGraceMs,
+          activationWarmupMs,
+          activationWarmupRemainingMs,
+          activationWarmupReady: activationWarmupRemainingMs === 0,
           overlayShortcut: snapshotElectronSteamOverlayShortcut(shortcut)
         }
       };
@@ -11343,7 +11673,7 @@ function createElectronSteamOverlayWithLease(
       }
     });
 
-    removeWindowSyncListeners = installElectronSteamOverlayWindowSync(window, controller, presenterMode);
+    removeWindowSyncListeners = installElectronSteamOverlayWindowSync(window, controller, effectivePresenterMode);
     removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut, shortcutOpenState);
     if (autoPrepareForNotifications) {
       notificationPresenterHandle = registerElectronNotificationPresenter(presenter);
@@ -11408,6 +11738,7 @@ function createElectronSteamOverlayWithLease(
     lifecycle: ElectronSteamOverlayTargetWaitLifecycle = {}
   ): Promise<ElectronSteamOverlayOpenAndWaitResult> {
     let activationHandle = lifecycle.activationHandle;
+    let managedOpenReservation: CallbackHandle | undefined;
     let targetSnapshot = snapshotSteamOverlayTarget(target);
     let activationReleased = false;
     const releaseActivation = (): void => {
@@ -11449,14 +11780,17 @@ function createElectronSteamOverlayWithLease(
           assertElectronSteamOverlayNotBusy(snapshot);
         }
       }
+      managedOpenReservation = reserveManagedOpen();
+      if (status.reason === "overlay-not-ready") {
+        await controller.waitForOverlayReady({
+          timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
+          signal: options.signal
+        });
+      }
       if (!activationHandle) {
         const presenterInternal = presenter as NativeOverlayPresenterInternal;
         activationHandle = presenterInternal.beginOverlayActivation?.(overlayActivationModeForTarget(target));
       }
-      await controller.waitForOverlayReady({
-        timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
-        signal: options.signal
-      });
       if (!clientSessionCheckout) {
         lifecycle.shownObservation?.disconnect();
         openSteamOverlay({
@@ -11483,6 +11817,8 @@ function createElectronSteamOverlayWithLease(
       lifecycle.shownObservation?.disconnect();
       releaseActivation();
       throw annotateSteamOverlayTargetSnapshotError(error, targetSnapshot);
+    } finally {
+      managedOpenReservation?.disconnect();
     }
   }
 }
@@ -12035,16 +12371,72 @@ function installElectronSteamOverlayWindowSync(
     }
   };
 
-  const registeredEvents: ElectronOverlayWindowGeometryEvent[] = [];
+  let standaloneLinuxHostHiddenForWindowState = false;
+
+  const hideStandaloneLinuxHost = (): void => {
+    if (!controller.isOpen() || standaloneLinuxHostHiddenForWindowState) {
+      return;
+    }
+    try {
+      controller.presenter.hide();
+      standaloneLinuxHostHiddenForWindowState = true;
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayWindowSyncWarning"
+      });
+    }
+  };
+
+  const showStandaloneLinuxHost = (): void => {
+    if (!controller.isOpen() || !standaloneLinuxHostHiddenForWindowState) {
+      return;
+    }
+    try {
+      controller.presenter.show();
+      controller.pump();
+      standaloneLinuxHostHiddenForWindowState = false;
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayWindowSyncWarning"
+      });
+    }
+  };
+
+  const standaloneLinuxHost = electronUsesStandaloneLinuxOverlayHost();
+  const reconcileStandaloneLinuxWindowState = (): void => {
+    if (!standaloneLinuxHost || !controller.isOpen()) {
+      return;
+    }
+    try {
+      const minimized = typeof window.isMinimized === "function" && window.isMinimized();
+      const hidden = typeof window.isVisible === "function" && !window.isVisible();
+      if (minimized || hidden) {
+        hideStandaloneLinuxHost();
+      } else {
+        showStandaloneLinuxHost();
+      }
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), {
+        type: "SteamBridgeOverlayWindowSyncWarning"
+      });
+    }
+  };
+  const registeredHandlers = new Map<ElectronOverlayWindowGeometryEvent, () => void>();
   try {
     for (const event of ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS) {
-      registeredEvents.push(event);
-      window.on(event, sync);
+      const handler =
+        standaloneLinuxHost && (event === "minimize" || event === "hide")
+          ? hideStandaloneLinuxHost
+          : standaloneLinuxHost && (event === "restore" || event === "show")
+            ? showStandaloneLinuxHost
+            : sync;
+      registeredHandlers.set(event, handler);
+      window.on(event, handler);
     }
   } catch (error) {
-    for (const event of registeredEvents.reverse()) {
+    for (const [event, handler] of [...registeredHandlers].reverse()) {
       try {
-        removeElectronSteamOverlayWindowListener(window, event, sync);
+        removeElectronSteamOverlayWindowListener(window, event, handler);
       } catch {
         // Preserve the registration failure.
       }
@@ -12052,9 +12444,20 @@ function installElectronSteamOverlayWindowSync(
     throw error;
   }
 
+  const standaloneLinuxStatePoll =
+    standaloneLinuxHost &&
+    (typeof window.isMinimized === "function" || typeof window.isVisible === "function")
+      ? setInterval(reconcileStandaloneLinuxWindowState, 100)
+      : undefined;
+  standaloneLinuxStatePoll?.unref?.();
+  reconcileStandaloneLinuxWindowState();
+
   return () => {
-    for (const event of registeredEvents) {
-      removeElectronSteamOverlayWindowListener(window, event, sync);
+    if (standaloneLinuxStatePoll !== undefined) {
+      clearInterval(standaloneLinuxStatePoll);
+    }
+    for (const [event, handler] of registeredHandlers) {
+      removeElectronSteamOverlayWindowListener(window, event, handler);
     }
   };
 }
@@ -12783,9 +13186,23 @@ function electronSteamOverlayTargetValidationMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function electronSteamOverlayActivationWarmupReady(snapshot: ElectronSteamOverlaySnapshot): boolean {
+  return snapshot.electronOverlay.activationWarmupReady !== false;
+}
+
+function electronSteamOverlayReadinessMessage(snapshot: ElectronSteamOverlaySnapshot): string {
+  if (!electronSteamOverlayActivationWarmupReady(snapshot)) {
+    return `Steam overlay activation is warming up (${Math.ceil(
+      snapshot.electronOverlay.activationWarmupRemainingMs
+    )} ms remaining).`;
+  }
+  return "Steam overlay is not ready yet.";
+}
+
 function electronSteamOverlayOpenStatus(
   controller: ElectronSteamOverlay,
-  target: SteamOverlayTarget
+  target: SteamOverlayTarget,
+  managedOpenPending = false
 ): ElectronSteamOverlayOpenStatus {
   const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
   const targetSnapshot = snapshotSteamOverlayTarget(target);
@@ -12869,7 +13286,7 @@ function electronSteamOverlayOpenStatus(
     };
   }
 
-  if (isElectronSteamOverlayOpening(snapshot)) {
+  if (managedOpenPending || isElectronSteamOverlayOpening(snapshot)) {
     return {
       canOpen: false,
       canWait: false,
@@ -12883,7 +13300,7 @@ function electronSteamOverlayOpenStatus(
     };
   }
 
-  if (snapshot.diagnostics?.overlayEnabled === false) {
+  if (snapshot.diagnostics?.overlayEnabled === false || !electronSteamOverlayActivationWarmupReady(snapshot)) {
     if (!waitValidationError) {
       return {
         canOpen: false,
@@ -12893,7 +13310,7 @@ function electronSteamOverlayOpenStatus(
         snapshot,
         nativeHostAvailability,
         reason: "overlay-not-ready",
-        message: "Steam overlay is not ready yet."
+        message: electronSteamOverlayReadinessMessage(snapshot)
       };
     }
 
@@ -12946,7 +13363,8 @@ function electronSteamOverlayOpenStatus(
 }
 
 function electronSteamOverlayCheckoutOperationStatus(
-  controller: ElectronSteamOverlay
+  controller: ElectronSteamOverlay,
+  managedOpenPending = false
 ): ElectronSteamOverlayCheckoutOperationStatus {
   const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
   const targetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
@@ -12985,12 +13403,12 @@ function electronSteamOverlayCheckoutOperationStatus(
     return unavailable("overlay-active", "overlay-active", "Steam overlay is already active.");
   }
 
-  if (isElectronSteamOverlayOpening(snapshot)) {
+  if (managedOpenPending || isElectronSteamOverlayOpening(snapshot)) {
     return unavailable("opening", "opening", "Electron Steam overlay is already opening.");
   }
 
-  if (snapshot.diagnostics?.overlayEnabled === false) {
-    return unavailable("overlay-not-ready", "overlay-not-ready", "Steam overlay is not ready yet.", {
+  if (snapshot.diagnostics?.overlayEnabled === false || !electronSteamOverlayActivationWarmupReady(snapshot)) {
+    return unavailable("overlay-not-ready", "overlay-not-ready", electronSteamOverlayReadinessMessage(snapshot), {
       canWait: true
     });
   }
@@ -13008,7 +13426,8 @@ function electronSteamOverlayCheckoutOperationStatus(
 function electronSteamOverlayShortcutStatus(
   controller: ElectronSteamOverlay,
   shortcut: NormalizedElectronSteamOverlayShortcutOptions,
-  shortcutOpenState: ElectronSteamOverlayShortcutOpenState
+  shortcutOpenState: ElectronSteamOverlayShortcutOpenState,
+  managedOpenPending = false
 ): ElectronSteamOverlayShortcutStatus {
   const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
   const shortcutSnapshot = snapshot.electronOverlay.overlayShortcut;
@@ -13054,7 +13473,7 @@ function electronSteamOverlayShortcutStatus(
     };
   }
 
-  if (shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
+  if (managedOpenPending || shortcutOpenState.opening || isElectronSteamOverlayShortcutOpening(snapshot)) {
     return {
       ...base,
       canOpen: false,
@@ -13088,13 +13507,13 @@ function electronSteamOverlayShortcutStatus(
       };
     }
 
-    if (snapshot.diagnostics?.overlayEnabled === false) {
+    if (snapshot.diagnostics?.overlayEnabled === false || !electronSteamOverlayActivationWarmupReady(snapshot)) {
       return {
         ...base,
         canOpen: false,
         canWait: true,
         reason: "overlay-not-ready",
-        message: "Steam overlay is not ready yet."
+        message: electronSteamOverlayReadinessMessage(snapshot)
       };
     }
 

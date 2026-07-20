@@ -33,6 +33,7 @@ launcher_env_file=""
 result_delay_ms="8000"
 keep_open_after_result="0"
 timeout_seconds="90"
+macos_web_visible_max_attempts="40"
 close_probe="0"
 close_input="escape"
 shortcut_open_probe="0"
@@ -60,6 +61,7 @@ require_action_error_code=""
 require_action_error_reason=""
 require_native_host_unavailable_reason=""
 require_direct_open_readiness_status="0"
+require_checkout_operation_readiness_status="0"
 require_no_crashes="0"
 require_events=()
 
@@ -150,6 +152,8 @@ Options:
                                  Require managed presenter diagnostics to report this native host unavailable reason.
   --require-direct-open-readiness-status
                                  Require named direct presenter opens to record their readiness status.
+  --require-checkout-operation-readiness-status
+                                 Require openCheckoutAndWait to record status and begin only after readiness handling.
   --require-no-crashes           Require no crash dumps, macOS crash reports, or fatal Electron lifecycle events.
   --require-event TYPE           Require an emitted event. May be repeated.
 EOF
@@ -404,6 +408,10 @@ while [ "$#" -gt 0 ]; do
       require_direct_open_readiness_status="1"
       shift
       ;;
+    --require-checkout-operation-readiness-status)
+      require_checkout_operation_readiness_status="1"
+      shift
+      ;;
     --require-no-crashes)
       require_no_crashes="1"
       shift
@@ -490,25 +498,111 @@ record_macos_web_visible_event() {
   local count_field="$2"
   local count_value="$3"
   local rect="$4"
+  local source="${5:-screen-pixels}"
+  local overlay_rect="${6:-}"
   local payload
   payload="$(
     WEB_VISIBLE_OK="$ok" \
       WEB_VISIBLE_COUNT_FIELD="$count_field" \
       WEB_VISIBLE_COUNT_VALUE="$count_value" \
       WEB_VISIBLE_RECT="$rect" \
+      WEB_VISIBLE_SOURCE="$source" \
+      WEB_VISIBLE_OVERLAY_RECT="$overlay_rect" \
       node <<'NODE'
 const countField = process.env.WEB_VISIBLE_COUNT_FIELD || "attempt";
 const countValue = Number(process.env.WEB_VISIBLE_COUNT_VALUE || "0");
 const payload = {
   ok: process.env.WEB_VISIBLE_OK === "true",
-  rect: process.env.WEB_VISIBLE_RECT || ""
+  rect: process.env.WEB_VISIBLE_RECT || "",
+  source: process.env.WEB_VISIBLE_SOURCE || "screen-pixels"
 };
+
+if (process.env.WEB_VISIBLE_OVERLAY_RECT) {
+  payload.overlayRect = process.env.WEB_VISIBLE_OVERLAY_RECT;
+}
 
 payload[countField] = Number.isFinite(countValue) ? countValue : 0;
 process.stdout.write(JSON.stringify(payload));
 NODE
   )"
   record_macos_helper_event "overlay:web-visible" "$payload"
+}
+
+read_macos_steam_overlay_window_rect() {
+  RESULT_FILE="$result_file" node <<'NODE'
+const fs = require("node:fs");
+
+let result;
+try {
+  const line = fs
+    .readFileSync(process.env.RESULT_FILE, "utf8")
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith("STEAM_BRIDGE_SMOKE_RESULT "));
+  if (line) {
+    result = JSON.parse(line.slice("STEAM_BRIDGE_SMOKE_RESULT ".length));
+  }
+} catch {
+  process.exit(1);
+}
+
+const snapshot = result?.snapshot;
+const processId = Number(snapshot?.process?.pid);
+const overlayProcesses = snapshot?.overlayProcesses;
+const presenters = [
+  result?.wait?.presenter,
+  snapshot?.overlay?.nativePresenter?.value
+].filter((value) => value && typeof value === "object" && value.bounds);
+const presenter = presenters.at(-1);
+const windows = Array.isArray(overlayProcesses?.macWindows?.windows)
+  ? overlayProcesses.macWindows.windows
+  : [];
+const gameOverlayProcesses = Array.isArray(overlayProcesses?.gameoverlayui)
+  ? overlayProcesses.gameoverlayui
+  : [];
+
+if (
+  !Number.isFinite(processId) ||
+  !presenter ||
+  !gameOverlayProcesses.some((entry) => Number(entry?.targetPid) === processId)
+) {
+  process.exit(1);
+}
+
+const host = presenter.bounds;
+const hostArea = Math.max(1, Number(host.width) * Number(host.height));
+const candidates = windows
+  .filter((entry) => {
+    const width = Number(entry?.width);
+    const height = Number(entry?.height);
+    return (
+      entry?.owner === "Steam Helper" &&
+      Number(entry?.alpha) > 0 &&
+      Number.isFinite(width) &&
+      Number.isFinite(height) &&
+      width >= 320 &&
+      height >= 240
+    );
+  })
+  .map((entry) => {
+    const left = Math.max(Number(host.x), Number(entry.x));
+    const top = Math.max(Number(host.y), Number(entry.y));
+    const right = Math.min(Number(host.x) + Number(host.width), Number(entry.x) + Number(entry.width));
+    const bottom = Math.min(Number(host.y) + Number(host.height), Number(entry.y) + Number(entry.height));
+    const intersectionArea = Math.max(0, right - left) * Math.max(0, bottom - top);
+    return { entry, intersectionArea };
+  })
+  .filter(({ intersectionArea }) => intersectionArea / hostArea >= 0.25)
+  .sort((left, right) => right.intersectionArea - left.intersectionArea);
+
+const match = candidates[0]?.entry;
+if (!match) {
+  process.exit(1);
+}
+
+process.stdout.write(
+  `${Math.round(Number(match.x))},${Math.round(Number(match.y))},${Math.round(Number(match.width))},${Math.round(Number(match.height))}`
+);
+NODE
 }
 
 smoke_args() {
@@ -1592,6 +1686,9 @@ verify_result() {
   if [ "$require_direct_open_readiness_status" = "1" ]; then
     args+=("--require-direct-open-readiness-status")
   fi
+  if [ "$require_checkout_operation_readiness_status" = "1" ]; then
+    args+=("--require-checkout-operation-readiness-status")
+  fi
   if [ "$require_no_crashes" = "1" ]; then
     args+=("--require-no-crashes")
   fi
@@ -1678,7 +1775,7 @@ NODE
 }
 
 wait_for_macos_web_overlay_visible() {
-  local rect temp_dir png_path bmp_path attempt
+  local rect temp_dir png_path bmp_path attempt steam_overlay_rect
   rect="$(read_macos_presenter_capture_rect)"
   if [ -z "$rect" ]; then
     echo "Could not determine macOS presenter bounds for web overlay visibility." >&2
@@ -1688,15 +1785,27 @@ wait_for_macos_web_overlay_visible() {
   temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-web-visible.XXXXXX")"
   png_path="$temp_dir/capture.png"
   bmp_path="$temp_dir/capture.bmp"
-  for attempt in 1 2 3 4; do
-    if screencapture -x -R "$rect" "$png_path" >/dev/null 2>&1 &&
-      sips -s format bmp "$png_path" --out "$bmp_path" >/dev/null 2>&1 &&
-      node - "$bmp_path" <<'NODE'
+  attempt="1"
+  while [ "$attempt" -le "$macos_web_visible_max_attempts" ]; do
+    if ! /usr/sbin/screencapture -x -R "$rect" "$png_path" >/dev/null; then
+      echo "macOS web visibility capture failed on attempt $attempt." >&2
+      steam_overlay_rect="$(read_macos_steam_overlay_window_rect 2>/dev/null || true)"
+      if [ -n "$steam_overlay_rect" ]; then
+        echo "Using the active gameoverlayui-targeted Steam Helper window as the bounded web-close readiness fallback." >&2
+        record_macos_web_visible_event "true" "attempt" "$attempt" "$rect" "steam-helper-window" "$steam_overlay_rect"
+        rm -rf "$temp_dir"
+        return 0
+      fi
+    elif ! /usr/bin/sips -s format bmp "$png_path" --out "$bmp_path" >/dev/null; then
+      echo "macOS web visibility BMP conversion failed on attempt $attempt." >&2
+    elif STEAM_BRIDGE_MACOS_WEB_VISIBLE_ATTEMPT="$attempt" node - "$bmp_path" <<'NODE'
 const fs = require("node:fs");
 const bmpPath = process.argv[2];
 const data = fs.readFileSync(bmpPath);
+const attempt = process.env.STEAM_BRIDGE_MACOS_WEB_VISIBLE_ATTEMPT || "unknown";
 
 if (data.slice(0, 2).toString("ascii") !== "BM") {
+  console.error(`macOS web visibility sample attempt ${attempt}: invalid BMP signature`);
   process.exit(2);
 }
 
@@ -1707,6 +1816,9 @@ const height = Math.abs(rawHeight);
 const bitsPerPixel = data.readUInt16LE(28);
 
 if (bitsPerPixel !== 32 || width <= 0 || height <= 0) {
+  console.error(
+    `macOS web visibility sample attempt ${attempt}: unsupported BMP width=${width} height=${height} bpp=${bitsPerPixel}`
+  );
   process.exit(2);
 }
 
@@ -1737,19 +1849,31 @@ for (let y = top; y < bottom; y += stepY) {
   }
 }
 
-process.exit(sampled > 0 && visible / sampled > 0.02 ? 0 : 1);
+const visibleRatio = sampled > 0 ? visible / sampled : 0;
+if (visibleRatio <= 0.02) {
+  console.error(
+    `macOS web visibility sample attempt ${attempt}: width=${width} height=${height} sampled=${sampled} visible=${visible} ratio=${visibleRatio.toFixed(6)}`
+  );
+}
+process.exit(sampled > 0 && visibleRatio > 0.02 ? 0 : 1);
 NODE
     then
-      record_macos_web_visible_event "true" "attempt" "$attempt" "$rect"
+      record_macos_web_visible_event "true" "attempt" "$attempt" "$rect" "screen-pixels"
       rm -rf "$temp_dir"
       return 0
     fi
     sleep 0.25
+    attempt=$((attempt + 1))
   done
 
+  if [ -n "$diagnostic_dir" ]; then
+    mkdir -p "$diagnostic_dir"
+    [ ! -s "$png_path" ] || cp "$png_path" "$diagnostic_dir/macos-web-visible-timeout.png"
+    [ ! -s "$bmp_path" ] || cp "$bmp_path" "$diagnostic_dir/macos-web-visible-timeout.bmp"
+  fi
   rm -rf "$temp_dir"
   echo "Timed out waiting for visible macOS Steam web overlay content." >&2
-  record_macos_web_visible_event "false" "attempts" "4" "$rect"
+  record_macos_web_visible_event "false" "attempts" "$macos_web_visible_max_attempts" "$rect" "unavailable"
   return 1
 }
 
@@ -2690,11 +2814,15 @@ run_self_test() {
   result_file="$temp_result"
   diagnostic_dir="$result_file.diagnostics"
   cat >"$result_file" <<'EOF'
-STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"scrubSteamOverlayChildProcessEnv":true,"scrubbedEnvKeys":[],"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false},"overlayNeedsPresentPollingEnabled":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
+STEAM_BRIDGE_SMOKE_RESULT {"ok":true,"action":{"ok":true,"action":"presenter-web"},"snapshot":{"app":{"appId":480,"shortcutTarget":"friends"},"process":{"pid":4242,"platform":"darwin","arch":"arm64"},"launch":{"steamLaunch":true,"overlayInjection":true},"crashDiagnostics":{"available":true,"ok":true,"crashDumps":[],"fatalLifecycleEvents":[]},"overlayProcesses":{"macWindows":{"windows":[{"owner":"Steam Helper","alpha":1,"x":20,"y":30,"width":1280,"height":800}]},"gameoverlayui":[{"pid":4300,"targetPid":4242,"gameId":"480"}]},"overlay":{"nativePresenter":{"ok":true,"value":{"backend":"macos-metal","bounds":{"x":100,"y":120,"width":1060,"height":668},"attached":true,"nativeHostOpen":true,"macOverlayEnvironment":{"screenLocked":false,"displayAsleep":false},"mode":"passive","clickThrough":true,"focusable":false,"transparent":true,"overlayActive":false,"overlayNeedsPresent":false,"overlayNeedsPresentPollingEnabled":false,"idleFps":0,"currentFps":0,"electronOverlay":{"presenterMode":"persistent","closeWithWindow":true,"autoPrepareForNotifications":true,"scrubSteamOverlayChildProcessEnv":true,"scrubbedEnvKeys":[],"restoreFocusDelayMs":0,"activationBoostMs":0,"activeGraceMs":0,"overlayShortcut":{"enabled":true,"preventDefault":true,"targetType":"friends","target":{"type":"friends"}}}}}},"steam":{"initialized":true,"running":{"ok":true,"value":true},"appId":{"ok":true,"value":480},"steamDeck":{"ok":true,"value":false},"bigPicture":{"ok":true,"value":false},"overlayEnabled":{"ok":true,"value":true},"overlayNeedsPresent":{"ok":true,"value":false},"overlayNeedsPresentPollingEnabled":{"ok":true,"value":false}},"events":[{"type":"overlay:presenter-open"},{"type":"callback:overlay-activated","payload":{"active":true}}]}}
 EOF
   mkdir -p "$diagnostic_dir/crash-dumps"
   if [ "$(read_macos_smoke_result_pid)" != "4242" ]; then
     echo "Self-test failed: macOS probe focus PID reader did not read the smoke result PID." >&2
+    exit 1
+  fi
+  if [ "$(read_macos_steam_overlay_window_rect)" != "20,30,1280,800" ]; then
+    echo "Self-test failed: macOS Steam Helper fallback did not bind the active gameoverlayui target and overlapping window." >&2
     exit 1
   fi
   cat >"$diagnostic_dir/lifecycle.jsonl" <<'EOF'
@@ -2727,8 +2855,9 @@ EOF
   old_diagnostic_dir="$diagnostic_dir"
   web_visible_diagnostic_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-web-visible-event.XXXXXX")"
   diagnostic_dir="$web_visible_diagnostic_dir"
-  record_macos_web_visible_event "true" "attempt" "3" "1,2,3,4"
-  record_macos_web_visible_event "false" "attempts" "4" "5,6,7,8"
+  record_macos_web_visible_event "true" "attempt" "3" "1,2,3,4" "screen-pixels"
+  record_macos_web_visible_event "false" "attempts" "$macos_web_visible_max_attempts" "5,6,7,8" "unavailable"
+  record_macos_web_visible_event "true" "attempt" "1" "9,10,11,12" "steam-helper-window" "20,30,1280,800"
   node - "$diagnostic_dir/lifecycle.jsonl" <<'NODE'
 const fs = require("node:fs");
 const lifecyclePath = process.argv[2];
@@ -2739,17 +2868,21 @@ const entries = fs
   .map((line) => JSON.parse(line));
 const events = entries.filter((entry) => entry.type === "event:overlay:web-visible");
 
-if (events.length !== 2) {
-  throw new Error(`expected 2 web-visible events, got ${events.length}`);
+if (events.length !== 3) {
+  throw new Error(`expected 3 web-visible events, got ${events.length}`);
 }
 
-const [success, failure] = events;
-if (success.payload.parseError || success.payload.ok !== true || success.payload.attempt !== 3 || success.payload.rect !== "1,2,3,4") {
+const [success, failure, fallback] = events;
+if (success.payload.parseError || success.payload.ok !== true || success.payload.attempt !== 3 || success.payload.rect !== "1,2,3,4" || success.payload.source !== "screen-pixels") {
   throw new Error(`bad successful web-visible payload: ${JSON.stringify(success.payload)}`);
 }
 
-if (failure.payload.parseError || failure.payload.ok !== false || failure.payload.attempts !== 4 || failure.payload.rect !== "5,6,7,8") {
+if (failure.payload.parseError || failure.payload.ok !== false || failure.payload.attempts !== 40 || failure.payload.rect !== "5,6,7,8" || failure.payload.source !== "unavailable") {
   throw new Error(`bad failed web-visible payload: ${JSON.stringify(failure.payload)}`);
+}
+
+if (fallback.payload.parseError || fallback.payload.ok !== true || fallback.payload.attempt !== 1 || fallback.payload.rect !== "9,10,11,12" || fallback.payload.source !== "steam-helper-window" || fallback.payload.overlayRect !== "20,30,1280,800") {
+  throw new Error(`bad fallback web-visible payload: ${JSON.stringify(fallback.payload)}`);
 }
 NODE
   diagnostic_dir="$old_diagnostic_dir"

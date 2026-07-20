@@ -479,7 +479,7 @@ TYPE_UINT32 = 2
 TYPE_END = 8
 app_name = os.environ["APP_NAME"]
 steam_user_id = os.environ.get("STEAM_USER_ID", "")
-home = os.path.expanduser("~")
+home = os.environ.get("HOME") or os.path.expanduser("~")
 
 if steam_user_id:
     paths = [os.path.join(home, ".local/share/Steam/userdata", steam_user_id, "config/shortcuts.vdf")]
@@ -954,6 +954,13 @@ with open(sys.argv[1], "wb") as handle:
 PY
 
   HOME="$self_test_temp_home"
+  if [ "$(python3 - <<'PY'
+import os
+print(os.name)
+PY
+)" = "nt" ] && command -v cygpath >/dev/null 2>&1; then
+    HOME="$(cygpath -w "$self_test_temp_home")"
+  fi
   export HOME
   matches="$(discover_shortcuts)"
   if ! printf '%s\n' "$matches" | grep -q "\"gameId\": \"$expected_game_id\""; then
@@ -1095,7 +1102,12 @@ case "$mode" in
       fi
     fi
     require_steam_launch="1"
-    if [ "$action" != "presenter-checkout" ] || { [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]; }; then
+    # presenter-shortcut only installs and validates the managed shortcut. Its
+    # overlay activation is deliberately supplied later by the visual input
+    # probe, so an unconsumed Steam needs-present pulse is not a readiness
+    # failure at the pre-input result snapshot.
+    if [ "$action" != "presenter-shortcut" ] &&
+      { [ "$action" != "presenter-checkout" ] || { [ -n "$checkout_url" ] || [ -n "$checkout_transaction_id" ]; }; }; then
       require_overlay_ready="1"
     fi
     launch_steam_shortcut

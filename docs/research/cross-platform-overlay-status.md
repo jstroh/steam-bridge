@@ -1,10 +1,127 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
 App ID `480`.
+
+Live matrices qualify one Steam client at a time. Before a platform handoff,
+force-close Steam plus its web and overlay helpers on every non-target test
+machine, verify zero remnants, and start Steam only on the target. Evidence
+collected while another test machine still owns a Steam client session is not
+accepted as release proof.
+
+## 2026-07-19 Steam Deck Requalification
+
+Current-head Steam Deck qualification now covers the native-Wayland Electron
+architecture introduced after `v0.2.14`. A Wayland `BrowserWindow` handle is no
+longer parsed as an X11 ID. The Electron helper explicitly selects one managed
+Xwayland/GLX top-level host, while the native layer owns Steam's hookable GLX
+surface and the application continues to own its KWin title bar and size
+policy. On Plasma, a session-local KWin script pairs that host to the
+same-process Electron window and mirrors compositor `clientGeometry`,
+fullscreen, shell exclusion, and the active-host minimize transition. The
+presenter independently follows Electron bounds and visibility, unmaps on
+minimize, remaps the same XID on restore, clips only the restored bottom
+corners, removes clipping in fullscreen, and parks transparent, input-empty,
+and at zero FPS. A requested native-Wayland `session` presenter is backed by the
+persistent host and reports `effectivePresenterMode: "persistent"`; live
+experiments rejected on-demand GLX creation in Steam's injected call stack
+because that path crashed at a null native address.
+
+The Desktop core artifact
+`.tmp-deck-desktop-core-20260719` passed 21/21 routes with 42 screenshots:
+managed web, Friends, shortcuts, checkout preparation and synthetic approval
+routing, achievement progress/unlock, store, profile, players, community,
+stats, achievements, user/chat, high-level dialog equivalents, and waited
+web/store/dialog paths. Every interactive case recorded active and inactive
+callbacks, Shift+Tab close, focus return, one overlay target, zero-FPS parking,
+and clean crash evidence. Separate transition proof moved/resized the content
+host, entered exact 1280x800 fullscreen, minimized it safely, restored the same
+host, and retained alignment. Visual review found the title bar outside the
+Steam surface, correct aspect and centering, and restored bottom-corner shape.
+
+That pass found one real regression: a passive achievement needs-present pulse
+could expose the standalone depth-24 GLX host and briefly cover the Wayland
+client with black while Steam rendered its separate toast window. The presenter
+now keeps only this standalone Linux host transparent during passive pulses
+while continuing to pump it at the needs-present cadence. Focused progress and
+unlock captures retained the Electron client beneath the visible toast.
+
+A later exact-candidate cold launch exposed a separate Steam client race. Steam
+reported `IsOverlayEnabled()` before Linux `gameoverlayui` had finished
+starting, and an immediate `ActivateGameOverlayToWebPage()` call entered the
+injected helper during that interval and crashed at native address zero. Steam's
+console log placed helper startup in the same second as the activation. The
+managed native-Wayland path now applies a configurable 3000 ms activation
+warmup from controller creation: sync `open*IfAvailable()` calls fail closed,
+`open*AndWait()` waits through the warmup, status reports `overlay-not-ready`
+with the remaining duration, and no Steam activation is attempted early. A
+waiting managed open is reserved against duplicates without beginning
+presenter activation, so the host stays transparent, input-empty, and at zero
+FPS until readiness is proven. Already-ready calls preserve their established
+synchronous presenter start. The
+first Steam launch after a full Desktop -> Game -> Desktop session cycle then
+passed at `.tmp-deck-desktop-cold-start-guard-pass-20260719`: the lifecycle log
+recorded 2870 ms remaining before the wait, zero remaining before activation,
+then active/inactive callbacks, a centered web surface, focus return, stable
+zero-FPS parking, and no crash evidence.
+
+After the reservation/activation separation was added, the exact refreshed
+runtime passed a focused built-in `openWebAndWait()` lifecycle at
+`.tmp-deck-desktop-managed-wait-final-20260719`, then the final Desktop minimal
+matrix at `.tmp-deck-desktop-post-review-final-20260719` passed 6/6 cases and
+11 screenshots. The final Game Mode matrix at
+`.tmp-deck-game-post-review-final-20260719` passed 2/2 cases and two
+screenshots. Both matrices retained the expected callbacks, focus return,
+single-host/parking contracts, and clean crash evidence. The Deck was returned
+to Plasma Desktop Mode after the Game Mode proof.
+
+Final source review then found one checkout-only concurrency bypass: those
+entry points read the private operation status instead of the controller's
+reservation-aware status. The fix routes every checkout entry through the
+controller status; focused unit coverage proves duplicate suppression without
+invoking the transaction operation. The focused exact-candidate rerun at
+`.tmp-deck-duplicate-exact-rerun2-20260719` passed with one `gameoverlayui`
+target, the duplicate-open guard event, visible activation, authenticated
+SteamUI Escape, `active=false`, focus return, stable zero-FPS presenter
+parking, and no crash evidence. That rerun also corrected a harness defect:
+SSH-driven Escape now discovers the newest live Xauthority and proves the X11
+display connection before sending input. The host-runner self-test passes both
+locally and on Deck.
+
+After rebuilding the current Linux native source on the Deck and deploying that
+exact payload, the final Desktop matrix at
+`.tmp-deck-desktop-prerelease-final-20260719` passed 6/6 cases and 11
+screenshots: web, Friends, `openAndWait`, keyboard Shift+Tab open/close,
+checkout preparation, and passive toast behavior. Visual inspection retained
+correct aspect and centering, title-bar exclusion, live UI beneath the toast,
+and a clean return after every close. Earlier final KWin pairing and secure
+ephemeral-script cleanup also passed the focused artifact
+`.tmp-deck-desktop-freeze-20260719` after the runtime script file was removed.
+
+The final bounded Game Mode artifact
+`.tmp-deck-game-prerelease-final-20260719-attempt2` passed 2/2:
+persistent-presenter readiness at zero FPS and the compositor-native Store
+surface at 1280x800, with Deck/Big Picture identity, Gamescope capture,
+active/inactive callbacks, Escape back-to-app, focus return, clean crashes, and
+zero-remnant cleanup. The Deck was returned to Plasma Desktop Mode after this
+proof, with KWin Wayland active.
+
+The current exact Desktop package also records renderer FPS against the active
+display refresh. Electron reports zero display frequency in this KWin Wayland
+session, so the diagnostic path matches the BrowserWindow display geometry to
+KWin `supportInformation`; its current eDP output is 90.004 Hz. The persistent
+artifact `.tmp-deck-fps-hz-exact-20260719` measured 90.000 FPS before presenter
+attachment (99.996% of refresh, 11.1 ms p50 and p99). With the Steam browser
+visibly active, two samples measured 86.682 and 86.844 FPS (96.3-96.5%), with
+11.1 ms p50 and sparse 22.2-88.9 ms tail stalls. After Escape, the presenter
+reported `currentFps=0` and its `pumpCount` remained exactly 2567 across both
+samples, while the renderer measured 86.350 then 83.358 FPS. This separates
+the passive bridge presenter from the remaining sparse stalls: the presenter
+is not pumping, but Steam's injected `gameoverlayui` remains attached until the
+game process exits. The no-presenter baseline remains refresh-locked.
 
 ## Current Evidence
 
@@ -67,6 +184,40 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
   Windows matrix without FPS, focus, close, or process-lifetime regressions.
 
 ## Latest Windows Evidence
+
+A 2026-07-19 actual-game Electron `43.1.1` pass at 225% desktop scale closed the
+last presentation-alignment regression. Chromium allocated a 2883-by-1623 coded
+shared texture for the 1280-by-720 logical game viewport and 3459-by-2172 in
+fullscreen: one logical pixel of allocation padding on each axis. Presenting the
+whole coded texture produced narrow side bars and a bottom overrun. The shared-
+texture contract now accepts a validated `presentationRect`; D3D11 crops that
+exact viewport into its retained texture before presentation, and defaults to
+the full coded texture when the field is absent. The native game viewport is no
+longer subjected to the desktop web client's aspect-ratio policy.
+
+The same investigation found an Electron/Chromium boundary rather than a D3D11
+failure. Electron 42/43's default Windows offscreen scale factor of 1 caused
+live WebGL capture to turn permanently black after resize on the scaled display;
+paint callbacks continued and both CPU capture and shared-texture forwarding
+failed identically. Electron 41 at native scale and Electron 42/43 with explicit
+native display scale passed. The production consumer now captures the launch
+display scale, applies it to the hidden renderer, and keeps that renderer scale
+stable while the bridge owns native per-monitor DPI and presentation. The
+corrected game stayed live through 1280-by-720 windowed, 1536-by-964 fullscreen,
+and restored 1280-by-720 transitions at 59-60 game/native FPS against the current
+60 Hz desktop. It recorded zero bitmap fallbacks, frame-latency wait timeouts,
+and slow shared-texture copies.
+
+The actual consumer also passed title drag, edge resize and its 640-by-480
+logical minimum, rounded restored corners, File/View native menu input,
+maximize/restore, minimize/restore, focus loss to Steam and return, fullscreen
+restoration, native Snap Layout flyout dismissal, and clean exit. Real checkout
+and subscription pages opened at the correct centered size. Repeated Buy clicks
+previously stacked multiple Steam browser pages, so the application now admits
+one pending/active web-overlay request and releases that gate after close,
+activation failure, or a bounded no-activation timeout. A triple-click opened
+one checkout, one close returned directly to gameplay, and a later subscription
+route proved the gate released. No purchase or subscription was authorized.
 
 A 2026-07-18 source-linked Electron `43.1.1` follow-up used the development
 machine's native 1920 by 1200, 165 Hz mode as a high-refresh stress case. DWM
@@ -4490,12 +4641,16 @@ samples.
 It also requires the smoke app's managed wait-helper lifecycle events:
 `overlay:presenter-wait-shown`, `overlay:presenter-wait-closed`, and
 `overlay:presenter-parked`.
-The Deck web close probe is state-driven: it sends one click to the Steam web
-close control, waits for lifecycle evidence of `active=false`, and clears KDE
-overview/window-switcher state before clicking when KWin reports those transient
-effects as active. The verifier fails if the overlay reactivates after a close
-probe, which prevents accidental double-clicks from reopening an overlay through
-the smoke UI underneath.
+The Deck web close probe can send one visually detected click to the Steam web
+close control and wait for lifecycle evidence of `active=false`, but a visible
+X can precede completion of the browser load and that early click can be
+ignored. The release matrix therefore uses managed Shift+Tab as its
+deterministic Desktop close contract and treats detected-X input as a focused
+visual diagnostic. Before a visual click, the runner still clears KDE
+overview/window-switcher state when KWin reports those transient effects as
+active. The verifier fails if an overlay reactivates after a close probe, which
+prevents accidental double-clicks from reopening an overlay through the smoke
+UI underneath.
 Live matrix runs also write `matrix-cases.jsonl`, and the summary prints/audits
 the close/toggle input used for each case. Existing artifact roots can be
 audited with `npm run steam-deck:overlay-matrix:summarize -- --artifact-root <path>`.
@@ -4522,6 +4677,65 @@ state-change samples; the web-modal lifecycle recorded
 screenshots after hardening the Deck close probe to use one lifecycle-aware web
 close click, clear transient KWin overview/window-switcher state before close,
 and reject post-close overlay reactivation.
+
+## 2026-07-19 Apple Silicon Requalification
+
+The current signed arm64 package was exercised on the physical Retina Mac at
+`Jeromys-MacBook-Pro.local`. Steam launch/injection, Metal presenter readiness,
+direct web activation, and exact native window geometry passed. The app owns
+its window-state policy; Steam Bridge follows the content rectangle and now
+treats Electron `isSimpleFullScreen()` as fullscreen in addition to native
+Spaces fullscreen. This distinction matters because a Steam-launched Electron
+window did not reliably enter a native Space in the current session. Simple
+fullscreen did enter immediately and retained one presenter attachment with an
+exact 1728x1117 content/host rectangle. Maximized state retained an exact
+1728x1052 content/host rectangle; restored and minimize/restore transitions
+also reused one host without drift.
+
+The Retina display reported 120.0000076 Hz at scale factor 2. The artifact
+`/tmp/steam-bridge-macos-fps-hz-20260719` measured 120.004 renderer FPS before
+overlay activation (100.0% of refresh), 118.676 FPS with the Steam browser
+active (98.9%), and 118.367 FPS after close (98.6%). The native-state artifact
+`/tmp/steam-bridge-macos-native-state-qa-20260719` measured 116.92 FPS in
+simple fullscreen and 118.35 FPS maximized, both against 120 Hz. These are
+renderer `requestAnimationFrame` measurements, not claims about Steam browser
+content cadence. Presenter state and host attachment are recorded alongside
+each sample.
+
+Before the final matrix, the Mac checkout was fast-forwarded to the same
+`3da802d`/`0.2.14` baseline as the Windows working tree and every modified
+runtime input was verified by SHA-256. The first exact rebuild correctly failed
+its native contract gate because the packager selected an old target-named
+addon instead of the fresh current-host `steam_bridge_native.local.node`. The
+packager now prefers the local addon for an ordinary current-host build and
+continues to require target-named artifacts for cross-target packages and
+explicit `--artifacts-dir` release assembly. Regression coverage proves all
+three selections. The rebuilt signed arm64 package
+then verified all 1,130 expected methods with contract hash
+`25cfd24fac158d8768732933c153bab01aa1618ac44a6f39eeba23920a443ba4`
+and passed launcher identity, arm64-only, codesign, entitlement, helper, and
+matrix self-test gates without starting Steam.
+
+Early full-matrix attempts correctly stopped at macOS TCC boundaries: SSH
+`screencapture` initially could not capture the interactive display and
+SSH-launched `osascript` could not send Escape. The macOS helper keeps pixel
+capture as the preferred proof and, only when capture itself fails, accepts a
+fail-closed structural fallback: a live `gameoverlayui` must target the exact
+smoke PID and a visible Steam Helper window must overlap at least 25% of the
+exact presenter host. Results record `overlay:web-visible.source` as
+`screen-pixels`, `steam-helper-window`, or `unavailable`; self-test fixtures
+cover PID binding, overlap rejection, source, and rectangle fields.
+
+After `/usr/libexec/sshd-keygen-wrapper` received Accessibility and Screen &
+System Audio Recording permission and SSH reconnected, the exact signed arm64
+full route matrix passed 55/55 at
+`/tmp/steam-bridge-macos-overlay-matrix-full-exact-final-20260719`. It retained
+screen-pixel visibility, Escape close, focus return, capture health, route
+lifecycle, passive zero-FPS parking, isolation, and clean crash diagnostics.
+The accepted package exposed all 1,130 native methods with contract hash
+`25cfd24fac158d8768732933c153bab01aa1618ac44a6f39eeba23920a443ba4`.
+The former TCC boundary is therefore settled for this automation host; no proof
+fallback was weakened to obtain the pass.
 
 ## Latest macOS Recovery Evidence
 

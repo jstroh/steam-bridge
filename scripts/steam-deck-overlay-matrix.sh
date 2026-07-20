@@ -18,6 +18,7 @@ case_manifest=""
 skip_package="0"
 skip_preflight="0"
 skip_summary="0"
+skip_copy="0"
 copy_each_case="0"
 dry_run="0"
 local_app_dir=""
@@ -53,6 +54,7 @@ Options:
   --skip-package               Do not run npm run example:package:linux first.
   --skip-preflight             Do not run the Deck preflight before the matrix.
   --skip-summary               Do not summarize collected artifacts after the matrix.
+  --skip-copy                  Reuse the packaged smoke app already on the Deck for every case.
   --copy-each-case             Re-copy the package before every case.
   --resume-from CASE_ID        Retain the exact validated prefix before CASE_ID and rerun from it.
   --dry-run                    Print commands without running them.
@@ -135,6 +137,10 @@ while [ "$#" -gt 0 ]; do
       skip_summary="1"
       shift
       ;;
+    --skip-copy)
+      skip_copy="1"
+      shift
+      ;;
     --copy-each-case)
       copy_each_case="1"
       shift
@@ -181,6 +187,10 @@ if [ "$mode" = "game" ] && [ "$suite" != "game" ]; then
 fi
 if [ "$suite" = "game" ] && [ "$mode" != "game" ]; then
   echo "--suite game requires --mode game." >&2
+  exit 2
+fi
+if [ "$skip_copy" = "1" ] && [ "$copy_each_case" = "1" ]; then
+  echo "--skip-copy and --copy-each-case cannot be used together." >&2
   exit 2
 fi
 
@@ -533,7 +543,7 @@ run_deck_case() {
   if [ -n "$overlay_profile" ]; then
     cmd+=(--overlay-profile "$overlay_profile")
   fi
-  if [ "$copy_done" = "1" ] && [ "$copy_each_case" != "1" ]; then
+  if [ "$skip_copy" = "1" ] || { [ "$copy_done" = "1" ] && [ "$copy_each_case" != "1" ]; }; then
     cmd+=(--skip-copy)
   fi
 
@@ -590,7 +600,7 @@ run_web_surface_case() {
   run_deck_case "$name" \
     --keep-open-after-result \
     --visual-close-probe \
-    --visual-close-input web \
+    --visual-close-input toggle \
     "$@"
 }
 
@@ -670,7 +680,7 @@ run_summary_self_test() {
 }
 
 run_self_test() {
-  local self_path minimal_output core_output full_output game_output first_core_case second_core_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case user_case user_chat_case shortcut_web_case store_open_wait_case game_presenter_case game_store_case
+  local self_path minimal_output core_output full_output game_output skip_copy_output first_core_case second_core_case first_skip_copy_case shortcut_friends_case checkout_prepare_case passive_toast_case passive_unlock_case user_case user_chat_case shortcut_web_case store_open_wait_case game_presenter_case game_store_case
   self_path="${BASH_SOURCE[0]}"
 
   minimal_output="$(
@@ -707,6 +717,16 @@ run_self_test() {
       --suite game \
       --skip-package \
       --skip-preflight \
+      --dry-run \
+      --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
+  )"
+  skip_copy_output="$(
+    bash "$self_path" \
+      --host deck@example.invalid \
+      --suite minimal \
+      --skip-package \
+      --skip-preflight \
+      --skip-copy \
       --dry-run \
       --artifact-root /tmp/steam-bridge-deck-overlay-matrix-self-test
   )"
@@ -749,7 +769,7 @@ run_self_test() {
   require_contains "$core_output" "--action presenter-dialog-auto --dialog OfficialGameGroup" "core matrix must include a dialog-equivalent route."
   require_contains "$core_output" "--checkout-transaction-id 123456789" "core matrix must include synthetic checkout approval-route plumbing."
   require_contains "$core_output" "--shortcut-target web" "core matrix must include configurable shortcut target proof."
-  require_contains "$core_output" "--visual-close-input web" "core matrix must close web-backed overlays through the Steam web close control."
+  require_contains "$core_output" "--visual-close-input toggle" "core matrix must close web-backed overlays through Steam's Shift+Tab toggle."
   require_contains "$full_output" "--dialog Friends" "full matrix must include Friends dialog equivalent."
   require_contains "$full_output" "--dialog Players" "full matrix must include Players dialog equivalent."
   require_contains "$full_output" "--dialog Community" "full matrix must include Community dialog equivalent."
@@ -758,6 +778,7 @@ run_self_test() {
 
   first_core_case="$(matrix_case_command "$core_output" "01-web-modal")"
   second_core_case="$(matrix_case_command "$core_output" "02-friends")"
+  first_skip_copy_case="$(matrix_case_command "$skip_copy_output" "01-web-modal")"
   shortcut_friends_case="$(matrix_case_command "$core_output" "04-shortcut-friends")"
   checkout_prepare_case="$(matrix_case_command "$core_output" "05-checkout-prepare")"
   passive_toast_case="$(matrix_case_command "$core_output" "07-passive-toast")"
@@ -771,6 +792,7 @@ run_self_test() {
 
   require_not_contains "$first_core_case" "--skip-copy" "first matrix case must copy the package."
   require_contains "$second_core_case" "--skip-copy" "later matrix cases should reuse the copied package."
+  require_contains "$first_skip_copy_case" "--skip-copy" "explicit remote-package reuse must skip the first copy."
   require_contains "$shortcut_friends_case" "--visual-close-input toggle" "shortcut proof should close with Shift+Tab-only toggle input."
   require_not_contains "$checkout_prepare_case" "--result-delay-ms" "checkout readiness must use the normal settling delay."
   require_contains "$passive_toast_case" "--result-delay-ms 1200" "passive toast should use the short notification capture delay."

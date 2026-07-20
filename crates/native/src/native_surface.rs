@@ -511,6 +511,10 @@ mod macos {
         _content_y: Option<u32>,
         _content_width: Option<u32>,
         _content_height: Option<u32>,
+        _presentation_x: Option<u32>,
+        _presentation_y: Option<u32>,
+        _presentation_width: Option<u32>,
+        _presentation_height: Option<u32>,
     ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Electron shared textures are currently supported only by the Windows D3D11 native host",
@@ -1222,6 +1226,10 @@ mod fallback {
         _content_y: Option<u32>,
         _content_width: Option<u32>,
         _content_height: Option<u32>,
+        _presentation_x: Option<u32>,
+        _presentation_y: Option<u32>,
+        _presentation_width: Option<u32>,
+        _presentation_height: Option<u32>,
     ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Electron shared textures are currently supported only by the Windows D3D11 native host",
@@ -2169,6 +2177,10 @@ mod windows {
         content_y: Option<u32>,
         content_width: Option<u32>,
         content_height: Option<u32>,
+        presentation_x: Option<u32>,
+        presentation_y: Option<u32>,
+        presentation_width: Option<u32>,
+        presentation_height: Option<u32>,
     ) -> Result<(), Error> {
         let handle_size = mem::size_of::<usize>();
         if handle_buffer.len() < handle_size {
@@ -2188,6 +2200,12 @@ mod windows {
             content_width.unwrap_or(width),
             content_height.unwrap_or(height),
         );
+        let presentation_rect = (
+            presentation_x.unwrap_or(0),
+            presentation_y.unwrap_or(0),
+            presentation_width.unwrap_or(width),
+            presentation_height.unwrap_or(height),
+        );
         let content_right = content_rect.0.checked_add(content_rect.2).ok_or_else(|| {
             Error::from_reason("Windows shared texture content rectangle overflows")
         })?;
@@ -2202,6 +2220,33 @@ mod windows {
             return Err(Error::from_reason(format!(
                 "Windows shared texture content rectangle {},{} {}x{} exceeds {}x{}",
                 content_rect.0, content_rect.1, content_rect.2, content_rect.3, width, height
+            )));
+        }
+        let presentation_right = presentation_rect
+            .0
+            .checked_add(presentation_rect.2)
+            .ok_or_else(|| {
+                Error::from_reason("Windows shared texture presentation rectangle overflows")
+            })?;
+        let presentation_bottom = presentation_rect
+            .1
+            .checked_add(presentation_rect.3)
+            .ok_or_else(|| {
+                Error::from_reason("Windows shared texture presentation rectangle overflows")
+            })?;
+        if presentation_rect.2 == 0
+            || presentation_rect.3 == 0
+            || presentation_right > width
+            || presentation_bottom > height
+        {
+            return Err(Error::from_reason(format!(
+                "Windows shared texture presentation rectangle {},{} {}x{} exceeds {}x{}",
+                presentation_rect.0,
+                presentation_rect.1,
+                presentation_rect.2,
+                presentation_rect.3,
+                width,
+                height
             )));
         }
 
@@ -2219,7 +2264,7 @@ mod windows {
                 ..
             } => unsafe {
                 if renderer
-                    .import_shared_texture(handle, width, height, content_rect)
+                    .import_shared_texture(handle, width, height, content_rect, presentation_rect)
                     .is_err()
                 {
                     renderer
@@ -2229,6 +2274,7 @@ mod windows {
                             width,
                             height,
                             content_rect,
+                            presentation_rect,
                         )
                         .map_err(Error::from_reason)?;
                 }
@@ -2843,6 +2889,7 @@ mod windows {
                 "sharedTexturePartialCopyCount": renderer.shared_texture_partial_copy_count(),
                 "sharedTextureStorageRecreateCount": renderer.shared_texture_storage_recreate_count(),
                 "lastSharedTextureContentRect": renderer.last_shared_texture_content_rect(),
+                "lastSharedTexturePresentationRect": renderer.last_shared_texture_presentation_rect(),
                 "featureLevel": format!("0x{:04X}", renderer.feature_level()),
                 "adapter": renderer.adapter_name(),
                 "lastPresent": format!("0x{:08X}", renderer.last_present() as u32),
@@ -4879,6 +4926,7 @@ pub use windows::*;
 mod linux {
     use super::{Buffer, Error};
     use once_cell::sync::Lazy;
+    use serde_json::json;
     use std::ffi::{c_void, CString};
     use std::mem;
     use std::os::raw::{c_int, c_long, c_uchar, c_uint};
@@ -4887,7 +4935,10 @@ mod linux {
     use std::time::{SystemTime, UNIX_EPOCH};
     use x11_dl::{glx, xfixes, xlib};
 
+    const SHAPE_BOUNDING: c_int = 0;
+    const SHAPE_CLIP: c_int = 1;
     const SHAPE_INPUT: c_int = 2;
+    const WINDOWED_BOTTOM_CORNER_RADIUS: u32 = 8;
 
     struct NativeSurface {
         xlib: xlib::Xlib,
@@ -4896,12 +4947,14 @@ mod linux {
         display: *mut xlib::Display,
         window: xlib::Window,
         parent_window: Option<xlib::Window>,
+        managed_host: bool,
         opacity_atom: xlib::Atom,
         colormap: xlib::Colormap,
         context: glx::GLXContext,
         frame: u64,
         input_passthrough: bool,
         opaque: bool,
+        full_screen: bool,
     }
 
     unsafe impl Send for NativeSurface {}
@@ -4918,7 +4971,7 @@ mod linux {
         close();
 
         let title = title.unwrap_or_else(|| "Steam Bridge Native Overlay Probe".to_owned());
-        let surface = unsafe { create_probe_window(&title, None)? };
+        let surface = unsafe { create_probe_window(&title, None, None, false, false)? };
         *SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned") = Some(surface);
@@ -4934,6 +4987,9 @@ mod linux {
             create_probe_window(
                 "Steam Bridge Native Overlay",
                 Some(parent_handle as xlib::Window),
+                None,
+                true,
+                false,
             )?
         };
         *SURFACE
@@ -4946,6 +5002,32 @@ mod linux {
 
     pub fn attach_to_parent_for_overlay(parent_handle: usize) -> Result<(), Error> {
         attach_to_parent(parent_handle)
+    }
+
+    pub fn attach_to_root(
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        full_screen: bool,
+    ) -> Result<(), Error> {
+        close();
+
+        let surface = unsafe {
+            create_probe_window(
+                "Steam Bridge Native Overlay",
+                None,
+                Some((x, y, width.max(1), height.max(1))),
+                true,
+                full_screen,
+            )?
+        };
+        *SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned") = Some(surface);
+
+        pump()?;
+        Ok(())
     }
 
     pub fn pump() -> Result<(), Error> {
@@ -4984,7 +5066,7 @@ mod linux {
             }
 
             (surface.glx.glXMakeCurrent)(surface.display, surface.window, surface.context);
-            if surface.parent_window.is_some() {
+            if surface.managed_host {
                 gl::ClearColor(0.0, 0.0, 0.0, 0.0);
             } else {
                 let t = SystemTime::now()
@@ -5017,13 +5099,14 @@ mod linux {
 
     pub fn set_input_passthrough(pass_through: bool) -> Result<(), Error> {
         with_surface(|surface| unsafe {
-            if surface.parent_window.is_some() && surface.input_passthrough != pass_through {
+            if surface.managed_host && surface.input_passthrough != pass_through {
                 apply_host_input_mode(
                     &surface.xlib,
                     surface.xfixes.as_ref(),
                     surface.display,
                     surface.window,
                     pass_through,
+                    surface.parent_window.is_none(),
                 );
                 surface.input_passthrough = pass_through;
             }
@@ -5032,7 +5115,7 @@ mod linux {
 
     pub fn set_opaque(opaque: bool) -> Result<(), Error> {
         with_surface(|surface| unsafe {
-            if surface.parent_window.is_some() && surface.opaque != opaque {
+            if surface.managed_host && surface.opaque != opaque {
                 apply_host_opacity(
                     &surface.xlib,
                     surface.display,
@@ -5053,16 +5136,70 @@ mod linux {
         Ok(())
     }
 
-    pub fn set_full_screen(_full_screen: bool) -> Result<(), Error> {
-        Ok(())
+    pub fn set_full_screen(full_screen: bool) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.managed_host
+                && surface.parent_window.is_none()
+                && surface.full_screen != full_screen
+            {
+                request_standalone_host_full_screen(
+                    &surface.xlib,
+                    surface.display,
+                    surface.window,
+                    full_screen,
+                );
+                surface.full_screen = full_screen;
+                let (_, _, width, height) = window_bounds_on_root(
+                    &surface.xlib,
+                    surface.display,
+                    surface.window,
+                    0,
+                    0,
+                    1,
+                    1,
+                );
+                apply_standalone_host_shape(
+                    surface.xfixes.as_ref(),
+                    surface.display,
+                    surface.window,
+                    width,
+                    height,
+                    full_screen,
+                );
+            }
+        })
     }
 
     pub fn set_menu_json(_menu_json: String) -> Result<(), Error> {
         Ok(())
     }
 
-    pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
-        Ok(())
+    pub fn set_bounds(x: i32, y: i32, width: u32, height: u32) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if surface.managed_host && surface.parent_window.is_none() {
+                let width = width.max(1);
+                let height = height.max(1);
+                (surface.xlib.XMoveResizeWindow)(
+                    surface.display,
+                    surface.window,
+                    x,
+                    y,
+                    width,
+                    height,
+                );
+                apply_standalone_host_shape(
+                    surface.xfixes.as_ref(),
+                    surface.display,
+                    surface.window,
+                    width,
+                    height,
+                    surface.full_screen,
+                );
+                (surface.glx.glXMakeCurrent)(surface.display, surface.window, surface.context);
+                gl::Viewport(0, 0, width as c_int, height as c_int);
+                (surface.xlib.XFlush)(surface.display);
+            }
+        })
     }
 
     pub fn update_frame(_buffer: Buffer, _width: u32, _height: u32) -> Result<(), Error> {
@@ -5077,6 +5214,10 @@ mod linux {
         _content_y: Option<u32>,
         _content_width: Option<u32>,
         _content_height: Option<u32>,
+        _presentation_x: Option<u32>,
+        _presentation_y: Option<u32>,
+        _presentation_width: Option<u32>,
+        _presentation_height: Option<u32>,
     ) -> Result<(), Error> {
         Err(Error::from_reason(
             "Electron shared textures are currently supported only by the Windows D3D11 native host",
@@ -5100,11 +5241,11 @@ mod linux {
     }
 
     pub fn close_probe() {
-        close_matching(|surface| surface.parent_window.is_none());
+        close_matching(|surface| !surface.managed_host);
     }
 
     pub fn detach_host() {
-        close_matching(|surface| surface.parent_window.is_some());
+        close_matching(|surface| surface.managed_host);
     }
 
     pub fn is_probe_open() -> bool {
@@ -5112,7 +5253,7 @@ mod linux {
             .lock()
             .expect("Steam overlay native surface lock poisoned")
             .as_ref()
-            .is_some_and(|surface| surface.parent_window.is_none())
+            .is_some_and(|surface| !surface.managed_host)
     }
 
     pub fn is_embedded() -> bool {
@@ -5120,7 +5261,7 @@ mod linux {
             .lock()
             .expect("Steam overlay native surface lock poisoned")
             .as_ref()
-            .is_some_and(|surface| surface.parent_window.is_some())
+            .is_some_and(|surface| surface.managed_host)
     }
 
     pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
@@ -5136,7 +5277,47 @@ mod linux {
     }
 
     pub fn host_diagnostics_json() -> Option<String> {
-        None
+        let guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let surface = guard.as_ref()?;
+        unsafe {
+            let (x, y, width, height) =
+                window_bounds_on_root(&surface.xlib, surface.display, surface.window, 0, 0, 1, 1);
+            let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
+            let map_state = if (surface.xlib.XGetWindowAttributes)(
+                surface.display,
+                surface.window,
+                &mut attributes,
+            ) == 0
+            {
+                None
+            } else {
+                Some(attributes.map_state)
+            };
+            Some(
+                json!({
+                    "backend": "x11-glx",
+                    "managedHost": surface.managed_host,
+                    "standaloneHost": surface.managed_host && surface.parent_window.is_none(),
+                    "bounds": {
+                        "x": x,
+                        "y": y,
+                        "width": width,
+                        "height": height,
+                    },
+                    "mapped": map_state == Some(xlib::IsViewable),
+                    "fullScreen": surface.full_screen,
+                    "inputPassthrough": surface.input_passthrough,
+                    "opaque": surface.opaque,
+                    "roundedBottomCorners": surface.managed_host
+                        && surface.parent_window.is_none()
+                        && !surface.full_screen,
+                    "frame": surface.frame,
+                })
+                .to_string(),
+            )
+        }
     }
 
     pub fn drain_input_events_json() -> String {
@@ -5179,6 +5360,9 @@ mod linux {
     unsafe fn create_probe_window(
         title: &str,
         parent_window: Option<xlib::Window>,
+        standalone_bounds: Option<(i32, i32, u32, u32)>,
+        managed_host: bool,
+        full_screen: bool,
     ) -> Result<NativeSurface, Error> {
         let title = CString::new(title)
             .map_err(|error| Error::from_reason(format!("Invalid native probe title: {error}")))?;
@@ -5213,6 +5397,16 @@ mod linux {
             let (x, y, width, height) =
                 window_bounds_on_root(&xlib, display, parent_window, 0, 0, 640, 480);
             (screen, attributes.root, x, y, width, height)
+        } else if let Some((x, y, width, height)) = standalone_bounds {
+            let screen = (xlib.XDefaultScreen)(display);
+            (
+                screen,
+                (xlib.XRootWindow)(display, screen),
+                x,
+                y,
+                width.max(1),
+                height.max(1),
+            )
         } else {
             let screen = (xlib.XDefaultScreen)(display);
             (
@@ -5254,6 +5448,8 @@ mod linux {
         attributes.colormap = colormap;
         attributes.background_pixel = (xlib.XBlackPixel)(display, screen);
         attributes.border_pixel = 0;
+        let standalone_managed_host = managed_host && parent_window.is_none();
+        attributes.override_redirect = xlib::False;
         attributes.event_mask = xlib::ExposureMask
             | xlib::StructureNotifyMask
             | xlib::KeyPressMask
@@ -5289,9 +5485,29 @@ mod linux {
         let opacity_atom = (xlib.XInternAtom)(display, opacity_atom_name.as_ptr(), xlib::False);
         let mut input_passthrough = false;
         let mut opaque = true;
-        if let Some(parent_window) = parent_window {
-            (xlib.XSetTransientForHint)(display, window, parent_window);
-            apply_host_input_mode(&xlib, xfixes.as_ref(), display, window, true);
+        if managed_host {
+            if let Some(parent_window) = parent_window {
+                (xlib.XSetTransientForHint)(display, window, parent_window);
+            }
+            if standalone_managed_host {
+                apply_standalone_host_window_hints(&xlib, display, window, full_screen);
+                apply_standalone_host_shape(
+                    xfixes.as_ref(),
+                    display,
+                    window,
+                    width,
+                    height,
+                    full_screen,
+                );
+            }
+            apply_host_input_mode(
+                &xlib,
+                xfixes.as_ref(),
+                display,
+                window,
+                true,
+                standalone_managed_host,
+            );
             apply_host_opacity(&xlib, display, window, opacity_atom, false);
             input_passthrough = true;
             opaque = false;
@@ -5336,12 +5552,14 @@ mod linux {
             display,
             window,
             parent_window,
+            managed_host,
             opacity_atom,
             colormap,
             context,
             frame: 0,
             input_passthrough,
             opaque,
+            full_screen,
         })
     }
 
@@ -5384,12 +5602,114 @@ mod linux {
         )
     }
 
+    unsafe fn apply_standalone_host_window_hints(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        full_screen: bool,
+    ) {
+        const MWM_HINTS_FUNCTIONS: c_long = 1 << 0;
+        const MWM_HINTS_DECORATIONS: c_long = 1 << 1;
+        const MWM_FUNC_ALL: c_long = 1 << 0;
+
+        let motif_hints_atom_name = CString::new("_MOTIF_WM_HINTS").expect("static atom");
+        let motif_hints_atom =
+            (xlib.XInternAtom)(display, motif_hints_atom_name.as_ptr(), xlib::False);
+        if motif_hints_atom != 0 {
+            // Keep the managed host undecorated while retaining ordinary WM
+            // operations. KWin treats a decorations-only zero-function hint
+            // as non-minimizable, which prevents its script from mirroring a
+            // minimized native-Wayland Electron owner onto this Xwayland host.
+            let hints: [c_long; 5] = [
+                MWM_HINTS_FUNCTIONS | MWM_HINTS_DECORATIONS,
+                MWM_FUNC_ALL,
+                0,
+                0,
+                0,
+            ];
+            (xlib.XChangeProperty)(
+                display,
+                window,
+                motif_hints_atom,
+                motif_hints_atom,
+                32,
+                xlib::PropModeReplace,
+                hints.as_ptr().cast::<c_uchar>(),
+                hints.len() as c_int,
+            );
+        }
+
+        if full_screen {
+            let state_atom_name = CString::new("_NET_WM_STATE").expect("static atom");
+            let full_screen_atom_name =
+                CString::new("_NET_WM_STATE_FULLSCREEN").expect("static atom");
+            let state_atom = (xlib.XInternAtom)(display, state_atom_name.as_ptr(), xlib::False);
+            let full_screen_atom =
+                (xlib.XInternAtom)(display, full_screen_atom_name.as_ptr(), xlib::False);
+            if state_atom != 0 && full_screen_atom != 0 {
+                let states = [full_screen_atom];
+                (xlib.XChangeProperty)(
+                    display,
+                    window,
+                    state_atom,
+                    xlib::XA_ATOM,
+                    32,
+                    xlib::PropModeReplace,
+                    states.as_ptr().cast::<c_uchar>(),
+                    states.len() as c_int,
+                );
+            }
+        }
+    }
+
+    unsafe fn request_standalone_host_full_screen(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        full_screen: bool,
+    ) {
+        let state_atom_name = CString::new("_NET_WM_STATE").expect("static atom");
+        let full_screen_atom_name = CString::new("_NET_WM_STATE_FULLSCREEN").expect("static atom");
+        let state_atom = (xlib.XInternAtom)(display, state_atom_name.as_ptr(), xlib::False);
+        let full_screen_atom =
+            (xlib.XInternAtom)(display, full_screen_atom_name.as_ptr(), xlib::False);
+        if state_atom == 0 || full_screen_atom == 0 {
+            return;
+        }
+
+        let mut data = xlib::ClientMessageData::new();
+        data.set_long(0, if full_screen { 1 } else { 0 });
+        data.set_long(1, full_screen_atom as c_long);
+        data.set_long(3, 1);
+        let client_message = xlib::XClientMessageEvent {
+            type_: xlib::ClientMessage,
+            serial: 0,
+            send_event: xlib::True,
+            display,
+            window,
+            message_type: state_atom,
+            format: 32,
+            data,
+        };
+        let mut event = xlib::XEvent::from(client_message);
+        let root = (xlib.XDefaultRootWindow)(display);
+        (xlib.XSendEvent)(
+            display,
+            root,
+            xlib::False,
+            xlib::SubstructureRedirectMask | xlib::SubstructureNotifyMask,
+            &mut event,
+        );
+        (xlib.XFlush)(display);
+    }
+
     unsafe fn apply_host_input_mode(
         xlib: &xlib::Xlib,
         xfixes: Option<&xfixes::Xlib>,
         display: *mut xlib::Display,
         window: xlib::Window,
         pass_through: bool,
+        focus_on_activate: bool,
     ) {
         let mut wm_hints: xlib::XWMHints = mem::MaybeUninit::zeroed().assume_init();
         wm_hints.flags = xlib::InputHint;
@@ -5416,7 +5736,66 @@ mod linux {
             }
         }
 
+        if focus_on_activate && !pass_through {
+            (xlib.XMapRaised)(display, window);
+            (xlib.XSetInputFocus)(display, window, xlib::RevertToParent, xlib::CurrentTime);
+        }
+
         (xlib.XFlush)(display);
+    }
+
+    unsafe fn apply_standalone_host_shape(
+        xfixes: Option<&xfixes::Xlib>,
+        display: *mut xlib::Display,
+        window: xlib::Window,
+        width: c_uint,
+        height: c_uint,
+        full_screen: bool,
+    ) {
+        let Some(xfixes) = xfixes else {
+            return;
+        };
+        if full_screen
+            || width <= WINDOWED_BOTTOM_CORNER_RADIUS * 2
+            || height <= WINDOWED_BOTTOM_CORNER_RADIUS
+            || width > u16::MAX as c_uint
+            || height > i16::MAX as c_uint
+        {
+            (xfixes.XFixesSetWindowShapeRegion)(display, window, SHAPE_BOUNDING, 0, 0, 0);
+            (xfixes.XFixesSetWindowShapeRegion)(display, window, SHAPE_CLIP, 0, 0, 0);
+            return;
+        }
+
+        let width = width as u16;
+        let height = height as u16;
+        let radius = WINDOWED_BOTTOM_CORNER_RADIUS as u16;
+        let insets = [0u16, 0, 1, 1, 2, 3, 4, 6];
+        let mut rectangles = Vec::with_capacity(insets.len() + 1);
+        rectangles.push(xlib::XRectangle {
+            x: 0,
+            y: 0,
+            width,
+            height: height - radius,
+        });
+        for (row, inset) in insets.into_iter().enumerate() {
+            rectangles.push(xlib::XRectangle {
+                x: inset as i16,
+                y: (height - radius + row as u16) as i16,
+                width: width - inset * 2,
+                height: 1,
+            });
+        }
+        let region = (xfixes.XFixesCreateRegion)(
+            display,
+            rectangles.as_mut_ptr(),
+            rectangles.len() as c_int,
+        );
+        if region == 0 {
+            return;
+        }
+        (xfixes.XFixesSetWindowShapeRegion)(display, window, SHAPE_BOUNDING, 0, 0, region);
+        (xfixes.XFixesSetWindowShapeRegion)(display, window, SHAPE_CLIP, 0, 0, region);
+        (xfixes.XFixesDestroyRegion)(display, region);
     }
 
     unsafe fn apply_host_opacity(

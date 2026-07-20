@@ -1717,6 +1717,13 @@ export interface NativeBinding {
   ): void;
   attachNativeOverlayHostView(nativeWindowHandle: Buffer): void;
   attachNativeOverlayHostViewForOverlay(nativeWindowHandle: Buffer): void;
+  attachNativeOverlayHostWindow(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fullScreen?: boolean
+  ): void;
   pumpNativeOverlayProbeWindow(): void;
   pumpNativeOverlayHostView(): void;
   showNativeOverlayHostView(): void;
@@ -1737,7 +1744,11 @@ export interface NativeBinding {
     contentX?: number,
     contentY?: number,
     contentWidth?: number,
-    contentHeight?: number
+    contentHeight?: number,
+    presentationX?: number,
+    presentationY?: number,
+    presentationWidth?: number,
+    presentationHeight?: number
   ): void;
   drainNativeOverlayHostInputEventsJson(): string;
   closeNativeOverlayProbeWindow(): void;

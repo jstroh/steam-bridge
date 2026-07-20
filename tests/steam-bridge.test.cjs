@@ -15,7 +15,7 @@ function distFile(fileName) {
 }
 
 function clearSteamBridgeCache() {
-  for (const fileName of ["index.js", "native.js", "electron.js", "electron-builder.js"]) {
+  for (const fileName of ["index.js", "native.js", "electron.js", "electron-builder.js", "kwin.js"]) {
     try {
       delete require.cache[require.resolve(distFile(fileName))];
     } catch {
@@ -1600,6 +1600,54 @@ function writeDirectReadinessVerifierFixture(root, name, status, lifecycleEntrie
   return { resultFile, diagnosticDir };
 }
 
+function writeCheckoutReadinessVerifierFixture(root, name, status, includeOperationStart = true) {
+  const resultFile = path.join(root, `${name}.log`);
+  const diagnosticDir = path.join(root, `${name}.diagnostics`);
+  const result = directPresenterOpenReadinessResult(status);
+  const statusAt = "2026-07-20T04:44:39.383Z";
+  const operationAt = "2026-07-20T04:44:39.624Z";
+  const presenter = passiveNotificationPresenterFixture();
+  presenter.mode = "active";
+  result.action.action = "presenter-checkout";
+  result.snapshot.events = [
+    {
+      type: "overlay:presenter-direct-open-status",
+      at: statusAt,
+      payload: {
+        target: "checkout",
+        api: "openCheckoutAndWait",
+        status,
+        presenter
+      }
+    },
+    ...(includeOperationStart
+      ? [
+          {
+            type: "checkout:managed-operation-start",
+            at: operationAt,
+            payload: {
+              target: "checkout",
+              api: "openCheckoutAndWait",
+              presenter
+            }
+          }
+        ]
+      : []),
+    {
+      type: "overlay:presenter-open",
+      payload: {
+        target: "checkout",
+        api: "openCheckoutAndWait",
+        presenter
+      }
+    }
+  ];
+  fs.mkdirSync(diagnosticDir, { recursive: true });
+  fs.writeFileSync(resultFile, `STEAM_BRIDGE_SMOKE_RESULT ${JSON.stringify(result)}\n`);
+  fs.writeFileSync(path.join(diagnosticDir, "lifecycle.jsonl"), "");
+  return { resultFile, diagnosticDir };
+}
+
 function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", macOverlayEnvironmentOverride) {
   const macOverlayEnvironment =
     macOverlayEnvironmentOverride ??
@@ -2953,6 +3001,41 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(linkScript, /mtimeMs/);
 });
 
+test("example packager prefers the current host build over a stale target-native artifact", (t) => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-artifact-source-"));
+  t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+
+  const localNativePath = path.join(fixtureRoot, "steam_bridge_native.local.node");
+  const targetNativePath = path.join(fixtureRoot, "steam_bridge_native.darwin-arm64.node");
+  fs.writeFileSync(localNativePath, "fresh-host-build");
+  fs.writeFileSync(targetNativePath, "stale-release-artifact");
+
+  const { resolvePackageArtifactSources } = require(path.join(repoRoot, "scripts", "package-electron-example.cjs"));
+  const currentHostSources = resolvePackageArtifactSources(
+    "aarch64-apple-darwin",
+    ["steam_bridge_native.darwin-arm64.node"],
+    { packageRoot: fixtureRoot, currentTarget: "aarch64-apple-darwin" }
+  );
+  const crossTargetSources = resolvePackageArtifactSources(
+    "aarch64-apple-darwin",
+    ["steam_bridge_native.darwin-arm64.node"],
+    { packageRoot: fixtureRoot, currentTarget: "x86_64-pc-windows-msvc" }
+  );
+  const assembledReleaseSources = resolvePackageArtifactSources(
+    "aarch64-apple-darwin",
+    ["steam_bridge_native.darwin-arm64.node"],
+    {
+      packageRoot: fixtureRoot,
+      currentTarget: "aarch64-apple-darwin",
+      preferLocalNative: false
+    }
+  );
+
+  assert.equal(currentHostSources.get("steam_bridge_native.darwin-arm64.node"), localNativePath);
+  assert.equal(crossTargetSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
+  assert.equal(assembledReleaseSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
+});
+
 test("native loader prefers the physical ASAR-unpacked addon mirror", (t) => {
   setProcessPlatformForTest(t, "win32");
   setProcessArchForTest(t, "x64");
@@ -3337,6 +3420,62 @@ test("smoke result verifier checks direct presenter readiness status evidence", 
   );
   assert.notEqual(rawStatusVerifier.status, 0);
   assert.match(rawStatusVerifier.stderr, /direct presenter open readiness status omits raw url/);
+});
+
+test("smoke result verifier checks wait-aware checkout operation readiness evidence", (t) => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-checkout-readiness-verify-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const verifierPath = path.join(repoRoot, "scripts", "verify-electron-smoke-result.cjs");
+  const waitingStatus = {
+    canOpen: false,
+    canWait: true,
+    canStartOperation: false,
+    reason: "overlay-not-ready",
+    targetSnapshot: { type: "checkout" }
+  };
+  const waitingRun = writeCheckoutReadinessVerifierFixture(tempDir, "waiting", waitingStatus);
+  const waitingVerifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      verifierPath,
+      "--file",
+      waitingRun.resultFile,
+      "--diagnostic-dir",
+      waitingRun.diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-checkout",
+      "--require-checkout-operation-readiness-status"
+    ],
+    { encoding: "utf8" }
+  );
+  assert.equal(waitingVerifier.status, 0, waitingVerifier.stderr);
+
+  const missingStartRun = writeCheckoutReadinessVerifierFixture(tempDir, "missing-start", waitingStatus, false);
+  const missingStartVerifier = childProcess.spawnSync(
+    process.execPath,
+    [
+      verifierPath,
+      "--file",
+      missingStartRun.resultFile,
+      "--diagnostic-dir",
+      missingStartRun.diagnosticDir,
+      "--app-id",
+      "480",
+      "--platform",
+      "darwin/arm64",
+      "--action",
+      "presenter-checkout",
+      "--require-checkout-operation-readiness-status"
+    ],
+    { encoding: "utf8" }
+  );
+  assert.notEqual(missingStartVerifier.status, 0);
+  assert.match(missingStartVerifier.stderr, /checkout managed operation started after readiness handling/);
 });
 
 test("smoke result verifier accepts unavailable macOS passive notification evidence", (t) => {
@@ -7828,6 +7967,421 @@ test("electron overlay helper converts BrowserWindow content DIP to Win32 screen
   assert.deepEqual(convertedBounds, contentBounds);
 });
 
+test("electron overlay installs KWin client-geometry synchronization in a KDE Wayland session", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessPropertyForTest(t, "argv", [
+    "electron",
+    "--ozone-platform=x11",
+    "--ozone-platform",
+    "wayland"
+  ]);
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-kwin-sync-"));
+  t.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0",
+    KDE_FULL_SESSION: "true",
+    XDG_CURRENT_DESKTOP: "KDE",
+    XDG_RUNTIME_DIR: runtimeDir
+  });
+  let loadedScript;
+  const spawnCalls = mockSpawnSyncForTest(t, (_command, args) => {
+    if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+      loadedScript = fs.readFileSync(args[3], "utf8");
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  });
+  const electron = require(distFile("electron.js"));
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getContentBounds() {
+      return { x: 0, y: 0, width: 1024, height: 768 };
+    },
+    webContents: {
+      invalidate() {}
+    }
+  };
+
+  const options = electron.electronOverlayPresenterOptions(window);
+  electron.electronOverlayPresenterOptions(window);
+
+  assert.equal(options.useStandaloneLinuxHost, true);
+  assert.equal(options.nativeWindowHandle, undefined);
+  assert.deepEqual(electron.getKWinWaylandOverlayHostSyncStatus(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6"
+  });
+  assert.deepEqual(
+    spawnCalls.map((call) => [call.command, call.args[2]]),
+    [
+      ["qdbus6", "org.kde.kwin.Scripting.unloadScript"],
+      ["qdbus6", "org.kde.kwin.Scripting.loadScript"],
+      ["qdbus6", "org.kde.kwin.Scripting.start"]
+    ]
+  );
+  const scriptPath = spawnCalls[1].args[3];
+  assert.equal(path.dirname(scriptPath), runtimeDir);
+  assert.equal(fs.existsSync(scriptPath), false);
+  const script = loadedScript;
+  assert.equal(typeof script, "string");
+  assert.match(script, /const geometryMatches = candidates\.filter/);
+  assert.match(script, /geometryMatches\.indexOf\(activeWindow\)/);
+  assert.match(script, /host\.frameGeometry = source\.clientGeometry/);
+  assert.match(script, /host\.fullScreen = source\.fullScreen/);
+  assert.match(script, /host\.minimized = true/);
+  assert.match(script, /host\.minimized = false/);
+  assert.match(script, /host\.skipSwitcher = true/);
+  assert.match(script, /workspace\.windowAdded\.connect/);
+});
+
+test("electron overlay reuses a bounds-backed Xwayland host across native Wayland activations", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessPropertyForTest(t, "argv", ["electron"]);
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0"
+  });
+
+  const contentBounds = { x: 12, y: 34, width: 1024, height: 768 };
+  let hostOpen = false;
+  let fullScreen = true;
+  let minimized = false;
+  let visible = true;
+  let nativeHandleReads = 0;
+  const windowHandlers = new Map();
+  const fake = createFakeNative({
+    attachNativeOverlayHostWindow(x, y, width, height, initialFullScreen) {
+      hostOpen = true;
+      this.calls.push({
+        method: "attachNativeOverlayHostWindow",
+        args: [x, y, width, height, initialFullScreen]
+      });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    hideNativeOverlayHostView() {
+      this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(value) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [value] });
+    },
+    setNativeOverlayHostOpacity(value) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [value] });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+    },
+    setNativeOverlayHostFullScreen(value) {
+      this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [value] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      nativeHandleReads += 1;
+      throw new Error("Wayland native handles must not be parsed as X11 window IDs");
+    },
+    getContentBounds() {
+      return contentBounds;
+    },
+    isFullScreen() {
+      return fullScreen;
+    },
+    isMinimized() {
+      return minimized;
+    },
+    isVisible() {
+      return visible;
+    },
+    on(event, handler) {
+      windowHandlers.set(event, handler);
+    },
+    off(event, handler) {
+      if (windowHandlers.get(event) === handler) {
+        windowHandlers.delete(event);
+      }
+    },
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Wayland Managed Overlay",
+    pollIntervalMs: 10000
+  });
+
+  assert.equal(nativeHandleReads, 0);
+  assert.equal(overlay.snapshot().backend, "x11-glx");
+  assert.equal(overlay.snapshot().nativeHostOpen, true);
+  assert.deepEqual(overlay.snapshot().bounds, contentBounds);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow"),
+    [{ method: "attachNativeOverlayHostWindow", args: [12, 34, 1024, 768, true] }]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen"),
+    [{ method: "setNativeOverlayHostFullScreen", args: [true] }]
+  );
+  assert.equal(fake.calls.some((call) => call.method === "attachNativeOverlayHostView"), false);
+
+  const initialShowCount = fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length;
+  const overlayActivated = fake.callbacks.get(steam.SteamCallback.GameOverlayActivated);
+  assert.equal(typeof overlayActivated, "function");
+
+  minimized = true;
+  windowHandlers.get("minimize")();
+  assert.equal(overlay.snapshot().mode, "hidden");
+  assert.equal(fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length, 1);
+  minimized = false;
+  windowHandlers.get("restore")();
+  assert.equal(overlay.snapshot().mode, "passive");
+  assert.equal(
+    fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length,
+    initialShowCount + 1
+  );
+
+  minimized = true;
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length === 2,
+      500
+    ),
+    true
+  );
+  minimized = false;
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length === initialShowCount + 2,
+      500
+    ),
+    true
+  );
+
+  overlayActivated({ active: true });
+  overlayActivated({ active: false });
+  assert.equal(fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length, 3);
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length === initialShowCount + 3,
+      500
+    ),
+    true
+  );
+
+  overlayActivated({ active: true });
+  overlayActivated({ active: false });
+  assert.equal(fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length, 4);
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length === initialShowCount + 4,
+      500
+    ),
+    true
+  );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow").length,
+    1
+  );
+  assert.equal(overlay.snapshot().nativeSurfaceAttachCount, 1);
+
+  fullScreen = false;
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen"),
+    [
+      { method: "setNativeOverlayHostFullScreen", args: [true] },
+      { method: "setNativeOverlayHostFullScreen", args: [false] }
+    ]
+  );
+
+  overlay.close();
+  assert.equal(hostOpen, false);
+
+  const attachCountBeforeSession = fake.calls.filter(
+    (call) => call.method === "attachNativeOverlayHostWindow"
+  ).length;
+  const sessionOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Wayland Session Overlay",
+    presenterMode: "session",
+    pollIntervalMs: 10000
+  });
+  assert.equal(sessionOverlay.snapshot().electronOverlay.presenterMode, "session");
+  assert.equal(sessionOverlay.snapshot().electronOverlay.effectivePresenterMode, "persistent");
+  assert.equal(sessionOverlay.snapshot().attached, true);
+  assert.equal(sessionOverlay.snapshot().mode, "passive");
+  assert.equal(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow").length,
+    attachCountBeforeSession + 1
+  );
+  sessionOverlay.close();
+  assert.equal(hostOpen, false);
+});
+
+test("electron native overlay session follows Wayland bounds and fullscreen state through Xwayland", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessPropertyForTest(t, "argv", ["electron"]);
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0"
+  });
+
+  let bounds = { x: 0, y: 0, width: 1280, height: 800 };
+  let fullScreen = true;
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostWindow(x, y, width, height, initialFullScreen) {
+      hostOpen = true;
+      this.calls.push({
+        method: "attachNativeOverlayHostWindow",
+        args: [x, y, width, height, initialFullScreen]
+      });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+    },
+    setNativeOverlayHostFullScreen(value) {
+      this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [value] });
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    hideNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough(value) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [value] });
+    },
+    setNativeOverlayHostOpacity(value) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [value] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const electron = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      throw new Error("Wayland native handles must not be parsed as X11 window IDs");
+    },
+    getContentBounds() {
+      return bounds;
+    },
+    isFullScreen() {
+      return fullScreen;
+    },
+    webContents: {
+      invalidate() {}
+    }
+  };
+
+  const session = steam.overlay.startNativeOverlaySession(
+    electron.electronNativeOverlaySessionOptions(window, { pumpIntervalMs: 10000 })
+  );
+  assert.equal(session.snapshot().nativeHostOpen, true);
+  assert.equal(session.snapshot().nativeProbeOpen, false);
+  assert.equal(session.snapshot().fullScreen, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow"),
+    [{ method: "attachNativeOverlayHostWindow", args: [0, 0, 1280, 800, true] }]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] }
+  );
+
+  bounds = { x: 100, y: 80, width: 960, height: 640 };
+  fullScreen = false;
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostBounds"),
+    [{ method: "setNativeOverlayHostBounds", args: [100, 80, 960, 640] }]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen"),
+    [
+      { method: "setNativeOverlayHostFullScreen", args: [true] },
+      { method: "setNativeOverlayHostFullScreen", args: [false] }
+    ]
+  );
+  assert.equal(session.snapshot().fullScreen, false);
+
+  session.close();
+  assert.equal(hostOpen, false);
+});
+
+test("electron overlay options treat macOS simple fullscreen as fullscreen", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  const electron = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+
+  const options = electron.electronOverlayPresenterOptions({
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([1, 2, 3, 4]);
+    },
+    getContentBounds() {
+      return { x: 10, y: 20, width: 1280, height: 720 };
+    },
+    isFullScreen() {
+      return false;
+    },
+    isSimpleFullScreen() {
+      return true;
+    },
+    webContents: {
+      invalidate() {}
+    }
+  });
+
+  assert.equal(options.getFullScreen(), true);
+});
+
 test("electron steam overlay manager scrubs Steam overlay preload from child process env by default", (t) => {
   setProcessEnvForTest(t, {
     LD_PRELOAD:
@@ -8146,6 +8700,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     restoreFocusDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
+    activationWarmupMs: 0,
+    activationWarmupRemainingMs: 0,
+    activationWarmupReady: true,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
@@ -9677,6 +10234,9 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     restoreFocusDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
+    activationWarmupMs: 0,
+    activationWarmupRemainingMs: 0,
+    activationWarmupReady: true,
     overlayShortcut: {
       enabled: true,
       preventDefault: true,
@@ -9714,8 +10274,8 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     [
       { method: "attachNativeOverlayHostView", args: [hostHandle] },
       { method: "showNativeOverlayHostView", args: [] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
-      { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
@@ -10639,13 +11199,17 @@ test("electron steam overlay direct wait waits for overlay readiness before acti
 
   const overlay = steam.overlay.createElectronSteamOverlay(window, {
     title: "Electron Direct Wait Readiness Overlay",
-    pollIntervalMs: 50
+    pollIntervalMs: 50,
+    activationWarmupMs: 240
   });
 
   const status = overlay.getWebOpenStatus("https://store.steampowered.com/app/480/", { modal: true });
   assert.equal(status.canOpen, false);
   assert.equal(status.canWait, true);
   assert.equal(status.reason, "overlay-not-ready");
+  assert.equal(status.snapshot.electronOverlay.activationWarmupMs, 240);
+  assert.equal(status.snapshot.electronOverlay.activationWarmupReady, false);
+  assert.equal(status.snapshot.electronOverlay.activationWarmupRemainingMs > 0, true);
 
   const directOpen = overlay.openWebAndWaitIfAvailable(
     "https://store.steampowered.com/app/480/",
@@ -10654,10 +11218,67 @@ test("electron steam overlay direct wait waits for overlay readiness before acti
   );
   assert.notEqual(directOpen, null);
 
+  const reservedStatus = overlay.getWebOpenStatus(
+    "https://store.steampowered.com/app/480/",
+    { modal: true }
+  );
+  assert.equal(reservedStatus.canOpen, false);
+  assert.equal(reservedStatus.canWait, false);
+  assert.equal(reservedStatus.reason, "opening");
+  assert.equal(
+    await overlay.openWebAndWaitIfAvailable(
+      "https://store.steampowered.com/app/480/",
+      { modal: true },
+      { showTimeoutMs: 500, closeTimeoutMs: 500 }
+    ),
+    null
+  );
+  const reservedCheckoutStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(reservedCheckoutStatus.canStartOperation, false);
+  assert.equal(reservedCheckoutStatus.canWait, false);
+  assert.equal(reservedCheckoutStatus.reason, "opening");
+  let checkoutOperationRan = false;
+  assert.equal(
+    await overlay.openCheckoutAndWaitIfAvailable(() => {
+      checkoutOperationRan = true;
+      return { steamurl: "https://checkout.steampowered.com/checkout/approvetxn/1/" };
+    }),
+    null
+  );
+  assert.equal(checkoutOperationRan, false);
+  await assert.rejects(
+    overlay.openCheckoutAndWait(() => {
+      checkoutOperationRan = true;
+      return { steamurl: "https://checkout.steampowered.com/checkout/approvetxn/2/" };
+    }),
+    /already opening/
+  );
+  await assert.rejects(
+    overlay.withCheckoutPrepared(() => {
+      checkoutOperationRan = true;
+    }),
+    /already opening/
+  );
+  assert.throws(() => overlay.prepareForCheckout(), /already opening/);
+  assert.equal(checkoutOperationRan, false);
+
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.deepEqual(steamWebOverlayCalls(fake), []);
+  const warmingSnapshot = overlay.snapshot();
+  assert.equal(warmingSnapshot.mode, "passive");
+  assert.equal(warmingSnapshot.clickThrough, true);
+  assert.equal(warmingSnapshot.transparent, true);
+  assert.equal(warmingSnapshot.currentFps, 0);
+  assert.equal(
+    fake.calls.some(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    ),
+    false
+  );
 
   overlayEnabled = true;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(steamWebOverlayCalls(fake), []);
   await waitForNextSteamWebOverlayCall(fake, 0, ["https://store.steampowered.com/app/480/", true]);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
@@ -12808,7 +13429,7 @@ test("electron steam overlay openAndWait waits for overlay readiness before acti
   overlay.close();
 });
 
-test("electron steam overlay openAndWait releases presenter hold when readiness times out", async (t) => {
+test("electron steam overlay openAndWait keeps the presenter passive when readiness times out", async (t) => {
   setProcessPlatformForTest(t, "linux");
   const hostHandle = Buffer.from([4, 8, 1, 7]);
   let hostOpen = false;
@@ -12889,8 +13510,10 @@ test("electron steam overlay openAndWait releases presenter hold when readiness 
       assert.equal(error.code, "STEAM_OVERLAY_WAIT_TIMEOUT");
       assert.equal(error.state, "be ready");
       assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
-      assert.equal(error.snapshot.mode, "active");
-      assert.equal(error.snapshot.currentFps, 30);
+      assert.equal(error.snapshot.mode, "passive");
+      assert.equal(error.snapshot.clickThrough, true);
+      assert.equal(error.snapshot.transparent, true);
+      assert.equal(error.snapshot.currentFps, 0);
       return true;
     }
   );
@@ -14220,8 +14843,8 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
       { method: "closeNativeOverlayProbeWindow", args: [] },
       { method: "attachNativeOverlayHostView", args: [hostHandle] },
       { method: "showNativeOverlayHostView", args: [] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
-      { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlay", args: ["Friends"] },
       { method: "hideNativeOverlayHostView", args: [] },
@@ -15317,11 +15940,27 @@ test("native overlay session presents shared textures and owned CPU fallback fra
       contentX,
       contentY,
       contentWidth,
-      contentHeight
+      contentHeight,
+      presentationX,
+      presentationY,
+      presentationWidth,
+      presentationHeight
     ) {
       this.calls.push({
         method: "updateNativeOverlayHostSharedTexture",
-        args: [handle, width, height, contentX, contentY, contentWidth, contentHeight]
+        args: [
+          handle,
+          width,
+          height,
+          contentX,
+          contentY,
+          contentWidth,
+          contentHeight,
+          presentationX,
+          presentationY,
+          presentationWidth,
+          presentationHeight
+        ]
       });
     },
     setNativeOverlayHostCursorHidden(hidden) {
@@ -15511,11 +16150,16 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     handle: sharedHandle,
     width: 1024,
     height: 768,
-    contentRect: { x: 4, y: 5, width: 1000, height: 700 }
+    contentRect: { x: 4, y: 5, width: 1000, height: 700 },
+    presentationRect: { x: 1, y: 2, width: 1023, height: 766 }
   });
-  const sharedUpload = fake.calls.find((call) => call.method === "updateNativeOverlayHostSharedTexture");
+  let sharedUploads = fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture");
+  const sharedUpload = sharedUploads[0];
   assert.equal(sharedUpload.args[0], sharedHandle);
-  assert.deepEqual(sharedUpload.args.slice(1), [1024, 768, 4, 5, 1000, 700]);
+  assert.deepEqual(sharedUpload.args.slice(1), [1024, 768, 4, 5, 1000, 700, 1, 2, 1023, 766]);
+  session.updateSharedTexture({ handle: sharedHandle, width: 320, height: 240 });
+  sharedUploads = fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture");
+  assert.deepEqual(sharedUploads[1].args.slice(1), [320, 240, 0, 0, 320, 240, 0, 0, 320, 240]);
   assert.throws(
     () => session.updateFrame({ data: frame, width: Number.NaN, height: 1 }),
     /frame width must be a finite number/
@@ -15534,9 +16178,19 @@ test("native overlay session presents shared textures and owned CPU fallback fra
       }),
     /contentRect 1000,0 100x768 exceeds 1024x768/
   );
+  assert.throws(
+    () =>
+      session.updateSharedTexture({
+        handle: sharedHandle,
+        width: 1024,
+        height: 768,
+        presentationRect: { x: 0, y: 700, width: 1024, height: 100 }
+      }),
+    /presentationRect 0,700 1024x100 exceeds 1024x768/
+  );
   assert.equal(
     fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
-    pumpsBeforeFrame + 2
+    pumpsBeforeFrame + 3
   );
   assert.deepEqual(receivedInputEvents, [
     {
@@ -17075,6 +17729,97 @@ test("native overlay presenter keeps passive input while overlay needs present",
   assert.equal(presenter.snapshot().clickThrough, true);
   assert.equal(presenter.snapshot().transparent, false);
 
+  presenter.close();
+});
+
+test("standalone Linux presenter stays transparent for passive notification pulses", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessEnvForTest(t, { DISPLAY: ":0" });
+  let hostOpen = false;
+  let overlayNeedsPresent = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostWindow(x, y, width, height, fullScreen) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostWindow", args: [x, y, width, height, fullScreen] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    hideNativeOverlayHostView() {
+      this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(value) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [value] });
+    },
+    setNativeOverlayHostOpacity(value) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [value] });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+    },
+    setNativeOverlayHostFullScreen(value) {
+      this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [value] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "/tmp/steam",
+        appId: 480,
+        overlayEnabled: true,
+        overlayNeedsPresent,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: true,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    getBounds: () => ({ x: 10, y: 20, width: 1024, height: 700 }),
+    useStandaloneLinuxHost: true,
+    idleFps: 0,
+    pollIntervalMs: 50,
+    activeGraceMs: 0,
+    activationBoostMs: 0
+  });
+
+  presenter.prepareForPassiveOverlay();
+  const initialPumpCount = presenter.snapshot().pumpCount;
+  overlayNeedsPresent = true;
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().overlayNeedsPresent === true, 500, 5),
+    true
+  );
+  assert.equal(presenter.snapshot().mode, "passive");
+  assert.equal(presenter.snapshot().clickThrough, true);
+  assert.equal(presenter.snapshot().transparent, true);
+  assert.equal(presenter.snapshot().currentFps, presenter.snapshot().needsPresentFps);
+  assert.equal(
+    await waitForCondition(() => presenter.snapshot().pumpCount > initialPumpCount, 500, 5),
+    true
+  );
+  assert.equal(
+    fake.calls.some((call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true),
+    false
+  );
+
+  presenter.prepareForOverlay(0);
+  assert.equal(presenter.snapshot().transparent, false);
   presenter.close();
 });
 

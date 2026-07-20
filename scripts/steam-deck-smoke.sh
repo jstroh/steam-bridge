@@ -29,6 +29,9 @@ achievement_max=""
 result_file="/tmp/steam-bridge-smoke-steam-launch.log"
 result_delay_ms="8000"
 keep_open_after_result="0"
+control_server="0"
+control_file=""
+control_token=""
 timeout_seconds="90"
 shortcut_game_id="auto"
 app_name="Steam Bridge Smoke"
@@ -119,6 +122,9 @@ Options:
   --result-file PATH            Remote result log path.
   --result-delay-ms MS          Autorun result delay. Defaults to 8000.
   --keep-open-after-result      Write the result but leave the app running.
+  --control-server              Start the smoke app's localhost control server.
+  --control-file PATH           File where the smoke app writes control connection JSON.
+  --control-token TOKEN         Token required by the localhost control server.
   --timeout-seconds SECONDS     Result wait timeout. Defaults to 90.
   --shortcut-game-id ID|auto    Full steam://rungameid shortcut ID. Defaults to auto.
   --app-name NAME               Shortcut name to auto-discover.
@@ -285,6 +291,18 @@ while [ "$#" -gt 0 ]; do
       keep_open_after_result="1"
       shift
       ;;
+    --control-server)
+      control_server="1"
+      shift
+      ;;
+    --control-file)
+      control_file="${2:?missing --control-file value}"
+      shift 2
+      ;;
+    --control-token)
+      control_token="${2:?missing --control-token value}"
+      shift 2
+      ;;
     --timeout-seconds)
       timeout_seconds="${2:?missing --timeout-seconds value}"
       shift 2
@@ -443,7 +461,18 @@ case "$presenter_mode" in
     ;;
 esac
 
+if [ "$control_server" = "1" ] && [ -z "$control_file" ]; then
+  echo "--control-server requires --control-file so a later QA action can discover the localhost endpoint." >&2
+  exit 2
+fi
+if [ "$control_server" != "1" ] && { [ -n "$control_file" ] || [ -n "$control_token" ]; }; then
+  echo "--control-file and --control-token require --control-server." >&2
+  exit 2
+fi
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+kwin_active_window_probe="$repo_root/scripts/kwin-active-window-probe.js"
+remote_kwin_active_window_probe="/tmp/steam-bridge-kwin-active-window-probe.js"
 if [ -z "$local_app_dir" ]; then
   local_app_dir="$repo_root/dist/electron-smoke/x86_64-unknown-linux-gnu/SteamBridgeSmoke-linux-x64"
 fi
@@ -463,6 +492,12 @@ quote_args() {
 
 remote_exec() {
   ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$1"
+}
+
+copy_kwin_active_window_probe() {
+  scp -q -o BatchMode=yes -o ConnectTimeout="$connect_timeout" \
+    "$kwin_active_window_probe" \
+    "$host:$remote_kwin_active_window_probe"
 }
 
 collect_remote_diagnostics() {
@@ -514,7 +549,14 @@ capture_deck_screenshot() {
   done
   [ -s $remote_path_q ] || { echo 'Gamescope screenshot was not written.' >&2; exit 1; }
 elif command -v spectacle >/dev/null 2>&1; then
-  spectacle -b -n -o $remote_path_q >/dev/null 2>&1
+  for attempt in 1 2 3; do
+    rm -f $remote_path_q
+    if timeout 15 spectacle -b -n -o $remote_path_q >/dev/null 2>&1 && [ -s $remote_path_q ]; then
+      break
+    fi
+    sleep 0.5
+  done
+  [ -s $remote_path_q ] || { echo 'Spectacle screenshot was not written after three attempts.' >&2; exit 1; }
 elif command -v gnome-screenshot >/dev/null 2>&1; then
   gnome-screenshot -f $remote_path_q
 else
@@ -936,7 +978,7 @@ verify_deck_overlay_closed_after_probe() {
   result_file_q="$(quote_arg "$result_file")"
   app_name_q="$(quote_arg "$app_name")"
   echo "Verifying Deck overlay close/deactivation evidence"
-  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q ACTION=$(quote_arg "$action") REQUIRE_SHORTCUT_OPEN=$require_shortcut_open REQUIRE_PRESENTER_PARKING=$require_presenter_parking python3 - <<'PY'
+  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q ACTION=$(quote_arg "$action") REQUIRE_SHORTCUT_OPEN=$require_shortcut_open REQUIRE_PRESENTER_PARKING=$require_presenter_parking KWIN_ACTIVE_WINDOW_PROBE=$(quote_arg "$remote_kwin_active_window_probe") python3 - <<'PY'
 import glob
 import json
 import os
@@ -1200,54 +1242,144 @@ process_check = subprocess.run(
 if process_check.returncode != 0 or not process_check.stdout.strip():
     failures.append('SteamBridgeSmoke process is not running after close probe')
 
-focus_env = os.environ.copy()
-if not focus_env.get('XAUTHORITY'):
-    xauth_candidates = glob.glob('/run/user/1000/xauth_*')
-    if xauth_candidates:
-        focus_env['XAUTHORITY'] = xauth_candidates[0]
+def read_kwin_active_window():
+    probe_path = os.environ.get('KWIN_ACTIVE_WINDOW_PROBE') or ''
+    qdbus = shutil.which('qdbus6') or shutil.which('qdbus')
+    journalctl = shutil.which('journalctl')
+    if not probe_path or not os.path.isfile(probe_path) or not qdbus or not journalctl:
+        return False, None
 
-if shutil.which('xdotool') is None:
-    failures.append('could not read focused X11 window after close probe')
-else:
-    game_mode = subprocess.run(
-        ['systemctl', '--user', 'is-active', '--quiet', 'gamescope-session.service'],
-        stdout=subprocess.DEVNULL,
+    plugin_name = 'steam-bridge-focus-probe'
+    cursor_result = subprocess.run(
+        [journalctl, '--user', '-n', '0', '--show-cursor', '--no-pager'],
+        text=True,
+        stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
-    ).returncode == 0
-    display_candidates = [':1', ':0'] if game_mode else [focus_env.get('DISPLAY') or ':0', ':0']
-    expected = [app_name.lower(), 'steam bridge electron smoke', 'steambridgesmoke']
-    focused_window_read = False
-    smoke_app_focused = False
-    for display in dict.fromkeys(display_candidates):
-        display_env = focus_env.copy()
-        display_env['DISPLAY'] = display
-        focus_id = subprocess.run(
-            ['xdotool', 'getwindowfocus'],
-            env=display_env,
+    )
+    cursor = next(
+        (
+            line.split(':', 1)[1].strip()
+            for line in cursor_result.stdout.splitlines()
+            if line.startswith('-- cursor:')
+        ),
+        '',
+    )
+    unload = [
+        qdbus,
+        'org.kde.KWin',
+        '/Scripting',
+        'org.kde.kwin.Scripting.unloadScript',
+        plugin_name,
+    ]
+    subprocess.run(unload, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        loaded = subprocess.run(
+            [
+                qdbus,
+                'org.kde.KWin',
+                '/Scripting',
+                'org.kde.kwin.Scripting.loadScript',
+                probe_path,
+                plugin_name,
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        if focus_id.returncode != 0 or not focus_id.stdout.strip():
-            continue
-        focus_name_result = subprocess.run(
-            ['xdotool', 'getwindowname', focus_id.stdout.strip()],
-            env=display_env,
+        if loaded.returncode != 0:
+            return False, None
+        started = subprocess.run(
+            [qdbus, 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.start'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if started.returncode != 0:
+            return False, None
+        time.sleep(0.25)
+        journal_args = [journalctl, '--user', '--no-pager', '-o', 'cat']
+        if cursor:
+            journal_args.extend(['--after-cursor', cursor])
+        else:
+            journal_args.append('--since=5sec')
+        journal = subprocess.run(
+            journal_args,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
-        if focus_name_result.returncode != 0:
-            continue
-        focused_window_read = True
-        focus_name_lower = focus_name_result.stdout.strip().lower()
-        if any(name and name in focus_name_lower for name in expected):
-            smoke_app_focused = True
-            break
-    if not focused_window_read:
+        marker = 'STEAM_BRIDGE_KWIN_ACTIVE '
+        for line in reversed(journal.stdout.splitlines()):
+            marker_index = line.find(marker)
+            if marker_index < 0:
+                continue
+            try:
+                return True, json.loads(line[marker_index + len(marker):])
+            except json.JSONDecodeError:
+                return True, None
+        return False, None
+    finally:
+        subprocess.run(unload, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+expected = [app_name.lower(), 'steam bridge electron smoke', 'steambridgesmoke']
+kwin_focus_read, kwin_active_window = read_kwin_active_window()
+if kwin_focus_read:
+    if not isinstance(kwin_active_window, dict):
+        failures.append('KWin reported no active window after close probe')
+    else:
+        active_identity = ' '.join(
+            str(kwin_active_window.get(key) or '').lower()
+            for key in ('caption', 'resourceClass', 'resourceName')
+        )
+        if not any(name and name in active_identity for name in expected):
+            failures.append('KWin active window after close probe is not the smoke app')
+else:
+    focus_env = os.environ.copy()
+    if not focus_env.get('XAUTHORITY'):
+        xauth_candidates = glob.glob('/run/user/1000/xauth_*')
+        if xauth_candidates:
+            focus_env['XAUTHORITY'] = xauth_candidates[0]
+
+    if shutil.which('xdotool') is None:
         failures.append('could not read focused X11 window after close probe')
-    elif not smoke_app_focused:
-        failures.append('focused window after close probe is not the smoke app')
+    else:
+        game_mode = subprocess.run(
+            ['systemctl', '--user', 'is-active', '--quiet', 'gamescope-session.service'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+        display_candidates = [':1', ':0'] if game_mode else [focus_env.get('DISPLAY') or ':0', ':0']
+        focused_window_read = False
+        smoke_app_focused = False
+        for display in dict.fromkeys(display_candidates):
+            display_env = focus_env.copy()
+            display_env['DISPLAY'] = display
+            focus_id = subprocess.run(
+                ['xdotool', 'getwindowfocus'],
+                env=display_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            if focus_id.returncode != 0 or not focus_id.stdout.strip():
+                continue
+            focus_name_result = subprocess.run(
+                ['xdotool', 'getwindowname', focus_id.stdout.strip()],
+                env=display_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            if focus_name_result.returncode != 0:
+                continue
+            focused_window_read = True
+            focus_name_lower = focus_name_result.stdout.strip().lower()
+            if any(name and name in focus_name_lower for name in expected):
+                smoke_app_focused = True
+                break
+        if not focused_window_read:
+            failures.append('could not read focused X11 window after close probe')
+        elif not smoke_app_focused:
+            failures.append('focused window after close probe is not the smoke app')
 
 if failures:
     for failure in failures:
@@ -1438,10 +1570,18 @@ send_deck_overlay_escape_probe() {
   echo 'SteamUI Escape probe requires xdotool.' >&2
   exit 127
 fi
+if [ -z \"\${XAUTHORITY:-}\" ]; then
+  XAUTHORITY=\"\$(ls -t /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"
+  export XAUTHORITY
+fi
 escape_display=\"\${DISPLAY:-:0}\"
 if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null &&
   DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1; then
   escape_display=:0
+fi
+if ! DISPLAY=\"\$escape_display\" xdotool getdisplaygeometry >/dev/null 2>&1; then
+  echo \"SteamUI Escape probe could not authenticate to X11 display \$escape_display.\" >&2
+  exit 1
 fi
 DISPLAY=\"\$escape_display\" xdotool key Escape"
 }
@@ -1847,7 +1987,7 @@ supports_close_deactivation_check() {
 
 prepare_remote_wrapper() {
   local app_dir_q env_q wrapper_q wrapper_dir_q
-  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q user_dialog_q shortcut_target_q presenter_mode_q achievement_name_q achievement_current_q achievement_max_q
+  local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q control_server_q control_file_q control_token_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q user_dialog_q shortcut_target_q presenter_mode_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
   if [ "$action" = "store" ] || [ "$action" = "web" ] || [ "$action" = "presenter-store" ] || [ "$action" = "presenter-store-open-and-wait" ] || [ "$action" = "presenter-web" ] || [ "$action" = "presenter-web-open-and-wait" ] || [ "$action" = "presenter-duplicate-open-guard" ] || [ "$action" = "presenter-friends" ] || [ "$action" = "presenter-friends-open-and-wait" ] || [ "$action" = "presenter-profile" ] || [ "$action" = "presenter-players" ] || [ "$action" = "presenter-dialog-auto" ] || [ "$action" = "presenter-dialog-auto-open-and-wait" ] || [ "$action" = "presenter-community" ] || [ "$action" = "presenter-stats" ] || [ "$action" = "presenter-achievements" ] || [ "$action" = "presenter-user" ]; then
@@ -1873,6 +2013,9 @@ prepare_remote_wrapper() {
   action_delay_q="$(quote_arg "1500")"
   result_delay_q="$(quote_arg "$result_delay_ms")"
   keep_open_q="$(quote_arg "$keep_open_after_result")"
+  control_server_q="$(quote_arg "$control_server")"
+  control_file_q="$(quote_arg "$control_file")"
+  control_token_q="$(quote_arg "$control_token")"
   require_active_q="$(quote_arg "$require_overlay_active")"
   web_url_q="$(quote_arg "$web_url")"
   web_modal_q="$(quote_arg "$web_modal")"
@@ -1904,6 +2047,9 @@ DIAGNOSTIC_DIR=$diagnostic_dir_q
 ACTION_DELAY_MS=$action_delay_q
 RESULT_DELAY_MS=$result_delay_q
 KEEP_OPEN_AFTER_RESULT=$keep_open_q
+CONTROL_SERVER=$control_server_q
+CONTROL_FILE=$control_file_q
+CONTROL_TOKEN=$control_token_q
 REQUIRE_OVERLAY_ACTIVE=$require_active_q
 WEB_URL=$web_url_q
 WEB_MODAL=$web_modal_q
@@ -1942,6 +2088,9 @@ RESULT_FILE=\"\${RESULT_FILE:-/tmp/steam-bridge-smoke-default.log}\"
 DIAGNOSTIC_DIR=\"\${DIAGNOSTIC_DIR:-\$RESULT_FILE.diagnostics}\"
 ACTION_DELAY_MS=\"\${ACTION_DELAY_MS:-1500}\"
 RESULT_DELAY_MS=\"\${RESULT_DELAY_MS:-8000}\"
+CONTROL_SERVER=\"\${CONTROL_SERVER:-0}\"
+CONTROL_FILE=\"\${CONTROL_FILE:-}\"
+CONTROL_TOKEN=\"\${CONTROL_TOKEN:-}\"
 KEEP_OPEN_AFTER_RESULT=\"\${KEEP_OPEN_AFTER_RESULT:-0}\"
 REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
 WEB_URL=\"\${WEB_URL:-}\"
@@ -1980,6 +2129,13 @@ export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION=\"\$AUTORUN_ACTION\"
 export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS=\"\$ACTION_DELAY_MS\"
 export STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=\"\$RESULT_DELAY_MS\"
 export STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT=\"\$KEEP_OPEN_AFTER_RESULT\"
+export STEAM_BRIDGE_SMOKE_CONTROL_SERVER=\"\$CONTROL_SERVER\"
+if [ -n \"\$CONTROL_FILE\" ]; then
+  export STEAM_BRIDGE_SMOKE_CONTROL_FILE=\"\$CONTROL_FILE\"
+fi
+if [ -n \"\$CONTROL_TOKEN\" ]; then
+  export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN=\"\$CONTROL_TOKEN\"
+fi
 export STEAM_BRIDGE_SMOKE_RESULT_FILE=\"\$RESULT_FILE\"
 export STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR=\"\$DIAGNOSTIC_DIR\"
 export STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE=\"\$REQUIRE_OVERLAY_ACTIVE\"
@@ -2151,6 +2307,10 @@ build_steam_launch_args() {
   elif [ "$action" = "presenter-ready" ]; then
     helper_args+=("--require-event" "overlay:presenter-ready")
     helper_args+=("--require-no-overlay-activation")
+  elif [ "$action" = "renderer-frame-rate" ]; then
+    helper_args+=("--require-event" "renderer:frame-rate-sample")
+    helper_args+=("--require-no-overlay-activation")
+    helper_args+=("--require-no-crashes")
   elif [ "$action" = "presenter-shortcut" ]; then
     helper_args+=("--require-event" "overlay:presenter-shortcut-ready")
   elif [ "$action" = "presenter-checkout" ]; then
@@ -2181,6 +2341,7 @@ build_steam_launch_args() {
 
   if [ "$action" != "none" ] &&
     [ "$action" != "presenter-ready" ] &&
+    [ "$action" != "renderer-frame-rate" ] &&
     [ "$action" != "presenter-achievement-progress" ] &&
     [ "$action" != "presenter-achievement-unlock" ] &&
     [ "$action" != "presenter-dialog" ] &&
@@ -2376,6 +2537,9 @@ run_remote_mode() {
       if [ "$copy_app" = "1" ]; then
         copy_to_deck
       fi
+      if [ "$mode" = "desktop" ]; then
+        copy_kwin_active_window_probe
+      fi
       clear_deck_transient_shells
       start_keep_awake
       trap stop_keep_awake EXIT
@@ -2420,7 +2584,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args dialog_args friends_args open_wait_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check original_local_app_dir package_fixture
+  local game_args desktop_args renderer_args dialog_args friends_args open_wait_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check original_local_app_dir package_fixture
   original_local_app_dir="$local_app_dir"
   package_fixture="$(mktemp -d)"
   printf '%s\n' smoke >"$package_fixture/SteamBridgeSmoke"
@@ -2462,6 +2626,22 @@ run_self_test() {
   fi
   if [[ "$desktop_args" != *"--overlay-profile repaint"* ]]; then
     echo "Self-test failed: Desktop Mode args must default to the repaint overlay profile." >&2
+    exit 1
+  fi
+  action="renderer-frame-rate"
+  build_steam_launch_args
+  renderer_args="$(quote_args "${helper_args[@]}")"
+  if [[ "$renderer_args" != *"--require-event renderer:frame-rate-sample"* ]] ||
+    [[ "$renderer_args" != *"--require-no-overlay-activation"* ]] ||
+    [[ "$renderer_args" == *"--require-event callback:overlay-activated"* ]]; then
+    echo "Self-test failed: Renderer FPS diagnostics must require their sample without requiring overlay activation." >&2
+    exit 1
+  fi
+  action="dialog"
+  if ! grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_SERVER=\"\$CONTROL_SERVER\"' "$0" ||
+    ! grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_FILE=\"\$CONTROL_FILE\"' "$0" ||
+    ! grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN=\"\$CONTROL_TOKEN\"' "$0"; then
+    echo "Self-test failed: Steam shortcut wrapper must forward bounded localhost control configuration." >&2
     exit 1
   fi
   if ! grep -Fq 'export SteamOverlayGameId=\"\$OVERLAY_GAME_ID\"' "$0"; then
@@ -2546,8 +2726,20 @@ run_self_test() {
     echo "Self-test failed: Screenshot capture must select its tool from the active Deck session." >&2
     exit 1
   fi
+  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'Spectacle screenshot was not written after three attempts.'; then
+    echo "Self-test failed: Desktop screenshot capture must retry transient Spectacle failures." >&2
+    exit 1
+  fi
   if ! awk '/^run_visual_capture[(][)]/ { inside=1 } /^wait_for_deck_shortcut_overlay_open[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'send_deck_overlay_escape_probe'; then
     echo "Self-test failed: Game Mode close capture must support SteamUI Escape input." >&2
+    exit 1
+  fi
+  if ! sed -n '/^send_deck_overlay_escape_probe()/,/^}/p' "$0" | grep -Fq 'XAUTHORITY='; then
+    echo "Self-test failed: SteamUI Escape input must discover the active X11 authority for SSH-driven probes." >&2
+    exit 1
+  fi
+  if ! sed -n '/^send_deck_overlay_escape_probe()/,/^}/p' "$0" | grep -Fq 'xdotool getdisplaygeometry'; then
+    echo "Self-test failed: SteamUI Escape input must authenticate its target display before sending input." >&2
     exit 1
   fi
   if ! sed -n '/^persistent_presenter_parking_required()/,/^}/p' "$0" | grep -Fq 'is_presenter_product_action && uses_persistent_presenter'; then
