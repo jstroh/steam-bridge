@@ -1379,6 +1379,19 @@ test("electron smoke duplicate-open guard exercises the generic wait-if-availabl
   );
 });
 
+test("electron smoke initializes Steam before Electron readiness and display services", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const initIndex = exampleMain.indexOf("client = steamworks.init({ appId: APP_ID, callbackIntervalMs: 100 });");
+  const readyIndex = exampleMain.indexOf("app.whenReady().then(async () => {");
+  const displayServicesIndex = exampleMain.indexOf('const { screen } = require("electron");');
+
+  assert.notEqual(initIndex, -1, "smoke app should initialize Steam");
+  assert.notEqual(readyIndex, -1, "smoke app should wait for Electron readiness");
+  assert.notEqual(displayServicesIndex, -1, "smoke app should resolve Electron display services lazily");
+  assert.equal(initIndex < readyIndex, true, "Steam initialization must precede Electron readiness");
+  assert.equal(initIndex < displayServicesIndex, true, "Steam initialization must precede display services");
+});
+
 test("electron smoke resets achievement progress before every repeatable toast probe", () => {
   const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
   const setupStart = exampleMain.indexOf("async function prepareAchievementProgressTarget");
@@ -15705,13 +15718,17 @@ test("managed presenter terminal failure closes controller registrations and wak
         bigPicture: false
       };
     },
-    attachNativeOverlayHostViewForOverlay() {
+    attachNativeOverlayHostView() {
       hostOpen = true;
-      throw attachError;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [] });
     },
     pumpNativeOverlayProbeWindow() {},
     showNativeOverlayHostView() {},
-    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      if (!passThrough) {
+        throw attachError;
+      }
+    },
     setNativeOverlayHostOpacity() {},
     detachNativeOverlayHostView() {
       hostOpen = false;
@@ -15755,7 +15772,6 @@ test("managed presenter terminal failure closes controller registrations and wak
   });
   const shownWait = overlay.waitForOverlayShown({ timeoutMs: 500 });
   const readyWait = overlay.waitForOverlayReady({ timeoutMs: 500 });
-  overlayEnabled = true;
   assert.throws(() => overlay.presenter.prepareForOverlay(), (error) => error === attachError);
   await assert.rejects(shownWait, (error) => {
     assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
@@ -15765,7 +15781,7 @@ test("managed presenter terminal failure closes controller registrations and wak
   await assert.rejects(readyWait, (error) => {
     assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
     assert.equal(error.code, "STEAM_OVERLAY_WAIT_CLOSED");
-    assert.equal(error.snapshot.diagnostics.overlayEnabled, true);
+    assert.equal(error.snapshot.diagnostics.overlayEnabled, false);
     return true;
   });
   assert.equal(overlay.isOpen(), false);
@@ -17393,9 +17409,163 @@ test("Windows managed readiness waits do not full-refresh on unchanged lightweig
   assert.equal(diagnosticsDuringUnchangedTicks <= 3, true);
   assert.equal(overlayEnabledCallCount >= 2, true);
   assert.equal(
-    fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
-    0
+    fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length >= 3,
+    true
   );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostView").length,
+    1
+  );
+  assert.equal(overlay.snapshot().nativeHostOpen, true);
+  assert.equal(overlay.snapshot().clickThrough, true);
+  assert.equal(overlay.snapshot().transparent, true);
+  assert.equal(overlay.snapshot().currentFps, 0);
+});
+
+test("Windows managed open continuously presents until IsOverlayEnabled confirms the D3D hook", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let hostOpen = false;
+  let pumpCount = 0;
+  const hostHandle = Buffer.from([9, 0, 5, 1, 0, 0, 0, 0]);
+  const fake = createFakeNative({
+    isOverlayEnabled() {
+      return pumpCount >= 3;
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    attachNativeOverlayHostViewForOverlay(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostViewForOverlay", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      pumpCount += 1;
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "C:\\Program Files (x86)\\Steam",
+        appId: 480,
+        overlayEnabled: pumpCount >= 3,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    getContentBounds() {
+      return { x: 20, y: 30, width: 800, height: 600 };
+    },
+    once() {},
+    on() {},
+    off() {},
+    focus() {},
+    show() {},
+    webContents: {
+      once() {},
+      on() {},
+      off() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  t.after(clearSteamBridgeCache);
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    activeGraceMs: 0,
+    pollIntervalMs: 30
+  });
+  t.after(() => overlay.close());
+
+  const opening = overlay.openFriendsAndWait({}, { showTimeoutMs: 500, closeTimeoutMs: 500 });
+  assert.equal(fake.calls.some((call) => call.method === "activateOverlayToWebPage"), false);
+  assert.equal(
+    await waitForCondition(() => fake.calls.some((call) => call.method === "activateOverlayToWebPage"), 500, 5),
+    true
+  );
+
+  const attachIndex = fake.calls.findIndex((call) => call.method === "attachNativeOverlayHostView");
+  const presentIndexes = fake.calls
+    .map((call, index) => (call.method === "pumpNativeOverlayProbeWindow" ? index : -1))
+    .filter((index) => index >= 0);
+  const activateIndex = fake.calls.findIndex((call) => call.method === "activateOverlayToWebPage");
+  assert.equal(attachIndex >= 0 && attachIndex < activateIndex, true);
+  assert.equal(presentIndexes.filter((index) => index < activateIndex).length >= 3, true);
+
+  const overlayActivated = fake.callbacks.get(steam.SteamCallback.GameOverlayActivated);
+  overlayActivated({ active: true, app_id: 480 });
+  overlayActivated({ active: false, app_id: 480 });
+  const result = await opening;
+  assert.equal(result.shown.overlayActive, true);
+  assert.equal(result.parked.overlayActive, false);
+  assert.equal(result.parked.currentFps, 0);
+
+  pumpCount = 0;
+  let checkoutOperationCount = 0;
+  const callsBeforeClientSessionCheckout = fake.calls.length;
+  const webCallsBeforeClientSessionCheckout = steamWebOverlayCalls(fake).length;
+  const clientSessionCheckout = overlay.openCheckoutAndWait(
+    () => {
+      checkoutOperationCount += 1;
+      fake.calls.push({ method: "clientSessionCheckoutOperation", args: [] });
+      overlayActivated({ active: true, app_id: 480 });
+      return {
+        clientSession: true,
+        data: { response: { params: { transid: "86420" } } }
+      };
+    },
+    { showTimeoutMs: 500, closeTimeoutMs: 500 }
+  );
+
+  assert.equal(checkoutOperationCount, 0);
+  assert.equal(await waitForCondition(() => checkoutOperationCount === 1, 500, 5), true);
+  const checkoutOperationIndex = fake.calls.findIndex((call) => call.method === "clientSessionCheckoutOperation");
+  const readinessPresentsBeforeCheckout = fake.calls
+    .slice(callsBeforeClientSessionCheckout, checkoutOperationIndex)
+    .filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
+  assert.equal(readinessPresentsBeforeCheckout >= 3, true);
+  assert.equal(checkoutOperationCount, 1);
+  assert.equal(steamWebOverlayCalls(fake).length, webCallsBeforeClientSessionCheckout);
+
+  overlayActivated({ active: false, app_id: 480 });
+  const clientSessionResult = await clientSessionCheckout;
+  assert.equal(checkoutOperationCount, 1);
+  assert.deepEqual(clientSessionResult.targetSnapshot, {
+    type: "checkout",
+    hasTransactionId: true,
+    clientSession: true
+  });
+  assert.equal(clientSessionResult.parked.currentFps, 0);
+  assert.equal(steamWebOverlayCalls(fake).length, webCallsBeforeClientSessionCheckout);
 });
 
 test("Windows split poll evidence excludes failed full diagnostics reads", async (t) => {

@@ -4,7 +4,7 @@ const { execFileSync } = require("node:child_process");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
-const { app, BrowserWindow, crashReporter, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 const { serializeSmokeError } = require("./smoke-error.cjs");
@@ -342,17 +342,19 @@ function createWindow() {
   return loaded;
 }
 
+try {
+  // Steam documents that SteamAPI_Init must run before Electron/Chromium
+  // creates the graphics device so the overlay can hook the correct process.
+  client = steamworks.init({ appId: APP_ID, callbackIntervalMs: 100 });
+  registerSteamCallbacks();
+  recordEvent("steam:init", { appId: APP_ID });
+} catch (error) {
+  initError = serializeError(error);
+  recordEvent("steam:init:error", initError);
+}
+
 app.whenReady().then(async () => {
   recordLifecycle("app:ready", { diagnosticDir: DIAGNOSTIC_DIR, crashDumpDir: CRASH_DUMP_DIR });
-
-  try {
-    client = steamworks.init({ appId: APP_ID, callbackIntervalMs: 100 });
-    registerSteamCallbacks();
-    recordEvent("steam:init", { appId: APP_ID });
-  } catch (error) {
-    initError = serializeError(error);
-    recordEvent("steam:init:error", initError);
-  }
 
   await createWindow();
   startSmokeControlServer();
@@ -4383,6 +4385,10 @@ function activeDisplaySnapshot() {
   }
 
   try {
+    // Resolve screen only after SteamAPI_Init and window creation. Importing
+    // Electron display services during bootstrap can start Chromium child
+    // infrastructure before Steam has installed its overlay hooks.
+    const { screen } = require("electron");
     const display = screen.getDisplayMatching(mainWindow.getBounds());
     return {
       id: display.id,

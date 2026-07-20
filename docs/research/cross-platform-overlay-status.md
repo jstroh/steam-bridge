@@ -185,6 +185,23 @@ Reviewed on 2026-07-02 for the Windows overlay plan:
 
 ## Latest Windows Evidence
 
+A 2026-07-20 cold-start investigation rejects exact unpublished `v0.3.0` and
+the attempted fixed-delay fallback without invalidating its earlier platform
+evidence. Steam sometimes discovered the managed D3D surface after one priming
+frame but had not yet completed its `Present` hook, so the first Friends or
+checkout activation could be lost. The repaired `0.3.1` path initializes Steam
+and registers callbacks before Electron readiness, then continuously presents
+complete frames through a transparent, non-activating, click-through native
+surface until `IsOverlayEnabled` positively confirms the hook. Activation and
+client-session checkout operations cannot run first, and the readiness hold
+parks at zero FPS after ready, abort, timeout, or close. Five consecutive full
+Steam shutdown/restart Friends cycles all opened visibly, accepted input,
+closed, returned focus, and produced zero crash dumps. Observed readiness-to-
+shown timing ranged from roughly 1.0 to 4.8 seconds, which is why a timer cannot
+be the readiness primitive. This design follows Valve's
+[browser-game overlay requirements](https://partner.steamgames.com/doc/features/overlay?language=english)
+and [`ISteamUtils` readiness signal](https://partner.steamgames.com/doc/api/isteamutils?l=english).
+
 A 2026-07-19 actual-game Electron `43.1.1` pass at 225% desktop scale closed the
 last presentation-alignment regression. Chromium allocated a 2883-by-1623 coded
 shared texture for the 1280-by-720 logical game viewport and 3459-by-2172 in

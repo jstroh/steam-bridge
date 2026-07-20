@@ -11416,7 +11416,7 @@ function createElectronSteamOverlayWithLease(
 
       try {
         if (status.reason === "overlay-not-ready") {
-          await controller.waitForOverlayReady({
+          await waitForElectronSteamOverlayOpenAttemptReady({
             timeoutMs: finiteNumber(waitOptions.showTimeoutMs, 15000),
             signal: waitOptions.signal
           });
@@ -11495,7 +11495,7 @@ function createElectronSteamOverlayWithLease(
       const managedOpenReservation = reserveManagedOpen();
       try {
         if (status.reason === "overlay-not-ready") {
-          await controller.waitForOverlayReady({
+          await waitForElectronSteamOverlayOpenAttemptReady({
             timeoutMs: finiteNumber(options.timeoutMs, 15000),
             signal: options.signal
           });
@@ -11541,6 +11541,9 @@ function createElectronSteamOverlayWithLease(
     },
     waitForOverlayReady(options?: ElectronSteamOverlayWaitOptions): Promise<ElectronSteamOverlaySnapshot> {
       assertOpen();
+      if (process.platform === "win32" && effectivePresenterMode === "persistent") {
+        return waitForElectronSteamOverlayOpenAttemptReady(options ?? {});
+      }
       return waitForElectronSteamOverlayState(
         controller,
         "be ready",
@@ -11782,7 +11785,7 @@ function createElectronSteamOverlayWithLease(
       }
       managedOpenReservation = reserveManagedOpen();
       if (status.reason === "overlay-not-ready") {
-        await controller.waitForOverlayReady({
+        await waitForElectronSteamOverlayOpenAttemptReady({
           timeoutMs: finiteNumber(options.showTimeoutMs, 15000),
           signal: options.signal
         });
@@ -11820,6 +11823,36 @@ function createElectronSteamOverlayWithLease(
     } finally {
       managedOpenReservation?.disconnect();
     }
+  }
+
+  function waitForElectronSteamOverlayOpenAttemptReady(
+    options: ElectronSteamOverlayWaitOptions
+  ): Promise<ElectronSteamOverlaySnapshot> {
+    if (process.platform !== "win32" || effectivePresenterMode !== "persistent") {
+      return controller.waitForOverlayReady(options);
+    }
+
+    // Valve requires browser games to copy Chromium into a native D3D window
+    // and present complete frames continuously. Keep our main-process D3D host
+    // transparent and click-through while Steam hooks its swap chain, then use
+    // IsOverlayEnabled as the positive readiness handshake. A fixed delay is
+    // unsafe here: Steam can discover the surface before its Present hook is
+    // ready, causing the first activation (including checkout) to be lost.
+    const presenterInternal = presenter as NativeOverlayPresenterInternal;
+    const presentationHandle = presenterInternal.beginOverlayActivation?.("passive");
+    const ready = waitForElectronSteamOverlayState(
+      controller,
+      "hook its Windows native presentation surface",
+      (snapshot) =>
+        snapshot.diagnostics?.overlayEnabled === true && electronSteamOverlayActivationWarmupReady(snapshot),
+      options,
+      {
+        forcePolling: true,
+        refreshOverlayEnabled: true,
+        failOnKnownUnavailable: true
+      }
+    );
+    return ready.finally(() => presentationHandle?.disconnect());
   }
 }
 

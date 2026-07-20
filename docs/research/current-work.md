@@ -1,10 +1,10 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-19
+Last reviewed: 2026-07-20
 
-Review anchor: `3da802d` (`Document Steam Bridge 0.2.14 release`), after
-`v0.2.14` exact-candidate proof, registry verification, and downstream consumer
-adoption.
+Review anchor: `f5063b7` (`Prepare Steam Bridge 0.3.0`). Exact `v0.3.0` is an
+immutable, unpublished, rejected candidate; the working replacement is
+versioned `0.3.1`.
 
 ## Active Goal
 
@@ -89,18 +89,48 @@ and its launcher/Electron pair pass the arm64, signing, entitlement, launcher,
 helper, and matrix self-test gates without starting Steam.
 
 Live qualification uses one Steam client at a time. The Deck and macOS Steam
-sessions were stopped before final Windows consumer QA. After the latest code
-edits, all 213 unit tests, TypeScript build, consumer CJS/ESM/TypeScript package
-smoke, Linux/Deck/macOS/Windows helper and matrix self-tests, API/platform
-audits, Rust format/check, `git diff --check`, and the 35-entry npm dry-run pack
-pass. The package smoke uses
-Git Bash plus a real Python interpreter on Windows; the Microsoft Store
-`python3` alias is not a valid POSIX-fixture runtime. The manual/live platform
-gate is complete. Repeat the final checks against the versioned `0.3.0`
-candidate, then perform final review, exact release assembly, commit, push, tag,
-GitHub Release, trusted npm publication, and downstream registry verification.
-The published Windows `v0.2.14` evidence below remains valid historical evidence
-while this replacement is in progress.
+sessions were stopped before final Windows consumer QA. Exact `v0.3.0` at
+`f5063b7` passed candidate workflow `29725066150`, but a later true cold Windows
+launch exposed a first-activation race and rejects that unpublished tag. Steam
+could discover the D3D surface before its `Present` hook was ready; an activation
+could then be emitted without opening a usable Steam surface. A five-second
+fallback was disproved by consecutive cold runs and has been removed. Exact
+`v0.2.14` reproduced the same current-client timing, so this was not introduced
+by `v0.3.0`, but the replacement must still handle it correctly.
+
+Valve's browser-game guidance requires Steam initialization before graphics
+device creation and continuous full-frame presentation from Chromium into a
+native D3D window. The Windows persistent managed path now follows that contract:
+the smoke app initializes Steam and registers callbacks before Electron readiness
+and lazy-loads display services later; a managed readiness wait holds the native
+surface transparent, non-activating, and click-through while presenting at 30
+FPS; `IsOverlayEnabled` is the positive hook handshake; and the hold releases to
+zero FPS on ready, abort, timeout, or close. No overlay activation or client-
+session checkout operation is dispatched before that handshake. See
+[Valve's overlay guide](https://partner.steamgames.com/doc/features/overlay?language=english),
+[Valve's `ISteamUtils` reference](https://partner.steamgames.com/doc/api/isteamutils?l=english),
+and the analogous Chromium multi-process constraint documented in
+[WebView2Feedback #3200](https://github.com/MicrosoftEdge/WebView2Feedback/issues/3200).
+
+The rebuilt source passed five consecutive full Steam shutdown/restart cycles:
+all five Friends waits produced a visible, interactive, closable overlay, returned
+focus, parked at zero FPS, and produced zero crash dumps. Hook readiness varied
+from roughly 1.0 to 4.8 seconds, directly confirming that a fixed delay was the
+wrong primitive. The focused regression suite proves attach and at least three
+presents before activation, operation ordering for client-session checkout, and
+zero-FPS cleanup after success and abort. All 215 repository tests, TypeScript
+build, API/platform audits, Rust format/check, the complete package smoke, and
+the platform helper and matrix self-tests pass. The complete locally assembled
+package contains 42 entries and all nine target-native/runtime files; its
+Windows Electron-builder ASAR/package gate passes. That local assembly reused
+the verified `v0.3.0` cross-platform prebuilds because no native source changed;
+the final `0.3.1` workflow must still rebuild and bind fresh exact artifacts.
+The release assembler now invokes the current Node executable directly instead
+of using a deprecated Windows shell argument path. Commit/push, exact candidate
+workflow, candidate-bound Windows receipt, GitHub Release, trusted npm
+publication, and downstream registry verification remain. Package smoke on this
+host requires Git Bash plus a real Python interpreter; the Microsoft Store
+`python3` alias is not a valid POSIX-fixture runtime.
 
 The source-linked Windows host now creates a frame-latency-waitable flip-model
 swap chain, sets maximum frame latency to one, waits on the DXGI object, and

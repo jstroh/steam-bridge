@@ -2024,6 +2024,20 @@ tear-free frames through `Present(1)`. This keeps swap-chain contents persistent
 for desktop capture while DXGI, rather than JavaScript timer precision,
 supplies the display-paced boundary.
 
+Cold managed readiness has its own positive contract. Steam initialization and
+callback registration happen before Electron graphics-device creation. When the
+Windows persistent presenter still reports the overlay unavailable, a managed
+wait holds its native D3D surface transparent, non-activating, and click-through
+while presenting complete frames continuously at 30 FPS. Only
+`IsOverlayEnabled=true` permits activation or a client-session checkout
+operation; releasing, aborting, timing out, or closing the wait returns the
+presenter to its zero-FPS parked state. A fixed five-second fallback is rejected:
+consecutive cold runs disproved it, while five full Steam shutdown/restart cycles
+passed the positive handshake with readiness ranging from roughly 1.0 to 4.8
+seconds and zero crash dumps. This follows Valve's requirement that a browser
+game initialize Steam before its graphics device and continuously copy/present
+complete Chromium frames through a native D3D window.
+
 Steam checkout confirmation can create a separate cross-process top-level
 `Steam Dialog` rather than compositing that confirmation into the hooked game
 swap chain. For the standalone host, the narrow Windows integration is an owned

@@ -46,7 +46,7 @@ for (const [target, files] of Object.entries(targets)) {
     console.log(`Copied ${path.relative(repoRoot, destination)}`);
   }
 
-  run("node", [
+  run(process.execPath, [
     path.join(repoRoot, "scripts", "verify-release-artifacts.cjs"),
     "--target",
     target,
@@ -106,8 +106,7 @@ function readArg(name) {
 
 function run(command, args) {
   const result = spawnSync(command, args, {
-    stdio: "inherit",
-    shell: process.platform === "win32"
+    stdio: "inherit"
   });
 
   if (result.status !== 0) {

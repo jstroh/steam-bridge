@@ -104,10 +104,10 @@ import { app, BrowserWindow } from "electron";
 import steamworks from "steam-bridge";
 
 steamworks.electronConfigureSteamOverlay();
+const client = steamworks.init(480);
 
 app.whenReady().then(async () => {
   const mainWindow = new BrowserWindow({ width: 1280, height: 720 });
-  const client = steamworks.init(480);
   const overlay = client.overlay.createElectronSteamOverlay(mainWindow);
 
   const result = await overlay.openStoreAndWaitIfAvailable({ appId: 480 });
@@ -186,6 +186,24 @@ process-wide Chromium scale override to compensate for the overlay. macOS also
 keeps Steam's needs-present poll disabled because current Steam clients crash in
 that path; managed presentation and lifecycle callbacks require no app polling
 loop.
+
+### Windows managed overlay readiness
+
+Initialize Steam during main-process bootstrap, before creating a
+`BrowserWindow` or otherwise causing Electron to create its graphics device.
+Register Steam callbacks at the same time, then create the window and managed
+overlay after `app.whenReady()`. This ordering gives Steam's overlay hook the
+process and graphics-device lifecycle that Valve documents.
+
+When a Windows persistent presenter is not ready yet, managed wait helpers
+temporarily attach its native D3D surface while it remains transparent,
+non-activating, and click-through. Steam Bridge presents complete frames at 30
+FPS until `IsOverlayEnabled` positively confirms that Steam hooked the surface;
+only then can the requested activation or checkout operation run. This is a
+state-driven readiness handshake, not a fixed startup delay. When the wait
+becomes ready, is aborted, or times out, the readiness hold is released and the
+parked presenter returns to zero FPS. Synchronous `open*IfAvailable()` helpers
+remain fail-closed while the overlay is not ready.
 
 The repository's Windows release matrix is fail-closed around synthetic close
 input. An exact pre-dispatch screenshot must prove the foreground native host,
