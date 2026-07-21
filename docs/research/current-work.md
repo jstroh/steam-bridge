@@ -1,10 +1,10 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-21
 
-Review anchor: `f5063b7` (`Prepare Steam Bridge 0.3.0`). Exact `v0.3.0` is an
-immutable, unpublished, rejected candidate; the working replacement is
-versioned `0.3.1`.
+Review anchor: `8db074b` (`Fix Windows cold overlay readiness`). Exact `v0.3.0`
+and `v0.3.1` are immutable, unpublished, rejected candidates; the working
+replacement is versioned `0.3.2`.
 
 ## Active Goal
 
@@ -124,7 +124,17 @@ the platform helper and matrix self-tests pass. The complete locally assembled
 package contains 42 entries and all nine target-native/runtime files; its
 Windows Electron-builder ASAR/package gate passes. That local assembly reused
 the verified `v0.3.0` cross-platform prebuilds because no native source changed;
-the final `0.3.1` workflow must still rebuild and bind fresh exact artifacts.
+exact `v0.3.1` main/tag CI and Release assembly rebuilt and bound fresh
+artifacts successfully. Its protected Windows deployment also matched that
+candidate exactly. Before the live route profiles, the required Steam-off
+shortcut refresh exposed a QA-harness defect: diagnostic collection passed an
+absent Steam process timestamp into a non-nullable PowerShell `DateTime`
+parameter and emitted a false capture failure. The `0.3.2` replacement models
+that timestamp as nullable; the same Steam-off shortcut flow now captures its
+diagnostics cleanly, verifies the shortcut, and passes all 215 tests. No native
+or application runtime behavior changed from `v0.3.1`; the final `0.3.2`
+workflow must rebuild and bind fresh exact artifacts.
+
 The release assembler now invokes the current Node executable directly instead
 of using a deprecated Windows shell argument path. Commit/push, exact candidate
 workflow, candidate-bound Windows receipt, GitHub Release, trusted npm

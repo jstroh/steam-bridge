@@ -1025,6 +1025,12 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   assert.ok(
     matrixHelper.includes("function Get-LatestSteamProcessStartUtc") &&
+      matrixHelper.includes(
+        "param([AllowNull()][Nullable[datetime]]$CurrentSteamStartUtc = $null)"
+      ) &&
+      matrixHelper.includes(
+        "if ($null -ne $CurrentSteamStartUtc -and $CurrentSteamStartUtc -gt [datetime]::MinValue)"
+      ) &&
       matrixHelper.includes("currentSteamStartUtc") &&
       matrixHelper.includes("effectiveRecentCutoffUtc") &&
       matrixHelper.includes("Get-SteamClientRenderingHealth -CurrentSteamStartUtc"),

@@ -189,7 +189,8 @@ A 2026-07-20 cold-start investigation rejects exact unpublished `v0.3.0` and
 the attempted fixed-delay fallback without invalidating its earlier platform
 evidence. Steam sometimes discovered the managed D3D surface after one priming
 frame but had not yet completed its `Present` hook, so the first Friends or
-checkout activation could be lost. The repaired `0.3.1` path initializes Steam
+checkout activation could be lost. The repaired runtime introduced in `0.3.1`
+and retained by the `0.3.2` release candidate initializes Steam
 and registers callbacks before Electron readiness, then continuously presents
 complete frames through a transparent, non-activating, click-through native
 surface until `IsOverlayEnabled` positively confirms the hook. Activation and

@@ -764,7 +764,7 @@ function ConvertTo-SteamLogTimestampUtc {
 }
 
 function Get-SteamClientRenderingHealth {
-  param([datetime]$CurrentSteamStartUtc = [datetime]::MinValue)
+  param([AllowNull()][Nullable[datetime]]$CurrentSteamStartUtc = $null)
 
   $steamPath = Resolve-SteamInstallPath
   $logs = Join-Path $steamPath "logs"
@@ -772,7 +772,7 @@ function Get-SteamClientRenderingHealth {
   $cutoff = $generatedAt.AddMinutes(-1 * [math]::Max(1, $SteamClientHealthRecentMinutes))
   $currentSteamCutoff = $null
   $effectiveCutoff = $cutoff
-  if ($CurrentSteamStartUtc -gt [datetime]::MinValue) {
+  if ($null -ne $CurrentSteamStartUtc -and $CurrentSteamStartUtc -gt [datetime]::MinValue) {
     $currentSteamCutoff = $CurrentSteamStartUtc.ToUniversalTime()
     if ($currentSteamCutoff -gt $effectiveCutoff) {
       $effectiveCutoff = $currentSteamCutoff
