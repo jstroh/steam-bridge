@@ -190,7 +190,7 @@ the attempted fixed-delay fallback without invalidating its earlier platform
 evidence. Steam sometimes discovered the managed D3D surface after one priming
 frame but had not yet completed its `Present` hook, so the first Friends or
 checkout activation could be lost. The repaired runtime introduced in `0.3.1`
-and retained by the `0.3.3` release candidate initializes Steam
+and retained by the `0.3.4` release candidate initializes Steam
 and registers callbacks before Electron readiness, then continuously presents
 complete frames through a transparent, non-activating, click-through native
 surface until `IsOverlayEnabled` positively confirms the hook. Activation and
@@ -227,6 +227,21 @@ publication, exposing an auditor-only false total ordering. Those independent
 branches may complete in either order; both must still precede focus return and
 the one graceful completion quit. The `0.3.3` auditor and fixtures now enforce
 that causal partial order.
+
+Exact unpublished `v0.3.3` subsequently passed CI, release assembly, protected
+deployment, and persistent reuse, but its public checkout profile exposed a
+second auditor-only false total order in
+`C:\Users\admin\steam-bridge-artifacts\windows-v0.3.3-receipt-checkout-20260721-220100`.
+Case `04-shortcut-checkout-open-and-wait` opened and closed cleanly with direct
+glyph-bound pointer input `3/3/0`, focus return, parked state, and zero crashes;
+its valid order was close-stable, focus return, result publication, completion
+quit. The `0.3.4` partial-order contract requires close input before each
+independent completion branch and requires focus, stable, and published-result
+evidence before the one completion quit, but does not order those branches
+against each other. The `0.3.4` task wrapper also runs the packaged summary
+after cleanup is written and propagates semantic rejection as a nonzero exit,
+closing the misleading inner-process-success gap. `v0.3.3` remains immutable
+and unpublished.
 
 A 2026-07-19 actual-game Electron `43.1.1` pass at 225% desktop scale closed the
 last presentation-alignment regression. Chromium allocated a 2883-by-1623 coded

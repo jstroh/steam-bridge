@@ -1588,4 +1588,24 @@ try {
   }
 }
 
+if ($exitCode -eq 0) {
+  $postCleanupSummaryExitCode = 1
+  try {
+    $summaryScript = Join-Path $AppDir "summarize-windows-overlay-matrix.cjs"
+    if (-not (Test-Path -LiteralPath $summaryScript -PathType Leaf)) {
+      throw "The packaged Windows matrix summarizer is missing."
+    }
+    $nodeExecutable = (Get-Command node.exe -ErrorAction Stop).Source
+    & $nodeExecutable $summaryScript --artifact-root $ArtifactRoot
+    $postCleanupSummaryExitCode = [int]$LASTEXITCODE
+  } catch {
+    $postCleanupSummaryExitCode = 1
+    Write-Warning "Post-cleanup matrix summary invocation failed."
+  }
+  Write-Host ("POST_CLEANUP_SUMMARY_EXIT_CODE={0}" -f $postCleanupSummaryExitCode)
+  if ($postCleanupSummaryExitCode -ne 0) {
+    $exitCode = 1
+  }
+}
+
 exit $exitCode

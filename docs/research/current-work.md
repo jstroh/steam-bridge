@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-07-21
 
-Review anchor: `d1a6e5a` (`Fix Steam-off diagnostic capture`). Exact `v0.3.0`,
-`v0.3.1`, and `v0.3.2` are immutable, unpublished, rejected candidates; the
-working replacement is versioned `0.3.3`.
+Review anchor: `bb2b8c3` (`Fix stacked Steam overlay close proof`). Exact
+`v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
+rejected candidates; the working replacement is versioned `0.3.4`.
 
 ## Active Goal
 
@@ -162,8 +162,28 @@ the managed close-stable event can correctly precede result-file publication
 because those are independent completion branches. The corrected partial-order
 contract requires both branches before focus return and the single graceful
 completion quit, and a fixture now covers that real ordering.
-The final `0.3.3` workflow must rebuild and bind fresh exact artifacts; no
-failed `v0.3.2` root may be reused in its receipt.
+The exact `v0.3.3` workflow rebuilt and bound fresh artifacts; it did not reuse
+either failed `v0.3.2` root.
+
+Exact `v0.3.3` passed main/tag CI, three-platform Release assembly, canonical
+tarball verification, protected deployment, and the persistent-reuse profile.
+Its public checkout profile then passed the first three cases, but the
+independent packaged auditor rejected
+`04-shortcut-checkout-open-and-wait` at
+`C:\Users\admin\steam-bridge-artifacts\windows-v0.3.3-receipt-checkout-20260721-220100`.
+The surface opened and closed cleanly with exact glyph-bound pointer input
+`3/3/0`, focus returned, the presenter parked, and crash count stayed zero.
+The valid event order was close-stable, focus return, result publication, then
+completion quit. Focus return and managed-result publication are independent
+branches; requiring publication before focus return was another false total
+order. `0.3.4` requires input before each branch and all focus, stable, and
+result branches before the single completion quit, without ordering the
+branches against one another. A checkout-shaped fixture covers the exact live
+ordering. The run also exposed that the task wrapper reported only the inner
+matrix exit and did not propagate its post-cleanup semantic audit. The `0.3.4`
+wrapper now runs the packaged summarizer after cleanup evidence is durable and
+returns nonzero on any rejection. No `v0.3.3` artifact may be reused for the
+new receipt.
 
 The release assembler now invokes the current Node executable directly instead
 of using a deprecated Windows shell argument path. Commit/push, exact candidate

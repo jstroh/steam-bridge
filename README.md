@@ -236,9 +236,16 @@ readiness and exact-frame gates to those routes, then sends native Escape to
 dismiss the complete overlay instead of clicking an ambiguous inner header.
 The receipt distinguishes that path from ordinary glyph-bound pointer closes
 and rejects early, partial, or causally invalid input evidence. Result-file
-publication and the managed wait's final close-stable sample may be recorded in
-either order because they complete on independent branches; both must precede
-focus return and the single graceful completion quit.
+publication, the managed wait's final close-stable sample, and focus return may
+be recorded in any order because they complete on independent branches. Close
+input must precede every branch, and all three branches must precede the single
+graceful completion quit.
+
+The packaged interactive-task wrapper runs that independent matrix summary only
+after task deletion, process cleanup, launch-environment rollback, and Steam
+continuity evidence are durable. A semantic summary rejection therefore makes
+the wrapper itself exit nonzero instead of reporting only the inner matrix
+process result.
 
 On Windows, a managed presenter is non-activating and click-through while it
 is parked. When Steam opens an interactive surface, the presenter becomes

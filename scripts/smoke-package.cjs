@@ -895,6 +895,18 @@ function runWindowsSmokeHelperStaticChecks() {
         taskCleanupFinally.indexOf("[System.IO.File]::WriteAllText("),
     "Windows task cleanup must terminate the captured tree, end/delete the task, clean package processes, restore launch env, then remove handoff files"
   );
+  assert.ok(
+    taskWrapper.lastIndexOf("[System.IO.File]::WriteAllText(") <
+      taskWrapper.lastIndexOf("$nodeExecutable $summaryScript --artifact-root $ArtifactRoot") &&
+      taskWrapper.lastIndexOf("$nodeExecutable $summaryScript --artifact-root $ArtifactRoot") <
+        taskWrapper.lastIndexOf("exit $exitCode"),
+    "Windows task wrapper must independently summarize only after task cleanup evidence is durable"
+  );
+  assert.ok(
+    taskWrapper.includes("POST_CLEANUP_SUMMARY_EXIT_CODE={0}") &&
+      taskWrapper.includes("if ($postCleanupSummaryExitCode -ne 0)"),
+    "Windows task wrapper must propagate a post-cleanup summary rejection"
+  );
   assert.doesNotMatch(
     taskWrapper,
     /Get-Content\s+-LiteralPath\s+\$logPath\s+-Tail/,

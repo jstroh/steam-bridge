@@ -7581,9 +7581,12 @@ function summarizeSameProcessUserGestureHandoff({
           appQuitAt
         ].every(Number.isFinite) &&
           lifecycleOrderValid &&
+          sentAt <= resultWrittenAt &&
+          sentAt <= afterCloseStableAt &&
+          sentAt <= focusReturnAt &&
           resultWrittenAt <= keepOpenAt &&
-          keepOpenAt <= focusReturnAt &&
-          afterCloseStableAt <= focusReturnAt &&
+          keepOpenAt <= completionQuitAt &&
+          afterCloseStableAt <= completionQuitAt &&
           focusReturnAt <= completionQuitAt &&
           completionQuitAt <= beforeQuitAt &&
           beforeQuitAt <= willQuitAt &&
@@ -10370,6 +10373,32 @@ function runSelfTest() {
     assert.equal(
       webReadyEscapeEarlyStableSummary.caseSummaries[0].closeProbe
         .userGestureCompletionOrderValid,
+      true
+    );
+    const earlyFocusReturnRoot = path.join(
+      tempRoot,
+      "managed-shortcut-checkout-early-focus-return"
+    );
+    writeManagedWebCloseEvidenceFixture(earlyFocusReturnRoot, {
+      caseId: "04-shortcut-checkout-open-and-wait",
+      userGestureGate: true,
+      gestureAfterCloseStableBeforeResult: true,
+      gestureFocusReturnBeforeResult: true
+    });
+    const earlyFocusReturnSummary = summarizeWindowsOverlayMatrixArtifacts(
+      earlyFocusReturnRoot
+    );
+    assert.deepEqual(
+      earlyFocusReturnSummary.failures,
+      [],
+      JSON.stringify(
+        earlyFocusReturnSummary.caseSummaries[0].closeProbe.sameProcessUserGestureChecks,
+        null,
+        2
+      )
+    );
+    assert.equal(
+      earlyFocusReturnSummary.caseSummaries[0].closeProbe.userGestureCompletionOrderValid,
       true
     );
     const webReadyEscapeRetryRoot = path.join(tempRoot, "managed-web-ready-escape-retry");
@@ -13228,7 +13257,9 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   if (userGestureGate) {
     closeProbeEvents.push({
       type: "probe:user-gesture-app-focus-return",
-      at: "2026-07-02T00:00:05.000Z",
+      at: options.gestureFocusReturnBeforeResult
+        ? "2026-07-02T00:00:04.150Z"
+        : "2026-07-02T00:00:05.000Z",
       payload: {
         observed: !options.gestureFocusReturnMissing,
         lifecycleComplete: true,

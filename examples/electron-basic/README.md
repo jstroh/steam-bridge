@@ -1312,6 +1312,11 @@ launch and verifies the same PID, session, CIM creation time, and native creatio
 time after runner, package, launch-environment, task, and handoff-file cleanup.
 It never stops Steam.
 
+After writing `task-cleanup.json`, the wrapper invokes the packaged matrix
+summarizer against the completed root. A semantic audit failure changes the
+wrapper exit code to nonzero even when the inner matrix process exited zero;
+`POST_CLEANUP_SUMMARY_EXIT_CODE=0` is the final wrapper success marker.
+
 After all four roots pass, generate the fifth durable release record from the
 packaged helper. The output path must not already exist and must be outside the
 candidate directory and all four evidence roots:
