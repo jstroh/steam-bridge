@@ -53,7 +53,7 @@ param(
   [int]$ForegroundGrantTimeoutSeconds = 120,
   [switch]$PrivateEnvImported,
   [switch]$CloseProbe,
-  [ValidateSet("auto", "toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput")]
+  [ValidateSet("auto", "toggle", "escape", "close-tab", "toggle-sendinput", "escape-sendinput", "close-tab-sendinput", "web-close-click-sendinput", "web-ready-escape-sendinput")]
   [string]$CloseProbeInput = "auto",
   [int]$CloseProbeSettleMs = 750,
   [int]$CloseProbeTimeoutSeconds = 110,
@@ -3527,14 +3527,12 @@ function Resolve-CloseProbeInputForCase {
     "web",
     "store",
     "friends",
-    "dialog",
     "chat",
     "profile",
     "players",
     "community",
     "stats",
-    "achievements",
-    "user"
+    "achievements"
   )
 
   if ($action -eq "presenter-duplicate-open-guard") {
@@ -3543,6 +3541,16 @@ function Resolve-CloseProbeInputForCase {
 
   if ($action -eq "presenter-persistent-reuse-three-cycle") {
     return "web-close-click-sendinput"
+  }
+
+  # Steam's User and Dialog routes can render stacked web headers with more
+  # than one valid-looking close glyph. Wait for the same fail-closed web-panel
+  # readiness proof, then dismiss the whole overlay instead of clicking an
+  # ambiguous nested header control.
+  foreach ($token in @("dialog", "user")) {
+    if ($action.Contains($token) -or $id.Contains($token) -or $shortcutTarget.Contains($token)) {
+      return "web-ready-escape-sendinput"
+    }
   }
 
   foreach ($token in $webPanelTokens) {
@@ -7161,13 +7169,13 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         Start-Sleep -Milliseconds $settleMs
       }
       `$webCloseReadiness = `$null
-      if ('$input' -eq 'web-close-click-sendinput') {
+      if ('$input' -in @('web-close-click-sendinput', 'web-ready-escape-sendinput')) {
         `$webCloseReadiness = Wait-WebClosePanelReady -Deadline `$deadline -Cycle `$cycle
       }
       `$initialWebCloseReadiness = `$webCloseReadiness
       `$beforeSendForeground = Get-ForegroundProbeSnapshot
       `$beforeSendScreenshot = Capture-ProbeScreen ("cycle-{0:D2}-before-send" -f `$cycle)
-      if ('$input' -eq 'web-close-click-sendinput') {
+      if ('$input' -in @('web-close-click-sendinput', 'web-ready-escape-sendinput')) {
         # Resolve and validate the target again from the exact screenshot used
         # immediately before dispatch. Never reuse coordinates from a prior
         # frame: Steam's first overlay frame can replace the smoke UI between
@@ -7185,7 +7193,7 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         processes = Get-ProbeProcessSnapshot
       })
       if (
-        '$input' -eq 'web-close-click-sendinput' -and
+        '$input' -in @('web-close-click-sendinput', 'web-ready-escape-sendinput') -and
         (-not `$webCloseReadiness -or `$webCloseReadiness.ready -ne `$true)
       ) {
         # Steam can replace its first rendered overlay frame between the
@@ -7302,6 +7310,8 @@ while ((Get-Date) -lt `$deadline -and -not `$sent -and -not `$terminalFailure) {
         `$nativeInputSent = Send-NativeKeyChord @(0x11, 0x57)
       } elseif ('$input' -eq 'toggle-sendinput') {
         `$nativeInputSent = Send-NativeKeyChord @(0x10, 0x09)
+      } elseif ('$input' -eq 'web-ready-escape-sendinput') {
+        `$nativeInputSent = Send-NativeKeyChord @(0x1B)
       } elseif ('$input' -eq 'web-close-click-sendinput') {
         if (`$target) {
           `$useApproach = (`$script:UsePersistentReuseGate -and `$cycle -gt 1)

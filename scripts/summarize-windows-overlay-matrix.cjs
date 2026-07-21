@@ -49,7 +49,8 @@ const SUPPORTED_CLOSE_PROBE_INPUTS = new Set([
   "toggle-sendinput",
   "escape-sendinput",
   "close-tab-sendinput",
-  "web-close-click-sendinput"
+  "web-close-click-sendinput",
+  "web-ready-escape-sendinput"
 ]);
 const SUPPORTED_CLOSE_PROBE_EVIDENCE_SCHEMAS = new Set([1, 2, 3]);
 const OWNER_PROCESS_FOREGROUND_HANDOFF = "owner-process-native-show-v1";
@@ -2432,6 +2433,52 @@ function validateManifestCoverage(
       expect(
         row.closeProbe.physicalScreenshotProofCount > 0,
         `matrix manifest case ${expected.id} has one coherent physical screenshot proof record`,
+        failures
+      );
+    }
+    if (auditedCloseProbeExpected && expectedCloseProbeInput === "web-ready-escape-sendinput") {
+      expect(
+        row.closeProbe.webReadyEscapeEvidenceValid === true,
+        `matrix manifest case ${expected.id} proved full Steam web readiness immediately before Escape`,
+        failures
+      );
+      expect(
+        row.closeProbe.nativeKeySucceeded === true,
+        `matrix manifest case ${expected.id} sent one complete native Escape input without error`,
+        failures
+      );
+      expect(
+        row.closeProbe.processPerMonitorV2 === true && row.closeProbe.threadPerMonitorV2 === true,
+        `matrix manifest case ${expected.id} web-ready Escape proof used process and thread per-monitor-v2 DPI awareness`,
+        failures
+      );
+      expect(
+        row.closeProbe.webCloseTargetInsidePanel === true &&
+          row.closeProbe.webCloseTargetUsesScaleAwareInsets === true &&
+          row.closeProbe.webClosePanelModalGeometryValid === true,
+        `matrix manifest case ${expected.id} web-ready Escape proof resolved an inset scale-aware Steam modal`,
+        failures
+      );
+      expect(
+        row.closeProbe.webCloseScaleAxesAgree === true && row.closeProbe.webCloseScaleEvidence === true,
+        `matrix manifest case ${expected.id} web-ready Escape scale agrees with independent presenter geometry`,
+        failures
+      );
+      if (manifest.webCloseTargetEvidence === WEB_CLOSE_TARGET_EVIDENCE) {
+        expect(
+          row.closeProbe.webCloseGlyphEvidenceValid === true,
+          `matrix manifest case ${expected.id} web-ready Escape is gated by a directly detected Steam close glyph`,
+          failures
+        );
+      }
+      expect(
+        row.closeProbe.nativeHostRectPresent === true &&
+          row.closeProbe.physicalScreenshotBoundsCount > 0 &&
+          row.closeProbe.physicalScreenshotReadableCount > 0 &&
+          row.closeProbe.physicalScreenshotDimensionsMatchCount > 0 &&
+          row.closeProbe.screenshotContainsNativeHostRect === true &&
+          row.closeProbe.physicalScreenshotProofCount > 0,
+        `matrix manifest case ${expected.id} web-ready Escape retained coherent physical screenshot proof`,
         failures
       );
     }
@@ -6094,6 +6141,16 @@ function summarizeCloseProbe(
   const startEvent = normalizedEvents.find((event) => event.type === "probe:start");
   const sentEvents = normalizedEvents.filter((event) => event.type === "probe:sent");
   const skippedEvents = normalizedEvents.filter((event) => event.type === "probe:close-input-skipped");
+  const webCloseReadyEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:web-close-ready"
+  );
+  const webCloseReadinessInvalidations = normalizedEvents.filter(
+    (event) => event.type === "probe:web-close-readiness-invalidated"
+  );
+  const beforeSendEvents = normalizedEvents.filter((event) => event.type === "probe:before-send");
+  const dispatchStartEvents = normalizedEvents.filter(
+    (event) => event.type === "probe:close-input-dispatch-start"
+  );
   const sentEvent = sentEvents[0];
   const skippedEvent = skippedEvents[0];
   const targetEvent = normalizedEvents.find((event) => event.type === "probe:web-close-click-target");
@@ -6142,6 +6199,15 @@ function summarizeCloseProbe(
     ? startPayload.evidenceSchema
     : 0;
   const sentPayload = objectOrEmpty(sentEvent && sentEvent.payload);
+  const lastWebCloseReadyEvent = webCloseReadyEvents[webCloseReadyEvents.length - 1];
+  const beforeSendEvent = beforeSendEvents[beforeSendEvents.length - 1];
+  const dispatchStartEvent = dispatchStartEvents[0];
+  const webCloseReadyPayload = objectOrEmpty(lastWebCloseReadyEvent && lastWebCloseReadyEvent.payload);
+  const webCloseReadyAnalysis = objectOrEmpty(webCloseReadyPayload.analysis);
+  const beforeSendPayload = objectOrEmpty(beforeSendEvent && beforeSendEvent.payload);
+  const initialWebCloseReadiness = objectOrEmpty(beforeSendPayload.initialWebCloseReadiness);
+  const exactWebCloseReadiness = objectOrEmpty(beforeSendPayload.webCloseReadiness);
+  const dispatchStartPayload = objectOrEmpty(dispatchStartEvent && dispatchStartEvent.payload);
   const skippedPayload = objectOrEmpty(skippedEvent && skippedEvent.payload);
   const targetPayload = objectOrEmpty(targetEvent && targetEvent.payload);
   const nativePresenterFocusPayload = objectOrEmpty(
@@ -6173,8 +6239,11 @@ function summarizeCloseProbe(
     userGestureExpectation
   });
   const nativePresenterPreDispatchPayload = objectOrEmpty(sentPayload.nativePresenterPreDispatch);
+  const nativeInputSent = objectOrEmpty(sentPayload.nativeInputSent);
   const nativePointerSent = objectOrEmpty(sentPayload.nativePointerSent);
-  const webCloseTarget = objectOrEmpty(targetPayload.target);
+  const webCloseTarget = objectOrEmpty(
+    targetPayload.target || exactWebCloseReadiness.target || webCloseReadyAnalysis.target
+  );
   const webCloseGlyph = objectOrEmpty(webCloseTarget.glyph);
   const webCloseGlyphSearch = objectOrEmpty(webCloseGlyph.search);
   const loggedPanel = objectOrEmpty(webCloseTarget.panel);
@@ -6198,6 +6267,73 @@ function summarizeCloseProbe(
   );
   const targetX = Number(webCloseTarget.x);
   const targetY = Number(webCloseTarget.y);
+  const webReadinessAnalysisValid = (analysis) =>
+    Boolean(
+      analysis.ready === true &&
+        analysis.rectSource === "screenshot-steam-web-panel" &&
+        analysis.foregroundCandidate === true &&
+        analysis.webClosePanelGeometryReady === true &&
+        analysis.persistentTargetSourceReady === true &&
+        analysis.persistentCurrentPanelReady === true &&
+        analysis.modalBackdropReady === true &&
+        analysis.chromeReady === true &&
+        analysis.contentReady === true &&
+        analysis.directCloseGlyphReady === true &&
+        objectOrEmpty(analysis.target).source === "screenshot-steam-web-close-glyph"
+    );
+  const lastWebCloseReadyIndex = normalizedEvents.indexOf(lastWebCloseReadyEvent);
+  const beforeSendIndex = normalizedEvents.indexOf(beforeSendEvent);
+  const dispatchStartIndex = normalizedEvents.indexOf(dispatchStartEvent);
+  const webCloseReadinessInvalidationsValid = webCloseReadinessInvalidations.every(
+    (invalidation, index) => {
+      const invalidationPayload = objectOrEmpty(invalidation.payload);
+      const supersededReadyEvent = webCloseReadyEvents[index];
+      const supersededBeforeSendEvent = beforeSendEvents[index];
+      const nextReadyEvent = webCloseReadyEvents[index + 1];
+      const supersededBeforeSendPayload = objectOrEmpty(
+        supersededBeforeSendEvent && supersededBeforeSendEvent.payload
+      );
+      return Boolean(
+        invalidationPayload.reason === "exact-pre-dispatch-frame-not-ready" &&
+          supersededReadyEvent &&
+          nextReadyEvent &&
+          isDeepStrictEqual(
+            objectOrEmpty(invalidationPayload.initialReadiness),
+            objectOrEmpty(objectOrEmpty(supersededReadyEvent.payload).analysis)
+          ) &&
+          isDeepStrictEqual(
+            objectOrEmpty(supersededBeforeSendPayload.initialWebCloseReadiness),
+            objectOrEmpty(invalidationPayload.initialReadiness)
+          ) &&
+          isDeepStrictEqual(
+            objectOrEmpty(supersededBeforeSendPayload.webCloseReadiness),
+            objectOrEmpty(invalidationPayload.readiness)
+          ) &&
+          objectOrEmpty(invalidationPayload.readiness).ready !== true &&
+          normalizedEvents.indexOf(supersededReadyEvent) <
+            normalizedEvents.indexOf(supersededBeforeSendEvent) &&
+          normalizedEvents.indexOf(supersededBeforeSendEvent) < normalizedEvents.indexOf(invalidation) &&
+          normalizedEvents.indexOf(invalidation) < normalizedEvents.indexOf(nextReadyEvent)
+      );
+    }
+  );
+  const webReadyEscapeEvidenceValid = Boolean(
+    webCloseReadyEvents.length === webCloseReadinessInvalidations.length + 1 &&
+      webCloseReadinessInvalidationsValid &&
+      beforeSendEvents.length === webCloseReadinessInvalidations.length + 1 &&
+      dispatchStartEvents.length === 1 &&
+      webReadinessAnalysisValid(webCloseReadyAnalysis) &&
+      webReadinessAnalysisValid(exactWebCloseReadiness) &&
+      isDeepStrictEqual(initialWebCloseReadiness, webCloseReadyAnalysis) &&
+      objectOrEmpty(webCloseReadyPayload.screenshot).ok === true &&
+      objectOrEmpty(beforeSendPayload.screenshot).ok === true &&
+      dispatchStartPayload.input === "web-ready-escape-sendinput" &&
+      lastWebCloseReadyIndex >= 0 &&
+      beforeSendIndex > lastWebCloseReadyIndex &&
+      nativePresenterFocusIndex > beforeSendIndex &&
+      dispatchStartIndex > nativePresenterFocusIndex &&
+      sentEventIndex > dispatchStartIndex
+  );
   const targetInsidePanel = Boolean(
     webClosePanel &&
       Number.isFinite(targetX) &&
@@ -6377,6 +6513,16 @@ function summarizeCloseProbe(
     nativePointerLastError: Number(nativePointerSent.lastError),
     nativePointerMethod: String(nativePointerSent.method || ""),
     nativePointerMoveNoCoalesce: nativePointerSent.moveNoCoalesce === true,
+    nativeKeySent: Number(nativeInputSent.sent),
+    nativeKeyExpected: Number(nativeInputSent.expected),
+    nativeKeyLastError: Number(nativeInputSent.lastError),
+    nativeKeySucceeded:
+      Number(nativeInputSent.sent) === 2 &&
+      Number(nativeInputSent.expected) === 2 &&
+      Number(nativeInputSent.lastError) === 0,
+    webCloseReadyEventCount: webCloseReadyEvents.length,
+    webCloseReadinessInvalidationCount: webCloseReadinessInvalidations.length,
+    webReadyEscapeEvidenceValid,
     nativePointerSucceeded:
       Number(nativePointerSent.sent) === 3 &&
       Number(nativePointerSent.expected) === 3 &&
@@ -7384,7 +7530,7 @@ function summarizeSameProcessUserGestureHandoff({
           completeLifecycle.indexOf(resultWrittenEvents[0]) <
             completeLifecycle.indexOf(keepOpenEvents[0]) &&
           completeLifecycle.indexOf(keepOpenEvents[0]) <
-            completeLifecycle.indexOf(afterCloseStableEvent) &&
+            completeLifecycle.indexOf(completionQuitEvents[0]) &&
           completeLifecycle.indexOf(afterCloseStableEvent) <
             completeLifecycle.indexOf(completionQuitEvents[0]) &&
           completeLifecycle.indexOf(completionQuitEvents[0]) <
@@ -8578,7 +8724,11 @@ function formatCloseProbeSummary(closeProbe) {
       `scaleSource=${formatValue(closeProbe.webCloseScaleSource)} scaleProof=${closeProbe.webCloseScaleEvidence} ` +
       `physicalScreens=${closeProbe.physicalScreenshotProofCount}/${closeProbe.physicalScreenshotBoundsCount} ` +
       `screenshotContainsHost=${closeProbe.screenshotContainsNativeHostRect} `
-    : "";
+    : closeProbe.input === "web-ready-escape-sendinput"
+      ? `webReadyEscape=${closeProbe.webReadyEscapeEvidenceValid} ` +
+        `key=${closeProbe.nativeKeySent}/${closeProbe.nativeKeyExpected}/${closeProbe.nativeKeyLastError} ` +
+        `readiness=${closeProbe.webCloseReadyEventCount}/${closeProbe.webCloseReadinessInvalidationCount} `
+      : "";
   return (
     `closeProbe=${closeProbe.sent ? formatValue(closeProbe.input) : "not-sent"} ` +
     `closeProbeFg=${foreground} ` +
@@ -10172,6 +10322,99 @@ function runSelfTest() {
     assert.deepEqual(nonWebFocusSummary.failures, []);
     assert.equal(nonWebFocusSummary.caseSummaries[0].closeProbe.nativePresenterFocused, true);
     assert.equal(nonWebFocusSummary.caseSummaries[0].closeProbe.nativePresenterPreDispatchFocused, true);
+    for (const [name, caseId, action] of [
+      ["dialog", "14-managed-dialog-open-and-wait", "presenter-dialog-auto-open-and-wait"],
+      ["user", "22-managed-user-open-and-wait", "presenter-user-open-and-wait"]
+    ]) {
+      const webReadyEscapeRoot = path.join(tempRoot, `managed-web-ready-escape-${name}`);
+      writeManagedWebCloseEvidenceFixture(webReadyEscapeRoot, {
+        caseId,
+        action,
+        expectedCloseProbeInput: "web-ready-escape-sendinput",
+        userGestureGate: true
+      });
+      const webReadyEscapeSummary = summarizeWindowsOverlayMatrixArtifacts(webReadyEscapeRoot);
+      assert.deepEqual(
+        webReadyEscapeSummary.failures,
+        [],
+        JSON.stringify(webReadyEscapeSummary.caseSummaries[0].closeProbe, null, 2)
+      );
+      assert.equal(webReadyEscapeSummary.caseSummaries[0].closeProbe.webReadyEscapeEvidenceValid, true);
+      assert.equal(webReadyEscapeSummary.caseSummaries[0].closeProbe.nativeKeySucceeded, true);
+      assert.equal(webReadyEscapeSummary.caseSummaries[0].closeProbe.nativePointerSucceeded, false);
+    }
+    const webReadyEscapeEarlyStableRoot = path.join(
+      tempRoot,
+      "managed-web-ready-escape-dialog-early-stable"
+    );
+    writeManagedWebCloseEvidenceFixture(webReadyEscapeEarlyStableRoot, {
+      caseId: "14-managed-dialog-open-and-wait",
+      action: "presenter-dialog-auto-open-and-wait",
+      expectedCloseProbeInput: "web-ready-escape-sendinput",
+      userGestureGate: true,
+      gestureAfterCloseStableBeforeResult: true
+    });
+    const webReadyEscapeEarlyStableSummary = summarizeWindowsOverlayMatrixArtifacts(
+      webReadyEscapeEarlyStableRoot
+    );
+    assert.deepEqual(
+      webReadyEscapeEarlyStableSummary.failures,
+      [],
+      JSON.stringify(
+        webReadyEscapeEarlyStableSummary.caseSummaries[0].closeProbe
+          .sameProcessUserGestureChecks,
+        null,
+        2
+      )
+    );
+    assert.equal(
+      webReadyEscapeEarlyStableSummary.caseSummaries[0].closeProbe
+        .userGestureCompletionOrderValid,
+      true
+    );
+    const webReadyEscapeRetryRoot = path.join(tempRoot, "managed-web-ready-escape-retry");
+    writeManagedWebCloseEvidenceFixture(webReadyEscapeRetryRoot, {
+      caseId: "22-managed-user-open-and-wait",
+      action: "presenter-user-open-and-wait",
+      expectedCloseProbeInput: "web-ready-escape-sendinput",
+      userGestureGate: true,
+      webReadyReadinessInvalidation: true
+    });
+    const webReadyEscapeRetrySummary = summarizeWindowsOverlayMatrixArtifacts(
+      webReadyEscapeRetryRoot
+    );
+    assert.deepEqual(webReadyEscapeRetrySummary.failures, []);
+    assert.equal(webReadyEscapeRetrySummary.caseSummaries[0].closeProbe.webCloseReadyEventCount, 2);
+    assert.equal(
+      webReadyEscapeRetrySummary.caseSummaries[0].closeProbe.webCloseReadinessInvalidationCount,
+      1
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-ready-escape-missing-readiness",
+      writeManagedWebCloseEvidenceFixture,
+      {
+        caseId: "14-managed-dialog-open-and-wait",
+        action: "presenter-dialog-auto-open-and-wait",
+        expectedCloseProbeInput: "web-ready-escape-sendinput",
+        userGestureGate: true,
+        missingWebReadyEvent: true
+      },
+      "proved full Steam web readiness immediately before Escape"
+    );
+    assertFixtureSummaryFailure(
+      tempRoot,
+      "managed-web-ready-escape-native-key-failed",
+      writeManagedWebCloseEvidenceFixture,
+      {
+        caseId: "22-managed-user-open-and-wait",
+        action: "presenter-user-open-and-wait",
+        expectedCloseProbeInput: "web-ready-escape-sendinput",
+        userGestureGate: true,
+        nativeKeyFailed: true
+      },
+      "sent one complete native Escape input without error"
+    );
     assertFixtureSummaryFailure(
       tempRoot,
       "managed-non-web-missing-focus",
@@ -11813,6 +12056,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     writeResult(resultPath, result);
   }
   const expectedCloseProbeInput = options.expectedCloseProbeInput || "web-close-click-sendinput";
+  const webReadyEscape = expectedCloseProbeInput === "web-ready-escape-sendinput";
   const closeProbeEvidenceSchema =
     options.closeProbeEvidenceSchema || (options.userGestureGate ? 3 : 1);
   const legacyUserGestureSchema2 = Boolean(
@@ -11839,7 +12083,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
   if (options.manifestCloseProbeFalse) {
     manifest.closeProbe = false;
   }
-  if (options.webCloseGlyphEvidence) {
+  if (options.webCloseGlyphEvidence || webReadyEscape) {
     manifest.webCloseTargetEvidence = options.wrongWebCloseTargetEvidence
       ? "wrong-web-close-target-evidence"
       : WEB_CLOSE_TARGET_EVIDENCE;
@@ -11951,7 +12195,7 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         }
       : {})
   };
-  if (options.webCloseGlyphEvidence) {
+  if (options.webCloseGlyphEvidence || webReadyEscape) {
     target.source = "screenshot-steam-web-close-glyph";
     target.glyph = {
       schema: 1,
@@ -12007,6 +12251,19 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     : options.missingThreadPerMonitorV2
       ? "process-per-monitor-v2;thread-unchanged:5"
       : "process-per-monitor-v2;thread-per-monitor-v2";
+  const webReadyAnalysis = {
+    ready: !options.webReadyAnalysisInvalid,
+    target,
+    rectSource: "screenshot-steam-web-panel",
+    foregroundCandidate: true,
+    webClosePanelGeometryReady: true,
+    persistentTargetSourceReady: true,
+    persistentCurrentPanelReady: true,
+    modalBackdropReady: true,
+    chromeReady: true,
+    contentReady: true,
+    directCloseGlyphReady: true
+  };
   const userGestureGate = Boolean(closeProbeEvidenceSchema >= 2 && options.userGestureGate);
   const gestureReadyRendererTarget = {
     left: 700,
@@ -12859,7 +13116,70 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     at: "2026-07-02T00:00:02.400Z",
     payload: { target, foreground }
   };
-  if (closeProbeEvidenceSchema >= 2 && !options.targetAfterHandoff) {
+  if (webReadyEscape && options.webReadyReadinessInvalidation) {
+    const invalidatedExactReadiness = { ...webReadyAnalysis, ready: false };
+    closeProbeEvents.push(
+      {
+        type: "probe:web-close-ready",
+        at: "2026-07-02T00:00:02.100Z",
+        payload: {
+          cycle: 1,
+          attempt: 1,
+          foreground,
+          screenshot: { ok: true, path: screenshotName, bounds: screenshotBounds },
+          analysis: webReadyAnalysis
+        }
+      },
+      {
+        type: "probe:before-send",
+        at: "2026-07-02T00:00:02.150Z",
+        payload: {
+          cycle: 1,
+          foreground,
+          screenshot: { ok: true, path: screenshotName, bounds: screenshotBounds },
+          initialWebCloseReadiness: webReadyAnalysis,
+          webCloseReadiness: invalidatedExactReadiness
+        }
+      },
+      {
+        type: "probe:web-close-readiness-invalidated",
+        at: "2026-07-02T00:00:02.200Z",
+        payload: {
+          cycle: 1,
+          reason: "exact-pre-dispatch-frame-not-ready",
+          initialReadiness: webReadyAnalysis,
+          readiness: invalidatedExactReadiness
+        }
+      }
+    );
+  }
+  if (webReadyEscape && !options.missingWebReadyEvent) {
+    closeProbeEvents.push({
+      type: "probe:web-close-ready",
+      at: "2026-07-02T00:00:02.300Z",
+      payload: {
+        cycle: 1,
+        attempt: 1,
+        foreground,
+        screenshot: { ok: true, path: screenshotName, bounds: screenshotBounds },
+        analysis: webReadyAnalysis
+      }
+    });
+  }
+  if (webReadyEscape && !options.missingWebReadyBeforeSend) {
+    closeProbeEvents.push({
+      type: "probe:before-send",
+      at: "2026-07-02T00:00:02.400Z",
+      payload: {
+        cycle: 1,
+        foreground,
+        screenshot: { ok: true, path: screenshotName, bounds: screenshotBounds },
+        initialWebCloseReadiness: webReadyAnalysis,
+        webCloseReadiness: webReadyAnalysis
+      }
+    });
+  }
+  if (!webReadyEscape && closeProbeEvidenceSchema >= 2 && !options.targetAfterHandoff) {
     closeProbeEvents.push(targetProbeEvent);
   }
   if (!options.missingPresenterFocus && !options.presenterFocusAfterInput) {
@@ -12869,8 +13189,19 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
       payload: nativePresenterFocus
     });
   }
-  if (closeProbeEvidenceSchema < 2 || options.targetAfterHandoff) {
+  if (!webReadyEscape && (closeProbeEvidenceSchema < 2 || options.targetAfterHandoff)) {
     closeProbeEvents.push(targetProbeEvent);
+  }
+  if (webReadyEscape && !options.missingWebReadyDispatchStart) {
+    closeProbeEvents.push({
+      type: "probe:close-input-dispatch-start",
+      at: "2026-07-02T00:00:03.500Z",
+      payload: {
+        cycle: 1,
+        input: "web-ready-escape-sendinput",
+        nativePresenterPreDispatch
+      }
+    });
   }
   closeProbeEvents.push(
     {
@@ -12881,7 +13212,15 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         ...(!options.missingPresenterPreDispatch
           ? { nativePresenterPreDispatch }
           : {}),
-        nativePointerSent: pointer,
+        ...(webReadyEscape
+          ? {
+              nativeInputSent: {
+                sent: options.nativeKeyFailed ? 1 : 2,
+                expected: 2,
+                lastError: options.nativeKeyFailed ? 5 : 0
+              }
+            }
+          : { nativePointerSent: pointer }),
         foreground
       }
     }
@@ -12986,7 +13325,17 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
     }
     writeJson(path.join(caseDir, "user-gesture-completion.json"), completionEvidenceFixture);
 
+    const afterCloseStableFixture = {
+      type: "event:overlay:presenter-after-close-stable",
+      at: options.gestureAfterCloseStableBeforeResult
+        ? "2026-07-02T00:00:04.100Z"
+        : "2026-07-02T00:00:04.500Z",
+      payload: { sample: 2 }
+    };
     const completionLifecycle = [
+      ...(!options.gestureAfterCloseStableMissing && options.gestureAfterCloseStableBeforeResult
+        ? [afterCloseStableFixture]
+        : []),
       {
         type: "event:autorun:result-written",
         at: "2026-07-02T00:00:04.200Z",
@@ -13000,14 +13349,8 @@ function writeManagedWebCloseEvidenceFixture(root, options = {}) {
         at: "2026-07-02T00:00:04.210Z",
         payload: { action: reportedUserGestureAction, resultFileWritten: true }
       },
-      ...(!options.gestureAfterCloseStableMissing
-        ? [
-            {
-              type: "event:overlay:presenter-after-close-stable",
-              at: "2026-07-02T00:00:04.500Z",
-              payload: { sample: 2 }
-            }
-          ]
+      ...(!options.gestureAfterCloseStableMissing && !options.gestureAfterCloseStableBeforeResult
+        ? [afterCloseStableFixture]
         : []),
       ...(!options.gestureCompletionQuitMissing
         ? [

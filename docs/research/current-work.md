@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-07-21
 
-Review anchor: `8db074b` (`Fix Windows cold overlay readiness`). Exact `v0.3.0`
-and `v0.3.1` are immutable, unpublished, rejected candidates; the working
-replacement is versioned `0.3.2`.
+Review anchor: `d1a6e5a` (`Fix Steam-off diagnostic capture`). Exact `v0.3.0`,
+`v0.3.1`, and `v0.3.2` are immutable, unpublished, rejected candidates; the
+working replacement is versioned `0.3.3`.
 
 ## Active Goal
 
@@ -130,10 +130,40 @@ candidate exactly. Before the live route profiles, the required Steam-off
 shortcut refresh exposed a QA-harness defect: diagnostic collection passed an
 absent Steam process timestamp into a non-nullable PowerShell `DateTime`
 parameter and emitted a false capture failure. The `0.3.2` replacement models
-that timestamp as nullable; the same Steam-off shortcut flow now captures its
+that timestamp as nullable; the same Steam-off shortcut flow captures its
 diagnostics cleanly, verifies the shortcut, and passes all 215 tests. No native
-or application runtime behavior changed from `v0.3.1`; the final `0.3.2`
-workflow must rebuild and bind fresh exact artifacts.
+or application runtime behavior changed from `v0.3.1`.
+
+Exact `v0.3.2` then passed main/tag CI, Release assembly, independent candidate
+verification, and protected deployment. Its persistent-reuse and checkout
+profiles passed, and the shortcut profile completed its first eight routes.
+The User route then rendered stacked Steam chat, suspicious-chat warning, and
+Community-profile headers. The generic glyph detector correctly proved a
+Steam web surface but selected an inner header's X; that click did not dismiss
+the whole overlay, so the run failed closed and the final Dialog route was not
+started. A focused Escape comparison also failed closed because it sent Escape
+after activation but before the Steam web panel was visibly rendered. Those
+two immutable roots prove the required composite boundary: User and Dialog
+wait for the established modal geometry, dimmed backdrop, loaded content,
+direct close glyph, exact pre-dispatch screenshot, and native-host focus, then
+send native Escape to dismiss the complete stacked overlay. Ordinary web,
+checkout, Store, Friends, profile, and other routes retain glyph-bound pointer
+close coverage. `0.3.3` implements that harness-only split and its auditor
+rejects missing readiness, reordered evidence, or incomplete native key input.
+Current-source live diagnostics against the protected exact `v0.3.2` runtime
+then passed User at
+`C:\Users\admin\steam-bridge-artifacts\source-v0.3.3-user-diagnostic-20260721`
+and Dialog at
+`C:\Users\admin\steam-bridge-artifacts\source-v0.3.3-dialog-diagnostic-20260721`:
+each proved full Steam web readiness, an exact physical pre-dispatch frame,
+native Escape `2/2/0`, inactive/parked/focus-return completion, and zero
+crashes. The faster Dialog close also exposed an auditor-only total-order bug:
+the managed close-stable event can correctly precede result-file publication
+because those are independent completion branches. The corrected partial-order
+contract requires both branches before focus return and the single graceful
+completion quit, and a fixture now covers that real ordering.
+The final `0.3.3` workflow must rebuild and bind fresh exact artifacts; no
+failed `v0.3.2` root may be reused in its receipt.
 
 The release assembler now invokes the current Node executable directly instead
 of using a deprecated Windows shell argument path. Commit/push, exact candidate

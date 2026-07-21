@@ -190,7 +190,7 @@ the attempted fixed-delay fallback without invalidating its earlier platform
 evidence. Steam sometimes discovered the managed D3D surface after one priming
 frame but had not yet completed its `Present` hook, so the first Friends or
 checkout activation could be lost. The repaired runtime introduced in `0.3.1`
-and retained by the `0.3.2` release candidate initializes Steam
+and retained by the `0.3.3` release candidate initializes Steam
 and registers callbacks before Electron readiness, then continuously presents
 complete frames through a transparent, non-activating, click-through native
 surface until `IsOverlayEnabled` positively confirms the hook. Activation and
@@ -202,6 +202,31 @@ shown timing ranged from roughly 1.0 to 4.8 seconds, which is why a timer cannot
 be the readiness primitive. This design follows Valve's
 [browser-game overlay requirements](https://partner.steamgames.com/doc/features/overlay?language=english)
 and [`ISteamUtils` readiness signal](https://partner.steamgames.com/doc/api/isteamutils?l=english).
+
+Exact unpublished `v0.3.2` passed assembly and protected deployment, but its
+ordered shortcut profile rejected the User route. Steam rendered nested chat,
+warning, and Community-profile headers, so a visually valid inner X did not
+dismiss the whole overlay. Sending Escape immediately after activation was
+also disproved because Steam had not rendered the web panel yet. The `0.3.3`
+release harness treats User and Dialog as stacked surfaces: it retains the full
+physical web-readiness and exact-frame proof, then sends native Escape to close
+the complete overlay. Other web routes retain the direct-glyph pointer-close
+contract. This is a QA input/auditor correction, not a native presenter or
+application runtime change; `v0.3.2` and both failed roots remain immutable,
+unpublished diagnostic evidence.
+
+Before commit, current-source live diagnostics replayed the new harness against
+the protected exact `v0.3.2` runtime. User and Dialog both passed full physical
+readiness, exact-frame validation, native Escape `2/2/0`, inactive/parked state,
+focus return, and zero-crash checks in
+`C:\Users\admin\steam-bridge-artifacts\source-v0.3.3-user-diagnostic-20260721`
+and
+`C:\Users\admin\steam-bridge-artifacts\source-v0.3.3-dialog-diagnostic-20260721`.
+Dialog closed quickly enough that its close-stable event preceded result-file
+publication, exposing an auditor-only false total ordering. Those independent
+branches may complete in either order; both must still precede focus return and
+the one graceful completion quit. The `0.3.3` auditor and fixtures now enforce
+that causal partial order.
 
 A 2026-07-19 actual-game Electron `43.1.1` pass at 225% desktop scale closed the
 last presentation-alignment regression. Chromium allocated a 2883-by-1623 coded

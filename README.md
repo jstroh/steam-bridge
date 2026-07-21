@@ -230,6 +230,16 @@ deadline, but coordinates are never reused across frames. Friends/chat's dark
 navigation layout is accepted only when the close glyph itself passes the
 direct pixel score; a generic dark rectangle is not sufficient.
 
+Steam User and Dialog routes can contain stacked browser headers with multiple
+valid-looking close glyphs. The release matrix applies the same physical
+readiness and exact-frame gates to those routes, then sends native Escape to
+dismiss the complete overlay instead of clicking an ambiguous inner header.
+The receipt distinguishes that path from ordinary glyph-bound pointer closes
+and rejects early, partial, or causally invalid input evidence. Result-file
+publication and the managed wait's final close-stable sample may be recorded in
+either order because they complete on independent branches; both must precede
+focus return and the single graceful completion quit.
+
 On Windows, a managed presenter is non-activating and click-through while it
 is parked. When Steam opens an interactive surface, the presenter becomes
 focusable inside the Electron content bounds; after Steam closes, it returns

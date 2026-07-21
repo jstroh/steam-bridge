@@ -693,6 +693,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "lazyPresenterReady",
     "rendererProofRequired",
     "sameSteamIdentityAcrossProfiles",
+    "web-ready-escape-sendinput",
     "validateForegroundGrantManifest",
     "verifyCandidateDirectory",
     "readAndValidateLiveProofReceipt"
@@ -2709,6 +2710,7 @@ function runWindowsSmokeHelperStaticChecks() {
     "shortcut-routes",
     "Test-WebCloseForegroundCandidate",
     "Get-WebClosePanelRect",
+    "web-ready-escape-sendinput",
     "$webCloseReadiness.target",
     "probe:web-close-click-target",
     "SendMouseClickInput",
@@ -2862,6 +2864,16 @@ function runWindowsSmokeHelperStaticChecks() {
     /if \(\$action -eq "presenter-duplicate-open-guard"\) \{\s*return "web-close-click-sendinput"\s*\}/,
     "Windows duplicate-open guard must resolve auto close input to the visible web-panel close path"
   );
+  assert.match(
+    matrixHelper,
+    /foreach \(\$token in @\("dialog", "user"\)\)[\s\S]*?return "web-ready-escape-sendinput"/,
+    "Windows nested User and Dialog routes must wait for web readiness and dismiss the whole overlay"
+  );
+  assert.match(
+    matrixHelper,
+    /elseif \('\$input' -eq 'web-ready-escape-sendinput'\) \{\s*`\$nativeInputSent = Send-NativeKeyChord @\(0x1B\)/,
+    "Windows web-ready Escape path must dispatch one native Escape chord after readiness"
+  );
   for (const expected of [
     '-Action "presenter-duplicate-open-guard"',
     '"overlay:presenter-open-and-wait-start"',
@@ -2952,6 +2964,10 @@ function runWindowsSmokeHelperStaticChecks() {
     "close probe used process per-monitor-v2 DPI awareness",
     "close probe used thread per-monitor-v2 DPI awareness",
     "close probe sent all three pointer inputs without error",
+    "proved full Steam web readiness immediately before Escape",
+    "sent one complete native Escape input without error",
+    "webReadyEscapeEvidenceValid",
+    "nativeKeySucceeded",
     "close probe pointer coordinates match the audited target",
     "close probe target lies inside the detected panel",
     "webCloseTargetUsesScaleAwareInsets",

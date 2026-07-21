@@ -1172,19 +1172,22 @@ function resolveExpectedCloseProbeInput(id, action, shortcutTarget) {
   if (action === "presenter-duplicate-open-guard" || action === "presenter-persistent-reuse-three-cycle") {
     return "web-close-click-sendinput";
   }
+  for (const token of ["dialog", "user"]) {
+    if (action.toLowerCase().includes(token) || id.toLowerCase().includes(token) || shortcutTarget.includes(token)) {
+      return "web-ready-escape-sendinput";
+    }
+  }
   for (const token of [
     "checkout",
     "web",
     "store",
     "friends",
-    "dialog",
     "chat",
     "profile",
     "players",
     "community",
     "stats",
-    "achievements",
-    "user"
+    "achievements"
   ]) {
     if (action.toLowerCase().includes(token) || id.toLowerCase().includes(token) || shortcutTarget.includes(token)) {
       return "web-close-click-sendinput";
@@ -1331,6 +1334,17 @@ function selfTest() {
   assert.equal(PROFILE_CONTRACTS.length, 4);
   assert.equal(TOTAL_CASE_COUNT, 31);
   assert.equal(TOTAL_ACTIVE_CASE_COUNT, 27);
+  assert.deepEqual(
+    PROFILE_CONTRACTS.flatMap((profile) => profile.cases)
+      .filter((entry) => entry.expectedCloseProbeInput === "web-ready-escape-sendinput")
+      .map((entry) => entry.id),
+    [
+      "30-shortcut-user-open-and-wait",
+      "30-shortcut-dialog-open-and-wait",
+      "14-managed-dialog-open-and-wait",
+      "22-managed-user-open-and-wait"
+    ]
+  );
   const signedAudit = {
     schemaVersion: 2,
     target: "x86_64-pc-windows-msvc",
