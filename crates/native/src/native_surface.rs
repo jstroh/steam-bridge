@@ -1387,8 +1387,14 @@ mod windows {
     const MODAL_PRESENT_INTERVAL_MS: u32 = 1;
     const VK_TAB_CODE: i32 = 0x09;
     const VK_SHIFT_CODE: i32 = 0x10;
+    const VK_CONTROL_CODE: i32 = 0x11;
+    const VK_ALT_CODE: i32 = 0x12;
     const VK_LEFT_SHIFT_CODE: i32 = 0xA0;
     const VK_RIGHT_SHIFT_CODE: i32 = 0xA1;
+    const VK_LEFT_CONTROL_CODE: i32 = 0xA2;
+    const VK_RIGHT_CONTROL_CODE: i32 = 0xA3;
+    const VK_LEFT_ALT_CODE: i32 = 0xA4;
+    const VK_RIGHT_ALT_CODE: i32 = 0xA5;
     #[link(name = "opengl32")]
     extern "system" {
         fn glClear(mask: u32);
@@ -1594,9 +1600,13 @@ mod windows {
     #[serde(rename_all = "camelCase")]
     struct WindowInputEvent {
         kind: &'static str,
+        captured_at_ms: u64,
         message: u32,
         wparam: u64,
         lparam: i64,
+        shift: bool,
+        control: bool,
+        alt: bool,
         x: Option<i32>,
         y: Option<i32>,
         delta_y: Option<i32>,
@@ -4126,9 +4136,13 @@ mod windows {
         });
         let event = WindowInputEvent {
             kind: "overlayShortcut",
+            captured_at_ms: now_ms(),
             message: 0,
             wparam: 0,
             lparam: 0,
+            shift: true,
+            control: false,
+            alt: false,
             x: None,
             y: None,
             delta_y: None,
@@ -4203,9 +4217,17 @@ mod windows {
         });
         let event = WindowInputEvent {
             kind,
+            captured_at_ms: now_ms(),
             message,
             wparam: wparam as u64,
             lparam: lparam as i64,
+            shift: unsafe {
+                modifier_key_down(&[VK_SHIFT_CODE, VK_LEFT_SHIFT_CODE, VK_RIGHT_SHIFT_CODE])
+            },
+            control: unsafe {
+                modifier_key_down(&[VK_CONTROL_CODE, VK_LEFT_CONTROL_CODE, VK_RIGHT_CONTROL_CODE])
+            },
+            alt: unsafe { modifier_key_down(&[VK_ALT_CODE, VK_LEFT_ALT_CODE, VK_RIGHT_ALT_CODE]) },
             x,
             y,
             delta_y: (message == WM_MOUSEWHEEL)
@@ -4356,6 +4378,12 @@ mod windows {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
             .unwrap_or(0)
+    }
+
+    unsafe fn modifier_key_down(virtual_keys: &[i32]) -> bool {
+        virtual_keys
+            .iter()
+            .any(|virtual_key| async_key_state(*virtual_key) & 0x8000 != 0)
     }
 
     fn minimum_menu_dpi(scale: f64) -> Result<u32, Error> {

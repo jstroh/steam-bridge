@@ -1695,9 +1695,15 @@ export type NativeOverlayInputEventKind =
 
 export interface NativeOverlayInputEvent {
   kind: NativeOverlayInputEventKind;
+  /** Unix timestamp captured at the native window-message boundary. */
+  capturedAtMs: number;
   message: number;
   wparam: number;
   lparam: number;
+  /** Modifier state captured with the native event, before delayed JS dispatch. */
+  shift: boolean;
+  control: boolean;
+  alt: boolean;
   x?: number;
   y?: number;
   deltaY?: number;
@@ -8912,9 +8918,16 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       }
       const event: NativeOverlayInputEvent = {
         kind,
+        capturedAtMs:
+          typeof source.capturedAtMs === "number" && Number.isFinite(source.capturedAtMs)
+            ? source.capturedAtMs
+            : Date.now(),
         message: Number(source.message) || 0,
         wparam: Number(source.wparam) || 0,
         lparam: Number(source.lparam) || 0,
+        shift: source.shift === true,
+        control: source.control === true,
+        alt: source.alt === true,
         clientWidth: Math.max(1, Number(source.clientWidth) || 1),
         clientHeight: Math.max(1, Number(source.clientHeight) || 1),
         ...(typeof source.x === "number" && Number.isFinite(source.x) ? { x: source.x } : {}),

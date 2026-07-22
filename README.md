@@ -407,6 +407,13 @@ Windows host enforces that minimum logical client size during edge and corner
 resize operations and clamps a smaller initial client request to that minimum.
 The two minimum dimensions must be provided together.
 
+Every native host input event includes `capturedAtMs` plus `shift`, `control`,
+and `alt` state captured at the Win32 message boundary. Consumers should use
+those fields instead of reconstructing modifier state at JavaScript dispatch
+time. If input is correlated with Steam activation callbacks, compare callback
+transitions with `capturedAtMs`; a callback can arrive first while the Node
+event loop is busy.
+
 The optional `menu` tree creates a real Windows menu bar on a standalone host.
 Leaf `commandId` values are returned as `menuCommand` input events. The menu is
 removed in fullscreen, restored when returning to windowed mode, and changing

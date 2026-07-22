@@ -16129,18 +16129,26 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   const pumpsBeforeFrame = fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
   queuedInputEvents.push({
     kind: "leftMouseDown",
+    capturedAtMs: 1001,
     message: 513,
     wparam: 1,
     lparam: 1310730,
+    shift: true,
+    control: false,
+    alt: false,
     x: 10,
     y: 20,
     clientWidth: 960,
     clientHeight: 540
   }, {
     kind: "mouseWheel",
+    capturedAtMs: 1002,
     message: 522,
     wparam: 7864320,
     lparam: 1310730,
+    shift: false,
+    control: true,
+    alt: false,
     x: 10,
     y: 20,
     deltaY: 120,
@@ -16148,9 +16156,13 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     clientHeight: 540
   }, {
     kind: "menuCommand",
+    capturedAtMs: 1003,
     message: 273,
     wparam: 1,
     lparam: 0,
+    shift: false,
+    control: false,
+    alt: true,
     commandId: 1,
     clientWidth: 960,
     clientHeight: 540
@@ -16211,9 +16223,13 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   assert.deepEqual(receivedInputEvents, [
     {
       kind: "leftMouseDown",
+      capturedAtMs: 1001,
       message: 513,
       wparam: 1,
       lparam: 1310730,
+      shift: true,
+      control: false,
+      alt: false,
       x: 10,
       y: 20,
       clientWidth: 960,
@@ -16221,9 +16237,13 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     },
     {
       kind: "mouseWheel",
+      capturedAtMs: 1002,
       message: 522,
       wparam: 7864320,
       lparam: 1310730,
+      shift: false,
+      control: true,
+      alt: false,
       x: 10,
       y: 20,
       deltaY: 120,
@@ -16232,9 +16252,13 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     },
     {
       kind: "menuCommand",
+      capturedAtMs: 1003,
       message: 273,
       wparam: 1,
       lparam: 0,
+      shift: false,
+      control: false,
+      alt: true,
       commandId: 1,
       clientWidth: 960,
       clientHeight: 540
