@@ -1612,7 +1612,9 @@ export interface NativeOverlaySessionOptions {
    * 1.25 keeps menu text readable on dense displays configured at 100%.
    */
   minimumMenuScale?: number;
+  /** Linux/macOS attachment only. Windows callers must use a standalone host. */
   nativeWindowHandle?: Buffer;
+  /** Linux/macOS attached-host geometry. Windows standalone hosts own their bounds. */
   getBounds?: NativeOverlayBoundsProvider;
   getFullScreen?: () => boolean;
   /**
@@ -1710,6 +1712,8 @@ export interface NativeOverlayInputEvent {
   commandId?: number;
   clientWidth: number;
   clientHeight: number;
+  /** True while the standalone native host is minimized. */
+  minimized?: boolean;
 }
 
 export type NativeOverlayFrameProvider = () => Promise<NativeOverlayFrame | undefined>;
@@ -1761,7 +1765,9 @@ export type NativeOverlaySurfaceCloseReason = "closed" | "error";
 
 export interface NativeOverlayPresenterOptions {
   title?: string;
+  /** Linux/macOS attachment only. Windows callers must use a standalone host. */
   nativeWindowHandle?: Buffer;
+  /** Linux/macOS attached-host geometry. Windows standalone hosts own their bounds. */
   getBounds?: NativeOverlayBoundsProvider;
   getFullScreen?: () => boolean;
   /** @see NativeOverlaySessionOptions.useStandaloneLinuxHost */
@@ -7891,6 +7897,7 @@ export function openNativeOverlayProbeWindow(
 }
 
 export function attachNativeOverlayHostView(nativeWindowHandle: Buffer): void {
+  assertWindowsNativeOverlayAttachmentUnsupported(nativeWindowHandle);
   runRawNativeOverlaySurfaceOpen(
     "host",
     () => native().attachNativeOverlayHostView(nativeWindowHandle),
@@ -7899,6 +7906,7 @@ export function attachNativeOverlayHostView(nativeWindowHandle: Buffer): void {
 }
 
 export function attachNativeOverlayHostViewForOverlay(nativeWindowHandle: Buffer): void {
+  assertWindowsNativeOverlayAttachmentUnsupported(nativeWindowHandle);
   runRawNativeOverlaySurfaceOpen(
     "host",
     () => native().attachNativeOverlayHostViewForOverlay(nativeWindowHandle),
@@ -8193,9 +8201,22 @@ function runRawNativeOverlaySurfaceClose(
   }
 }
 
+function assertWindowsNativeOverlayAttachmentUnsupported(
+  nativeWindowHandle: Buffer | undefined
+): void {
+  if (process.platform === "win32" && nativeWindowHandle) {
+    throw new Error(
+      "Windows attached overlay hosts are unsupported: Steam did not render into the tested " +
+        "WS_CHILD swapchain, and popup hosts do not safely follow Electron window lifecycle. " +
+        "Use startNativeOverlaySession() without nativeWindowHandle and render Electron offscreen."
+    );
+  }
+}
+
 export function startNativeOverlaySession(options: NativeOverlaySessionOptions = {}): NativeOverlaySession {
   assertSteamOverlayMainThread();
   assertLinuxNativeOverlayDisplayAvailable();
+  assertWindowsNativeOverlayAttachmentUnsupported(options.nativeWindowHandle);
 
   const title = options.title ?? "Steam Bridge Native Overlay";
   const backend = resolveNativeOverlayBackend(options);
@@ -8570,10 +8591,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       }
       const pumpDurationMs = performance.now() - pumpStartedAt;
       const displaySynchronizedStandaloneHost =
-        process.platform === "win32" && continuousPresentRequested && !usesNativeHostView;
+        process.platform === "win32" && continuousPresentApplied === true && !usesNativeHostView;
       // Wake the Windows standalone host ahead of its target only on this
       // display-synchronized path. DXGI's frame-latency waitable object gates
       // the actual Present, while other platforms keep the requested cadence.
+      // Overlay activation enables retained-frame presentation even when the
+      // consumer did not request continuous presentation at construction time;
+      // that runtime state needs the same early wake-up or the JS timer delay
+      // is added to Steam's hooked Present and drops below the display rate.
       const scheduledIntervalMs = displaySynchronizedStandaloneHost
         ? Math.max(1, Math.floor(pumpIntervalMs / 2))
         : pumpIntervalMs;
@@ -8930,6 +8955,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         alt: source.alt === true,
         clientWidth: Math.max(1, Number(source.clientWidth) || 1),
         clientHeight: Math.max(1, Number(source.clientHeight) || 1),
+        ...(typeof source.minimized === "boolean" ? { minimized: source.minimized } : {}),
         ...(typeof source.x === "number" && Number.isFinite(source.x) ? { x: source.x } : {}),
         ...(typeof source.y === "number" && Number.isFinite(source.y) ? { y: source.y } : {}),
         ...(typeof source.deltaY === "number" && Number.isFinite(source.deltaY)
@@ -9198,6 +9224,7 @@ function normalizeOverlayNeedsPresentPollInterval(value: number | undefined): nu
 export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = {}): NativeOverlayPresenter {
   assertSteamOverlayMainThread();
   assertLinuxNativeOverlayDisplayAvailable();
+  assertWindowsNativeOverlayAttachmentUnsupported(options.nativeWindowHandle);
 
   const title = options.title ?? "Steam Bridge Overlay Presenter";
   const backend = resolveNativeOverlayBackend(options);
@@ -9264,11 +9291,6 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     try {
-      if (shouldDeferWindowsNativeHostAttach()) {
-        currentFps = 0;
-        emitStateChange();
-        return;
-      }
       if (!ensureNativeOverlaySurfaceReady()) {
         currentFps = 0;
         emitStateChange();
@@ -9372,7 +9394,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     try {
       activationHoldCount += 1;
       focusSourceWindowForActivation(activationMode);
-      ensureNativeOverlaySurfaceReadyForActivation(activationMode);
+      ensureNativeOverlaySurfaceReady();
       showStandaloneLinuxHostForActivation();
       if (!visible) {
         show();
@@ -9422,7 +9444,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     try {
       focusSourceWindowForActivation(activationMode);
-      ensureNativeOverlaySurfaceReadyForActivation(activationMode);
+      ensureNativeOverlaySurfaceReady();
       showStandaloneLinuxHostForActivation();
       if (!visible) {
         show();
@@ -9751,9 +9773,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     try {
-      if (!shouldDeferWindowsNativeHostAttach()) {
-        ensureNativeOverlaySurfaceReady();
-      }
+      ensureNativeOverlaySurfaceReady();
       const pollChanged = poll();
       currentFps = selectCurrentFps();
       syncHostInputMode();
@@ -10132,55 +10152,6 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       }
     }, 50);
     standaloneLinuxHostRemapTimer.unref?.();
-  }
-
-  function shouldDeferWindowsNativeHostAttach(): boolean {
-    return (
-      process.platform === "win32" &&
-      usesNativeHostView &&
-      hostActivationMode === "passive" &&
-      activationHoldCount === 0 &&
-      !overlayActive &&
-      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
-    );
-  }
-
-  function ensureNativeOverlaySurfaceReadyForActivation(activationMode: NativeOverlayPresenterActivationMode): boolean {
-    if (
-      process.platform === "win32" &&
-      activationMode === "interactive" &&
-      options.nativeWindowHandle
-    ) {
-      if (!updateNativeOverlayHostAvailability()) {
-        return false;
-      }
-
-      const hostOpen = safeBoolean(() => native().isNativeOverlayHostViewOpen());
-      if (!hostOpen) {
-        native().attachNativeOverlayHostViewForOverlay(options.nativeWindowHandle);
-        nativeSurfaceAttachCount += 1;
-        frameCaptureReady = false;
-        lastNativeHostBounds = undefined;
-        syncNativeHostBounds(true);
-      } else {
-        if (hostInputPassthrough) {
-          native().setNativeOverlayHostInputPassthrough(false);
-        }
-        if (!hostOpaque) {
-          native().setNativeOverlayHostOpacity(true);
-        }
-      }
-      if (visible) {
-        syncNativeHostBounds();
-        native().showNativeOverlayHostView();
-      }
-      hostInputPassthrough = false;
-      hostOpaque = true;
-      requestSourceFrame();
-      return true;
-    }
-
-    return ensureNativeOverlaySurfaceReady();
   }
 
   function ensureNativeOverlaySurfaceReady(): boolean {

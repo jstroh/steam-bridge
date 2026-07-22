@@ -96,8 +96,10 @@ containing your app ID next to the executable or in its working directory.
 
 ## Electron overlay
 
-Configure Electron before `app.ready`, then create one managed overlay for the
-main game window and reuse it:
+On Linux and macOS, configure Electron before `app.ready`, then create one
+managed overlay for the main game window and reuse it. Windows applications
+must use the standalone game-host API described below; attached Electron
+presentation deliberately fails closed there.
 
 ```ts
 import { app, BrowserWindow } from "electron";
@@ -119,9 +121,9 @@ app.whenReady().then(async () => {
 
 Wait helpers resolve after the Steam overlay closes and control returns to the
 application. Steam Bridge supports one managed native presenter per process,
-controlled from Electron's main thread. Raw activation helpers remain
-available for diagnostics, but Electron product UI should use the managed
-overlay path.
+controlled from Electron's main thread. On Linux and macOS this can follow an
+Electron window. On Windows the one supported production presenter is the
+standalone native host driven by an offscreen Electron renderer.
 
 ### Linux and Steam Deck
 
@@ -187,41 +189,42 @@ keeps Steam's needs-present poll disabled because current Steam clients crash in
 that path; managed presentation and lifecycle callbacks require no app polling
 loop.
 
-### Windows managed overlay readiness
+### Windows standalone overlay readiness
 
 Initialize Steam during main-process bootstrap, before creating a
 `BrowserWindow` or otherwise causing Electron to create its graphics device.
-Register Steam callbacks at the same time, then create the window and managed
-overlay after `app.whenReady()`. This ordering gives Steam's overlay hook the
-process and graphics-device lifecycle that Valve documents.
+Register Steam callbacks at the same time, then create the standalone native
+host and its offscreen renderer after `app.whenReady()`. This ordering gives
+Steam's overlay hook the process and graphics-device lifecycle that Valve
+documents. Do not create a normal visible Electron game window and attach a
+second presenter to it: the Windows attached entrypoints return an explicit
+unsupported error before closing or creating any surface.
 
-When a Windows persistent presenter is not ready yet, managed wait helpers
-temporarily attach its native D3D surface while it remains transparent,
-non-activating, and click-through. Steam Bridge presents complete frames at 30
-FPS until `IsOverlayEnabled` positively confirms that Steam hooked the surface;
-only then can the requested activation or checkout operation run. This is a
-state-driven readiness handshake, not a fixed startup delay. When the wait
-becomes ready, is aborted, or times out, the readiness hold is released and the
-parked presenter returns to zero FPS. Synchronous `open*IfAvailable()` helpers
-remain fail-closed while the overlay is not ready.
+The repository's Windows release proof is candidate-bound to an actual
+standalone game consumer. It rejects linked or mismatched package installs,
+popup/parented diagnostics, missing Steam lifecycle or window transitions,
+median game paint/native-present pacing or overlay-active native-present pacing
+below 95% of the display target (with at least three samples per phase), device
+loss, latency timeouts, slow
+copies, stderr, crashes, or an incomplete visual checklist. The retired
+attached matrix and task wrapper intentionally fail and cannot be used as
+release evidence.
 
-The repository's Windows release matrix is fail-closed around synthetic close
-input. An exact pre-dispatch screenshot must prove the foreground native host,
-contained modal geometry, a DPI-scaled Steam close glyph, the dimmed backdrop,
-and loaded content. Coordinates are never reused across frames. Friends/chat's
-dark navigation layout is accepted only when the close glyph itself passes the
-direct pixel score.
+On Windows, use standalone game-host mode: one visible top-level native D3D
+window with Electron rendered offscreen into it. Attached Windows presentation
+is not a production path. The real `WS_CHILD` experiment fixed geometry but
+Steam drew no overlay pixels; `popup-layered`, the unparented overlapped
+comparison, and `owned-popup` rendered Steam but failed chrome, DPI, movement,
+resize, focus, clipping, and lifecycle behavior. Attached mode must fail clearly
+and must never fall back from a child to a popup.
+Accordingly, do not pass `nativeWindowHandle` or an Electron-following
+`getBounds` callback on Windows. The standalone host owns its native position
+and size. Raw attachment, `startNativeOverlaySession({ nativeWindowHandle })`,
+`attachPresenter({ nativeWindowHandle })`, and the default attached mode of
+`createElectronSteamOverlay(...)` all reject before claiming or mutating the
+native surface. An earlier standalone session therefore remains intact.
 
-On Windows, a managed presenter is non-activating and click-through while it
-is parked. When Steam opens an interactive surface, the presenter becomes
-focusable inside the Electron content bounds; after Steam closes, it returns
-to the parked state and restores application focus. This keeps the ordinary
-title bar, menus, minimize, maximize, window drag, and rounded-corner behavior
-owned by the Electron window. The interactive surface is an Electron-owned
-popup (`owned-popup` in diagnostics); the release proof rejects the obsolete
-standalone `popup-layered` identity.
-
-The same managed overlay also prepares passive Steam notifications, including
+The Linux/macOS managed overlay also prepares passive Steam notifications, including
 achievement progress and unlock toasts. The presenter stays transparent,
 click-through, and idle until Steam requests a frame, then parks again without
 an overlay-activation callback. Applications do not need a separate polling or
@@ -346,6 +349,11 @@ const session = steamworks.overlay.startNativeOverlaySession({
     }
   ],
   onInputEvent(event) {
+    if (event.kind === "windowChanged" && event.minimized) {
+      gameWindow.webContents.setFrameRate(1);
+      session.setFrameRate(1);
+      return; // Retain the last real client size while Windows is iconic.
+    }
     if (event.kind === "menuCommand" && event.commandId === 1) {
       app.quit();
       return;
@@ -369,6 +377,11 @@ When both `minClientWidth` and `minClientHeight` are provided, the standalone
 Windows host enforces that minimum logical client size during edge and corner
 resize operations and clamps a smaller initial client request to that minimum.
 The two minimum dimensions must be provided together.
+While the standalone host is minimized, Steam Bridge does not resize or
+present its D3D swap chain at Windows' synthetic iconic `1x1` client size.
+`windowChanged` events expose `minimized`; offscreen Electron consumers should
+retain their last real viewport and throttle both the renderer and session
+until the next non-minimized event.
 
 Every native host input event includes `capturedAtMs` plus `shift`, `control`,
 and `alt` state captured at the Win32 message boundary. Consumers should use
@@ -400,9 +413,10 @@ The native host owns ordinary Windows movement, resize, maximize, minimize,
 fullscreen, focus visibility, rounded-corner clipping, cursor state, and the
 Steam presentation surface. The consumer must map `onInputEvent` coordinates
 through the same aspect-fit transform and forward them to the offscreen
-`webContents`; release pressed input on capture or focus loss. This is an
-advanced path. Prefer `createElectronSteamOverlay()` unless the application
-needs a standalone game host.
+`webContents`; release pressed input on capture or focus loss. This is the
+required Windows production path. On Linux and macOS, prefer
+`createElectronSteamOverlay()` unless the application needs a standalone game
+host.
 
 Steam checkout cancellation can create a separate top-level `Steam Dialog`
 instead of drawing the confirmation inside the hooked swap chain. While a

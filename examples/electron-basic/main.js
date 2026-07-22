@@ -45,10 +45,6 @@ const MAC_NATIVE_HOST_BACKEND = normalizeMacNativeHostBackend(
   CLI_OPTIONS.nativeHostBackend || process.env.STEAM_BRIDGE_SMOKE_NATIVE_HOST_BACKEND || ""
 );
 configureMacNativeHostBackend(MAC_NATIVE_HOST_BACKEND);
-const WINDOWS_NATIVE_HOST_STYLE = normalizeWindowsNativeHostStyle(
-  CLI_OPTIONS.windowsNativeHostStyle || process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE || ""
-);
-configureWindowsNativeHostStyle(WINDOWS_NATIVE_HOST_STYLE);
 const WINDOWS_NATIVE_HOST_BACKEND = normalizeWindowsNativeHostBackend(
   CLI_OPTIONS.windowsNativeHostBackend || process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND || ""
 );
@@ -230,7 +226,6 @@ const LAUNCH_ENV_KEYS = [
   "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER",
   "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER_TARGET",
   "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND",
-  "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE",
   "__COMPAT_LAYER"
 ];
 const STARTUP_LAUNCH_CONTEXT = getLaunchContext();
@@ -4722,7 +4717,6 @@ function snapshot() {
       overlayDisableDirectComposition: OVERLAY_CONFIG.disableDirectComposition,
       overlayConfig: OVERLAY_CONFIG,
       nativeHostBackend: MAC_NATIVE_HOST_BACKEND || WINDOWS_NATIVE_HOST_BACKEND || null,
-      nativeHostStyle: WINDOWS_NATIVE_HOST_STYLE || null,
       nativePathOverride: Boolean(process.env.STEAM_BRIDGE_NATIVE_PATH),
       windowMode: WINDOW_MODE,
       autorun: AUTORUN,
@@ -5760,25 +5754,6 @@ function configureMacNativeHostBackend(backend) {
   }
 }
 
-function normalizeWindowsNativeHostStyle(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["control", "overlapped", "plain"].includes(normalized)) {
-    return "control";
-  }
-  if (["default", "popup", "popup-layered", "layered"].includes(normalized)) {
-    return "popup-layered";
-  }
-  return "";
-}
-
-function configureWindowsNativeHostStyle(style) {
-  if (process.platform !== "win32" || !style) {
-    return;
-  }
-
-  process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE = style;
-}
-
 function normalizeWindowsNativeHostBackend(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (["default", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11"].includes(normalized)) {
@@ -5838,7 +5813,6 @@ function parseSmokeArgs(args) {
     windowMode: undefined,
     nativeHostBackend: undefined,
     windowsNativeHostBackend: undefined,
-    windowsNativeHostStyle: undefined,
     autorunRequireOverlayActive: undefined,
     webModal: undefined,
     storeRoute: undefined,
@@ -5982,10 +5956,6 @@ function parseSmokeArgs(args) {
       case "--steam-bridge-windows-native-host-backend":
       case "--steam-bridge-smoke-windows-native-host-backend":
         options.windowsNativeHostBackend = value;
-        break;
-      case "--steam-bridge-windows-native-host-style":
-      case "--steam-bridge-smoke-windows-native-host-style":
-        options.windowsNativeHostStyle = value;
         break;
       case "--steam-bridge-smoke-result-file":
         options.resultFile = value;

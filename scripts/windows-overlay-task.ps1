@@ -15,6 +15,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+throw @"
+This task wrapper only launched the retired Windows attached-overlay matrix.
+It is intentionally disabled. Use the candidate-bound standalone consumer proof
+documented in examples/electron-basic/README.md.
+"@
+
 if (-not ("SteamBridgeExactProcessStop" -as [type])) {
   Add-Type -TypeDefinition @"
 using System;

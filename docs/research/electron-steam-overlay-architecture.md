@@ -1,22 +1,34 @@
 # Electron and the Steam Overlay on Windows
 
-Last reviewed: 2026-07-16
+Last reviewed: 2026-07-21
 
 ## Decision
 
-Do not continue treating the Steam overlay as a normal Electron child-window
-positioning problem. A Win32 child window is the right primitive for geometry,
-clipping, parent movement, and lifetime, but the source-linked live test showed
-that Steam did not render into its D3D11 child swapchain. The owned top-level
-presenter is hookable and can be synchronized to Electron's content rectangle,
-but it cannot make Electron's native chrome interactive while Steam is
-deliberately suppressing application input.
+The supported Windows production design is one authoritative standalone native
+D3D game host. It is the visible application window, composites the offscreen
+Electron surface, owns its native chrome, and gives Steam one top-level
+swapchain to hook. FOV4 already uses this design through
+`startNativeOverlaySession()` and a hidden offscreen `BrowserWindow`.
 
-The supported long-term Windows design is one authoritative native D3D
-top-level host which composites an offscreen Chromium/Electron surface every
-frame and forwards host input to Chromium. Before replacing the current
-consumer window, prove that design in a minimal native host, including overlay
-rendering and native non-client behavior.
+Windows attached mode is not a production path. Both of its attempted window
+models are closed: a true `WS_CHILD` fixed geometry but Steam drew no overlay
+pixels, while attached top-level popups rendered Steam but failed Windows
+window-lifecycle behavior. Attached mode must fail clearly; a child failure
+must never authorize an owned-popup fallback.
+
+The attached `WS_POPUP` designs are closed paths. They repeatedly rendered Steam
+but behaved as an independently positioned top-level surface: they covered or
+escaped Electron chrome, lost rounded-corner clipping, desynchronized on DPI
+rounding, move, resize, maximize, minimize, and focus changes, flickered during
+interactive drag/resize, retained partial or stale frames, and contributed to
+hang/crash behavior. More geometry polling, clipping regions, delayed terminal
+updates, or retained-frame stretching only patches those symptoms.
+
+A source-linked, uncommitted `WS_CHILD` prototype previously made geometry,
+clipping, movement, focus, and minimize behavior automatic, but Steam activated
+without drawing into its child swapchain. Do not retry it unless Steam's hook
+selection or the renderer architecture materially changes. That result is also
+not permission to revive a popup.
 
 ## Primary findings
 
@@ -56,6 +68,28 @@ The bridge tested both models:
 Therefore a child HWND is not rejected because it is bad Windows design. It is
 rejected because the live Steam renderer did not select that presentation
 surface.
+
+### Closed attached-host paths
+
+The following paths must not be reintroduced during ordinary Windows work:
+
+| Path | Historical result | Closed because |
+| --- | --- | --- |
+| Layered popup (`popup-layered`) | Steam could render into it. | It was an independent top-level surface with non-client coverage, activation, Alt+Tab/ghost-window, and synchronization problems. |
+| "Control" / overlapped companion | It changed styles and activation behavior. | It was still an unparented `WS_OVERLAPPEDWINDOW`, not a child, so it did not solve ownership or geometry. |
+| Owned popup (`owned-popup`) | Steam rendered and the bridge could track the Electron client rectangle. | Live use still produced chrome/menu/title-drag conflicts, rounded-corner errors, focus/minimize bugs, DPI seams, partial coverage, drag/resize flicker, hangs, and crashes. |
+| Popup clipping/region synchronization | It repaired individual static screenshots. | A second top-level HWND still needs race-prone screen-coordinate synchronization throughout the interactive Windows move/size loop. |
+| Retained-swapchain stretching during resize | It avoided one partial-size frame. | It visibly flickered and traded stale/partial presentation for distortion; it was reverted. |
+| Fixed delays, DevTools activity, and Chromium composition flags | Some runs appeared ready or stable. | Results varied across cold starts and DevTools itself changed rendering behavior; these are not lifecycle handshakes. |
+| True attached `WS_CHILD` | Windows automatically handled geometry and clipping. | Steam activated but did not draw overlay pixels into the child swapchain. Reopen only after a material Steam-hook or renderer change. |
+
+Repository history is also precise about what was and was not committed. The
+Windows presenter entered history as `WS_POPUP` in `e1dfd73`, gained an
+unparented overlapped comparison mode in `f0215bd`, accumulated activation and
+geometry repairs through `6577856`, and was renamed to `owned-popup` in
+`2a24089`. No committed revision contains `WS_CHILD` or `SetParent`; the earlier
+child result exists only in the live-test record added by `2a24089`. A partial
+2026-07-21 child re-entry was abandoned after this audit and before completion.
 
 ### Why title-bar and menu input still fails
 

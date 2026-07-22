@@ -5,200 +5,154 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { isDeepStrictEqual } = require("node:util");
 const {
-  canonicalJson,
   createCandidateBinding,
+  fingerprintCandidateDirectory,
   hashCanonicalJson,
   validateCandidateBinding,
   verifyCandidateDirectory
 } = require("./windows-release-candidate-fingerprint.cjs");
-const { summarizeWindowsOverlayMatrixArtifacts } = require("./summarize-windows-overlay-matrix.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 1;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-live-proof-receipt-v1";
-const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-live-proof-evidence-v1";
+const RECEIPT_SCHEMA_VERSION = 2;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v2";
+const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
+const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
+const EVIDENCE_SCHEMA_VERSION = 1;
 const RECEIPT_PREFIX = "STEAM_BRIDGE_WINDOWS_LIVE_PROOF_RECEIPT ";
-const PUBLIC_APP_ID = 480;
 const EXPECTED_BACKEND = "windows-d3d11";
-const EXPECTED_HOST_STYLE = "owned-popup";
-const EXPECTED_HEALTH_MINUTES = 30;
-const OWNER_PROCESS_HANDOFF = "owner-process-native-show-v1";
-const SAME_PROCESS_HANDOFF = "same-process-user-gesture-v1";
-const EXTERNAL_FOREGROUND_TRANSITION = "external-foreground-event-v1";
-const USER_GESTURE_POLICY = "single-cycle-active-v1";
-const PERSISTENT_REUSE_POLICY = "initial-user-gesture-verify-only-v1";
-const PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA = 2;
-const WEB_CLOSE_TARGET_EVIDENCE = "screenshot-close-glyph-v1";
-const FOREGROUND_GRANT_EVIDENCE_SCHEMA = 1;
-const FOREGROUND_GRANT_KEYS = Object.freeze([
-  "brokerConfigured",
-  "brokerSha256",
-  "candidateInputAllowed",
-  "matrixInputSent",
-  "required",
-  "schemaVersion",
-  "timeoutSeconds"
+const EXPECTED_HOST_STYLE = "standalone";
+const MAX_JSON_BYTES = 1024 * 1024;
+const WINDOWS_RUNTIME_FILES = Object.freeze([
+  "steam_bridge_native.win32-x64-msvc.node",
+  "steam_api64.dll",
+  "sdkencryptedappticket64.dll"
 ]);
-const MAX_JSON_BYTES = 16 * 1024 * 1024;
-
-const WAIT_EVENTS = Object.freeze([
-  "overlay:presenter-open-and-wait-start",
-  "overlay:presenter-wait-closed",
-  "overlay:presenter-parked",
-  "overlay:presenter-open-and-wait-complete"
+const MANUAL_CHECK_KEYS = Object.freeze([
+  "cleanShutdown",
+  "cursorBehavior",
+  "focusReturn",
+  "fullscreenRestore",
+  "maximizeRestore",
+  "menuInteraction",
+  "minimizeRestore",
+  "minimumSize",
+  "noFlicker",
+  "noPurpleSurface",
+  "noTinySurface",
+  "overlayClientAlignment",
+  "overlayClose",
+  "resize",
+  "roundedCorners",
+  "startupChrome",
+  "titleDrag"
 ]);
-const SHORTCUT_WAIT_EVENTS = Object.freeze([
-  "overlay:presenter-open-and-wait-start",
-  "overlay:shortcut-open",
-  "overlay:presenter-wait-closed",
-  "overlay:presenter-parked",
-  "overlay:presenter-open-and-wait-complete"
+const PROFILE_CONTRACTS = Object.freeze([
+  Object.freeze({
+    name: "standalone-consumer",
+    suite: "standalone-consumer",
+    activeCaseCount: 1,
+    cases: Object.freeze([
+      Object.freeze({ id: "standalone-startup" }),
+      Object.freeze({ id: "standalone-window-transitions" }),
+      Object.freeze({ id: "standalone-steam-overlay" }),
+      Object.freeze({ id: "standalone-frame-pacing" })
+    ])
+  })
 ]);
-const KEYBOARD_EVENTS = Object.freeze([
-  "overlay:presenter-shortcut-ready",
-  "overlay:shortcut-open",
-  "overlay:presenter-wait-shown",
-  "overlay:presenter-wait-closed",
-  "overlay:presenter-parked"
-]);
-
-const MATRIX_MANIFEST_KEYS = Object.freeze([
-  "allowUnhealthyDefaultRender",
-  "allowUnhealthySteamClientLogs",
-  "appId",
-  "assumeShortcutConfigured",
-  "autorunUserGestureGatePolicy",
-  "candidateBinding",
-  "candidatePathHasNoReparsePoints",
-  "cases",
-  "cleanStaleOverlayHelpers",
-  "cleanupContract",
-  "closeProbe",
-  "closeProbeEvidenceSchema",
-  "closeProbeForegroundHandoff",
-  "closeProbeInput",
-  "closeProbeSettleMs",
-  "closeProbeTimeoutSeconds",
-  "expectedCaseCount",
-  "expectedNativeHostBackend",
-  "generatedAt",
-  "initTxnCapture",
-  "installShortcut",
-  "javaScriptRunnerExeConfigured",
-  "kind",
-  "launchEnvOutsideCandidate",
-  "launchEnvPathHasNoReparsePoints",
-  "launchEnvUsesDefaultPath",
-  "launchKind",
-  "launchMode",
-  "nativeHostBackend",
-  "nativeHostStyle",
-  "nativePathOverride",
-  "onlyCase",
-  "overlayDisableDirectComposition",
-  "overlayInProcessGpu",
-  "overlayIsolateChildProcesses",
-  "overlayProfile",
-  "overlayScrubChildEnv",
-  "persistentReuseGatePolicy",
-  "persistentReuseCloseTargetSchema",
-  "presenterMode",
-  "privateEnvImported",
-  "requireMicroTxnCallback",
-  "shortcutExeConfigured",
-  "shortcutLaunchPrefixConfigured",
-  "shortcutNamePresent",
-  "shortcutStartDirConfigured",
-  "skipNativeLoadGate",
-  "skipRenderHealthGate",
-  "steamClientHealthRecentMinutes",
-  "suite",
-  "supportedCloseProbeEvidenceSchemas",
-  "supportedCloseProbeForegroundHandoffs",
-  "supportedExternalForegroundTransitions",
-  "supportedPersistentReuseEvidenceSchemas",
-  "supportedPersistentReuseCloseTargetSchemas",
-  "targetHints",
-  "timeoutSeconds",
-  "webUrlUsesPublicDefault",
-  "windowMode"
-]);
-
-const CASE_KEYS = Object.freeze([
-  "action",
-  "allowOverlayNotReady",
-  "autorunUserGestureGate",
-  "closeProbeEvidenceSchema",
-  "closeProbeForegroundHandoff",
-  "closeProbeOnActivation",
-  "closeVerificationOrdinals",
-  "dialog",
-  "expectedCloseProbeInput",
-  "externalForegroundTransition",
-  "hasCheckoutJsonFile",
-  "hasCheckoutTransactionId",
-  "hasInitTxnRequestFile",
-  "id",
-  "initialUserGestureCycle",
-  "managedOverlayResultMode",
-  "persistentReuseCycles",
-  "persistentReuseCloseTargetSchema",
-  "persistentReuseEvidenceSchema",
-  "persistentReuseGate",
-  "persistentReuseGatePolicy",
-  "requireEvent",
-  "requireManagedOverlayComplete",
-  "requireMicroTxnCallback",
-  "requireNoOverlayActivation",
-  "requireOverlayActivated",
-  "requirePassiveNotification",
-  "resultDelayMs",
-  "shortcutTarget",
-  "shortcutToggleProbe",
-  "storeRoute",
-  "userDialog",
-  "verifyOnlyCycles",
-  "webModal"
-]);
-
-const PROFILE_CONTRACTS = Object.freeze(buildProfileContracts());
-const TOTAL_CASE_COUNT = PROFILE_CONTRACTS.reduce((total, profile) => total + profile.cases.length, 0);
-const TOTAL_ACTIVE_CASE_COUNT = PROFILE_CONTRACTS.reduce(
-  (total, profile) => total + profile.cases.filter((entry) => entry.requireOverlayActivated).length,
-  0
-);
+const TOTAL_CASE_COUNT = PROFILE_CONTRACTS[0].cases.length;
+const TOTAL_ACTIVE_CASE_COUNT = PROFILE_CONTRACTS[0].activeCaseCount;
 
 if (require.main === module) {
   if (process.argv.includes("--self-test")) {
     selfTest();
-    console.log("Windows live-proof receipt self-test passed.");
+    console.log("Windows standalone live-proof receipt self-test passed.");
+  } else if (process.argv.includes("--write-evidence-template")) {
+    try {
+      writeEvidenceTemplate(parseEvidenceTemplateArgs(process.argv.slice(2)));
+    } catch (error) {
+      console.error(error);
+      process.exitCode = 1;
+    }
   } else {
     try {
       main();
-    } catch {
-      console.error("Windows live-proof receipt generation failed closed.");
+    } catch (error) {
+      console.error(error);
+      console.error("Windows standalone live-proof receipt generation failed closed.");
       process.exitCode = 1;
     }
   }
 }
 
+function parseEvidenceTemplateArgs(args) {
+  const filtered = args.filter((arg) => arg !== "--write-evidence-template");
+  const names = new Map([
+    ["--audit-manifest", "auditManifest"],
+    ["--stdout", "stdout"],
+    ["--stderr", "stderr"],
+    ["--output", "output"]
+  ]);
+  const options = {};
+  for (let index = 0; index < filtered.length; index += 2) {
+    const name = filtered[index];
+    const key = names.get(name);
+    assert.ok(key, "Unknown evidence-template argument.");
+    assert.equal(options[key], undefined, "Duplicate evidence-template argument.");
+    const value = filtered[index + 1];
+    assert.ok(value && !value.startsWith("--"), "Evidence-template argument is missing a value.");
+    options[key] = value;
+  }
+  assert.equal(Object.keys(options).length, names.size, "Evidence-template arguments are incomplete.");
+  return options;
+}
+
+function writeEvidenceTemplate(options) {
+  const audit = readStableJson(path.resolve(options.auditManifest), "package audit manifest").value;
+  const candidateBinding = createCandidateBinding(audit);
+  const output = path.resolve(options.output);
+  const outputRoot = path.dirname(output);
+  const stdout = path.resolve(options.stdout);
+  const stderr = path.resolve(options.stderr);
+  assertPathInside(outputRoot, stdout, "stdout");
+  assertPathInside(outputRoot, stderr, "stderr");
+  readStableRealFile(outputRoot, stdout, "standalone stdout");
+  readStableRealFile(outputRoot, stderr, "standalone stderr");
+  writePrivateJson(output, {
+    kind: EVIDENCE_KIND,
+    schemaVersion: EVIDENCE_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    candidateBindingSha256: candidateBinding.bindingSha256,
+    logs: {
+      stdout: path.relative(outputRoot, stdout),
+      stderr: path.relative(outputRoot, stderr)
+    },
+    manualChecks: Object.fromEntries(MANUAL_CHECK_KEYS.map((key) => [key, false])),
+    qa: {
+      actualGame: false,
+      actualSteamClient: false,
+      developmentToolsOpen: false,
+      ordinaryOverlayOnly: false,
+      purchaseOrSubscriptionAuthorized: false,
+      steamClientStable: false
+    }
+  });
+  console.log("Wrote fail-closed standalone evidence template: " + output);
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const receipt = generateLiveProofReceipt(options);
-  writePrivateJson(options.output, receipt);
-  console.log(`${RECEIPT_PREFIX}${receipt.receiptSha256}`);
+  writePrivateJson(path.resolve(options.output), receipt);
+  console.log(RECEIPT_PREFIX + receipt.receiptSha256);
 }
 
 function parseArgs(args) {
   const names = new Map([
     ["--audit-manifest", "auditManifest"],
     ["--candidate-directory", "candidateDirectory"],
-    ["--persistent-reuse-root", "persistentReuseRoot"],
-    ["--checkout-root", "checkoutRoot"],
-    ["--shortcut-routes-root", "shortcutRoutesRoot"],
-    ["--managed-routes-root", "managedRoutesRoot"],
+    ["--consumer-package-directory", "consumerPackageDirectory"],
+    ["--evidence", "evidence"],
     ["--output", "output"]
   ]);
   const options = {};
@@ -216,571 +170,270 @@ function parseArgs(args) {
 }
 
 function generateLiveProofReceipt(options) {
-  const audit = readJsonArtifact(path.resolve(options.auditManifest), "package audit manifest").value;
+  const auditArtifact = readStableJson(path.resolve(options.auditManifest), "package audit manifest");
+  const audit = auditArtifact.value;
   const candidateBinding = createCandidateBinding(audit);
   const candidateDirectory = path.resolve(options.candidateDirectory);
-  const rootsByProfile = {
-    "persistent-reuse": options.persistentReuseRoot,
-    checkout: options.checkoutRoot,
-    "shortcut-routes": options.shortcutRoutesRoot,
-    "managed-routes": options.managedRoutesRoot
-  };
-  validateReceiptOutputLocation(options.output, candidateDirectory, Object.values(rootsByProfile));
-  const seenRoots = new Set();
-  const validatedProfiles = [];
-  const steamIdentities = [];
-
-  for (const contract of PROFILE_CONTRACTS) {
-    const root = validateArtifactRoot(rootsByProfile[contract.name]);
-    const rootKey = fs.realpathSync.native(root).toLowerCase();
-    assert.ok(!seenRoots.has(rootKey), "Live-proof profile roots must be distinct.");
-    seenRoots.add(rootKey);
-    const manifestArtifact = readJsonArtifact(path.join(root, "matrix-manifest.json"), "matrix manifest");
-    const cleanupPath = path.join(root, "task-cleanup.json");
-    const cleanupArtifact = readJsonArtifact(cleanupPath, "task cleanup");
-    validatePublicManifest(manifestArtifact.value, contract, candidateBinding);
-    const summary = summarizeWindowsOverlayMatrixArtifacts(root);
-    const manifestAfterSummary = readJsonArtifact(path.join(root, "matrix-manifest.json"), "matrix manifest");
-    const cleanupAfterSummary = readJsonArtifact(cleanupPath, "task cleanup");
-    assert.ok(
-      manifestArtifact.bytes.equals(manifestAfterSummary.bytes),
-      "Matrix manifest changed while its live proof was summarized."
-    );
-    assert.ok(
-      cleanupArtifact.bytes.equals(cleanupAfterSummary.bytes),
-      "Task cleanup changed while its live proof was summarized."
-    );
-    validateProfileSummary(summary, contract, candidateBinding);
-    const steamIdentity = readSteamContinuityIdentity(cleanupArtifact.value);
-    steamIdentities.push(steamIdentity);
-    validatedProfiles.push({
-      contract,
-      generatedAt: manifestArtifact.value.generatedAt,
-      manifestSha256: sha256(manifestArtifact.bytes),
-      summary
-    });
-  }
-
-  for (let index = 1; index < validatedProfiles.length; index += 1) {
-    assert.ok(
-      Date.parse(validatedProfiles[index - 1].generatedAt) <= Date.parse(validatedProfiles[index].generatedAt),
-      "Live-proof profiles were not run in the required order."
-    );
-  }
-  assert.ok(
-    steamIdentities.every((identity) => identity === steamIdentities[0]),
-    "Steam identity changed between live-proof profiles."
-  );
-  const finalCandidateBinding = verifyCandidateDirectory(
+  const consumerPackageDirectory = path.resolve(options.consumerPackageDirectory);
+  const evidencePath = path.resolve(options.evidence);
+  const outputPath = path.resolve(options.output);
+  assertOutputOutsideInputs(outputPath, [
     candidateDirectory,
-    audit
-  );
-  assert.deepEqual(finalCandidateBinding, candidateBinding, "Candidate directory changed after live proof.");
-  const profiles = validatedProfiles.map(({ contract, manifestSha256, summary }) =>
-    buildProfileReceipt(contract, manifestSha256, summary, candidateBinding)
-  );
-  return assembleLiveProofReceipt(candidateBinding, profiles, new Date().toISOString(), true);
-}
-
-function validatePublicManifest(manifest, contract, candidateBinding) {
-  const manifestKeys = [...MATRIX_MANIFEST_KEYS];
-  if (manifest.webCloseTargetEvidence !== undefined) {
-    manifestKeys.push("webCloseTargetEvidence");
-  }
-  if (manifest.foregroundGrantGate !== undefined) {
-    manifestKeys.push("foregroundGrantGate");
-  }
-  assertExactKeys(manifest, manifestKeys, "matrix manifest");
-  assert.equal(manifest.kind, "steam-bridge-windows-overlay-matrix-manifest");
-  assertIsoTimestamp(manifest.generatedAt, "matrix manifest timestamp");
-  assert.equal(manifest.suite, contract.suite);
-  assert.equal(manifest.launchMode, "steam-launch");
-  assert.equal(manifest.launchKind, "shortcut");
-  assert.equal(manifest.candidatePathHasNoReparsePoints, true);
-  assert.equal(manifest.launchEnvOutsideCandidate, true);
-  assert.equal(manifest.launchEnvPathHasNoReparsePoints, true);
-  assert.equal(manifest.launchEnvUsesDefaultPath, true);
-  assert.equal(manifest.appId, PUBLIC_APP_ID);
-  assert.equal(manifest.onlyCase, "");
-  assert.equal(manifest.expectedCaseCount, contract.cases.length);
-  assert.equal(manifest.webUrlUsesPublicDefault, true);
-  if (manifest.webCloseTargetEvidence !== undefined) {
-    assert.equal(manifest.webCloseTargetEvidence, WEB_CLOSE_TARGET_EVIDENCE);
-  }
-  if (manifest.foregroundGrantGate !== undefined) {
-    validateForegroundGrantManifest(manifest.foregroundGrantGate);
-  }
-  assert.equal(manifest.shortcutNamePresent, true);
-  assert.equal(manifest.shortcutExeConfigured, false);
-  assert.equal(manifest.shortcutStartDirConfigured, false);
-  assert.equal(manifest.shortcutLaunchPrefixConfigured, false);
-  assert.equal(manifest.javaScriptRunnerExeConfigured, false);
-  assert.equal(manifest.overlayProfile, "diagnostic");
-  assert.equal(manifest.presenterMode, "");
-  assert.equal(manifest.nativeHostBackend, "");
-  assert.equal(manifest.nativeHostStyle, "");
-  assert.equal(manifest.expectedNativeHostBackend, EXPECTED_BACKEND);
-  assert.equal(manifest.nativePathOverride, false);
-  assert.equal(manifest.overlayInProcessGpu, "");
-  assert.equal(manifest.overlayDisableDirectComposition, "");
-  assert.equal(manifest.overlayScrubChildEnv, "");
-  assert.equal(manifest.overlayIsolateChildProcesses, "");
-  assert.equal(manifest.windowMode, "windowed");
-  assert.equal(manifest.closeProbe, true);
-  assert.equal(manifest.closeProbeInput, "auto");
-  assert.equal(manifest.timeoutSeconds, 120);
-  assert.equal(manifest.closeProbeSettleMs, 750);
-  assert.equal(manifest.closeProbeTimeoutSeconds, 110);
-  assert.equal(manifest.autorunUserGestureGatePolicy, USER_GESTURE_POLICY);
-  assert.equal(manifest.persistentReuseGatePolicy, PERSISTENT_REUSE_POLICY);
-  assert.deepEqual(manifest.supportedPersistentReuseEvidenceSchemas, [1]);
-  assert.equal(
-    manifest.persistentReuseCloseTargetSchema,
-    PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
-  );
-  assert.deepEqual(manifest.supportedPersistentReuseCloseTargetSchemas, [
-    PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
+    consumerPackageDirectory,
+    path.dirname(evidencePath)
   ]);
-  assert.equal(manifest.closeProbeEvidenceSchema, 2);
-  assert.deepEqual(manifest.supportedCloseProbeEvidenceSchemas, [2, 3]);
-  assert.equal(manifest.closeProbeForegroundHandoff, OWNER_PROCESS_HANDOFF);
-  assert.deepEqual(manifest.supportedCloseProbeForegroundHandoffs, [OWNER_PROCESS_HANDOFF, SAME_PROCESS_HANDOFF]);
-  assert.deepEqual(manifest.supportedExternalForegroundTransitions, [EXTERNAL_FOREGROUND_TRANSITION]);
-  assert.equal(manifest.skipNativeLoadGate, false);
-  assert.equal(manifest.skipRenderHealthGate, false);
-  assert.equal(manifest.allowUnhealthyDefaultRender, false);
-  assert.equal(manifest.allowUnhealthySteamClientLogs, false);
-  assert.equal(manifest.cleanStaleOverlayHelpers, false);
-  assert.equal(manifest.steamClientHealthRecentMinutes, EXPECTED_HEALTH_MINUTES);
-  assert.equal(manifest.privateEnvImported, false);
-  assert.equal(manifest.requireMicroTxnCallback, false);
-  validateCandidateBinding(manifest.candidateBinding);
-  assert.deepEqual(manifest.candidateBinding, candidateBinding);
-  validateCandidateSigningPolicy(candidateBinding);
-
-  assertExactKeys(
-    manifest.cleanupContract,
-    ["launchEnvRollbackRequired", "processCleanupRequired", "steamContinuityRequired", "taskCleanupExpected"],
-    "matrix cleanup contract"
+  const installedRuntime = verifyConsumerPackage(consumerPackageDirectory, audit);
+  const evidenceArtifact = readStableRealJson(
+    path.dirname(evidencePath),
+    evidencePath,
+    "standalone consumer evidence"
   );
-  assert.deepEqual(manifest.cleanupContract, {
-    processCleanupRequired: true,
-    launchEnvRollbackRequired: true,
-    taskCleanupExpected: true,
-    steamContinuityRequired: true
-  });
-  assertExactKeys(
-    manifest.initTxnCapture,
-    ["apiKeyEnvProvided", "captureInApp", "endpointOption", "hasRequestFile", "hasResponseFile", "publicSyntheticCheckout"],
-    "matrix InitTxn capture"
+  const evidence = validateStandaloneEvidence(
+    evidenceArtifact.value,
+    candidateBinding,
+    path.dirname(evidencePath)
   );
-  assert.deepEqual(manifest.initTxnCapture, {
-    hasRequestFile: false,
-    hasResponseFile: false,
-    captureInApp: false,
-    apiKeyEnvProvided: false,
-    endpointOption: "",
-    publicSyntheticCheckout: contract.suite === "checkout"
-  });
-  assert.equal(manifest.installShortcut, false);
-  assert.equal(manifest.assumeShortcutConfigured, true);
-  assertExactKeys(
-    manifest.targetHints,
-    [
-      "dialog",
-      "hasCheckoutJsonFile",
-      "hasCheckoutTransactionId",
-      "hasInitTxnRequestFile",
-      "hasWebUrl",
-      "shortcutTarget",
-      "storeRoute",
-      "userDialog"
-    ],
-    "matrix target hints"
+  const finalCandidateBinding = verifyCandidateDirectory(candidateDirectory, audit);
+  assert.deepEqual(finalCandidateBinding, candidateBinding, "Candidate directory changed after live proof.");
+  const finalAuditArtifact = readStableJson(path.resolve(options.auditManifest), "package audit manifest");
+  const finalEvidenceArtifact = readStableRealJson(
+    path.dirname(evidencePath),
+    evidencePath,
+    "standalone consumer evidence"
   );
-  assert.deepEqual(manifest.targetHints, {
-    hasWebUrl: true,
-    storeRoute: "web",
-    dialog: "Friends",
-    userDialog: "steamid",
-    shortcutTarget: "friends",
-    hasCheckoutTransactionId: true,
-    hasCheckoutJsonFile: false,
-    hasInitTxnRequestFile: false
-  });
-  assert.ok(Array.isArray(manifest.cases));
-  for (const entry of manifest.cases) {
-    assertExactKeys(entry, CASE_KEYS, "matrix case");
-  }
-  assert.deepEqual(manifest.cases, contract.cases);
+  const finalInstalledRuntime = verifyConsumerPackage(consumerPackageDirectory, audit);
+  assert.ok(auditArtifact.bytes.equals(finalAuditArtifact.bytes), "Package audit changed during receipt generation.");
+  assert.ok(evidenceArtifact.bytes.equals(finalEvidenceArtifact.bytes), "Evidence changed during receipt generation.");
+  assert.deepEqual(finalInstalledRuntime, installedRuntime, "Consumer package changed during receipt generation.");
+  const profile = buildProfileReceipt(
+    candidateBinding,
+    installedRuntime,
+    evidence,
+    sha256(evidenceArtifact.bytes)
+  );
+  return assembleLiveProofReceipt(candidateBinding, [profile], new Date().toISOString(), true);
 }
 
-function validateForegroundGrantManifest(gate) {
-  assertExactKeys(gate, FOREGROUND_GRANT_KEYS, "foreground grant gate");
-  assert.equal(typeof gate.required, "boolean");
-  assert.equal(gate.schemaVersion, FOREGROUND_GRANT_EVIDENCE_SCHEMA);
-  assert.ok(Number.isInteger(gate.timeoutSeconds) && gate.timeoutSeconds >= 1 && gate.timeoutSeconds <= 300);
-  assert.equal(typeof gate.brokerConfigured, "boolean");
-  if (gate.required) {
-    assert.equal(gate.brokerConfigured, true);
-    assert.match(gate.brokerSha256 || "", /^[a-f0-9]{64}$/);
-  } else {
-    assert.equal(gate.brokerConfigured, false);
-    assert.equal(gate.brokerSha256, "");
-  }
-  assert.equal(gate.matrixInputSent, false);
-  assert.equal(gate.candidateInputAllowed, false);
-}
-
-function validateProfileSummary(summary, contract, candidateBinding) {
-  assert.ok(summary && typeof summary === "object" && !Array.isArray(summary));
-  assert.deepEqual(summary.failures, []);
-  assert.deepEqual(summary.warnings, []);
-  assert.equal(summary.nativeLoadBlocker, null);
-  assert.deepEqual(summary.caseAppControlBlockers, []);
-  assert.deepEqual(summary.steamLaunchBlockers, []);
-  assert.equal(summary.initTxnRequestShapePreflight, null);
-  assert.deepEqual(summary.manifest?.candidateBinding, candidateBinding);
-
-  const preflight = summary.preflight;
-  assert.ok(preflight);
-  assert.equal(preflight.appId, PUBLIC_APP_ID);
-  assert.equal(preflight.steamRunning, true);
-  assert.equal(preflight.currentSessionInteractive, true);
-  assert.equal(preflight.executableExists, true);
-  assert.equal(preflight.executableNonEmpty, true);
-  assert.equal(preflight.executableAuthenticodeValid, candidateBinding.signing.required);
-  assert.equal(preflight.executableZoneIdentifier, false);
-  assert.equal(preflight.nativeAddonExists, true);
-  assert.equal(preflight.nativeAddonNonEmpty, true);
-  assert.equal(preflight.nativeAddonAuthenticodeValid, candidateBinding.signing.required);
-  assert.equal(preflight.nativeAddonZoneIdentifier, false);
-  assert.equal(preflight.publisherMatches, candidateBinding.signing.required);
-  assert.equal(preflight.nativeOverridePresent, false);
-  assert.equal(preflight.nativePathOverride, false);
-  assert.equal(preflight.packagedRuntimeResolutionErrorPresent, false);
-
-  const readiness = summary.liveRunReadiness;
-  assert.ok(readiness);
-  assert.equal(readiness.ready, true);
-  assert.equal(readiness.errorCount, 0);
-  assert.equal(readiness.warningCount, 0);
-  assert.equal(readiness.currentSessionInteractive, true);
-  assert.equal(readiness.steamProcessCount, 1);
-  assert.equal(readiness.staleOverlayHelperCount, 0);
-  assert.equal(readiness.renderingHealthStatus, "healthy");
-  assert.equal(readiness.renderingHealthRecentSevereSignalCount, 0);
-  assert.equal(readiness.renderingHealthStaleSevereSignalCount, 0);
-
-  const shortcut = summary.assumedShortcut;
-  assert.ok(shortcut);
-  assert.equal(shortcut.ok, true);
-  assert.equal(shortcut.changed, false);
-  assert.equal(shortcut.existingMatches, true);
-  assert.equal(shortcut.expectedExeExists, true);
-  assert.equal(shortcut.existingExeExists, true);
-
-  const render = summary.renderHealth;
-  assert.ok(render);
-  assert.equal(render.gatePresent, true);
-  assert.equal(render.summaryPresent, true);
-  assert.equal(render.required, true);
-  assert.equal(render.skipped, false);
-  assert.equal(render.passed, true);
-  assert.equal(render.errorPresent, false);
-  assert.equal(render.status, "default-render-health-ok");
-  assert.equal(render.readyForSteamOverlayMatrix, true);
-  assert.equal(render.defaultCasePresent, true);
-  assert.equal(render.defaultVisible, true);
-  assert.equal(render.defaultBlankLike, false);
-  assert.equal(render.defaultFatalLifecycleEventCount, 0);
-
-  const nativeLoad = summary.nativeLoadGate;
-  assert.ok(nativeLoad);
-  assert.equal(nativeLoad.ok, true);
-  assert.equal(nativeLoad.appId, PUBLIC_APP_ID);
-  assert.equal(nativeLoad.action, "presenter-ready");
-  assert.equal(nativeLoad.backend, EXPECTED_BACKEND);
-  assert.equal(nativeLoad.hostBackend, "");
-  assert.equal(nativeLoad.rendererBackend, "");
-  assert.equal(nativeLoad.backendAgrees, false);
-  assert.equal(nativeLoad.lazyPresenterReady, true);
-  assert.equal(nativeLoad.rendererProofRequired, false);
-  assert.equal(nativeLoad.lifecycleCompleteCount, 0);
-  assert.equal(nativeLoad.crashDumpCount, 0);
-  assert.equal(nativeLoad.fatalLifecycleEventCount, 0);
-  validateRuntimeConfig(nativeLoad.runtimeConfig, candidateBinding.electronVersion, false, true);
-
-  const cleanup = summary.cleanup;
-  assert.ok(cleanup);
-  for (const field of [
-    "processBeforeOk",
-    "processAfterOk",
-    "processAfterRenderHealthOk",
-    "launchEnvRollbackOk",
-    "launchEnvRollbackAttempted",
-    "taskCleanupOk",
-    "taskDeletionVerified",
-    "taskDeleteExitCodeCaptured",
-    "taskAbsenceQueryExitCodeCaptured",
-    "taskRunnerGuardOk",
-    "taskLaunchEnvGuardOk",
-    "taskPackageProcessGuardOk",
-    "taskSteamContinuityGuardOk",
-    "steamContinuityRequired",
-    "sameSteamIdentitySet",
-    "sameSteamSessionSet",
-    "taskFileGuardOk"
-  ]) {
-    assert.equal(cleanup[field], true);
-  }
-  assert.equal(cleanup.taskAbsenceQueryExitCode, 1);
-  assert.equal(cleanup.taskCleanupPhaseErrorCount, 0);
-  assert.equal(cleanup.taskTimedOut, false);
-  assert.equal(cleanup.taskRunnerTerminatedWithoutDone, false);
-  assert.equal(cleanup.taskFailureStage, "success");
-  assert.equal(cleanup.taskErrorKind, "none");
-  assert.equal(cleanup.taskRunLevel, "Limited");
-  assert.equal(cleanup.steamContinuityBeforeCount, 1);
-  assert.equal(cleanup.steamContinuityAfterCount, 1);
-
-  assert.equal(summary.totals.totalCases, contract.cases.length);
-  assert.equal(summary.totals.steamLaunchCases, contract.cases.length);
-  assert.equal(summary.totals.overlayActiveCases, contract.activeCaseCount);
-  assert.equal(summary.totals.cleanCases, contract.cases.length);
-  assert.equal(summary.totals.renderingUnhealthyCases, 0);
-  assert.equal(summary.caseSummaries.length, contract.cases.length);
-  const rows = new Map(summary.caseSummaries.map((row) => [row.caseName, row]));
-  assert.equal(rows.size, contract.cases.length);
-  for (const expected of contract.cases) {
-    const row = rows.get(expected.id);
-    assert.ok(row, "Live-proof case summary is missing.");
-    assert.deepEqual(row.failures, []);
-    assert.equal(row.action, expected.action);
-    assert.equal(row.appId, PUBLIC_APP_ID);
+function verifyConsumerPackage(packageDirectory, audit) {
+  const stat = fs.lstatSync(packageDirectory);
+  assert.equal(stat.isSymbolicLink(), false, "Consumer package must be a real registry/tarball install, not a link.");
+  assert.ok(stat.isDirectory(), "Consumer package path must be a directory.");
+  assert.equal(
+    normalizePath(fs.realpathSync.native(packageDirectory)),
+    normalizePath(packageDirectory),
+    "Consumer package path must not traverse a junction or reparse point."
+  );
+  const manifest = readStableRealJson(
+    packageDirectory,
+    path.join(packageDirectory, "package.json"),
+    "consumer package manifest"
+  ).value;
+  assert.equal(manifest.name, audit.package.name, "Consumer package name differs from the candidate.");
+  assert.equal(manifest.version, audit.package.version, "Consumer package version differs from the candidate.");
+  const expectedFiles = audit.finalBundle && audit.finalBundle.files;
+  assert.ok(expectedFiles && typeof expectedFiles === "object", "Audit is missing final Windows runtime files.");
+  const files = {};
+  for (const name of WINDOWS_RUNTIME_FILES) {
+    const filePath = path.join(packageDirectory, name);
+    const bytes = readStableRealFile(packageDirectory, filePath, "consumer runtime " + name);
+    const digest = sha256(bytes);
     assert.equal(
-      row.managedOverlayResultMode,
-      expected.requireManagedOverlayComplete ? "complete" : "shown"
+      digest,
+      expectedFiles[name] && expectedFiles[name].sha256,
+      "Consumer runtime " + name + " differs from the audited candidate."
     );
-    assert.equal(row.steamLaunch, true);
-    assert.equal(row.overlayInjection, false);
-    assert.equal(row.steamOverlayLaunchMarker, true);
-    assert.equal(
-      row.overlayEnabled,
-      expected.action !== "presenter-ready" && !expected.requirePassiveNotification
-    );
-    assert.equal(row.crashDumpCount, 0);
-    assert.equal(row.fatalLifecycleEventCount, 0);
-    assert.equal(row.initTxnRequestShapePresent, false);
-    assert.equal(row.webSessionCheckoutCaptured, false);
-    assert.equal(row.clientSessionCheckoutCaptured, false);
-    assert.equal(row.microTxnCallbackCount, 0);
-    validateRuntimeConfig(
-      row.runtimeConfig,
-      candidateBinding.electronVersion,
-      expected.hasCheckoutTransactionId,
-      expected.action === "presenter-ready"
-    );
-    validateBackendEvidence(row.presenterBackendEvidence, expected.action === "presenter-ready");
-    assert.ok(row.steamRenderingHealth);
-    assert.equal(row.steamRenderingHealth.status, "healthy");
-    assert.equal(row.steamRenderingHealth.recentSevereSignalCount, 0);
-    assert.equal(row.steamRenderingHealth.staleSevereSignalCount, 0);
-    assert.deepEqual(row.steamRenderingHealth.signalCodes, []);
-    if (expected.requireManagedOverlayComplete) {
-      assert.equal(row.managedOverlayCloseProof, true);
-    }
-    if (expected.persistentReuseGate) {
-      assert.equal(row.persistentReuseProof, true);
-    }
-    if (expected.requirePassiveNotification) {
-      assert.equal(row.passiveNotificationProof, true);
-    }
-    if (expected.id === "11b-managed-duplicate-open-guard") {
-      assert.equal(row.duplicateOpenGuardProof, true);
-    }
-    assert.equal(row.overlayActiveEvents > 0, expected.requireOverlayActivated);
+    files[name] = { bytes: bytes.length, sha256: digest };
   }
+  return { packageName: manifest.name, packageVersion: manifest.version, files };
 }
 
-function validateRuntimeConfig(config, electronVersion, hasCheckoutTransactionId, selectionOnly = false) {
+function validateStandaloneEvidence(evidence, candidateBinding, evidenceRoot) {
   assertExactKeys(
-    config,
-    [
-      "achievementNameConfigured",
-      "achievementProgressUsesDefaults",
-      "actualNativeHostStyle",
-      "authIdentityUsesPublicDefault",
-      "complete",
-      "configuredNativeHostBackend",
-      "configuredNativeHostStyle",
-      "configuredPresenterMode",
-      "disableElectronOverlayPresenter",
-      "electronVersion",
-      "hasCheckoutJsonFile",
-      "hasCheckoutReturnUrl",
-      "hasCheckoutTransactionId",
-      "hasCheckoutUrl",
-      "hasInitTxnApiKeyEnv",
-      "hasInitTxnRequestFile",
-      "initTxnEndpointConfigured",
-      "isPackaged",
-      "managedOverlayParkTimeoutMs",
-      "managedOverlayWaitTimeoutMs",
-      "nativePathOverride",
-      "overlayDisableDirectComposition",
-      "overlayInProcessGpu",
-      "overlayIsolateChildProcesses",
-      "overlayProfile",
-      "overlayScrubChildEnv",
-      "presenterMode",
-      "webUrlUsesPublicDefault"
-    ],
-    "resolved runtime config"
+    evidence,
+    ["candidateBindingSha256", "generatedAt", "kind", "logs", "manualChecks", "qa", "schemaVersion"],
+    "standalone consumer evidence"
   );
-  assert.deepEqual(config, {
-    complete: !selectionOnly,
-    authIdentityUsesPublicDefault: true,
-    overlayProfile: "diagnostic",
-    overlayScrubChildEnv: true,
-    overlayIsolateChildProcesses: false,
-    overlayInProcessGpu: false,
-    overlayDisableDirectComposition: false,
-    configuredNativeHostBackend: "",
-    configuredNativeHostStyle: "",
-    actualNativeHostStyle: selectionOnly ? "" : EXPECTED_HOST_STYLE,
-    nativePathOverride: false,
-    presenterMode: "persistent",
-    configuredPresenterMode: "",
-    disableElectronOverlayPresenter: false,
-    webUrlUsesPublicDefault: true,
-    hasCheckoutUrl: false,
-    hasCheckoutTransactionId,
-    hasCheckoutReturnUrl: false,
-    hasCheckoutJsonFile: false,
-    hasInitTxnRequestFile: false,
-    hasInitTxnApiKeyEnv: false,
-    initTxnEndpointConfigured: false,
-    managedOverlayWaitTimeoutMs: 45000,
-    managedOverlayParkTimeoutMs: 90000,
-    achievementNameConfigured: false,
-    achievementProgressUsesDefaults: true,
-    isPackaged: true,
-    electronVersion
-  });
-}
-
-function validateBackendEvidence(evidence, selectionOnly = false) {
-  assert.ok(evidence);
-  if (selectionOnly) {
-    assert.deepEqual(evidence.result, {
-      source: "result",
-      present: true,
-      attached: false,
-      backend: EXPECTED_BACKEND,
-      hostBackend: "",
-      rendererBackend: "",
-      complete: false,
-      agrees: false
-    });
-    assert.deepEqual(evidence.lifecycle, []);
-    assert.equal(evidence.lifecycleAttachedCount, 0);
-    assert.equal(evidence.lifecycleCompleteCount, 0);
-    return;
+  assert.equal(evidence.kind, EVIDENCE_KIND);
+  assert.equal(evidence.schemaVersion, EVIDENCE_SCHEMA_VERSION);
+  assertIsoTimestamp(evidence.generatedAt, "standalone evidence timestamp");
+  assert.equal(evidence.candidateBindingSha256, candidateBinding.bindingSha256);
+  assertExactKeys(evidence.logs, ["stderr", "stdout"], "standalone evidence logs");
+  assertExactKeys(evidence.manualChecks, MANUAL_CHECK_KEYS, "standalone manual checks");
+  for (const key of MANUAL_CHECK_KEYS) {
+    assert.equal(evidence.manualChecks[key], true, "Manual standalone check did not pass: " + key);
   }
-  assert.deepEqual(evidence.result, {
-    source: "result",
-    present: true,
-    attached: true,
-    backend: EXPECTED_BACKEND,
-    hostBackend: EXPECTED_BACKEND,
-    rendererBackend: EXPECTED_BACKEND,
-    complete: true,
-    agrees: true
-  });
-  assert.ok(evidence.lifecycleCompleteCount >= 1);
-  assert.ok(evidence.lifecycleAttachedCount >= evidence.lifecycleCompleteCount);
-}
-
-function readSteamContinuityIdentity(cleanup) {
-  const guard = cleanup && cleanup.steamContinuityGuard;
-  assert.ok(guard && guard.ok === true && guard.required === true);
-  assert.equal(guard.beforeCount, 1);
-  assert.equal(guard.afterCount, 1);
-  assert.equal(guard.sameIdentitySet, true);
-  assert.equal(guard.sameSessionSet, true);
-  assert.ok(Array.isArray(guard.beforeIdentities) && guard.beforeIdentities.length === 1);
-  assert.ok(Array.isArray(guard.afterIdentities) && guard.afterIdentities.length === 1);
-  const before = normalizeSteamIdentity(guard.beforeIdentities[0]);
-  const after = normalizeSteamIdentity(guard.afterIdentities[0]);
-  assert.equal(before, after);
-  return before;
-}
-
-function normalizeSteamIdentity(identity) {
-  assertExactKeys(identity, ["cimStartTicks", "nativeStartTicks", "processId", "sessionId"], "Steam identity");
-  assert.ok(Number.isInteger(identity.processId) && identity.processId > 0);
-  assert.ok(Number.isInteger(identity.sessionId) && identity.sessionId >= 0);
-  assert.match(identity.cimStartTicks || "", /^[1-9][0-9]+$/);
-  assert.match(identity.nativeStartTicks || "", /^[1-9][0-9]+$/);
-  return [identity.processId, identity.sessionId, identity.cimStartTicks, identity.nativeStartTicks].join(":");
-}
-
-function buildProfileReceipt(contract, manifestSha256, summary, candidateBinding) {
-  const evidenceProjection = {
-    profile: contract.name,
-    manifest: {
-      suite: summary.manifest.suite,
-      launchMode: summary.manifest.launchMode,
-      launchKind: summary.manifest.launchKind,
-      appId: summary.manifest.appId,
-      candidateBindingSha256: candidateBinding.bindingSha256
-    },
-    preflight: summary.preflight,
-    readiness: summary.liveRunReadiness,
-    renderHealth: summary.renderHealth,
-    nativeLoadGate: summary.nativeLoadGate,
-    cleanup: summary.cleanup,
-    totals: summary.totals,
-    cases: contract.cases.map((expected) => {
-      const row = summary.caseSummaries.find((entry) => entry.caseName === expected.id);
-      return {
-        caseName: row.caseName,
-        action: row.action,
-        steamLaunch: row.steamLaunch,
-        overlayInjection: row.overlayInjection,
-        steamOverlayLaunchMarker: row.steamOverlayLaunchMarker,
-        overlayActiveEvents: row.overlayActiveEvents,
-        managedOverlayCloseProof: row.managedOverlayCloseProof,
-        duplicateOpenGuardProof: row.duplicateOpenGuardProof,
-        passiveNotificationProof: row.passiveNotificationProof,
-        persistentReuseProof: row.persistentReuseProof,
-        runtimeConfig: row.runtimeConfig,
-        presenterBackendEvidence: row.presenterBackendEvidence,
-        crashDumpCount: row.crashDumpCount,
-        fatalLifecycleEventCount: row.fatalLifecycleEventCount,
-        steamRenderingHealth: row.steamRenderingHealth
-      };
-    })
+  assertExactKeys(
+    evidence.qa,
+    [
+      "actualGame",
+      "actualSteamClient",
+      "developmentToolsOpen",
+      "ordinaryOverlayOnly",
+      "purchaseOrSubscriptionAuthorized",
+      "steamClientStable"
+    ],
+    "standalone QA declaration"
+  );
+  assert.equal(evidence.qa.actualGame, true);
+  assert.equal(evidence.qa.actualSteamClient, true);
+  assert.equal(evidence.qa.developmentToolsOpen, false);
+  assert.equal(evidence.qa.ordinaryOverlayOnly, true);
+  assert.equal(evidence.qa.purchaseOrSubscriptionAuthorized, false);
+  assert.equal(evidence.qa.steamClientStable, true);
+  const stdoutArtifact = readEvidenceFile(evidenceRoot, evidence.logs.stdout, "standalone stdout");
+  const stderrArtifact = readEvidenceFile(evidenceRoot, evidence.logs.stderr, "standalone stderr");
+  assert.equal(stderrArtifact.bytes.toString("utf8").trim(), "", "Standalone run wrote to stderr.");
+  const runtime = inspectRuntimeLog(stdoutArtifact.bytes.toString("utf8"));
+  return {
+    generatedAt: evidence.generatedAt,
+    manualChecks: { ...evidence.manualChecks },
+    qa: { ...evidence.qa },
+    runtime,
+    artifacts: {
+      stdout: { bytes: stdoutArtifact.bytes.length, sha256: sha256(stdoutArtifact.bytes) },
+      stderr: { bytes: stderrArtifact.bytes.length, sha256: sha256(stderrArtifact.bytes) }
+    }
   };
+}
+
+function inspectRuntimeLog(stdout) {
+  const samples = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const match = line.match(/\[steam-native-host-fps\]\s+(\{.*\})\s*$/);
+    if (match) samples.push(JSON.parse(match[1]));
+  }
+  assert.ok(samples.length >= 3, "Standalone proof requires at least three FPS samples.");
+  for (const sample of samples) {
+    assert.equal(sample.nativePresenter && sample.nativePresenter.deviceLost, false);
+    assert.equal(sample.nativePresenter && sample.nativePresenter.deviceLostCount, 0);
+    assert.equal(sample.nativePresenter && sample.nativePresenter.deviceRecoveryCount, 0);
+    assert.equal(sample.nativePresenter && sample.nativePresenter.frameLatencyWaitTimeoutCount, 0);
+    assert.equal(sample.nativePresenter && sample.nativePresenter.sharedTextureCopySlowCount, 0);
+    assert.equal(sample.nativeHost && sample.nativeHost.backend, EXPECTED_BACKEND);
+    assert.equal(sample.nativeHost && sample.nativeHost.rendererBackend, EXPECTED_BACKEND);
+    assert.equal(sample.nativeHost && sample.nativeHost.hostStyle, EXPECTED_HOST_STYLE);
+    assert.equal(sample.nativeHost && sample.nativeHost.parentHwnd, null);
+  }
+  const pacingSamples = samples.filter(
+    (sample) =>
+      (sample.phase === "game" || sample.phase === "overlay") &&
+      sample.nativeHost &&
+      sample.nativeHost.minimized !== true &&
+      Number.isFinite(sample.gameSurface && sample.gameSurface.paintFps) &&
+      sample.gameSurface.paintFps >= 0 &&
+      Number.isFinite(sample.nativePresenter && sample.nativePresenter.presentFps) &&
+      sample.nativePresenter.presentFps > 0
+  );
+  const gameSamples = pacingSamples.filter(
+    (sample) => sample.phase === "game" && sample.gameSurface.paintFps > 0
+  );
+  const overlaySamples = pacingSamples.filter((sample) => sample.phase === "overlay");
+  assert.ok(gameSamples.length >= 3, "Standalone proof requires at least three active game FPS samples.");
+  assert.ok(overlaySamples.length >= 3, "Standalone proof requires at least three active Steam-overlay FPS samples.");
+  for (const sample of pacingSamples) {
+    const targetFps = sample.targetFps;
+    const displayHz = sample.display && sample.display.hz;
+    assert.ok(Number.isFinite(targetFps) && targetFps > 0, "Standalone target FPS is missing.");
+    assert.ok(Number.isFinite(displayHz) && displayHz > 0, "Standalone display refresh is missing.");
+    assert.ok(Math.abs(targetFps - displayHz) <= 1, "Standalone target FPS does not match display refresh.");
+  }
+  const gameMetrics = summarizePacingPhase(gameSamples, "Game", true);
+  const overlayMetrics = summarizePacingPhase(overlaySamples, "Steam overlay", false);
+  const finalSample = pacingSamples[pacingSamples.length - 1];
+  const targetFps = finalSample.targetFps;
+  const displayHz = finalSample.display.hz;
+  const host = finalSample.nativeHost;
+  assert.deepEqual(host.logicalClientSize, { height: 720, width: 1280 });
+  assert.deepEqual(host.minimumClientSize, { height: 480, width: 640 });
+  assert.ok(Number.isFinite(host.windowDpi) && host.windowDpi > 0, "Standalone window DPI is missing.");
+  assert.equal(finalSample.nativePresenter.frameLatencyWaitable, true);
+  for (const required of [
+    "[steam-native-host] first Electron shared texture",
+    "[steam-native-host] fullscreen on",
+    "[steam-native-host] fullscreen off",
+    "[steam-native-host] renderer paused while minimized",
+    "[steam-native-host] renderer resumed after minimize",
+    "[steam-native-input]",
+    "\"active\":true",
+    "\"active\":false",
+    "[steam-native-host] user shortcut opened Friends"
+  ]) {
+    assert.ok(stdout.includes(required), "Standalone runtime log is missing: " + required);
+  }
+  assert.match(stdout, /\[steam-native-host-renderer\]\s+viewport\s+\d+x\d+\s+->\s+(?!1280x720)\d+x\d+/);
+  assert.doesNotMatch(
+    stdout,
+    /deviceLost":true|GPU device|ResizeBuffers failed|present failed|fatal|panic|crashed|unhandled|Error presenting Electron frame|MicroTxnAuthorization|purchase[^\r\n]*authoriz|subscription[^\r\n]*authoriz/i
+  );
+  return {
+    backend: EXPECTED_BACKEND,
+    hostStyle: EXPECTED_HOST_STYLE,
+    parentHwnd: null,
+    logicalClientSize: host.logicalClientSize,
+    minimumClientSize: host.minimumClientSize,
+    windowDpi: host.windowDpi,
+    displayHz: Math.round(displayHz),
+    targetFps: Math.round(targetFps),
+    gameSampleCount: gameSamples.length,
+    gameMedianPaintFpsTenths: gameMetrics.medianPaintFpsTenths,
+    gameMedianPresentFpsTenths: gameMetrics.medianPresentFpsTenths,
+    overlaySampleCount: overlaySamples.length,
+    overlayMedianPaintFpsTenths: overlayMetrics.medianPaintFpsTenths,
+    overlayMedianPresentFpsTenths: overlayMetrics.medianPresentFpsTenths,
+    frameLatencyWaitable: true,
+    frameLatencyWaitTimeoutCount: 0,
+    deviceLostCount: 0,
+    deviceRecoveryCount: 0,
+    sharedTextureCopySlowCount: 0
+  };
+}
+
+function summarizePacingPhase(samples, label, requirePaintAtTarget) {
+  const targetFps = median(samples.map((sample) => sample.targetFps));
+  const medianPaintFps = median(samples.map((sample) => sample.gameSurface.paintFps));
+  const medianPresentFps = median(samples.map((sample) => sample.nativePresenter.presentFps));
+  if (requirePaintAtTarget) {
+    assert.ok(medianPaintFps >= targetFps * 0.95, label + " median game-surface FPS is below 95% of target.");
+  }
+  assert.ok(medianPresentFps >= targetFps * 0.95, label + " median native-present FPS is below 95% of target.");
+  return {
+    medianPaintFpsTenths: Math.round(medianPaintFps * 10),
+    medianPresentFpsTenths: Math.round(medianPresentFps * 10)
+  };
+}
+
+function median(values) {
+  assert.ok(values.length > 0, "Cannot compute a median without samples.");
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function buildProfileReceipt(candidateBinding, installedRuntime, evidence, evidenceManifestSha256) {
+  const contract = PROFILE_CONTRACTS[0];
   return {
     name: contract.name,
     suite: contract.suite,
     candidateBindingSha256: candidateBinding.bindingSha256,
-    manifestSha256,
-    evidenceSha256: hashCanonicalJson(EVIDENCE_HASH_DOMAIN, evidenceProjection),
+    evidenceManifestSha256,
+    evidenceSha256: hashCanonicalJson(EVIDENCE_HASH_DOMAIN, {
+      candidateBindingSha256: candidateBinding.bindingSha256,
+      installedRuntime,
+      evidence
+    }),
     caseIds: contract.cases.map((entry) => entry.id),
     caseCount: contract.cases.length,
     activeCaseCount: contract.activeCaseCount,
-    steamLaunchCaseCount: contract.cases.length,
     cleanCaseCount: contract.cases.length,
-    readinessPassed: true,
-    nativeLoadPassed: true,
-    renderHealthPassed: true,
-    semanticPassed: true,
-    cleanupPassed: true,
-    steamContinuityPassed: true,
-    crashCount: 0
+    crashCount: 0,
+    passed: true,
+    installedRuntime,
+    runtime: evidence.runtime,
+    artifacts: evidence.artifacts,
+    manualChecks: evidence.manualChecks,
+    qa: evidence.qa
   };
 }
 
@@ -792,19 +445,21 @@ function assembleLiveProofReceipt(candidateBinding, profiles, generatedAt, sameS
     generatedAt,
     candidate: candidateBinding,
     proofContract: {
-      publicAppId: PUBLIC_APP_ID,
       target: "x86_64-pc-windows-msvc",
-      launchMode: "steam-launch",
-      launchKind: "shortcut",
-      launchEnvOutsideCandidate: true,
-      launchEnvUsesDefaultPath: true,
-      overlayProfile: "diagnostic",
-      configuredRendererOverrides: false,
-      effectivePresenterMode: "persistent",
+      architecture: "standalone-native-host-offscreen-electron",
       expectedNativeHostBackend: EXPECTED_BACKEND,
       expectedNativeHostStyle: EXPECTED_HOST_STYLE,
-      privateInputs: false,
-      reparsePointPathAncestry: false,
+      attachedWindowsSupported: false,
+      popupOrChildFallbackAllowed: false,
+      candidateBoundConsumerInstall: true,
+      actualGameRequired: true,
+      actualSteamClientRequired: true,
+      manualVisualQaRequired: true,
+      purchaseAuthorizationAllowed: false,
+      fpsPhases: ["game", "overlay"],
+      minimumFpsSamplesPerPhase: 3,
+      minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
+      minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
       profileCount: PROFILE_CONTRACTS.length,
       caseCount: TOTAL_CASE_COUNT,
       activeCaseCount: TOTAL_ACTIVE_CASE_COUNT
@@ -814,22 +469,20 @@ function assembleLiveProofReceipt(candidateBinding, profiles, generatedAt, sameS
       profileCount: PROFILE_CONTRACTS.length,
       caseCount: TOTAL_CASE_COUNT,
       activeCaseCount: TOTAL_ACTIVE_CASE_COUNT,
-      steamLaunchCaseCount: TOTAL_CASE_COUNT,
       cleanCaseCount: TOTAL_CASE_COUNT,
       crashCount: 0,
       sameCandidateAcrossProfiles: true,
       sameSteamIdentityAcrossProfiles
     }
   };
-  return {
-    ...base,
-    receiptSha256: hashCanonicalJson(RECEIPT_HASH_DOMAIN, base)
-  };
+  return { ...base, receiptSha256: hashCanonicalJson(RECEIPT_HASH_DOMAIN, base) };
 }
 
 function readAndValidateLiveProofReceipt(filePath, expectedCandidateBinding) {
-  const receipt = readJsonArtifact(path.resolve(filePath), "live-proof receipt").value;
-  return validateLiveProofReceipt(receipt, expectedCandidateBinding);
+  return validateLiveProofReceipt(
+    readStableJson(path.resolve(filePath), "live-proof receipt").value,
+    expectedCandidateBinding
+  );
 }
 
 function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
@@ -846,70 +499,33 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     validateCandidateBinding(expectedCandidateBinding);
     assert.deepEqual(receipt.candidate, expectedCandidateBinding);
   }
-  assertExactKeys(
-    receipt.proofContract,
-    [
-      "activeCaseCount",
-      "caseCount",
-      "configuredRendererOverrides",
-      "effectivePresenterMode",
-      "expectedNativeHostBackend",
-      "expectedNativeHostStyle",
-      "launchKind",
-      "launchEnvOutsideCandidate",
-      "launchEnvUsesDefaultPath",
-      "launchMode",
-      "overlayProfile",
-      "privateInputs",
-      "profileCount",
-      "publicAppId",
-      "reparsePointPathAncestry",
-      "target"
-    ],
-    "live-proof contract"
-  );
   assert.deepEqual(receipt.proofContract, {
-    publicAppId: PUBLIC_APP_ID,
     target: "x86_64-pc-windows-msvc",
-    launchMode: "steam-launch",
-    launchKind: "shortcut",
-    launchEnvOutsideCandidate: true,
-    launchEnvUsesDefaultPath: true,
-    overlayProfile: "diagnostic",
-    configuredRendererOverrides: false,
-    effectivePresenterMode: "persistent",
+    architecture: "standalone-native-host-offscreen-electron",
     expectedNativeHostBackend: EXPECTED_BACKEND,
     expectedNativeHostStyle: EXPECTED_HOST_STYLE,
-    privateInputs: false,
-    reparsePointPathAncestry: false,
+    attachedWindowsSupported: false,
+    popupOrChildFallbackAllowed: false,
+    candidateBoundConsumerInstall: true,
+    actualGameRequired: true,
+    actualSteamClientRequired: true,
+    manualVisualQaRequired: true,
+    purchaseAuthorizationAllowed: false,
+    fpsPhases: ["game", "overlay"],
+    minimumFpsSamplesPerPhase: 3,
+    minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
+    minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
     profileCount: PROFILE_CONTRACTS.length,
     caseCount: TOTAL_CASE_COUNT,
     activeCaseCount: TOTAL_ACTIVE_CASE_COUNT
   });
   assert.ok(Array.isArray(receipt.profiles));
   assert.equal(receipt.profiles.length, PROFILE_CONTRACTS.length);
-  for (let index = 0; index < PROFILE_CONTRACTS.length; index += 1) {
-    validateProfileReceipt(receipt.profiles[index], PROFILE_CONTRACTS[index], receipt.candidate);
-  }
-  assertExactKeys(
-    receipt.totals,
-    [
-      "activeCaseCount",
-      "caseCount",
-      "cleanCaseCount",
-      "crashCount",
-      "profileCount",
-      "sameCandidateAcrossProfiles",
-      "sameSteamIdentityAcrossProfiles",
-      "steamLaunchCaseCount"
-    ],
-    "live-proof totals"
-  );
+  validateProfileReceipt(receipt.profiles[0], PROFILE_CONTRACTS[0], receipt.candidate);
   assert.deepEqual(receipt.totals, {
     profileCount: PROFILE_CONTRACTS.length,
     caseCount: TOTAL_CASE_COUNT,
     activeCaseCount: TOTAL_ACTIVE_CASE_COUNT,
-    steamLaunchCaseCount: TOTAL_CASE_COUNT,
     cleanCaseCount: TOTAL_CASE_COUNT,
     crashCount: 0,
     sameCandidateAcrossProfiles: true,
@@ -926,988 +542,523 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
     profile,
     [
       "activeCaseCount",
+      "artifacts",
       "candidateBindingSha256",
       "caseCount",
       "caseIds",
       "cleanCaseCount",
-      "cleanupPassed",
       "crashCount",
+      "evidenceManifestSha256",
       "evidenceSha256",
-      "manifestSha256",
+      "installedRuntime",
+      "manualChecks",
       "name",
-      "nativeLoadPassed",
-      "readinessPassed",
-      "renderHealthPassed",
-      "semanticPassed",
-      "steamContinuityPassed",
-      "steamLaunchCaseCount",
+      "passed",
+      "qa",
+      "runtime",
       "suite"
     ],
     "live-proof profile"
   );
-  assert.deepEqual(profile, {
+  assert.equal(profile.name, contract.name);
+  assert.equal(profile.suite, contract.suite);
+  assert.equal(profile.candidateBindingSha256, candidateBinding.bindingSha256);
+  assert.match(profile.evidenceManifestSha256 || "", /^[a-f0-9]{64}$/);
+  assert.match(profile.evidenceSha256 || "", /^[a-f0-9]{64}$/);
+  assert.deepEqual(profile.caseIds, contract.cases.map((entry) => entry.id));
+  assert.equal(profile.caseCount, contract.cases.length);
+  assert.equal(profile.activeCaseCount, contract.activeCaseCount);
+  assert.equal(profile.cleanCaseCount, contract.cases.length);
+  assert.equal(profile.crashCount, 0);
+  assert.equal(profile.passed, true);
+  assertExactKeys(
+    profile.installedRuntime,
+    ["files", "packageName", "packageVersion"],
+    "live-proof installed runtime"
+  );
+  assert.equal(profile.installedRuntime.packageName, "steam-bridge");
+  assert.equal(profile.installedRuntime.packageVersion, candidateBinding.package.version);
+  assertExactKeys(profile.installedRuntime.files, WINDOWS_RUNTIME_FILES, "live-proof runtime files");
+  for (const name of WINDOWS_RUNTIME_FILES) {
+    assertExactKeys(
+      profile.installedRuntime.files[name],
+      ["bytes", "sha256"],
+      "live-proof runtime file " + name
+    );
+    assert.match(profile.installedRuntime.files[name].sha256, /^[a-f0-9]{64}$/);
+    assert.ok(Number.isSafeInteger(profile.installedRuntime.files[name].bytes));
+    assert.ok(profile.installedRuntime.files[name].bytes > 0);
+  }
+  assert.deepEqual(Object.keys(profile.manualChecks).sort(), [...MANUAL_CHECK_KEYS].sort());
+  for (const key of MANUAL_CHECK_KEYS) assert.equal(profile.manualChecks[key], true);
+  assertExactKeys(
+    profile.qa,
+    [
+      "actualGame",
+      "actualSteamClient",
+      "developmentToolsOpen",
+      "ordinaryOverlayOnly",
+      "purchaseOrSubscriptionAuthorized",
+      "steamClientStable"
+    ],
+    "live-proof QA declaration"
+  );
+  assert.equal(profile.qa.actualGame, true);
+  assert.equal(profile.qa.actualSteamClient, true);
+  assert.equal(profile.qa.developmentToolsOpen, false);
+  assert.equal(profile.qa.ordinaryOverlayOnly, true);
+  assert.equal(profile.qa.purchaseOrSubscriptionAuthorized, false);
+  assert.equal(profile.qa.steamClientStable, true);
+  assertExactKeys(
+    profile.runtime,
+    [
+      "backend",
+      "deviceLostCount",
+      "deviceRecoveryCount",
+      "displayHz",
+      "frameLatencyWaitTimeoutCount",
+      "frameLatencyWaitable",
+      "gameMedianPaintFpsTenths",
+      "gameMedianPresentFpsTenths",
+      "gameSampleCount",
+      "hostStyle",
+      "logicalClientSize",
+      "minimumClientSize",
+      "overlayMedianPaintFpsTenths",
+      "overlayMedianPresentFpsTenths",
+      "overlaySampleCount",
+      "parentHwnd",
+      "sharedTextureCopySlowCount",
+      "targetFps",
+      "windowDpi"
+    ],
+    "live-proof runtime summary"
+  );
+  assert.equal(profile.runtime.backend, EXPECTED_BACKEND);
+  assert.equal(profile.runtime.hostStyle, EXPECTED_HOST_STYLE);
+  assert.equal(profile.runtime.parentHwnd, null);
+  assert.deepEqual(profile.runtime.logicalClientSize, { height: 720, width: 1280 });
+  assert.deepEqual(profile.runtime.minimumClientSize, { height: 480, width: 640 });
+  assert.equal(profile.runtime.frameLatencyWaitable, true);
+  assert.equal(profile.runtime.frameLatencyWaitTimeoutCount, 0);
+  assert.equal(profile.runtime.deviceLostCount, 0);
+  assert.equal(profile.runtime.deviceRecoveryCount, 0);
+  assert.equal(profile.runtime.sharedTextureCopySlowCount, 0);
+  assert.ok(Number.isSafeInteger(profile.runtime.windowDpi) && profile.runtime.windowDpi > 0);
+  assert.ok(Number.isSafeInteger(profile.runtime.displayHz) && profile.runtime.displayHz > 0);
+  assert.ok(Number.isSafeInteger(profile.runtime.targetFps) && profile.runtime.targetFps > 0);
+  assert.ok(Number.isSafeInteger(profile.runtime.gameSampleCount));
+  assert.ok(Number.isSafeInteger(profile.runtime.overlaySampleCount));
+  assert.ok(profile.runtime.gameSampleCount >= 3);
+  assert.ok(profile.runtime.overlaySampleCount >= 3);
+  for (const key of [
+    "gameMedianPaintFpsTenths",
+    "gameMedianPresentFpsTenths",
+    "overlayMedianPaintFpsTenths",
+    "overlayMedianPresentFpsTenths"
+  ]) {
+    assert.ok(Number.isSafeInteger(profile.runtime[key]) && profile.runtime[key] >= 0);
+  }
+  assert.ok(profile.runtime.gameMedianPaintFpsTenths >= profile.runtime.targetFps * 9.5);
+  assert.ok(profile.runtime.gameMedianPresentFpsTenths >= profile.runtime.targetFps * 9.5);
+  assert.ok(profile.runtime.overlayMedianPresentFpsTenths >= profile.runtime.targetFps * 9.5);
+  assert.ok(Math.abs(profile.runtime.targetFps - profile.runtime.displayHz) <= 1);
+  assertExactKeys(profile.artifacts, ["stderr", "stdout"], "live-proof artifacts");
+  for (const name of ["stdout", "stderr"]) {
+    assertExactKeys(profile.artifacts[name], ["bytes", "sha256"], "live-proof " + name);
+    assert.match(profile.artifacts[name].sha256, /^[a-f0-9]{64}$/);
+    assert.ok(Number.isSafeInteger(profile.artifacts[name].bytes));
+  }
+  assert.ok(profile.artifacts.stdout.bytes > 0);
+  assert.equal(profile.artifacts.stderr.bytes, 0);
+  assert.equal(profile.artifacts.stderr.sha256, sha256(Buffer.alloc(0)));
+}
+
+function createSelfTestProfile(candidateBinding, index = 0) {
+  const contract = PROFILE_CONTRACTS[index];
+  const manualChecks = Object.fromEntries(MANUAL_CHECK_KEYS.map((key) => [key, true]));
+  const installedFiles = Object.fromEntries(
+    WINDOWS_RUNTIME_FILES.map((name, fileIndex) => [
+      name,
+      { bytes: 100 + fileIndex, sha256: String(fileIndex + 1).repeat(64) }
+    ])
+  );
+  return {
     name: contract.name,
     suite: contract.suite,
     candidateBindingSha256: candidateBinding.bindingSha256,
-    manifestSha256: profile.manifestSha256,
-    evidenceSha256: profile.evidenceSha256,
+    evidenceManifestSha256: "4".repeat(64),
+    evidenceSha256: "5".repeat(64),
     caseIds: contract.cases.map((entry) => entry.id),
     caseCount: contract.cases.length,
     activeCaseCount: contract.activeCaseCount,
-    steamLaunchCaseCount: contract.cases.length,
     cleanCaseCount: contract.cases.length,
-    readinessPassed: true,
-    nativeLoadPassed: true,
-    renderHealthPassed: true,
-    semanticPassed: true,
-    cleanupPassed: true,
-    steamContinuityPassed: true,
-    crashCount: 0
-  });
-  assert.match(profile.manifestSha256 || "", /^[a-f0-9]{64}$/);
-  assert.match(profile.evidenceSha256 || "", /^[a-f0-9]{64}$/);
-}
-
-function buildProfileContracts() {
-  const persistentReuse = [
-    makeCase("40-persistent-reuse-three-cycle", "presenter-persistent-reuse-three-cycle", [
-      "overlay:presenter-persistent-reuse-start",
-      "overlay:presenter-persistent-reuse-cycle",
-      "overlay:presenter-persistent-reuse-complete"
-    ], {
-      active: true,
-      gate: true,
-      persistentReuse: true,
-      persistentReuseCycles: 3,
-      webModal: "true",
-      resultDelayMs: 360000
-    })
-  ];
-  const checkout = [
-    makeCase("01-checkout-prepare", "presenter-checkout", ["overlay:presenter-checkout-ready"], {
-      noActivation: true,
-      allowNotReady: true,
-      resultDelayMs: 1200
-    }),
-    makeCase("02-checkout-approval", "presenter-checkout", [
-      "overlay:presenter-open",
-      "overlay:presenter-wait-closed",
-      "overlay:presenter-parked",
-      "overlay:presenter-checkout-open-and-wait-complete"
-    ], { active: true, complete: true, gate: true, checkout: true }),
-    makeCase("03-shortcut-checkout", "presenter-shortcut", KEYBOARD_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      closeProbeOnActivation: true,
-      shortcutToggleProbe: true,
-      shortcutTarget: "checkout",
-      checkout: true,
-      resultDelayMs: 30000
-    }),
-    makeCase("04-shortcut-checkout-open-and-wait", "presenter-shortcut-open-and-wait", SHORTCUT_WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      shortcutTarget: "checkout",
-      checkout: true
-    })
-  ];
-  const shortcutTargets = [
-    "friends",
-    "web",
-    "store",
-    "profile",
-    "players",
-    "community",
-    "stats",
-    "achievements",
-    "user",
-    "dialog"
-  ];
-  const shortcutRoutes = shortcutTargets.map((target) =>
-    makeCase(`30-shortcut-${target}-open-and-wait`, "presenter-shortcut-open-and-wait", SHORTCUT_WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      shortcutTarget: target,
-      webModal: target === "web" ? "true" : "",
-      storeRoute: target === "store" ? "web" : ""
-    })
-  );
-  const managedRoutes = [
-    makeCase("10-presenter-ready", "presenter-ready", ["overlay:presenter-ready"], {
-      noActivation: true,
-      allowNotReady: true,
-      resultDelayMs: 1200
-    }),
-    makeCase("11-managed-web-open-and-wait", "presenter-web-open-and-wait", WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      webModal: "true"
-    }),
-    makeCase("11b-managed-duplicate-open-guard", "presenter-duplicate-open-guard", [
-      "overlay:presenter-open-and-wait-start",
-      "overlay:presenter-duplicate-open-guard",
-      "overlay:presenter-wait-closed",
-      "overlay:presenter-parked",
-      "overlay:presenter-open-and-wait-complete"
-    ], { active: true, complete: true, gate: true, webModal: "true" }),
-    makeCase("12-managed-store-open-and-wait", "presenter-store-open-and-wait", WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      storeRoute: "web"
-    }),
-    makeCase("13-managed-friends-open-and-wait", "presenter-friends-open-and-wait", WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true
-    }),
-    makeCase("14-managed-dialog-open-and-wait", "presenter-dialog-auto-open-and-wait", WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      dialog: "Friends"
-    }),
-    makeCase("15-managed-shortcut", "presenter-shortcut-open-and-wait", SHORTCUT_WAIT_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      shortcutTarget: "friends"
-    }),
-    makeCase("15-managed-shortcut-keyboard", "presenter-shortcut", KEYBOARD_EVENTS, {
-      active: true,
-      complete: true,
-      gate: true,
-      closeProbeOnActivation: true,
-      shortcutToggleProbe: true,
-      shortcutTarget: "friends",
-      resultDelayMs: 30000
-    }),
-    ...[
-      ["17-managed-profile-open-and-wait", "presenter-profile-open-and-wait"],
-      ["18-managed-players-open-and-wait", "presenter-players-open-and-wait"],
-      ["19-managed-community-open-and-wait", "presenter-community-open-and-wait"],
-      ["20-managed-stats-open-and-wait", "presenter-stats-open-and-wait"],
-      ["21-managed-achievements-open-and-wait", "presenter-achievements-open-and-wait"],
-      ["22-managed-user-open-and-wait", "presenter-user-open-and-wait"]
-    ].map(([id, action]) => makeCase(id, action, WAIT_EVENTS, { active: true, complete: true, gate: true })),
-    makeCase("25-managed-achievement-progress", "presenter-achievement-progress", [
-      "overlay:presenter-attach",
-      "achievement:progress",
-      "overlay:passive-notification-needs-present",
-      "overlay:passive-notification-parked"
-    ], { noActivation: true, allowNotReady: true, passive: true, resultDelayMs: 20000 }),
-    makeCase("26-managed-achievement-unlock", "presenter-achievement-unlock", [
-      "overlay:presenter-attach",
-      "achievement:unlock",
-      "overlay:passive-notification-needs-present",
-      "overlay:passive-notification-parked"
-    ], { noActivation: true, allowNotReady: true, passive: true, resultDelayMs: 20000 })
-  ];
-  return [
-    profileContract("persistent-reuse", persistentReuse),
-    profileContract("checkout", checkout),
-    profileContract("shortcut-routes", shortcutRoutes),
-    profileContract("managed-routes", managedRoutes)
-  ];
-}
-
-function profileContract(suite, cases) {
-  return {
-    name: suite,
-    suite,
-    cases,
-    activeCaseCount: cases.filter((entry) => entry.requireOverlayActivated).length
+    crashCount: 0,
+    passed: true,
+    installedRuntime: {
+      packageName: "steam-bridge",
+      packageVersion: candidateBinding.package.version,
+      files: installedFiles
+    },
+    runtime: {
+      backend: EXPECTED_BACKEND,
+      hostStyle: EXPECTED_HOST_STYLE,
+      parentHwnd: null,
+      logicalClientSize: { height: 720, width: 1280 },
+      minimumClientSize: { height: 480, width: 640 },
+      windowDpi: 216,
+      displayHz: 60,
+      targetFps: 60,
+      gameSampleCount: 3,
+      gameMedianPaintFpsTenths: 599,
+      gameMedianPresentFpsTenths: 599,
+      overlaySampleCount: 3,
+      overlayMedianPaintFpsTenths: 598,
+      overlayMedianPresentFpsTenths: 598,
+      frameLatencyWaitable: true,
+      frameLatencyWaitTimeoutCount: 0,
+      deviceLostCount: 0,
+      deviceRecoveryCount: 0,
+      sharedTextureCopySlowCount: 0
+    },
+    artifacts: {
+      stdout: { bytes: 200, sha256: "6".repeat(64) },
+      stderr: { bytes: 0, sha256: sha256(Buffer.alloc(0)) }
+    },
+    manualChecks,
+    qa: {
+      actualGame: true,
+      actualSteamClient: true,
+      developmentToolsOpen: false,
+      ordinaryOverlayOnly: true,
+      purchaseOrSubscriptionAuthorized: false,
+      steamClientStable: true
+    }
   };
-}
-
-function makeCase(id, action, requireEvent, options = {}) {
-  const gate = options.gate === true;
-  const persistentReuse = options.persistentReuse === true;
-  const shortcutTarget = options.shortcutTarget || "";
-  return {
-    id,
-    action,
-    requireEvent: [...requireEvent],
-    requireOverlayActivated: options.active === true,
-    requireNoOverlayActivation: options.noActivation === true,
-    allowOverlayNotReady: options.allowNotReady === true,
-    requirePassiveNotification: options.passive === true,
-    requireManagedOverlayComplete: options.complete === true,
-    requireMicroTxnCallback: false,
-    closeProbeOnActivation: options.closeProbeOnActivation === true,
-    shortcutToggleProbe: options.shortcutToggleProbe === true,
-    autorunUserGestureGate: gate,
-    persistentReuseGate: persistentReuse,
-    persistentReuseGatePolicy: persistentReuse ? PERSISTENT_REUSE_POLICY : "",
-    persistentReuseEvidenceSchema: persistentReuse ? 1 : 0,
-    persistentReuseCloseTargetSchema: persistentReuse
-      ? PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
-      : 0,
-    initialUserGestureCycle: persistentReuse ? 1 : 0,
-    verifyOnlyCycles: persistentReuse ? [2, 3] : [],
-    closeVerificationOrdinals: persistentReuse ? [1, 2, 3] : [],
-    closeProbeEvidenceSchema: gate ? 3 : 2,
-    closeProbeForegroundHandoff: gate ? SAME_PROCESS_HANDOFF : OWNER_PROCESS_HANDOFF,
-    externalForegroundTransition: gate ? EXTERNAL_FOREGROUND_TRANSITION : "",
-    expectedCloseProbeInput: resolveExpectedCloseProbeInput(id, action, shortcutTarget),
-    managedOverlayResultMode: options.complete ? "complete" : "",
-    webModal: options.webModal || "",
-    storeRoute: options.storeRoute || "",
-    dialog: options.dialog || "",
-    userDialog: options.userDialog || "",
-    shortcutTarget,
-    hasCheckoutTransactionId: options.checkout === true,
-    hasCheckoutJsonFile: false,
-    hasInitTxnRequestFile: false,
-    persistentReuseCycles: options.persistentReuseCycles || 0,
-    resultDelayMs: options.resultDelayMs || 8000
-  };
-}
-
-function resolveExpectedCloseProbeInput(id, action, shortcutTarget) {
-  if (action === "presenter-duplicate-open-guard" || action === "presenter-persistent-reuse-three-cycle") {
-    return "web-close-click-sendinput";
-  }
-  for (const token of ["dialog", "user"]) {
-    if (action.toLowerCase().includes(token) || id.toLowerCase().includes(token) || shortcutTarget.includes(token)) {
-      return "web-ready-escape-sendinput";
-    }
-  }
-  for (const token of [
-    "checkout",
-    "web",
-    "store",
-    "friends",
-    "chat",
-    "profile",
-    "players",
-    "community",
-    "stats",
-    "achievements"
-  ]) {
-    if (action.toLowerCase().includes(token) || id.toLowerCase().includes(token) || shortcutTarget.includes(token)) {
-      return "web-close-click-sendinput";
-    }
-  }
-  return "escape-sendinput";
-}
-
-function validateArtifactRoot(value) {
-  assert.ok(value, "Live-proof artifact root is missing.");
-  const resolved = path.resolve(value);
-  const stats = fs.lstatSync(resolved);
-  assert.ok(stats.isDirectory() && !stats.isSymbolicLink(), "Live-proof artifact root must be a real directory.");
-  return resolved;
-}
-
-function validateReceiptOutputLocation(output, candidateDirectory, evidenceRoots) {
-  assert.ok(output, "Live-proof receipt output is missing.");
-  const resolvedOutput = path.resolve(output);
-  assert.equal(fs.existsSync(resolvedOutput), false, "Receipt output already exists.");
-  const outputParent = path.dirname(resolvedOutput);
-  const parentStats = fs.lstatSync(outputParent);
-  assert.ok(parentStats.isDirectory() && !parentStats.isSymbolicLink(), "Receipt output parent must be a real directory.");
-  const realParent = fs.realpathSync.native(outputParent);
-  for (const [label, root] of [
-    ["candidate directory", candidateDirectory],
-    ...evidenceRoots.map((root, index) => [`live-proof evidence root ${index + 1}`, root])
-  ]) {
-    const validatedRoot = validateArtifactRoot(root);
-    const realRoot = fs.realpathSync.native(validatedRoot);
-    assert.equal(
-      isPathWithinRoot(realParent, realRoot),
-      false,
-      `Receipt output must be outside the ${label}.`
-    );
-  }
-  return resolvedOutput;
-}
-
-function isPathWithinRoot(candidate, root) {
-  const normalizedCandidate = process.platform === "win32" ? candidate.toLowerCase() : candidate;
-  const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
-  const relative = path.relative(normalizedRoot, normalizedCandidate);
-  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-}
-
-function readJsonArtifact(filePath, label) {
-  const initial = fs.lstatSync(filePath, { bigint: true });
-  assert.ok(initial.isFile() && !initial.isSymbolicLink(), `${label} must be a regular file.`);
-  assert.equal(initial.nlink, 1n, `${label} must not be hard linked.`);
-  assert.ok(initial.size > 0n && initial.size <= BigInt(MAX_JSON_BYTES), `${label} has an invalid size.`);
-  const descriptor = fs.openSync(filePath, "r");
-  try {
-    const before = fs.fstatSync(descriptor, { bigint: true });
-    assertStableArtifactStats(initial, before, label);
-    const bytes = Buffer.alloc(Number(before.size));
-    let offset = 0;
-    while (offset < bytes.length) {
-      const count = fs.readSync(descriptor, bytes, offset, bytes.length - offset, null);
-      assert.ok(count > 0, `${label} changed while being read.`);
-      offset += count;
-    }
-    const after = fs.fstatSync(descriptor, { bigint: true });
-    const finalPathStats = fs.lstatSync(filePath, { bigint: true });
-    assertStableArtifactStats(before, after, label);
-    assertStableArtifactStats(after, finalPathStats, label);
-    return { value: JSON.parse(bytes.toString("utf8")), bytes };
-  } finally {
-    fs.closeSync(descriptor);
-  }
-}
-
-function writePrivateJson(filePath, value) {
-  const resolved = path.resolve(filePath);
-  const parent = path.dirname(resolved);
-  const parentStats = fs.lstatSync(parent);
-  assert.ok(parentStats.isDirectory() && !parentStats.isSymbolicLink(), "Receipt output parent must be a real directory.");
-  assert.equal(fs.existsSync(resolved), false, "Receipt output already exists.");
-  const temp = path.join(parent, `.${path.basename(resolved)}.${process.pid}.${crypto.randomBytes(8).toString("hex")}.tmp`);
-  let descriptor;
-  try {
-    descriptor = fs.openSync(temp, "wx", 0o600);
-    try {
-      fs.writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`);
-      fs.fsyncSync(descriptor);
-    } finally {
-      const descriptorToClose = descriptor;
-      descriptor = undefined;
-      fs.closeSync(descriptorToClose);
-    }
-    fs.linkSync(temp, resolved);
-  } finally {
-    if (descriptor !== undefined) {
-      fs.closeSync(descriptor);
-    }
-    fs.rmSync(temp, { force: true });
-  }
-}
-
-function assertStableArtifactStats(expected, actual, label) {
-  for (const field of ["dev", "ino", "size", "nlink", "mtimeNs", "ctimeNs"]) {
-    assert.equal(actual[field], expected[field], `${label} changed while being read.`);
-  }
-  assert.ok(actual.isFile() && !actual.isSymbolicLink(), `${label} identity is invalid.`);
-}
-
-function assertExactKeys(value, expectedKeys, label) {
-  assert.ok(value && typeof value === "object" && !Array.isArray(value), `${label} must be an object.`);
-  assert.deepEqual(Object.keys(value).sort(compareOrdinal), [...expectedKeys].sort(compareOrdinal));
-}
-
-function assertIsoTimestamp(value, label) {
-  assert.equal(typeof value, "string", `${label} must be a string.`);
-  assert.match(value, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/);
-  assert.ok(Number.isFinite(Date.parse(value)), `${label} is invalid.`);
-}
-
-function validateCandidateSigningPolicy(candidateBinding) {
-  const signing = candidateBinding.signing;
-  if (signing.required) {
-    assert.equal(
-      signing.expectedPublisherSubjectConfigured || signing.expectedPublisherThumbprintConfigured,
-      true
-    );
-    assert.equal(signing.appExecutablePublisherMatches, true);
-    assert.equal(signing.nativeAddonPublisherMatches, true);
-    return;
-  }
-  assert.equal(signing.expectedPublisherSubjectConfigured, false);
-  assert.equal(signing.expectedPublisherThumbprintConfigured, false);
-  assert.equal(signing.appExecutablePublisherMatches, false);
-  assert.equal(signing.nativeAddonPublisherMatches, false);
-}
-
-function sha256(bytes) {
-  return crypto.createHash("sha256").update(bytes).digest("hex");
-}
-
-function compareOrdinal(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function selfTest() {
-  assert.equal(PROFILE_CONTRACTS.length, 4);
-  assert.equal(TOTAL_CASE_COUNT, 31);
-  assert.equal(TOTAL_ACTIVE_CASE_COUNT, 27);
-  assert.deepEqual(
-    PROFILE_CONTRACTS.flatMap((profile) => profile.cases)
-      .filter((entry) => entry.expectedCloseProbeInput === "web-ready-escape-sendinput")
-      .map((entry) => entry.id),
-    [
-      "30-shortcut-user-open-and-wait",
-      "30-shortcut-dialog-open-and-wait",
-      "14-managed-dialog-open-and-wait",
-      "22-managed-user-open-and-wait"
-    ]
-  );
-  const signedAudit = {
+  const candidateBinding = createCandidateBinding({
     schemaVersion: 2,
     target: "x86_64-pc-windows-msvc",
     package: {
       name: "steam-bridge",
-      version: "0.1.0",
+      version: "1.2.3",
       tarball: { sha256: "1".repeat(64) },
-      nativeBinding: { methodCount: 1121, methodsSha256: "2".repeat(64) }
+      nativeBinding: { methodCount: 1130, methodsSha256: "2".repeat(64) }
     },
     electronBuilder: { electronVersion: "43.1.0" },
     finalBundle: {
-      archive: { sha256: "3".repeat(64), rootDirectory: "win-unpacked", fileCount: 128 },
+      archive: {
+        sha256: "3".repeat(64),
+        rootDirectory: "win-unpacked",
+        fileCount: 2,
+        totalSize: 7
+      },
       contentFingerprint: {
         schemaVersion: 1,
         algorithm: "steam-bridge-windows-bundle-content-v1",
-        fileCount: 128,
-        totalSize: 123456,
+        fileCount: 2,
+        totalSize: 7,
         sha256: "4".repeat(64)
       }
     },
     signing: {
       required: true,
-      expectedPublisherSubjectConfigured: false,
+      expectedPublisherSubjectConfigured: true,
       expectedPublisherThumbprintConfigured: true,
       publisherMatches: { appExecutable: true, nativeAddon: true }
     },
-    release: { gitCommit: "5".repeat(40), gitRefName: "v0.1.0" }
-  };
-  const candidateBinding = createCandidateBinding(signedAudit);
-  const profiles = PROFILE_CONTRACTS.map((contract, index) => ({
-    name: contract.name,
-    suite: contract.suite,
-    candidateBindingSha256: candidateBinding.bindingSha256,
-    manifestSha256: String(index + 1).repeat(64),
-    evidenceSha256: String(index + 5).repeat(64),
-    caseIds: contract.cases.map((entry) => entry.id),
-    caseCount: contract.cases.length,
-    activeCaseCount: contract.activeCaseCount,
-    steamLaunchCaseCount: contract.cases.length,
-    cleanCaseCount: contract.cases.length,
-    readinessPassed: true,
-    nativeLoadPassed: true,
-    renderHealthPassed: true,
-    semanticPassed: true,
-    cleanupPassed: true,
-    steamContinuityPassed: true,
-    crashCount: 0
-  }));
-  const receipt = assembleLiveProofReceipt(candidateBinding, profiles, "2026-07-11T00:00:00.000Z", true);
-  for (const contract of PROFILE_CONTRACTS) {
-    validatePublicManifest(createSelfTestManifest(contract, candidateBinding), contract, candidateBinding);
-    validateProfileSummary(createSelfTestSummary(contract, candidateBinding), contract, candidateBinding);
-  }
-  const unsignedCandidateBinding = createCandidateBinding({
-    ...signedAudit,
-    signing: {
-      required: false,
-      expectedPublisherSubjectConfigured: false,
-      expectedPublisherThumbprintConfigured: false,
-      publisherMatches: { appExecutable: false, nativeAddon: false }
-    }
+    release: { gitCommit: "5".repeat(40), gitRefName: "v1.2.3" }
   });
-  for (const contract of PROFILE_CONTRACTS) {
-    validatePublicManifest(
-      createSelfTestManifest(contract, unsignedCandidateBinding),
-      contract,
-      unsignedCandidateBinding
-    );
-    validateProfileSummary(
-      createSelfTestSummary(contract, unsignedCandidateBinding),
-      contract,
-      unsignedCandidateBinding
-    );
-  }
-  const glyphManifest = createSelfTestManifest(PROFILE_CONTRACTS[3], candidateBinding);
-  glyphManifest.webCloseTargetEvidence = WEB_CLOSE_TARGET_EVIDENCE;
-  validatePublicManifest(glyphManifest, PROFILE_CONTRACTS[3], candidateBinding);
-  glyphManifest.webCloseTargetEvidence = "screenshot-panel-v1";
-  assert.throws(() => validatePublicManifest(glyphManifest, PROFILE_CONTRACTS[3], candidateBinding));
-  const foregroundGrantManifest = createSelfTestManifest(PROFILE_CONTRACTS[0], candidateBinding);
-  foregroundGrantManifest.foregroundGrantGate = {
-    required: true,
-    schemaVersion: FOREGROUND_GRANT_EVIDENCE_SCHEMA,
-    timeoutSeconds: 120,
-    brokerConfigured: true,
-    brokerSha256: "a".repeat(64),
-    matrixInputSent: false,
-    candidateInputAllowed: false
-  };
-  validatePublicManifest(foregroundGrantManifest, PROFILE_CONTRACTS[0], candidateBinding);
-  foregroundGrantManifest.foregroundGrantGate.candidateInputAllowed = true;
-  assert.throws(() => validatePublicManifest(foregroundGrantManifest, PROFILE_CONTRACTS[0], candidateBinding));
-  foregroundGrantManifest.foregroundGrantGate = {
-    required: false,
-    schemaVersion: FOREGROUND_GRANT_EVIDENCE_SCHEMA,
-    timeoutSeconds: 120,
-    brokerConfigured: false,
-    brokerSha256: "",
-    matrixInputSent: false,
-    candidateInputAllowed: false
-  };
-  validatePublicManifest(foregroundGrantManifest, PROFILE_CONTRACTS[0], candidateBinding);
-  const privateManifest = createSelfTestManifest(PROFILE_CONTRACTS[1], candidateBinding);
-  privateManifest.privateEnvImported = true;
-  assert.throws(() => validatePublicManifest(privateManifest, PROFILE_CONTRACTS[1], candidateBinding));
-  const arbitraryWebManifest = createSelfTestManifest(PROFILE_CONTRACTS[2], candidateBinding);
-  arbitraryWebManifest.webUrlUsesPublicDefault = false;
-  assert.throws(() => validatePublicManifest(arbitraryWebManifest, PROFILE_CONTRACTS[2], candidateBinding));
-  const candidateLaunchEnvManifest = createSelfTestManifest(PROFILE_CONTRACTS[0], candidateBinding);
-  candidateLaunchEnvManifest.launchEnvOutsideCandidate = false;
-  assert.throws(() => validatePublicManifest(candidateLaunchEnvManifest, PROFILE_CONTRACTS[0], candidateBinding));
-  const reparsePathManifest = createSelfTestManifest(PROFILE_CONTRACTS[0], candidateBinding);
-  reparsePathManifest.launchEnvPathHasNoReparsePoints = false;
-  assert.throws(() => validatePublicManifest(reparsePathManifest, PROFILE_CONTRACTS[0], candidateBinding));
-  const customLaunchEnvManifest = createSelfTestManifest(PROFILE_CONTRACTS[0], candidateBinding);
-  customLaunchEnvManifest.launchEnvUsesDefaultPath = false;
-  assert.throws(() => validatePublicManifest(customLaunchEnvManifest, PROFILE_CONTRACTS[0], candidateBinding));
-  const helperCleanupManifest = createSelfTestManifest(PROFILE_CONTRACTS[3], candidateBinding);
-  helperCleanupManifest.cleanStaleOverlayHelpers = true;
-  assert.throws(() => validatePublicManifest(helperCleanupManifest, PROFILE_CONTRACTS[3], candidateBinding));
-  const customRunnerManifest = createSelfTestManifest(PROFILE_CONTRACTS[0], candidateBinding);
-  customRunnerManifest.javaScriptRunnerExeConfigured = true;
-  assert.throws(() => validatePublicManifest(customRunnerManifest, PROFILE_CONTRACTS[0], candidateBinding));
-  const partialManifest = createSelfTestManifest(PROFILE_CONTRACTS[3], candidateBinding);
-  partialManifest.onlyCase = partialManifest.cases[0].id;
-  assert.throws(() => validatePublicManifest(partialManifest, PROFILE_CONTRACTS[3], candidateBinding));
-  const alteredCaseManifest = createSelfTestManifest(PROFILE_CONTRACTS[2], candidateBinding);
-  alteredCaseManifest.cases[0].action = "presenter-ready";
-  assert.throws(() => validatePublicManifest(alteredCaseManifest, PROFILE_CONTRACTS[2], candidateBinding));
-  const badNativeLoad = createSelfTestSummary(PROFILE_CONTRACTS[0], candidateBinding);
-  badNativeLoad.nativeLoadGate.ok = false;
-  assert.throws(() => validateProfileSummary(badNativeLoad, PROFILE_CONTRACTS[0], candidateBinding));
-  const attachedNativeLoad = createSelfTestSummary(PROFILE_CONTRACTS[0], candidateBinding);
-  Object.assign(attachedNativeLoad.nativeLoadGate, {
-    hostBackend: EXPECTED_BACKEND,
-    rendererBackend: EXPECTED_BACKEND,
-    backendAgrees: true,
-    lazyPresenterReady: false,
-    rendererProofRequired: true,
-    lifecycleCompleteCount: 1
-  });
-  assert.throws(() => validateProfileSummary(attachedNativeLoad, PROFILE_CONTRACTS[0], candidateBinding));
-  const managedRoutesContract = PROFILE_CONTRACTS.find((entry) => entry.name === "managed-routes");
-  const readyCaseIndex = managedRoutesContract.cases.findIndex((entry) => entry.action === "presenter-ready");
-  assert.ok(readyCaseIndex >= 0);
-  const attachedReadyCase = createSelfTestSummary(managedRoutesContract, candidateBinding);
-  Object.assign(attachedReadyCase.caseSummaries[readyCaseIndex].presenterBackendEvidence, {
-    result: {
-      source: "result",
-      present: true,
-      attached: true,
-      backend: EXPECTED_BACKEND,
-      hostBackend: EXPECTED_BACKEND,
-      rendererBackend: EXPECTED_BACKEND,
-      complete: true,
-      agrees: true
-    },
-    lifecycle: [],
-    lifecycleAttachedCount: 1,
-    lifecycleCompleteCount: 1
-  });
-  assert.throws(() => validateProfileSummary(attachedReadyCase, managedRoutesContract, candidateBinding));
-  const passiveOverlayEnabled = createSelfTestSummary(managedRoutesContract, candidateBinding);
-  const passiveCaseIndex = managedRoutesContract.cases.findIndex(
-    (entry) => entry.requirePassiveNotification
+  const profile = createSelfTestProfile(candidateBinding);
+  const receipt = assembleLiveProofReceipt(
+    candidateBinding,
+    [profile],
+    "2026-07-21T00:00:00.000Z",
+    true
   );
-  assert.ok(passiveCaseIndex >= 0);
-  passiveOverlayEnabled.caseSummaries[passiveCaseIndex].overlayEnabled = true;
-  assert.throws(() =>
-    validateProfileSummary(passiveOverlayEnabled, managedRoutesContract, candidateBinding)
-  );
-  const incompleteAttachedRoute = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
-  Object.assign(incompleteAttachedRoute.caseSummaries[1].presenterBackendEvidence.result, {
-    rendererBackend: "",
-    complete: false,
-    agrees: false
-  });
-  assert.throws(() => validateProfileSummary(incompleteAttachedRoute, PROFILE_CONTRACTS[1], candidateBinding));
-  const badRuntime = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
-  badRuntime.caseSummaries[1].runtimeConfig.nativePathOverride = true;
-  assert.throws(() => validateProfileSummary(badRuntime, PROFILE_CONTRACTS[1], candidateBinding));
-  const deprecatedPopupRuntime = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
-  deprecatedPopupRuntime.caseSummaries[1].runtimeConfig.actualNativeHostStyle = "popup-layered";
-  assert.throws(() =>
-    validateProfileSummary(deprecatedPopupRuntime, PROFILE_CONTRACTS[1], candidateBinding)
-  );
-  const inheritedCheckoutUrl = createSelfTestSummary(PROFILE_CONTRACTS[1], candidateBinding);
-  inheritedCheckoutUrl.caseSummaries[1].runtimeConfig.hasCheckoutUrl = true;
-  assert.throws(() => validateProfileSummary(inheritedCheckoutUrl, PROFILE_CONTRACTS[1], candidateBinding));
-  const inheritedCheckoutTransaction = createSelfTestSummary(PROFILE_CONTRACTS[3], candidateBinding);
-  inheritedCheckoutTransaction.caseSummaries[0].runtimeConfig.hasCheckoutTransactionId = true;
-  assert.throws(() => validateProfileSummary(inheritedCheckoutTransaction, PROFILE_CONTRACTS[3], candidateBinding));
-  const inheritedSmokeConfiguration = createSelfTestSummary(PROFILE_CONTRACTS[3], candidateBinding);
-  inheritedSmokeConfiguration.caseSummaries[0].runtimeConfig.authIdentityUsesPublicDefault = false;
-  assert.throws(() => validateProfileSummary(inheritedSmokeConfiguration, PROFILE_CONTRACTS[3], candidateBinding));
-  const elevatedTask = createSelfTestSummary(PROFILE_CONTRACTS[0], candidateBinding);
-  elevatedTask.cleanup.taskRunLevel = "Highest";
-  assert.throws(() => validateProfileSummary(elevatedTask, PROFILE_CONTRACTS[0], candidateBinding));
-  const badContinuity = createSelfTestSummary(PROFILE_CONTRACTS[3], candidateBinding);
-  badContinuity.cleanup.sameSteamIdentitySet = false;
-  assert.throws(() => validateProfileSummary(badContinuity, PROFILE_CONTRACTS[3], candidateBinding));
   validateLiveProofReceipt(JSON.parse(JSON.stringify(receipt)), candidateBinding);
   assert.throws(
-    () => validateLiveProofReceipt({ ...receipt, receiptSha256: "0".repeat(64) }, candidateBinding),
-    /Expected values to be strictly equal/
+    () => validateLiveProofReceipt({ ...receipt, receiptSha256: "0".repeat(64) }, candidateBinding)
   );
-  const wrongCandidate = { ...candidateBinding, bindingSha256: "0".repeat(64) };
-  assert.throws(() => validateLiveProofReceipt(receipt, wrongCandidate));
+  const popupReceipt = JSON.parse(JSON.stringify(receipt));
+  popupReceipt.profiles[0].runtime.hostStyle = "owned-popup";
+  assert.throws(() => validateLiveProofReceipt(popupReceipt, candidateBinding));
+  const failedProfile = JSON.parse(JSON.stringify(profile));
+  failedProfile.passed = false;
   assert.throws(() =>
-    validateProfileReceipt(
-      { ...profiles[0], caseIds: [...profiles[0].caseIds, "unexpected"] },
-      PROFILE_CONTRACTS[0],
+    validateLiveProofReceipt(
+      assembleLiveProofReceipt(candidateBinding, [failedProfile], "2026-07-21T00:00:00.000Z", true),
       candidateBinding
     )
   );
-  assert.equal(canonicalJson(receipt).includes("artifactRoot"), false);
-  assert.equal(canonicalJson(receipt).includes("processId"), false);
-  assert.equal(isDeepStrictEqual(PROFILE_CONTRACTS[1].cases[0].requireEvent, ["overlay:presenter-checkout-ready"]), true);
-  const outputRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-live-proof-receipt-self-test-"));
+  runGeneratorSelfTest();
+}
+
+function runGeneratorSelfTest() {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-standalone-proof-"));
   try {
-    const protectedCandidate = path.join(outputRoot, "candidate");
-    const protectedEvidence = path.join(outputRoot, "evidence");
-    fs.mkdirSync(protectedCandidate);
-    fs.mkdirSync(protectedEvidence);
+    const candidateDirectory = path.join(tempRoot, "candidate");
+    const consumerDirectory = path.join(tempRoot, "consumer");
+    const evidenceDirectory = path.join(tempRoot, "evidence");
+    fs.mkdirSync(candidateDirectory);
+    fs.mkdirSync(consumerDirectory);
+    fs.mkdirSync(evidenceDirectory);
+    fs.writeFileSync(path.join(candidateDirectory, "candidate.bin"), "candidate");
+    const runtimeBytes = {
+      "steam_bridge_native.win32-x64-msvc.node": Buffer.from("native"),
+      "steam_api64.dll": Buffer.from("steam"),
+      "sdkencryptedappticket64.dll": Buffer.from("ticket")
+    };
+    fs.writeFileSync(
+      path.join(consumerDirectory, "package.json"),
+      JSON.stringify({ name: "steam-bridge", version: "1.2.3" })
+    );
+    for (const [name, bytes] of Object.entries(runtimeBytes)) {
+      fs.writeFileSync(path.join(consumerDirectory, name), bytes);
+    }
+    const fingerprint = fingerprintCandidateDirectory(candidateDirectory);
+    const audit = {
+      schemaVersion: 2,
+      target: "x86_64-pc-windows-msvc",
+      package: {
+        name: "steam-bridge",
+        version: "1.2.3",
+        tarball: { sha256: "1".repeat(64) },
+        nativeBinding: { methodCount: 1130, methodsSha256: "2".repeat(64) }
+      },
+      electronBuilder: { electronVersion: "43.1.0" },
+      finalBundle: {
+        archive: {
+          sha256: "3".repeat(64),
+          rootDirectory: "win-unpacked",
+          fileCount: fingerprint.fileCount,
+          totalSize: fingerprint.totalSize
+        },
+        contentFingerprint: fingerprint,
+        files: Object.fromEntries(
+          Object.entries(runtimeBytes).map(([name, bytes]) => [
+            name,
+            { sha256: sha256(bytes) }
+          ])
+        )
+      },
+      signing: {
+        required: true,
+        expectedPublisherSubjectConfigured: true,
+        expectedPublisherThumbprintConfigured: true,
+        publisherMatches: { appExecutable: true, nativeAddon: true }
+      },
+      release: { gitCommit: "5".repeat(40), gitRefName: "v1.2.3" }
+    };
+    const auditPath = path.join(tempRoot, "audit.json");
+    fs.writeFileSync(auditPath, JSON.stringify(audit));
+    const candidateBinding = createCandidateBinding(audit);
+    const sample = {
+      phase: "game",
+      display: { hz: 60 },
+      targetFps: 60,
+      gameSurface: { paintFps: 59.9 },
+      nativePresenter: {
+        presentFps: 59.9,
+        frameLatencyWaitable: true,
+        frameLatencyWaitTimeoutCount: 0,
+        deviceLost: false,
+        deviceLostCount: 0,
+        deviceRecoveryCount: 0,
+        sharedTextureCopySlowCount: 0
+      },
+      nativeHost: {
+        backend: EXPECTED_BACKEND,
+        rendererBackend: EXPECTED_BACKEND,
+        hostStyle: EXPECTED_HOST_STYLE,
+        parentHwnd: null,
+        minimized: false,
+        logicalClientSize: { height: 720, width: 1280 },
+        minimumClientSize: { height: 480, width: 640 },
+        windowDpi: 216
+      }
+    };
+    const stdout = [
+      "[steam-native-host] first Electron shared texture",
+      "[steam-native-host] fullscreen on",
+      "[steam-native-host] fullscreen off",
+      "[steam-native-host] renderer paused while minimized",
+      "[steam-native-host] renderer resumed after minimize",
+      "[steam-native-input]",
+      "[steam-overlay-activated] {\"active\":true}",
+      "[steam-overlay-activated] {\"active\":false}",
+      "[steam-native-host] user shortcut opened Friends",
+      "[steam-native-host-renderer] viewport 1280x720 -> 1100x620 {}",
+      ...Array.from({ length: 3 }, () => "[steam-native-host-fps] " + JSON.stringify(sample)),
+      ...Array.from({ length: 3 }, () =>
+        "[steam-native-host-fps] " + JSON.stringify({
+          ...sample,
+          phase: "overlay",
+          overlayActive: true,
+          gameSurface: { ...sample.gameSurface, paintFps: 0 }
+        })
+      )
+    ].join("\n");
+    fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout);
+    fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), "");
+    const evidencePath = path.join(evidenceDirectory, "evidence.json");
+    fs.writeFileSync(
+      evidencePath,
+      JSON.stringify({
+        kind: EVIDENCE_KIND,
+        schemaVersion: EVIDENCE_SCHEMA_VERSION,
+        generatedAt: "2026-07-21T00:00:00.000Z",
+        candidateBindingSha256: candidateBinding.bindingSha256,
+        logs: { stdout: "stdout.log", stderr: "stderr.log" },
+        manualChecks: Object.fromEntries(MANUAL_CHECK_KEYS.map((key) => [key, true])),
+        qa: {
+          actualGame: true,
+          actualSteamClient: true,
+          developmentToolsOpen: false,
+          ordinaryOverlayOnly: true,
+          purchaseOrSubscriptionAuthorized: false,
+          steamClientStable: true
+        }
+      })
+    );
+    const options = {
+      auditManifest: auditPath,
+      candidateDirectory,
+      consumerPackageDirectory: consumerDirectory,
+      evidence: evidencePath,
+      output: path.join(tempRoot, "receipt.json")
+    };
+    validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding);
+    const slowOverlaySample = {
+      ...sample,
+      phase: "overlay",
+      overlayActive: true,
+      gameSurface: { ...sample.gameSurface, paintFps: 20 },
+      nativePresenter: { ...sample.nativePresenter, presentFps: 20 }
+    };
+    const slowOverlayStdout = stdout.replace(
+      Array.from({ length: 3 }, () =>
+        "[steam-native-host-fps] " + JSON.stringify({
+          ...sample,
+          phase: "overlay",
+          overlayActive: true,
+          gameSurface: { ...sample.gameSurface, paintFps: 0 }
+        })
+      ).join("\n"),
+      Array.from({ length: 3 }, () =>
+        "[steam-native-host-fps] " + JSON.stringify(slowOverlaySample)
+      ).join("\n")
+    );
+    fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), slowOverlayStdout);
+    assert.throws(() => generateLiveProofReceipt(options), /Steam overlay median/);
+    fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout);
+    const linkedConsumer = path.join(tempRoot, "linked-consumer");
+    fs.symlinkSync(consumerDirectory, linkedConsumer, process.platform === "win32" ? "junction" : "dir");
     assert.throws(
-      () => validateReceiptOutputLocation(
-        path.join(protectedCandidate, "receipt.json"),
-        protectedCandidate,
-        [protectedEvidence, protectedEvidence, protectedEvidence, protectedEvidence]
-      ),
-      /outside the candidate directory/
+      () => generateLiveProofReceipt({ ...options, consumerPackageDirectory: linkedConsumer }),
+      /real registry\/tarball install/
     );
-    assert.throws(
-      () => validateReceiptOutputLocation(
-        path.join(protectedEvidence, "receipt.json"),
-        protectedCandidate,
-        [protectedEvidence, protectedEvidence, protectedEvidence, protectedEvidence]
-      ),
-      /outside the live-proof evidence root/
-    );
-    validateReceiptOutputLocation(
-      path.join(outputRoot, "outside.json"),
-      protectedCandidate,
-      [protectedEvidence, protectedEvidence, protectedEvidence, protectedEvidence]
-    );
-    const existingOutput = path.join(outputRoot, "existing.json");
-    fs.writeFileSync(existingOutput, "preserve");
-    assert.throws(() => writePrivateJson(existingOutput, receipt), /already exists/);
-    assert.equal(fs.readFileSync(existingOutput, "utf8"), "preserve");
-    const newOutput = path.join(outputRoot, "receipt.json");
-    writePrivateJson(newOutput, receipt);
-    assert.deepEqual(JSON.parse(fs.readFileSync(newOutput, "utf8")), receipt);
-    assert.deepEqual(fs.readdirSync(outputRoot).sort(compareOrdinal), [
-      "candidate",
-      "evidence",
-      "existing.json",
-      "receipt.json"
-    ]);
   } finally {
-    fs.rmSync(outputRoot, { recursive: true, force: true });
+    fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 }
 
-function createSelfTestManifest(contract, candidateBinding) {
-  return {
-    kind: "steam-bridge-windows-overlay-matrix-manifest",
-    generatedAt: "2026-07-11T00:00:00.000Z",
-    suite: contract.suite,
-    launchMode: "steam-launch",
-    launchKind: "shortcut",
-    appId: PUBLIC_APP_ID,
-    onlyCase: "",
-    expectedCaseCount: contract.cases.length,
-    candidatePathHasNoReparsePoints: true,
-    launchEnvOutsideCandidate: true,
-    launchEnvPathHasNoReparsePoints: true,
-    launchEnvUsesDefaultPath: true,
-    webUrlUsesPublicDefault: true,
-    shortcutNamePresent: true,
-    shortcutExeConfigured: false,
-    shortcutStartDirConfigured: false,
-    shortcutLaunchPrefixConfigured: false,
-    javaScriptRunnerExeConfigured: false,
-    overlayProfile: "diagnostic",
-    presenterMode: "",
-    nativeHostBackend: "",
-    nativeHostStyle: "",
-    expectedNativeHostBackend: EXPECTED_BACKEND,
-    nativePathOverride: false,
-    overlayInProcessGpu: "",
-    overlayDisableDirectComposition: "",
-    overlayScrubChildEnv: "",
-    overlayIsolateChildProcesses: "",
-    windowMode: "windowed",
-    closeProbe: true,
-    closeProbeInput: "auto",
-    timeoutSeconds: 120,
-    closeProbeSettleMs: 750,
-    closeProbeTimeoutSeconds: 110,
-    autorunUserGestureGatePolicy: USER_GESTURE_POLICY,
-    persistentReuseGatePolicy: PERSISTENT_REUSE_POLICY,
-    supportedPersistentReuseEvidenceSchemas: [1],
-    persistentReuseCloseTargetSchema: PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA,
-    supportedPersistentReuseCloseTargetSchemas: [
-      PERSISTENT_REUSE_CLOSE_TARGET_SCHEMA
-    ],
-    closeProbeEvidenceSchema: 2,
-    supportedCloseProbeEvidenceSchemas: [2, 3],
-    closeProbeForegroundHandoff: OWNER_PROCESS_HANDOFF,
-    supportedCloseProbeForegroundHandoffs: [OWNER_PROCESS_HANDOFF, SAME_PROCESS_HANDOFF],
-    supportedExternalForegroundTransitions: [EXTERNAL_FOREGROUND_TRANSITION],
-    skipNativeLoadGate: false,
-    skipRenderHealthGate: false,
-    allowUnhealthyDefaultRender: false,
-    allowUnhealthySteamClientLogs: false,
-    cleanStaleOverlayHelpers: false,
-    steamClientHealthRecentMinutes: EXPECTED_HEALTH_MINUTES,
-    privateEnvImported: false,
-    requireMicroTxnCallback: false,
-    candidateBinding: JSON.parse(JSON.stringify(candidateBinding)),
-    cleanupContract: {
-      processCleanupRequired: true,
-      launchEnvRollbackRequired: true,
-      taskCleanupExpected: true,
-      steamContinuityRequired: true
-    },
-    initTxnCapture: {
-      hasRequestFile: false,
-      hasResponseFile: false,
-      captureInApp: false,
-      apiKeyEnvProvided: false,
-      endpointOption: "",
-      publicSyntheticCheckout: contract.suite === "checkout"
-    },
-    installShortcut: false,
-    assumeShortcutConfigured: true,
-    targetHints: {
-      hasWebUrl: true,
-      storeRoute: "web",
-      dialog: "Friends",
-      userDialog: "steamid",
-      shortcutTarget: "friends",
-      hasCheckoutTransactionId: true,
-      hasCheckoutJsonFile: false,
-      hasInitTxnRequestFile: false
-    },
-    cases: JSON.parse(JSON.stringify(contract.cases))
-  };
+function readEvidenceFile(root, relativePath, label) {
+  assert.equal(typeof relativePath, "string", label + " path must be a string.");
+  assert.ok(relativePath && !path.isAbsolute(relativePath), label + " path must be relative.");
+  const resolved = path.resolve(root, relativePath);
+  assertPathInside(root, resolved, label);
+  return { bytes: readStableRealFile(root, resolved, label) };
 }
 
-function createSelfTestSummary(contract, candidateBinding) {
-  const signed = candidateBinding.signing.required;
-  const runtimeConfig = (hasCheckoutTransactionId = false, selectionOnly = false) => ({
-    complete: !selectionOnly,
-    authIdentityUsesPublicDefault: true,
-    overlayProfile: "diagnostic",
-    overlayScrubChildEnv: true,
-    overlayIsolateChildProcesses: false,
-    overlayInProcessGpu: false,
-    overlayDisableDirectComposition: false,
-    configuredNativeHostBackend: "",
-    configuredNativeHostStyle: "",
-    actualNativeHostStyle: selectionOnly ? "" : EXPECTED_HOST_STYLE,
-    nativePathOverride: false,
-    presenterMode: "persistent",
-    configuredPresenterMode: "",
-    disableElectronOverlayPresenter: false,
-    webUrlUsesPublicDefault: true,
-    hasCheckoutUrl: false,
-    hasCheckoutTransactionId,
-    hasCheckoutReturnUrl: false,
-    hasCheckoutJsonFile: false,
-    hasInitTxnRequestFile: false,
-    hasInitTxnApiKeyEnv: false,
-    initTxnEndpointConfigured: false,
-    managedOverlayWaitTimeoutMs: 45000,
-    managedOverlayParkTimeoutMs: 90000,
-    achievementNameConfigured: false,
-    achievementProgressUsesDefaults: true,
-    isPackaged: true,
-    electronVersion: candidateBinding.electronVersion
+function readStableRealJson(root, filePath, label) {
+  const bytes = readStableRealFile(root, filePath, label);
+  assert.ok(bytes.length <= MAX_JSON_BYTES, label + " exceeds the size limit.");
+  try {
+    return { bytes, value: JSON.parse(bytes.toString("utf8")) };
+  } catch (error) {
+    throw new Error("Invalid " + label + " JSON.", { cause: error });
+  }
+}
+
+function readStableRealFile(root, filePath, label) {
+  const resolvedRoot = fs.realpathSync.native(path.resolve(root));
+  const resolvedFile = path.resolve(filePath);
+  const stat = fs.lstatSync(resolvedFile);
+  assert.equal(stat.isSymbolicLink(), false, label + " must not be a symbolic link or junction.");
+  const realFile = fs.realpathSync.native(resolvedFile);
+  assert.equal(normalizePath(realFile), normalizePath(resolvedFile), label + " traversed a reparse point.");
+  assertPathInside(resolvedRoot, realFile, label);
+  return readStableFile(realFile, label);
+}
+
+function readStableJson(filePath, label) {
+  const bytes = readStableFile(filePath, label);
+  assert.ok(bytes.length <= MAX_JSON_BYTES, label + " exceeds the size limit.");
+  let value;
+  try {
+    value = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    throw new Error("Invalid " + label + " JSON.", { cause: error });
+  }
+  return { bytes, value };
+}
+
+function readStableFile(filePath, label) {
+  const before = fs.statSync(filePath, { bigint: true });
+  assert.ok(before.isFile(), "Missing " + label + ": " + filePath);
+  const bytes = fs.readFileSync(filePath);
+  const after = fs.statSync(filePath, { bigint: true });
+  assert.equal(before.size, after.size, label + " changed while read.");
+  assert.equal(before.mtimeNs, after.mtimeNs, label + " changed while read.");
+  assert.equal(BigInt(bytes.length), after.size, label + " size changed while read.");
+  return bytes;
+}
+
+function writePrivateJson(filePath, value) {
+  assert.equal(fs.existsSync(filePath), false, "Receipt output already exists.");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + os.EOL, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600
   });
-  const backendEvidence = (selectionOnly = false) =>
-    selectionOnly
-      ? {
-          result: {
-            source: "result",
-            present: true,
-            attached: false,
-            backend: EXPECTED_BACKEND,
-            hostBackend: "",
-            rendererBackend: "",
-            complete: false,
-            agrees: false
-          },
-          lifecycle: [],
-          lifecycleAttachedCount: 0,
-          lifecycleCompleteCount: 0
-        }
-      : {
-          result: {
-            source: "result",
-            present: true,
-            attached: true,
-            backend: EXPECTED_BACKEND,
-            hostBackend: EXPECTED_BACKEND,
-            rendererBackend: EXPECTED_BACKEND,
-            complete: true,
-            agrees: true
-          },
-          lifecycle: [],
-          lifecycleAttachedCount: 1,
-          lifecycleCompleteCount: 1
-        };
-  const caseSummaries = contract.cases.map((expected) => ({
-    caseName: expected.id,
-    failures: [],
-    action: expected.action,
-    appId: PUBLIC_APP_ID,
-    managedOverlayResultMode: expected.requireManagedOverlayComplete ? "complete" : "shown",
-    steamLaunch: true,
-    overlayInjection: false,
-    steamOverlayLaunchMarker: true,
-    overlayEnabled: expected.action !== "presenter-ready" && !expected.requirePassiveNotification,
-    overlayActiveEvents: expected.requireOverlayActivated ? 1 : 0,
-    crashDumpCount: 0,
-    fatalLifecycleEventCount: 0,
-    initTxnRequestShapePresent: false,
-    webSessionCheckoutCaptured: false,
-    clientSessionCheckoutCaptured: false,
-    managedCheckoutOperationStarted: expected.id === "02-checkout-approval",
-    microTxnCallbackCount: 0,
-    runtimeConfig: runtimeConfig(
-      expected.hasCheckoutTransactionId,
-      expected.action === "presenter-ready"
-    ),
-    presenterBackendEvidence: backendEvidence(expected.action === "presenter-ready"),
-    steamRenderingHealth: {
-      status: "healthy",
-      recentSevereSignalCount: 0,
-      staleSevereSignalCount: 0,
-      signalCodes: []
-    },
-    managedOverlayCloseProof: expected.requireManagedOverlayComplete,
-    persistentReuseProof: expected.persistentReuseGate ? true : "n/a",
-    passiveNotificationProof: expected.requirePassiveNotification ? true : "n/a",
-    duplicateOpenGuardProof: expected.id === "11b-managed-duplicate-open-guard" ? true : "n/a"
-  }));
-  return {
-    failures: [],
-    warnings: [],
-    nativeLoadBlocker: null,
-    caseAppControlBlockers: [],
-    steamLaunchBlockers: [],
-    initTxnRequestShapePreflight: null,
-    manifest: {
-      suite: contract.suite,
-      launchMode: "steam-launch",
-      launchKind: "shortcut",
-      appId: PUBLIC_APP_ID,
-      candidateBinding: JSON.parse(JSON.stringify(candidateBinding))
-    },
-    preflight: {
-      appId: PUBLIC_APP_ID,
-      steamRunning: true,
-      currentSessionInteractive: true,
-      executableExists: true,
-      executableNonEmpty: true,
-      executableAuthenticodeValid: signed,
-      executableZoneIdentifier: false,
-      nativeAddonExists: true,
-      nativeAddonNonEmpty: true,
-      nativeAddonAuthenticodeValid: signed,
-      nativeAddonZoneIdentifier: false,
-      publisherMatches: signed,
-      nativeOverridePresent: false,
-      nativePathOverride: false,
-      packagedRuntimeResolutionErrorPresent: false
-    },
-    liveRunReadiness: {
-      ready: true,
-      errorCount: 0,
-      warningCount: 0,
-      currentSessionInteractive: true,
-      steamProcessCount: 1,
-      staleOverlayHelperCount: 0,
-      renderingHealthStatus: "healthy",
-      renderingHealthRecentSevereSignalCount: 0,
-      renderingHealthStaleSevereSignalCount: 0
-    },
-    assumedShortcut: {
-      ok: true,
-      changed: false,
-      existingMatches: true,
-      expectedExeExists: true,
-      existingExeExists: true
-    },
-    renderHealth: {
-      gatePresent: true,
-      summaryPresent: true,
-      required: true,
-      skipped: false,
-      passed: true,
-      errorPresent: false,
-      status: "default-render-health-ok",
-      readyForSteamOverlayMatrix: true,
-      defaultCasePresent: true,
-      defaultVisible: true,
-      defaultBlankLike: false,
-      defaultFatalLifecycleEventCount: 0
-    },
-    nativeLoadGate: {
-      ok: true,
-      appId: PUBLIC_APP_ID,
-      action: "presenter-ready",
-      backend: EXPECTED_BACKEND,
-      hostBackend: "",
-      rendererBackend: "",
-      backendAgrees: false,
-      lazyPresenterReady: true,
-      rendererProofRequired: false,
-      lifecycleCompleteCount: 0,
-      runtimeConfig: runtimeConfig(false, true),
-      crashDumpCount: 0,
-      fatalLifecycleEventCount: 0
-    },
-    cleanup: {
-      processBeforeOk: true,
-      processAfterOk: true,
-      processAfterRenderHealthOk: true,
-      launchEnvRollbackOk: true,
-      launchEnvRollbackAttempted: true,
-      taskCleanupOk: true,
-      taskDeletionVerified: true,
-      taskDeleteExitCodeCaptured: true,
-      taskAbsenceQueryExitCodeCaptured: true,
-      taskAbsenceQueryExitCode: 1,
-      taskCleanupPhaseErrorCount: 0,
-      taskTimedOut: false,
-      taskRunnerTerminatedWithoutDone: false,
-      taskFailureStage: "success",
-      taskErrorKind: "none",
-      taskRunLevel: "Limited",
-      taskRunnerGuardOk: true,
-      taskLaunchEnvGuardOk: true,
-      taskPackageProcessGuardOk: true,
-      taskSteamContinuityGuardOk: true,
-      steamContinuityRequired: true,
-      steamContinuityBeforeCount: 1,
-      steamContinuityAfterCount: 1,
-      sameSteamIdentitySet: true,
-      sameSteamSessionSet: true,
-      taskFileGuardOk: true
-    },
-    caseSummaries,
-    totals: {
-      totalCases: contract.cases.length,
-      steamLaunchCases: contract.cases.length,
-      overlayActiveCases: contract.activeCaseCount,
-      cleanCases: contract.cases.length,
-      renderingUnhealthyCases: 0
-    }
-  };
+}
+
+function assertOutputOutsideInputs(outputPath, roots) {
+  for (const root of roots) {
+    const resolvedRoot = path.resolve(root);
+    assert.ok(
+      normalizePath(outputPath) !== normalizePath(resolvedRoot) &&
+        !normalizePath(outputPath).startsWith(normalizePath(resolvedRoot) + path.sep),
+      "Receipt output must be outside candidate, consumer, and evidence inputs."
+    );
+  }
+}
+
+function assertPathInside(root, target, label) {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  assert.ok(relative && !relative.startsWith("..") && !path.isAbsolute(relative), label + " escaped its root.");
+}
+
+function assertExactKeys(value, expected, label) {
+  assert.ok(value && typeof value === "object" && !Array.isArray(value), label + " must be an object.");
+  assert.deepEqual(Object.keys(value).sort(), [...expected].sort(), label + " keys differ.");
+}
+
+function assertIsoTimestamp(value, label) {
+  assert.equal(typeof value, "string", label + " must be a string.");
+  assert.equal(new Date(value).toISOString(), value, label + " must be canonical ISO-8601.");
+}
+
+function normalizePath(value) {
+  return path.resolve(value).toLowerCase();
+}
+
+function sha256(bytes) {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
 }
 
 module.exports = {
@@ -1915,6 +1066,7 @@ module.exports = {
   RECEIPT_KIND,
   RECEIPT_SCHEMA_VERSION,
   assembleLiveProofReceipt,
+  createSelfTestProfile,
   generateLiveProofReceipt,
   readAndValidateLiveProofReceipt,
   validateLiveProofReceipt

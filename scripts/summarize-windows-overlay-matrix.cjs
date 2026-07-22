@@ -328,6 +328,11 @@ function main() {
     return;
   }
 
+  console.error(
+    "The Windows attached-overlay matrix is retired. Use the candidate-bound standalone consumer live-proof receipt."
+  );
+  process.exit(2);
+
   if (!options.artifactRoot) {
     printUsage(process.stderr);
     process.exit(2);

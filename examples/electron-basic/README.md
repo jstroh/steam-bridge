@@ -30,9 +30,10 @@ Steam.
 
 ### Windows standalone game host
 
-`createElectronSteamOverlay()` remains the normal product API. A Windows game
-that must keep native title-bar behavior while presenting Steam and Electron
-through one top-level D3D11 swap chain can instead create an offscreen
+`createElectronSteamOverlay()` remains the normal Linux/macOS product API.
+Windows attached presentation is unsupported: child swapchains produced no
+Steam pixels, while popup presenters failed native window lifecycle. A Windows
+game must create an offscreen
 `BrowserWindow` with `useSharedTexture: true` and pass every paint event's NT
 handle to `startNativeOverlaySession().updateSharedTexture(...)`. Release the
 Electron texture in a `finally` block immediately after the update returns;
@@ -116,6 +117,60 @@ do not add a separate Intel macOS test app, `darwin-x64`,
 `npm run check:platform` validates both the published native target list and
 this example's Apple Silicon-only macOS package path.
 
+### Windows standalone release proof
+
+Windows release proof does not use this example's attached presenter. The
+supported Windows product shape is one standalone native D3D host rendering a
+hidden Electron offscreen surface through
+`startNativeOverlaySession()`. The actual game consumer is the authoritative
+integration test because it owns its renderer, menus, input routing, aspect
+policy, and Steam web routes.
+
+Install the exact candidate tarball into the consumer as a normal directory,
+not an npm link or junction. Run the actual game with
+`STEAM_BRIDGE_FPS_REPORT=1` and `STEAM_BRIDGE_DEBUG_OVERLAY_SNAPSHOT=1`, then
+manually verify startup chrome, File/Edit/View, title drag, resize and the
+logical minimum, maximize/restore, minimize/restore, focus return,
+fullscreen/restore, rounded corners, cursor behavior, and ordinary Shift+Tab
+overlay alignment/close. Do not open or authorize checkout or a subscription.
+Keep DevTools closed because it materially changes Chromium/Steam behavior.
+
+Create the fail-closed evidence template beside the captured stdout/stderr:
+
+```powershell
+node .\\windows-live-proof-receipt.cjs `
+  --write-evidence-template `
+  --audit-manifest C:\\candidate\\steam-bridge-windows-package-audit.json `
+  --stdout C:\\proof\\stdout.log `
+  --stderr C:\\proof\\stderr.log `
+  --output C:\\proof\\standalone-evidence.json
+```
+
+Review the run and change a field to `true` only when that exact check passed.
+The receipt generator independently parses the logs and rejects missing
+standalone identity, any parent HWND, missing Steam active/inactive lifecycle,
+missing resize/minimize/fullscreen transitions, less than 95% of the current
+display target for median game paint/native-present FPS or active-overlay
+native-present FPS using at least three samples per phase, device loss, latency
+timeouts, slow shared-texture
+copies, stderr, crashes, or a linked/reparse/mismatched consumer package.
+
+Generate the candidate-bound receipt only after every manual field is true:
+
+```powershell
+node .\\windows-live-proof-receipt.cjs `
+  --audit-manifest C:\\candidate\\steam-bridge-windows-package-audit.json `
+  --candidate-directory C:\\candidate\\win-unpacked `
+  --consumer-package-directory C:\\game\\node_modules\\steam-bridge `
+  --evidence C:\\proof\\standalone-evidence.json `
+  --output C:\\receipts\\windows-live-proof-receipt.json
+```
+
+The old `windows-overlay-matrix.ps1`, `windows-overlay-task.ps1`, and normal
+matrix summarizer entrypoints intentionally fail. They exercised the rejected
+attached popup architecture and cannot prove the standalone product.
+
+<!-- Retired attached-matrix instructions retained only in Git history.
 The Windows package includes `windows-electron-smoke.ps1`. Use
 `-Mode print-launch-options` to generate non-Steam shortcut arguments, or
 `-Mode steam-launch` with `-ShortcutGameId` to verify the shortcut result. The
@@ -632,6 +687,8 @@ rendering-health status and signal codes when the artifact includes
 `steam-cef-dxgi-not-currently-available` mean Steam injected its renderer but
 could not create the Windows swap chain for that run.
 
+-->
+
 Direct Windows smoke runs pass smoke state through the child process environment
 instead of Electron command-line switches so interactive Task Scheduler launches
 and private checkout values do not depend on fragile process arguments.
@@ -991,15 +1048,9 @@ click-through while fully idle, polls without pumping frames by default, can
 become visible while remaining
 click-through for `overlayNeedsPresent`, restores both opacity and input while
 opening or showing Steam UI, and parks transparent after Steam emits overlay
-inactive callbacks. On Windows, the default D3D11 presenter starts unattached
-and at zero FPS while fully idle. A needs-present signal or managed open
-attaches the reusable host; after use, the host may remain attached but parks
-transparent and click-through at zero FPS. The idle scheduler checks
-needs-present every 30 ms by default. Between full diagnostics refreshes it
-uses the lightweight `overlayNeedsPresent()` call; the cached full diagnostics
-object is refreshed no more often than every 250 ms. The smoke app deliberately
-leaves `pollIntervalMs` unset so packaged Windows runs exercise that library
-default. On macOS, Steam Bridge reports
+inactive callbacks. On Windows these `presenter-*` actions intentionally fail
+with the attached-host unsupported error; Windows release proof uses the
+standalone game-host contract instead. On macOS, Steam Bridge reports
 `overlayNeedsPresent=false` by default because Steam's injected renderer can
 crash inside
 `BOverlayNeedsPresent()` even on the Metal presenter path; smoke snapshots also
@@ -1141,6 +1192,7 @@ arrays, without printing the value. Use
 `--suite checkout` for the focused macOS purchase path; it covers checkout
 prepare-only, direct checkout, Shift+Tab checkout, and programmatic checkout
 shortcut/open-and-wait without rerunning unrelated overlay surfaces.
+<!-- Retired Windows attached-checkout matrix instructions.
 On Windows, use
 `-LaunchMode steam-app -Suite checkout -InitTxnRequestFile <private-init-txn-request.json> -RequireMicroTxnCallback -CloseProbe -CloseProbeInput auto`
 for the focused configured-product checkout path.
@@ -1375,6 +1427,8 @@ normalized callback path before checkout proof, then tags authorization events
 with `callbackSource`; required callback proof accepts only `steamworks` or
 `legacy` there. The Windows matrix rejects that real-callback flag with public
 App ID `480`, which is only valid for generic checkout-routing proof.
+-->
+
 Linux and Steam Deck helpers expose direct inputs as `--checkout-url`,
 `--checkout-transaction-id`, and `--checkout-return-url`. Without a checkout
 file, URL, or transaction ID the helpers only require
@@ -2000,18 +2054,15 @@ app-specific proof outside the committed examples:
    your app specifically needs `MicroTxnAuthorizationResponse` and has proved
    Steam's automatic client prompt for that configured app/account. Do not tune
    local overlay-preparation timers around that call.
-5. For smoke proof, save the returned JSON to a private temp file and pass it
-   with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE`, the macOS helper's
-   `--checkout-json-file`, or the Windows helper's `-CheckoutJsonFile`. On
-   Windows, prefer letting the matrix create the transaction in-app with
-   `-LaunchMode steam-app -InitTxnRequestFile <private-init-txn-request.json>`.
-   For focused macOS matrix proof, run `--suite checkout`; for focused Windows
-   proof, run `-LaunchMode steam-app -Suite checkout -CloseProbe`. The matrix
-   validates any embedded app ID against the configured app ID before live
-   launch.
-   Add `--require-microtxn-callback` on macOS or `-RequireMicroTxnCallback` on
-   Windows when the direct checkout case should receive Steam's authorization
-   callback.
+5. For Linux/macOS smoke proof, save the returned JSON to a private temp file
+   and pass it with `STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE` or the macOS
+   helper's `--checkout-json-file`. For focused macOS matrix proof, run
+   `--suite checkout` and add `--require-microtxn-callback` only when the
+   configured test should receive Steam's authorization callback. On Windows,
+   exercise checkout only inside the actual standalone game consumer; the
+   retired attached matrix cannot prove that path. The ordinary-overlay
+   release receipt deliberately forbids purchase or subscription
+   authorization.
    If you want a generic CLI to create that private response file, run
    `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
    with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set; the CLI prints only
@@ -2019,10 +2070,9 @@ app-specific proof outside the committed examples:
    arguments. Client-session captures stay wrapped as `clientSession: true`;
    use `--session web` for browser checkout captures or `--session
    client-default` to omit `usersession` for request-shape diagnostics. On
-   Windows, `windows-overlay-matrix.ps1` can run that capture inside the
-   initialized Steam app as part of the focused checkout proof with
-   `-InitTxnRequestFile <private-init-txn-request.json>` and will still keep
-   raw checkout values out of logs and manifests.
+   A Windows game that needs this flow must perform the capture inside its own
+   initialized standalone-host process and keep all raw checkout values out of
+   committed logs and manifests.
 6. Let Steam Bridge open the returned checkout URL or transaction approval path.
 7. Verify the Steam modal appears in both Deck Game Mode and Desktop Mode.
 8. Confirm backing out or closing the Steam surface returns focus to the app.

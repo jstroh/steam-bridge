@@ -682,19 +682,21 @@ function runWindowsSmokeHelperStaticChecks() {
     "Publish workflow must use npm trusted publishing without a bootstrap token"
   );
   for (const expected of [
-    "TOTAL_CASE_COUNT, 31",
-    "TOTAL_ACTIVE_CASE_COUNT, 27",
+    "standalone-consumer",
+    "TOTAL_CASE_COUNT = PROFILE_CONTRACTS[0].cases.length",
     "--candidate-directory",
-    "privateEnvImported",
-    "webUrlUsesPublicDefault",
-    "hasCheckoutUrl",
-    "cleanStaleOverlayHelpers",
-    "taskRunLevel",
-    "lazyPresenterReady",
-    "rendererProofRequired",
+    "--consumer-package-directory",
+    "--write-evidence-template",
+    "MANUAL_CHECK_KEYS",
+    "verifyConsumerPackage",
+    "expectedNativeHostStyle: EXPECTED_HOST_STYLE",
+    "attachedWindowsSupported: false",
+    "popupOrChildFallbackAllowed: false",
+    "overlayMedianPresentFpsTenths",
+    "minimumGameMedianPaintAndPresentPercentOfDisplayTarget",
+    "minimumOverlayMedianPresentPercentOfDisplayTarget",
+    "frameLatencyWaitTimeoutCount",
     "sameSteamIdentityAcrossProfiles",
-    "web-ready-escape-sendinput",
-    "validateForegroundGrantManifest",
     "verifyCandidateDirectory",
     "readAndValidateLiveProofReceipt"
   ]) {
@@ -2552,14 +2554,12 @@ function runWindowsSmokeHelperStaticChecks() {
     "electron-debug.log",
     "--steam-bridge-electron-overlay-in-process-gpu=$OverlayInProcessGpu",
     "--steam-bridge-windows-native-host-backend=$NativeHostBackend",
-    "--steam-bridge-windows-native-host-style=$NativeHostStyle",
     "CheckoutJsonFile",
     "Redact-SmokeLaunchArgument",
     "STEAM_BRIDGE_SMOKE_CHECKOUT_JSON_FILE",
     "Format-SmokeEnvLines (Get-SmokeEnv -LogFile $ResultFile -SmokeAction $Action) -RedactSensitive",
     "STEAM_BRIDGE_NATIVE_PATH",
     "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND",
-    "STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE",
     "write-launch-env",
     "Get-SmokeEnv",
     "Set-SmokeProcessEnv",
@@ -4987,6 +4987,14 @@ function run(command, args, options = {}) {
     assert.ok(npmCli, "npm_execpath is required to run package smoke checks on Windows");
     executable = process.execPath;
     executableArgs = [npmCli, ...args];
+  } else if (process.platform === "win32" && command === "bash") {
+    const bashCandidates = [
+      process.env.STEAM_BRIDGE_BASH,
+      process.env.ProgramFiles && path.join(process.env.ProgramFiles, "Git", "bin", "bash.exe"),
+      process.env["ProgramFiles(x86)"] &&
+        path.join(process.env["ProgramFiles(x86)"], "Git", "bin", "bash.exe")
+    ].filter(Boolean);
+    executable = bashCandidates.find((candidate) => fs.existsSync(candidate)) || command;
   }
 
   const result = spawnSync(executable, executableArgs, {
@@ -4996,8 +5004,14 @@ function run(command, args, options = {}) {
     windowsHide: true
   });
 
+  if (result.error) {
+    throw new Error(
+      `Failed to start ${command} for package smoke: ${result.error.message}`,
+      { cause: result.error }
+    );
+  }
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    throw new Error(`Package smoke child command failed (${command}, exit ${result.status ?? "unknown"})`);
   }
 
   return result;

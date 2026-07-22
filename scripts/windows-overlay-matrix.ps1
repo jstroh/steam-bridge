@@ -70,6 +70,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+throw @"
+This Windows attached-overlay matrix is retired and cannot be used as release
+proof. Windows production support uses one standalone native D3D host with an
+offscreen Electron renderer. Run the candidate-bound standalone consumer proof
+documented in examples/electron-basic/README.md.
+"@
+
 if (-not ("SteamBridgeForegroundGrantGateNative" -as [type])) {
   Add-Type -TypeDefinition @"
 using System;

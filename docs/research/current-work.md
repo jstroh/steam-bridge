@@ -2,25 +2,127 @@
 
 Last reviewed: 2026-07-21
 
-Review anchor: `bb2b8c3` (`Fix stacked Steam overlay close proof`). Exact
+Review anchor: `385a3fc` (`Capture native Windows input state`). Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
-rejected candidates; the working replacement is versioned `0.3.4`.
+rejected candidates. npm `latest` is `0.3.4`. Exact `v0.3.5` is also immutable
+and unpublished, but is obsolete because the current native and consumer
+repairs were made afterward. The next release candidate must be `v0.3.6`; it
+has not been stamped yet.
+
+## Read First After Compaction: Windows Architecture
+
+This checkpoint overrides any shortened-context inference that Windows attached
+presentation should be repaired with another popup or child-window experiment.
+
+- The requested audit covered all 794 commits in the repository (the entire
+  history available to the requested 800-commit window) and inspected the
+  Windows host commits and their recorded live failures.
+- `e1dfd73` introduced the attached Windows presenter as `WS_POPUP`.
+  `f0215bd` added a "control" comparison that was still an unparented
+  `WS_OVERLAPPEDWINDOW`. Activation, focus, bounds, message-pump, clipping, and
+  parking repairs accumulated through `6577856` without changing the second
+  top-level-window architecture. `2a24089` renamed that attached path
+  `owned-popup` and separately introduced the successful standalone shared-
+  texture game host.
+- No committed revision before the current abandoned re-entry contains
+  `WS_CHILD` or `SetParent` in the Windows native host. The real-child result was
+  a source-linked, uncommitted experiment recorded by `2a24089`: Windows made
+  geometry, clipping, move, focus, and minimize behavior automatic, but Steam
+  activated without drawing overlay pixels into the child swapchain.
+- Attached top-level presenters are a closed path. Live failures included
+  Electron chrome coverage, purple startup/Alt+Tab surfaces, tiny or partial
+  Steam surfaces, DPI seams, lost rounded corners, toolbar/menu/title-drag and
+  maximize conflicts, minimize/focus desynchronization, drag/resize flicker,
+  retained or stale pixels, hangs, and crashes. Region synchronization,
+  terminal geometry updates, timing delays, DevTools activity, and retained-
+  frame resize stretching patched symptoms and must not be retried.
+- The true attached `WS_CHILD` path is also closed unless Steam hook selection
+  or the renderer architecture materially changes. Its no-pixels result must
+  never trigger a popup fallback.
+- The proven Windows production path is one visible standalone top-level native
+  D3D host which composites a hidden Electron offscreen renderer. FOV4 already
+  uses `client.overlay.startNativeOverlaySession()` in `main/main.js` and creates
+  its renderer `BrowserWindow` with `show: false`, `frame: false`, and offscreen
+  shared-texture presentation.
+- Therefore test the actual FOV4 game-host path. Windows attached mode should
+  fail clearly rather than create any popup. During iteration, run only tests
+  and live transitions affected by the current edit. Run the full cross-
+  platform release matrix once after the implementation is stable and directly
+  before publication.
 
 ## Active Goal
 
-Finish and publish the replacement for `v0.2.14` after the Windows architecture
-changes are requalified on Linux x64, Steam Deck Desktop Mode, Steam Deck Game
-Mode, and native Apple Silicon macOS. Use each platform's settled contract:
-Linux native/package loading, the managed Desktop matrix, the bounded two-case
-Game Mode matrix, and the signed Apple Silicon matrix. Do not revive rejected
-raw overlay/input variants, Wayland-handle-as-XID or child-window paths,
-on-demand GLX creation inside Steam's injected call stack, or macOS
-needs-present polling. Fix regressions in their owning layer, rerun every
-affected platform contract, and publish only an exact reviewed and proved
-candidate. Do not move or reuse published tags or the rejected
-`v0.2.12`/`v0.2.13` tags.
+Finish Steam Bridge and the FOV4 port around the proven standalone native-host
+architecture. Permanently close failed Windows attached popup/child paths, make
+unsupported attached Windows use fail clearly, validate the actual game with
+change-scoped manual and automated QA, requalify affected platforms, then run
+one complete immutable release-candidate review before documentation, version,
+commit, push, tag, GitHub Release, npm publication, and registry verification.
+Do not move or reuse a tag or publish any rejected candidate.
 
 ## Current State
+
+The 2026-07-21 source-linked FOV4 Windows pass now exercises the actual game on
+the standalone native host rather than any attached presenter. A long modal
+resize first reproduced `DXGI_ERROR_DEVICE_REMOVED` from competing one-
+millisecond timer and `WM_SIZE` renders. Modal presentation is now coalesced at
+16 ms, device loss is classified and recoverable on the next shared texture,
+and diagnostics expose loss/recovery counts. Repeating the exact stress reached
+the enforced 640 by 480 logical minimum and returned to 59.9 FPS without device
+loss, slow copies, a crash, or Steam-client damage. Minimize also no longer
+turns Windows' iconic sentinel geometry into a tiny renderer: the host reports
+`minimized`, skips D3D presentation, and the consumer retains its real viewport
+while throttled to 1 FPS. Restore returned the unchanged 2883 by 1623 coded
+source to 59.9 FPS without recreating texture storage.
+
+That same actual-game run passed default 1280 by 720 geometry at 225% scale,
+File/Edit/View chrome, title drag, edge and exact-minimum resize,
+maximize/restore, minimize/restore, fullscreen/restore, and focus loss/return.
+An OS-level Shift+Tab generated the native shortcut event and Steam active/inactive
+callbacks, opened the ordinary Friends overlay, and closed it without an app-
+side test hook. The overlay was correctly bounded to the native client at both
+1280 by 720 and maximized sizes, with no right/bottom seam, purple surface, tiny
+top-left surface, hang, or crash. The final steady state measured 59.8-59.9
+source and native-present FPS against the current 60 Hz display, with zero
+frame-latency timeouts and zero device losses. No checkout or subscription was
+opened in this pass.
+
+The Windows native module has now physically removed the abandoned attached
+implementation rather than merely hiding it behind policy. It contains no
+popup host style, owner/parent handle, parent subclass, popup clipping region,
+external bounds override, or fallback branch. The ABI-compatible attach calls
+return an explicit unsupported error without closing or replacing an existing
+standalone surface, and external `setBounds` calls fail because the standalone
+host owns its native geometry. Linux and macOS attachment code is unchanged.
+The focused Rust, TypeScript, package, and unit gates pass, including 215/215
+repository tests.
+
+The post-pruning actual-game regression repeated ordinary Steam Friends open
+and close through OS-level Shift+Tab, minimize/restore, maximize/restore,
+fullscreen/restore, a live resize, and clean process shutdown. The overlay
+remained inside the client with no seam, purple/tiny surface, flicker, hang, or
+crash. A separate instrumented launch at 225% DPI recorded the exact 1280 by
+720 logical client, 640 by 480 logical minimum, 60 Hz target, 59.9 native
+present FPS at steady state, a frame-latency waitable swapchain, and zero frame-
+latency timeouts, device losses, recoveries, or slow shared-texture copies.
+Artifact roots are
+`C:\Users\admin\steam-bridge-artifacts\fov-popup-prune-regression-20260721-220604`
+and
+`C:\Users\admin\steam-bridge-artifacts\fov-popup-prune-fps-20260721-221429`.
+
+The exact local `0.3.6` tarball then exposed and closed an overlay-only pacing
+gap. Game paint/native present held 59.9 FPS against the current 60 Hz display,
+but Steam-active retained-frame pumping initially fell to a 47.7 FPS median
+because the session scheduler reserved its early DXGI wake-up for construction-
+time `continuousPresent`, while overlay activation enabled the same native mode
+later. Scheduling from the applied continuous-present state raised a fresh real
+checkout overlay to 60.0 FPS median pump/present across 32 samples (57.6 FPS
+minimum during activation), with zero device loss, recovery, latency timeout, or
+slow-copy counts. Electron paint was zero while Steam owned the visible frame;
+the receipt therefore enforces game paint plus present and overlay present while
+retaining overlay paint as a reported diagnostic. No transaction or subscription
+was authorized. The focused artifact root is
+`C:\Users\admin\steam-bridge-artifacts\fov-v0.3.6-pacing-manual-20260721-2330`.
 
 Steam Deck requalification is complete for the current working candidate. The
 Desktop core passed 21/21 routes and 42 screenshots; focused move, resize,
@@ -526,6 +628,39 @@ Consumer gates on registry `0.2.14` passed:
 
 ## Operational Notes
 
+- Windows production invariant: use one standalone top-level native D3D game
+  host with Electron offscreen. Attached `popup-layered`, the unparented
+  overlapped comparison, `owned-popup`, popup-region synchronization,
+  retained-frame resize stretching, and the no-Steam-pixels `WS_CHILD`
+  experiment are closed paths. Attached Windows mode must fail clearly and must
+  not fall back between these models.
+- The JavaScript boundary now rejects every Windows `nativeWindowHandle`
+  attachment before it claims a surface lease or invokes the native addon. The
+  unreachable deferred-attach presenter branch and its Windows popup-era tests
+  were removed. Platform-neutral presenter lifecycle and ownership coverage
+  remains active under supported Linux attachment; a Windows regression proves
+  raw attach, session attach, presenter attach, and default managed Electron
+  attach all reject without native attach/detach calls, after which a standalone
+  session still opens and closes normally.
+- Shared-texture import now classifies device-loss HRESULTs at the point of
+  detection. A successful adapter/swap-chain rebuild increments both loss and
+  recovery telemetry; a failed rebuild leaves the surface marked device-lost
+  for the next valid shared texture. Native check/test, TypeScript, the
+  standalone receipt self-test, and all 203 active repository tests pass with
+  zero skips after this review.
+- The standalone receipt no longer accepts a single best FPS sample or ignores
+  Steam-overlay-active pacing. It requires at least three non-minimized game
+  samples and three overlay samples, validates every sample's target against
+  the current display, requires median Electron paint plus native present FPS
+  to reach 95% during the game phase, and requires median native present FPS to
+  reach 95% while Steam owns the visible overlay frame. Overlay-phase Electron
+  paint FPS remains reported but may be zero. Critical consumer files, the evidence
+  manifest, and both logs must be real in-root files rather than symlink or
+  reparse escapes, and the consumer runtime is re-read after validation to
+  detect mutation during receipt generation.
+- During implementation, run only tests and live transitions affected by the
+  current edit. Run the complete cross-platform/release matrix once, after the
+  implementation is stable and immediately before publication.
 - App ID `480` proves public Steam overlay plumbing and synthetic routing only;
   it does not prove a real commercial authorization.
 - Opening and cancelling checkout/subscription panels is allowed proof; never

@@ -12,6 +12,7 @@ const {
 const {
   PROFILE_CONTRACTS,
   assembleLiveProofReceipt,
+  createSelfTestProfile,
   validateLiveProofReceipt
 } = require("./windows-live-proof-receipt.cjs");
 
@@ -167,25 +168,9 @@ function runSelfTest() {
 
   const audit = createSelfTestAudit();
   const candidateBinding = createCandidateBinding(audit);
-  const profiles = PROFILE_CONTRACTS.map((contract, index) => ({
-    name: contract.name,
-    suite: contract.suite,
-    candidateBindingSha256: candidateBinding.bindingSha256,
-    manifestSha256: (index + 1).toString(16).repeat(64),
-    evidenceSha256: (index + 5).toString(16).repeat(64),
-    caseIds: contract.cases.map((entry) => entry.id),
-    caseCount: contract.cases.length,
-    activeCaseCount: contract.activeCaseCount,
-    steamLaunchCaseCount: contract.cases.length,
-    cleanCaseCount: contract.cases.length,
-    readinessPassed: true,
-    nativeLoadPassed: true,
-    renderHealthPassed: true,
-    semanticPassed: true,
-    cleanupPassed: true,
-    steamContinuityPassed: true,
-    crashCount: 0
-  }));
+  const profiles = PROFILE_CONTRACTS.map((_, index) =>
+    createSelfTestProfile(candidateBinding, index)
+  );
   const receipt = assembleLiveProofReceipt(candidateBinding, profiles, "2026-07-15T00:00:00.000Z", true);
   const receiptBytes = Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`, "utf8");
   const prepared = prepareSecretValue(audit, receiptBytes);

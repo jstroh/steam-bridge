@@ -80,8 +80,6 @@ param(
   [string]$PresenterMode = "",
   [ValidateSet("", "default", "opengl", "gl", "wgl", "windows-opengl", "d3d", "d3d11", "direct3d", "direct3d11", "dxgi", "windows-d3d11")]
   [string]$NativeHostBackend = "",
-  [ValidateSet("", "default", "popup", "popup-layered", "control", "overlapped", "plain")]
-  [string]$NativeHostStyle = "",
   [ValidateSet("shown", "complete")]
   [string]$ManagedOverlayResultMode = "shown",
   [string]$AchievementName = "",
@@ -303,9 +301,6 @@ function Get-SmokeArgs {
   if ($NativeHostBackend) {
     $args += "--steam-bridge-windows-native-host-backend=$NativeHostBackend"
   }
-  if ($NativeHostStyle) {
-    $args += "--steam-bridge-windows-native-host-style=$NativeHostStyle"
-  }
   if ($ManagedOverlayResultMode) {
     $args += "--steam-bridge-smoke-managed-overlay-result-mode=$ManagedOverlayResultMode"
   }
@@ -479,9 +474,6 @@ function Get-SmokeEnv {
   }
   if ($NativeHostBackend) {
     $envMap.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND = $NativeHostBackend
-  }
-  if ($NativeHostStyle) {
-    $envMap.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_STYLE = $NativeHostStyle
   }
   if ($ManagedOverlayResultMode) {
     $envMap.STEAM_BRIDGE_SMOKE_MANAGED_OVERLAY_RESULT_MODE = $ManagedOverlayResultMode

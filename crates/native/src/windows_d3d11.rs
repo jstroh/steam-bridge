@@ -37,6 +37,15 @@ const FRAME_LATENCY_WAIT_TIMEOUT_MS: u32 = 50;
 const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
 const SHARED_TEXTURE_COPY_TIMEOUT_MS: u128 = 500;
 
+pub fn is_device_lost_error(error: &str) -> bool {
+    // DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_HUNG, and
+    // DXGI_ERROR_DEVICE_RESET all require rebuilding the D3D device and its
+    // swap chain. Match the HRESULT instead of localized Windows error text.
+    ["0X887A0005", "0X887A0006", "0X887A0007"]
+        .iter()
+        .any(|code| error.to_ascii_uppercase().contains(code))
+}
+
 const VERTEX_SHADER: &[u8] = br#"
 struct VertexOutput {
     float4 position : SV_POSITION;
@@ -1083,4 +1092,25 @@ fn intersect_rect(
     let right = (first.0 + first.2).min(second.0 + second.2);
     let bottom = (first.1 + first.3).min(second.1 + second.3);
     (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_device_lost_error;
+
+    #[test]
+    fn classifies_recoverable_dxgi_device_loss_codes() {
+        assert!(is_device_lost_error(
+            "IDXGISwapChain::ResizeBuffers failed: device removed (0x887A0005)"
+        ));
+        assert!(is_device_lost_error(
+            "IDXGISwapChain::Present failed: 0x887A0006"
+        ));
+        assert!(is_device_lost_error(
+            "ID3D11DeviceContext failed: 0x887a0007"
+        ));
+        assert!(!is_device_lost_error(
+            "IDXGISwapChain::ResizeBuffers failed: invalid call (0x887A0001)"
+        ));
+    }
 }

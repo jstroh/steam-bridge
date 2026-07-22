@@ -1279,7 +1279,7 @@ pub use macos::*;
 #[cfg(target_os = "windows")]
 mod windows {
     use super::{Buffer, Error};
-    use crate::windows_d3d11::WindowsD3d11Renderer;
+    use crate::windows_d3d11::{self, WindowsD3d11Renderer};
     use once_cell::sync::Lazy;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -1294,19 +1294,17 @@ mod windows {
         CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
     };
     use windows_sys::Win32::Graphics::Dwm::{
-        DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
-        DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
-        DWMWCP_ROUND, DWMWCP_ROUNDSMALL,
+        DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED, DWMWA_WINDOW_CORNER_PREFERENCE,
+        DWMWCP_DONOTROUND, DWMWCP_ROUND,
     };
     use windows_sys::Win32::Graphics::Gdi::{
-        BeginPaint, ClientToScreen, CombineRgn, CreateFontIndirectW, CreateRectRgn,
-        CreateRoundRectRgn, DeleteObject, DrawFrameControl, DrawTextW, EndPaint, FillRect, GetDC,
-        GetMonitorInfoW, GetStockObject, GetSysColor, GetSysColorBrush, GetTextExtentPoint32W,
-        MonitorFromWindow, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
-        SetWindowRgn, COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_MENU,
+        BeginPaint, ClientToScreen, CreateFontIndirectW, DeleteObject, DrawFrameControl, DrawTextW,
+        EndPaint, FillRect, GetDC, GetMonitorInfoW, GetStockObject, GetSysColor, GetSysColorBrush,
+        GetTextExtentPoint32W, MonitorFromWindow, ReleaseDC, ScreenToClient, SelectObject,
+        SetBkMode, SetTextColor, COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_MENU,
         COLOR_MENUBAR, COLOR_MENUTEXT, DEFAULT_GUI_FONT, DFCS_INACTIVE, DFCS_MENUARROW, DFC_MENU,
         DT_HIDEPREFIX, DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HDC, MONITORINFO,
-        MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, RGN_AND, TRANSPARENT,
+        MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, TRANSPARENT,
     };
     use windows_sys::Win32::Graphics::OpenGL::{
         ChoosePixelFormat, SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
@@ -1333,45 +1331,29 @@ mod windows {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
         DestroyCursor, DestroyMenu, DestroyWindow, DispatchMessageW, DrawMenuBar, EnumWindows,
-        GetAncestor, GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu,
-        GetMenuBarInfo, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
-        GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic,
-        IsWindow, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
-        SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetMenu, SetTimer,
-        SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
-        SystemParametersInfoW, TranslateMessage, CS_OWNDC, GA_ROOTOWNER, GWLP_HWNDPARENT,
-        GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR, HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE,
-        MENUBARINFO, MENUITEMINFOW, MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR,
-        MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE,
-        MIIM_STRING, MIIM_SUBMENU, MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE,
-        SIZE_MINIMIZED, SM_CXMENUCHECK, SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE,
-        SM_CYSCREEN, SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
-        SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE,
-        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_DRAWITEM,
-        WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP,
-        WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM,
-        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCDESTROY, WM_PAINT,
-        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SHOWWINDOW, WM_SIZE,
-        WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_CLIPCHILDREN,
-        WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-        WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW, WS_POPUP,
+        GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu, GetMenuBarInfo,
+        GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect,
+        GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic, IsWindow,
+        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW, SetCursor,
+        SetForegroundWindow, SetLayeredWindowAttributes, SetMenu, SetTimer, SetWindowLongPtrW,
+        SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow, SystemParametersInfoW,
+        TranslateMessage, CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR,
+        HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO, MENUITEMINFOW, MFS_DISABLED,
+        MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
+        MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MINMAXINFO, MSG,
+        NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED, SM_CXMENUCHECK, SM_CXMENUSIZE,
+        SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SPI_GETNONCLIENTMETRICS,
+        SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
+        WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR,
+        WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND,
+        WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN,
+        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
+        WM_MOUSEWHEEL, WM_MOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+        WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+        WS_OVERLAPPEDWINDOW,
     };
-
-    type SubclassProc =
-        unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM, usize, usize) -> LRESULT;
-
-    #[link(name = "comctl32")]
-    extern "system" {
-        fn SetWindowSubclass(
-            hwnd: HWND,
-            proc: Option<SubclassProc>,
-            id: usize,
-            reference_data: usize,
-        ) -> i32;
-        fn RemoveWindowSubclass(hwnd: HWND, proc: Option<SubclassProc>, id: usize) -> i32;
-        fn DefSubclassProc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
-    }
 
     type Hglrc = isize;
 
@@ -1379,12 +1361,15 @@ mod windows {
     const MK_LBUTTON: u32 = 0x0001;
     const MK_RBUTTON: u32 = 0x0002;
     const MK_MBUTTON: u32 = 0x0010;
-    const PARENT_SUBCLASS_ID: usize = 0x5354_4252_4944_4745;
     const RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
     const STEAM_DIALOG_SCAN_INTERVAL: Duration = Duration::from_millis(100);
     const MAX_STEAM_DIALOG_WINDOWS: usize = 16;
     const MODAL_PRESENT_TIMER_ID: usize = 0x5342;
-    const MODAL_PRESENT_INTERVAL_MS: u32 = 1;
+    // Live sizing enters a nested Win32 modal loop. Presenting every 1 ms made
+    // ResizeBuffers race prior flips repeatedly and could remove the D3D
+    // device. Coalesce sizing paints to 60 Hz; normal display-rate presentation
+    // resumes immediately after the modal loop exits.
+    const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
     const VK_TAB_CODE: i32 = 0x09;
     const VK_SHIFT_CODE: i32 = 0x10;
     const VK_CONTROL_CODE: i32 = 0x11;
@@ -1408,9 +1393,7 @@ mod windows {
     struct NativeSurface {
         instance_generation: u64,
         hwnd: HWND,
-        parent_hwnd: Option<HWND>,
         backend: WindowsNativeBackend,
-        host_style: WindowsHostStyle,
         renderer: WindowsSurfaceRenderer,
         frame: u64,
         input_passthrough: bool,
@@ -1426,13 +1409,11 @@ mod windows {
         presentation_ready: bool,
         requested_visible: bool,
         visible: bool,
-        bounds_override: Option<RECT>,
-        parent_subclass_state: Option<*mut ParentWindowSubclassState>,
-        last_parent_client_bounds: Option<(i32, i32, i32, i32)>,
         source_frame: Option<FrameUpload>,
         source_frame_dirty: bool,
         last_present_at: Option<Instant>,
         present_after_modal_loop: bool,
+        modal_size_move_active: bool,
         overlay_shortcut_down: bool,
         overlay_active: bool,
         steam_dialog_baseline: SteamDialogWindowList,
@@ -1444,11 +1425,6 @@ mod windows {
         menu: Option<HMENU>,
         menu_draw_tokens: Vec<usize>,
         menu_minimum_dpi: Option<u32>,
-    }
-
-    struct ParentWindowSubclassState {
-        popup_hwnd: HWND,
-        content_insets: RECT,
     }
 
     struct FrameUpload {
@@ -1495,6 +1471,9 @@ mod windows {
             renderer: WindowsD3d11Renderer,
             last_frame_upload: bool,
             frame_upload_failures: u64,
+            device_lost: bool,
+            device_lost_count: u64,
+            device_recovery_count: u64,
         },
     }
 
@@ -1519,29 +1498,6 @@ mod windows {
             match self {
                 Self::OpenGl => "windows-opengl",
                 Self::D3d11 => "windows-d3d11",
-            }
-        }
-    }
-
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum WindowsHostStyle {
-        OwnedPopup,
-        Standalone,
-    }
-
-    impl WindowsHostStyle {
-        fn from_env(attached: bool) -> Self {
-            if attached {
-                Self::OwnedPopup
-            } else {
-                Self::Standalone
-            }
-        }
-
-        fn as_str(self) -> &'static str {
-            match self {
-                Self::OwnedPopup => "owned-popup",
-                Self::Standalone => "standalone",
             }
         }
     }
@@ -1613,6 +1569,7 @@ mod windows {
         command_id: Option<u32>,
         client_width: i32,
         client_height: i32,
+        minimized: bool,
     }
 
     #[derive(Deserialize)]
@@ -1718,15 +1675,14 @@ mod windows {
         client_size = clamp_client_size_to_minimum(client_size, min_client_size);
         set_standalone_min_client_size(min_client_size);
         set_standalone_logical_client_size(client_size);
-        let surface =
-            match unsafe { create_surface(&title, None, false, client_size, min_client_size) } {
-                Ok(surface) => surface,
-                Err(error) => {
-                    set_standalone_min_client_size(None);
-                    set_standalone_logical_client_size(None);
-                    return Err(error);
-                }
-            };
+        let surface = match unsafe { create_surface(&title, client_size, min_client_size) } {
+            Ok(surface) => surface,
+            Err(error) => {
+                set_standalone_min_client_size(None);
+                set_standalone_logical_client_size(None);
+                return Err(error);
+            }
+        };
         *SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned") = Some(surface);
@@ -1735,62 +1691,27 @@ mod windows {
     }
 
     pub fn attach_to_parent(parent_handle: usize) -> Result<(), Error> {
-        close();
-
         if parent_handle == 0 {
             return Err(Error::from_reason(
                 "Electron native window handle was empty",
             ));
         }
 
-        let surface = unsafe {
-            create_surface(
-                "Steam Bridge Native Overlay Host",
-                Some(parent_handle as HWND),
-                true,
-                None,
-                None,
-            )?
-        };
-        *SURFACE
-            .lock()
-            .expect("Steam overlay native surface lock poisoned") = Some(surface);
-        pump()?;
-        Ok(())
+        Err(Error::from_reason(
+            "Windows attached overlay hosts are unsupported: Steam did not render into the tested WS_CHILD swapchain, and popup hosts do not safely follow Electron window lifecycle. Use startNativeOverlaySession() with an offscreen Electron renderer.",
+        ))
     }
 
     pub fn attach_to_parent_for_overlay(parent_handle: usize) -> Result<(), Error> {
-        close();
-
-        if parent_handle == 0 {
-            return Err(Error::from_reason(
-                "Electron native window handle was empty",
-            ));
-        }
-
-        let surface = unsafe {
-            create_surface(
-                "Steam Bridge Native Overlay Host",
-                Some(parent_handle as HWND),
-                false,
-                None,
-                None,
-            )?
-        };
-        *SURFACE
-            .lock()
-            .expect("Steam overlay native surface lock poisoned") = Some(surface);
-        pump()?;
-        Ok(())
+        attach_to_parent(parent_handle)
     }
 
     pub fn show() -> Result<(), Error> {
         with_surface(|surface| unsafe {
             surface.requested_visible = true;
-            update_window_frame(surface);
             sync_window_style(surface);
             sync_surface_visibility(surface);
-            if surface.visible && !surface.input_passthrough && parent_allows_surface(surface) {
+            if surface.visible && !surface.input_passthrough {
                 activate_window(surface);
             }
         })
@@ -1805,30 +1726,10 @@ mod windows {
         })
     }
 
-    pub fn set_bounds(x: i32, y: i32, width: u32, height: u32) -> Result<(), Error> {
-        with_surface(|surface| unsafe {
-            let width = width.max(1).min(i32::MAX as u32) as i32;
-            let height = height.max(1).min(i32::MAX as u32) as i32;
-            let next_bounds = RECT {
-                left: x,
-                top: y,
-                right: x.saturating_add(width),
-                bottom: y.saturating_add(height),
-            };
-            let bounds_changed = surface.bounds_override.as_ref().map_or(true, |bounds| {
-                bounds.left != next_bounds.left
-                    || bounds.top != next_bounds.top
-                    || bounds.right != next_bounds.right
-                    || bounds.bottom != next_bounds.bottom
-            });
-            surface.bounds_override = Some(next_bounds);
-            if bounds_changed {
-                surface.presentation_ready = false;
-                apply_window_style(surface);
-            }
-            surface.last_parent_client_bounds = None;
-            update_window_frame(surface);
-        })
+    pub fn set_bounds(_x: i32, _y: i32, _width: u32, _height: u32) -> Result<(), Error> {
+        Err(Error::from_reason(
+            "Windows standalone overlay hosts own their native position and size. Use the host window's ordinary move and resize controls.",
+        ))
     }
 
     pub fn set_input_passthrough(pass_through: bool) -> Result<(), Error> {
@@ -1839,7 +1740,7 @@ mod windows {
             surface.input_passthrough = pass_through;
             sync_window_style(surface);
             sync_surface_visibility(surface);
-            if surface.visible && !pass_through && parent_allows_surface(surface) {
+            if surface.visible && !pass_through {
                 activate_window(surface);
             }
         })
@@ -1880,7 +1781,7 @@ mod windows {
             }
             surface.overlay_active = active;
             surface.last_steam_dialog_scan_at = None;
-            if active && surface.host_style == WindowsHostStyle::Standalone {
+            if active {
                 surface.steam_dialog_baseline = enumerate_steam_dialog_windows();
             } else {
                 restore_adopted_steam_dialog(surface);
@@ -1908,7 +1809,7 @@ mod windows {
         let Some(surface) = guard.as_mut() else {
             return Ok(());
         };
-        if surface.parent_hwnd.is_some() || surface.full_screen == full_screen {
+        if surface.full_screen == full_screen {
             return Ok(());
         }
 
@@ -2041,12 +1942,6 @@ mod windows {
         let Some(surface) = guard.as_mut() else {
             return Ok(());
         };
-        if surface.parent_hwnd.is_some() {
-            return Err(Error::from_reason(
-                "Native overlay host menus require a standalone host window",
-            ));
-        }
-
         unsafe {
             let client = read_client_rect(surface.hwnd).ok_or_else(|| {
                 Error::from_reason("Failed to inspect the native overlay host client size")
@@ -2132,7 +2027,6 @@ mod windows {
         };
 
         let result = unsafe {
-            update_window_frame(surface);
             sync_steam_dialog(surface);
             sync_cursor_visibility(surface);
             poll_overlay_shortcut(surface);
@@ -2271,12 +2165,34 @@ mod windows {
             WindowsSurfaceRenderer::D3d11 {
                 renderer,
                 last_frame_upload,
+                device_lost,
+                device_lost_count,
+                device_recovery_count,
                 ..
             } => unsafe {
-                if renderer
-                    .import_shared_texture(handle, width, height, content_rect, presentation_rect)
-                    .is_err()
-                {
+                let recovering_device = *device_lost;
+                let import_error = if recovering_device {
+                    None
+                } else {
+                    renderer
+                        .import_shared_texture(
+                            handle,
+                            width,
+                            height,
+                            content_rect,
+                            presentation_rect,
+                        )
+                        .err()
+                };
+                let import_detected_device_loss = import_error
+                    .as_deref()
+                    .is_some_and(windows_d3d11::is_device_lost_error);
+                if import_detected_device_loss {
+                    *device_lost = true;
+                    *device_lost_count = (*device_lost_count).saturating_add(1);
+                    *last_frame_upload = false;
+                }
+                if recovering_device || import_error.is_some() {
                     renderer
                         .switch_to_shared_texture_adapter(
                             hwnd.cast(),
@@ -2287,6 +2203,10 @@ mod windows {
                             presentation_rect,
                         )
                         .map_err(Error::from_reason)?;
+                }
+                if recovering_device || import_detected_device_loss {
+                    *device_lost = false;
+                    *device_recovery_count = (*device_recovery_count).saturating_add(1);
                 }
                 *last_frame_upload = true;
             },
@@ -2318,27 +2238,20 @@ mod windows {
     }
 
     pub fn close_probe() {
-        close_matching(|surface| surface.parent_hwnd.is_none());
+        close();
     }
 
-    pub fn detach_host() {
-        close_matching(|surface| surface.parent_hwnd.is_some());
-    }
+    pub fn detach_host() {}
 
     pub fn is_probe_open() -> bool {
         SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned")
-            .as_ref()
-            .is_some_and(|surface| surface.parent_hwnd.is_none())
+            .is_some()
     }
 
     pub fn is_embedded() -> bool {
-        SURFACE
-            .lock()
-            .expect("Steam overlay native surface lock poisoned")
-            .as_ref()
-            .is_some_and(|surface| surface.parent_hwnd.is_some())
+        false
     }
 
     pub fn mac_window_snapshot_json(_app_id: u32) -> Option<String> {
@@ -2389,14 +2302,6 @@ mod windows {
                     "height": physical_pixels_to_logical((rect.bottom - rect.top).max(1), window_dpi),
                 })
             });
-            let parent_rect = surface
-                .parent_hwnd
-                .and_then(read_window_rect)
-                .map(window_rect_json);
-            let parent_client_rect = surface
-                .parent_hwnd
-                .and_then(read_client_rect_in_screen)
-                .map(window_rect_json);
             let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
             let ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
             let renderer = renderer_diagnostics_json(&surface.renderer);
@@ -2415,10 +2320,10 @@ mod windows {
                 "platform": "win32",
                 "backend": surface.backend.as_str(),
                 "surfaceInstanceGeneration": surface.instance_generation,
-                "hostStyle": surface.host_style.as_str(),
+                "hostStyle": "standalone",
                 "renderer": renderer,
                 "hwnd": hwnd_hex(surface.hwnd),
-                "parentHwnd": surface.parent_hwnd.map(hwnd_hex),
+                "parentHwnd": null,
                 "foregroundHwnd": hwnd_hex(foreground),
                 "isForeground": surface.hwnd == foreground,
                 "style": format!("0x{style:08X}"),
@@ -2433,7 +2338,9 @@ mod windows {
                 "presentationReady": surface.presentation_ready,
                 "requestedVisible": surface.requested_visible,
                 "visible": surface.visible,
-                "parentAllowsSurface": parent_allows_surface(surface),
+                "minimized": IsIconic(surface.hwnd) != 0,
+                "parentAllowsSurface": surface.requested_visible
+                    && !(surface.input_passthrough && !surface.opaque),
                 "sourceFrame": surface.source_frame.as_ref().map(|frame| json!({
                     "width": frame.width,
                     "height": frame.height,
@@ -2451,8 +2358,8 @@ mod windows {
                 })),
                 "menuConfigured": surface.menu.is_some(),
                 "menuAttached": !GetMenu(surface.hwnd).is_null(),
-                "parentRect": parent_rect,
-                "parentClientRect": parent_client_rect,
+                "parentRect": null,
+                "parentClientRect": null,
                 "steamDialog": {
                     "overlayActive": surface.overlay_active,
                     "baselineCount": surface.steam_dialog_baseline.len,
@@ -2504,29 +2411,8 @@ mod windows {
         Ok(())
     }
 
-    fn close_matching(matches: impl FnOnce(&NativeSurface) -> bool) {
-        let surface = {
-            let mut guard = SURFACE
-                .lock()
-                .expect("Steam overlay native surface lock poisoned");
-            if guard.as_ref().map(matches).unwrap_or(false) {
-                guard.take()
-            } else {
-                None
-            }
-        };
-
-        if let Some(surface) = surface {
-            unsafe {
-                destroy_surface(surface);
-            }
-        }
-    }
-
     unsafe fn create_surface(
         title: &str,
-        parent_hwnd: Option<HWND>,
-        initial_input_passthrough: bool,
         standalone_client_size: Option<(i32, i32)>,
         standalone_min_client_size: Option<(i32, i32)>,
     ) -> Result<NativeSurface, Error> {
@@ -2536,42 +2422,29 @@ mod windows {
         let title = wide_string(title);
         let class_name = window_class_name();
         let backend = WindowsNativeBackend::from_env();
-        let host_style = WindowsHostStyle::from_env(parent_hwnd.is_some());
-        let input_passthrough = parent_hwnd.is_some() && initial_input_passthrough;
-        let ex_style = base_ex_style(parent_hwnd.is_some(), input_passthrough);
-        let style = if parent_hwnd.is_some() {
-            WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
-        } else {
-            WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
-        };
-        let owner = parent_hwnd.unwrap_or(ptr::null_mut());
-        let parent_rect = parent_hwnd.and_then(read_client_rect_in_screen);
-        let (x, y, width, height) = if let Some(rect) = parent_rect {
-            (
-                rect.left,
-                rect.top,
-                (rect.right - rect.left).max(1),
-                (rect.bottom - rect.top).max(1),
-            )
-        } else if let Some((client_width, client_height)) = standalone_client_size {
-            let dpi = GetDpiForSystem().max(96);
-            let mut adjusted = RECT {
-                left: 0,
-                top: 0,
-                right: logical_pixels_to_physical(client_width, dpi),
-                bottom: logical_pixels_to_physical(client_height, dpi),
+        let input_passthrough = false;
+        let ex_style = base_ex_style();
+        let style = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+        let (x, y, width, height) =
+            if let Some((client_width, client_height)) = standalone_client_size {
+                let dpi = GetDpiForSystem().max(96);
+                let mut adjusted = RECT {
+                    left: 0,
+                    top: 0,
+                    right: logical_pixels_to_physical(client_width, dpi),
+                    bottom: logical_pixels_to_physical(client_height, dpi),
+                };
+                if AdjustWindowRectExForDpi(&mut adjusted, style, 0, ex_style, dpi) == 0 {
+                    return Err(Error::from_reason(
+                        "Failed to size the Windows native overlay client area",
+                    ));
+                }
+                let width = (adjusted.right - adjusted.left).max(1);
+                let height = (adjusted.bottom - adjusted.top).max(1);
+                centered_window_rect(width, height, &primary_work_area())
+            } else {
+                (100, 100, 960, 540)
             };
-            if AdjustWindowRectExForDpi(&mut adjusted, style, 0, ex_style, dpi) == 0 {
-                return Err(Error::from_reason(
-                    "Failed to size the Windows native overlay client area",
-                ));
-            }
-            let width = (adjusted.right - adjusted.left).max(1);
-            let height = (adjusted.bottom - adjusted.top).max(1);
-            centered_window_rect(width, height, &primary_work_area())
-        } else {
-            (100, 100, 960, 540)
-        };
         let hwnd = CreateWindowExW(
             ex_style,
             class_name.as_ptr(),
@@ -2581,7 +2454,7 @@ mod windows {
             y,
             width,
             height,
-            owner,
+            ptr::null_mut(),
             ptr::null_mut(),
             GetModuleHandleW(ptr::null()),
             ptr::null_mut(),
@@ -2591,19 +2464,15 @@ mod windows {
                 "Failed to create Windows native overlay host window",
             ));
         }
-        if parent_hwnd.is_none() {
-            STANDALONE_WINDOW_DPI.store(GetDpiForWindow(hwnd).max(96), Ordering::Relaxed);
-        }
-        if parent_hwnd.is_none() {
-            let transitions_disabled = 1i32;
-            DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_TRANSITIONS_FORCEDISABLED as u32,
-                &transitions_disabled as *const i32 as *const std::ffi::c_void,
-                mem::size_of::<i32>() as u32,
-            );
-            set_window_corner_preference(hwnd, false);
-        }
+        STANDALONE_WINDOW_DPI.store(GetDpiForWindow(hwnd).max(96), Ordering::Relaxed);
+        let transitions_disabled = 1i32;
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+            &transitions_disabled as *const i32 as *const std::ffi::c_void,
+            mem::size_of::<i32>() as u32,
+        );
+        set_window_corner_preference(hwnd, false);
 
         let renderer = match create_renderer(hwnd, backend, width, height) {
             Ok(renderer) => renderer,
@@ -2629,13 +2498,11 @@ mod windows {
                 .fetch_add(1, Ordering::Relaxed)
                 .wrapping_add(1),
             hwnd,
-            parent_hwnd,
             backend,
-            host_style,
             renderer,
             frame: 0,
             input_passthrough,
-            opaque: parent_hwnd.is_none() || !input_passthrough,
+            opaque: true,
             cursor_hidden_requested: false,
             cursor_suppressed: false,
             cursor_display_count: None,
@@ -2645,15 +2512,13 @@ mod windows {
             windowed_style: None,
             windowed_placement: None,
             presentation_ready: false,
-            requested_visible: parent_hwnd.is_none(),
+            requested_visible: true,
             visible: false,
-            bounds_override: None,
-            parent_subclass_state: None,
-            last_parent_client_bounds: None,
             source_frame: None,
             source_frame_dirty: true,
             last_present_at: None,
             present_after_modal_loop: false,
+            modal_size_move_active: false,
             overlay_shortcut_down: false,
             overlay_active: false,
             steam_dialog_baseline: SteamDialogWindowList::default(),
@@ -2666,42 +2531,18 @@ mod windows {
             menu_draw_tokens: Vec::new(),
             menu_minimum_dpi: None,
         };
-        if let Some(parent_hwnd) = parent_hwnd {
-            let subclass_state = Box::into_raw(Box::new(ParentWindowSubclassState {
-                popup_hwnd: hwnd,
-                content_insets: RECT {
-                    left: 0,
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                },
-            }));
-            if SetWindowSubclass(
-                parent_hwnd,
-                Some(parent_window_subclass_proc),
-                PARENT_SUBCLASS_ID,
-                subclass_state as usize,
-            ) == 0
-            {
-                drop(Box::from_raw(subclass_state));
-                release_renderer(surface.renderer, surface.hwnd);
-                DestroyWindow(surface.hwnd);
-                return Err(Error::from_reason(
-                    "Failed to observe the Electron parent window lifecycle",
-                ));
-            }
-            surface.parent_subclass_state = Some(subclass_state);
-        }
         sync_window_style(&mut surface);
-        update_window_frame(&mut surface);
         sync_surface_visibility(&mut surface);
-        if surface.parent_hwnd.is_none() && surface.visible && !surface.input_passthrough {
+        if surface.visible && !surface.input_passthrough {
             activate_window(&surface);
         }
         Ok(surface)
     }
 
     unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
+        if IsIconic(surface.hwnd) != 0 {
+            return Ok(());
+        }
         let mut rect: RECT = mem::zeroed();
         if GetClientRect(surface.hwnd, &mut rect) == 0 {
             return Ok(());
@@ -2725,10 +2566,24 @@ mod windows {
                 renderer,
                 last_frame_upload,
                 frame_upload_failures,
+                device_lost,
+                device_lost_count,
+                ..
             } => {
-                renderer
-                    .resize(width as u32, height as u32)
-                    .map_err(Error::from_reason)?;
+                if *device_lost {
+                    surface.source_frame_dirty = true;
+                    return Ok(());
+                }
+                if let Err(error) = renderer.resize(width as u32, height as u32) {
+                    if windows_d3d11::is_device_lost_error(&error) {
+                        *device_lost = true;
+                        *device_lost_count = (*device_lost_count).saturating_add(1);
+                        *last_frame_upload = false;
+                        surface.source_frame_dirty = true;
+                        return Ok(());
+                    }
+                    return Err(Error::from_reason(error));
+                }
                 if upload_source_frame {
                     if let Some(frame) = source_frame {
                         match renderer.upload_cpu_frame(
@@ -2745,7 +2600,16 @@ mod windows {
                         }
                     }
                 }
-                renderer.render(color).map_err(Error::from_reason)?;
+                if let Err(error) = renderer.render(color) {
+                    if windows_d3d11::is_device_lost_error(&error) {
+                        *device_lost = true;
+                        *device_lost_count = (*device_lost_count).saturating_add(1);
+                        *last_frame_upload = false;
+                        surface.source_frame_dirty = true;
+                        return Ok(());
+                    }
+                    return Err(Error::from_reason(error));
+                }
             }
         }
 
@@ -2837,6 +2701,9 @@ mod windows {
             .map_err(Error::from_reason)?,
             last_frame_upload: false,
             frame_upload_failures: 0,
+            device_lost: false,
+            device_lost_count: 0,
+            device_recovery_count: 0,
         })
     }
 
@@ -2884,6 +2751,9 @@ mod windows {
                 renderer,
                 last_frame_upload,
                 frame_upload_failures,
+                device_lost,
+                device_lost_count,
+                device_recovery_count,
             } => json!({
                 "backend": "windows-d3d11",
                 "width": renderer.width(),
@@ -2905,6 +2775,9 @@ mod windows {
                 "lastPresent": format!("0x{:08X}", renderer.last_present() as u32),
                 "lastFrameUpload": last_frame_upload,
                 "frameUploadFailures": frame_upload_failures,
+                "deviceLost": device_lost,
+                "deviceLostCount": device_lost_count,
+                "deviceRecoveryCount": device_recovery_count,
                 "sourceMode": renderer.source_mode(),
                 "sourceWidth": renderer.source_width(),
                 "sourceHeight": renderer.source_height(),
@@ -2916,46 +2789,8 @@ mod windows {
         }
     }
 
-    unsafe fn update_window_frame(surface: &mut NativeSurface) {
-        let Some(parent_hwnd) = surface.parent_hwnd else {
-            return;
-        };
-        let Some(parent_client_rect) = read_client_rect_in_screen(parent_hwnd) else {
-            sync_surface_visibility(surface);
-            return;
-        };
-        let rect = surface.bounds_override.unwrap_or(parent_client_rect);
-        if let Some(subclass_state) = surface.parent_subclass_state {
-            (*subclass_state).content_insets = RECT {
-                left: rect.left - parent_client_rect.left,
-                top: rect.top - parent_client_rect.top,
-                right: parent_client_rect.right - rect.right,
-                bottom: parent_client_rect.bottom - rect.bottom,
-            };
-        }
-        let width = (rect.right - rect.left).max(1);
-        let height = (rect.bottom - rect.top).max(1);
-        let bounds = (rect.left, rect.top, width, height);
-        if surface.last_parent_client_bounds != Some(bounds) {
-            if SetWindowPos(
-                surface.hwnd,
-                ptr::null_mut(),
-                rect.left,
-                rect.top,
-                width,
-                height,
-                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
-            ) != 0
-            {
-                surface.last_parent_client_bounds = Some(bounds);
-                sync_owned_popup_clip(surface.hwnd, parent_hwnd, rect);
-            }
-        }
-        sync_surface_visibility(surface);
-    }
-
     unsafe fn sync_steam_dialog(surface: &mut NativeSurface) {
-        if surface.host_style != WindowsHostStyle::Standalone || !surface.overlay_active {
+        if !surface.overlay_active {
             restore_adopted_steam_dialog(surface);
             return;
         }
@@ -3237,70 +3072,6 @@ mod windows {
         (rect.bottom - rect.top).max(1)
     }
 
-    unsafe fn sync_owned_popup_clip(popup_hwnd: HWND, parent_hwnd: HWND, bounds: RECT) {
-        let mut visible_frame: RECT = mem::zeroed();
-        let frame_result = DwmGetWindowAttribute(
-            parent_hwnd,
-            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
-            &mut visible_frame as *mut RECT as *mut std::ffi::c_void,
-            mem::size_of::<RECT>() as u32,
-        );
-        if frame_result < 0 {
-            let Some(frame) = read_window_rect(parent_hwnd) else {
-                return;
-            };
-            visible_frame = frame;
-        }
-
-        let mut corner_preference = 0i32;
-        let corner_result = DwmGetWindowAttribute(
-            parent_hwnd,
-            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-            &mut corner_preference as *mut i32 as *mut std::ffi::c_void,
-            mem::size_of::<i32>() as u32,
-        );
-        if corner_result < 0 || corner_preference == DWMWCP_DONOTROUND || IsZoomed(parent_hwnd) != 0
-        {
-            SetWindowRgn(popup_hwnd, ptr::null_mut(), 1);
-            return;
-        }
-
-        let dpi = GetDpiForWindow(parent_hwnd).max(96);
-        let base_radius = if corner_preference == DWMWCP_ROUNDSMALL {
-            4
-        } else {
-            8
-        };
-        let radius = ((base_radius * dpi as i32) + 48) / 96;
-        let diameter = (radius * 2).max(2);
-        let width = (bounds.right - bounds.left).max(1);
-        let height = (bounds.bottom - bounds.top).max(1);
-        let content_region = CreateRectRgn(0, 0, width + 1, height + 1);
-        let frame_region = CreateRoundRectRgn(
-            visible_frame.left - bounds.left,
-            visible_frame.top - bounds.top,
-            visible_frame.right - bounds.left + 1,
-            visible_frame.bottom - bounds.top + 1,
-            diameter,
-            diameter,
-        );
-        if content_region.is_null() || frame_region.is_null() {
-            if !content_region.is_null() {
-                DeleteObject(content_region);
-            }
-            if !frame_region.is_null() {
-                DeleteObject(frame_region);
-            }
-            return;
-        }
-
-        CombineRgn(content_region, content_region, frame_region, RGN_AND);
-        DeleteObject(frame_region);
-        if SetWindowRgn(popup_hwnd, content_region, 1) == 0 {
-            DeleteObject(content_region);
-        }
-    }
-
     unsafe fn hide_window_without_activation(hwnd: HWND) {
         SetWindowPos(
             hwnd,
@@ -3318,66 +3089,9 @@ mod windows {
         );
     }
 
-    unsafe extern "system" fn parent_window_subclass_proc(
-        hwnd: HWND,
-        message: u32,
-        wparam: WPARAM,
-        lparam: LPARAM,
-        _id: usize,
-        reference_data: usize,
-    ) -> LRESULT {
-        let subclass_state = &*(reference_data as *const ParentWindowSubclassState);
-        let popup_hwnd = subclass_state.popup_hwnd;
-        if matches!(message, WM_WINDOWPOSCHANGED | WM_SIZE | WM_SHOWWINDOW) {
-            if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
-                hide_window_without_activation(popup_hwnd);
-            } else if let Some(parent_client_rect) = read_client_rect_in_screen(hwnd) {
-                let bounds = RECT {
-                    left: parent_client_rect.left + subclass_state.content_insets.left,
-                    top: parent_client_rect.top + subclass_state.content_insets.top,
-                    right: parent_client_rect.right - subclass_state.content_insets.right,
-                    bottom: parent_client_rect.bottom - subclass_state.content_insets.bottom,
-                };
-                SetWindowPos(
-                    popup_hwnd,
-                    ptr::null_mut(),
-                    bounds.left,
-                    bounds.top,
-                    (bounds.right - bounds.left).max(1),
-                    (bounds.bottom - bounds.top).max(1),
-                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
-                );
-                sync_owned_popup_clip(popup_hwnd, hwnd, bounds);
-            }
-        } else if message == WM_NCDESTROY {
-            RemoveWindowSubclass(hwnd, Some(parent_window_subclass_proc), PARENT_SUBCLASS_ID);
-        }
-
-        DefSubclassProc(hwnd, message, wparam, lparam)
-    }
-
-    unsafe fn parent_allows_surface(surface: &NativeSurface) -> bool {
-        if !surface.requested_visible {
-            return false;
-        }
-        if surface.input_passthrough && !surface.opaque {
-            return false;
-        }
-        let Some(parent_hwnd) = surface.parent_hwnd else {
-            return true;
-        };
-        if IsWindowVisible(parent_hwnd) == 0 || IsIconic(parent_hwnd) != 0 {
-            return false;
-        }
-
-        let foreground = GetForegroundWindow();
-        foreground == parent_hwnd
-            || foreground == surface.hwnd
-            || (!foreground.is_null() && GetAncestor(foreground, GA_ROOTOWNER) == parent_hwnd)
-    }
-
     unsafe fn sync_surface_visibility(surface: &mut NativeSurface) {
-        let should_be_visible = parent_allows_surface(surface);
+        let should_be_visible =
+            surface.requested_visible && !(surface.input_passthrough && !surface.opaque);
         if should_be_visible == surface.visible {
             return;
         }
@@ -3407,23 +3121,9 @@ mod windows {
 
     unsafe fn apply_window_style(surface: &mut NativeSurface) {
         let mut ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
-        if surface.parent_hwnd.is_some() {
-            ex_style &= !WS_EX_TOPMOST;
-            ex_style |= WS_EX_TOOLWINDOW;
-            if surface.input_passthrough {
-                // A parked presenter follows the Electron window without
-                // taking activation from its title bar or menu. Once Steam is
-                // interactive, remove both flags so the clipped content popup
-                // can receive ordinary overlay mouse and keyboard input.
-                ex_style |= WS_EX_NOACTIVATE | WS_EX_TRANSPARENT;
-            } else {
-                ex_style &= !(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT);
-            }
-        } else {
-            ex_style &= !(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST);
-        }
+        ex_style &= !(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST);
         // Keep the presenter transparent until it has copied and presented a
-        // fresh Electron frame. Once ready, it is a normal opaque owned popup;
+        // fresh Electron frame. Once ready, it is a normal opaque game window;
         // Steam then composites over the copied game pixels in its swapchain.
         if surface.opaque && surface.presentation_ready {
             ex_style &= !WS_EX_LAYERED;
@@ -3438,7 +3138,7 @@ mod windows {
         SetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE, ex_style as isize);
         let mut flags =
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED;
-        if surface.parent_hwnd.is_some() || surface.input_passthrough {
+        if surface.input_passthrough {
             flags |= SWP_NOACTIVATE;
         }
         SetWindowPos(surface.hwnd, ptr::null_mut(), 0, 0, 0, 0, flags);
@@ -3472,16 +3172,6 @@ mod windows {
         if surface.cursor_suppressed {
             normalize_cursor_display_count(true);
         }
-        if let Some(parent_hwnd) = surface.parent_hwnd {
-            RemoveWindowSubclass(
-                parent_hwnd,
-                Some(parent_window_subclass_proc),
-                PARENT_SUBCLASS_ID,
-            );
-        }
-        if let Some(subclass_state) = surface.parent_subclass_state {
-            drop(Box::from_raw(subclass_state));
-        }
         if let Some(menu) = surface.menu.take() {
             SetMenu(surface.hwnd, ptr::null_mut());
             DestroyMenu(menu);
@@ -3494,11 +3184,9 @@ mod windows {
         if !surface.transparent_cursor.is_null() {
             DestroyCursor(surface.transparent_cursor);
         }
-        if surface.parent_hwnd.is_none() {
-            set_standalone_min_client_size(None);
-            set_standalone_logical_client_size(None);
-            STANDALONE_WINDOW_DPI.store(96, Ordering::Relaxed);
-        }
+        set_standalone_min_client_size(None);
+        set_standalone_logical_client_size(None);
+        STANDALONE_WINDOW_DPI.store(96, Ordering::Relaxed);
     }
 
     unsafe fn surface_needs_render(surface: &NativeSurface) -> bool {
@@ -3578,16 +3266,7 @@ mod windows {
     }
 
     unsafe fn surface_has_foreground(surface: &NativeSurface) -> bool {
-        let foreground = GetForegroundWindow();
-        if foreground.is_null() {
-            return false;
-        }
-        if foreground == surface.hwnd {
-            return true;
-        }
-        surface.parent_hwnd.is_some_and(|parent_hwnd| {
-            foreground == parent_hwnd || GetAncestor(foreground, GA_ROOTOWNER) == parent_hwnd
-        })
+        GetForegroundWindow() == surface.hwnd
     }
 
     unsafe fn poll_overlay_shortcut(surface: &mut NativeSurface) {
@@ -3633,6 +3312,7 @@ mod windows {
     unsafe fn render_retained_frame_from_window_message(
         hwnd: HWND,
         present_after_modal_loop: bool,
+        allow_during_modal_size_move: bool,
     ) {
         let Ok(mut guard) = SURFACE.try_lock() else {
             return;
@@ -3644,10 +3324,27 @@ mod windows {
             return;
         };
         surface.present_after_modal_loop |= present_after_modal_loop;
+        if surface.modal_size_move_active && !allow_during_modal_size_move {
+            surface.source_frame_dirty = true;
+            return;
+        }
         if render_surface(surface).is_err() {
             // The ordinary pump owns error teardown. Keep the retained frame
             // dirty so it retries immediately after the modal sizing loop.
             surface.source_frame_dirty = true;
+        }
+    }
+
+    unsafe fn set_modal_size_move_active(hwnd: HWND, active: bool) {
+        let Ok(mut guard) = SURFACE.try_lock() else {
+            return;
+        };
+        let Some(surface) = guard.as_mut().filter(|surface| surface.hwnd == hwnd) else {
+            return;
+        };
+        surface.modal_size_move_active = active;
+        if !active {
+            surface.present_after_modal_loop = true;
         }
     }
 
@@ -3912,11 +3609,11 @@ mod windows {
             return 1;
         }
         if message == WM_ERASEBKGND {
-            render_retained_frame_from_window_message(hwnd, false);
+            render_retained_frame_from_window_message(hwnd, false, false);
             return 1;
         }
         if message == WM_SIZE && wparam != SIZE_MINIMIZED as usize {
-            render_retained_frame_from_window_message(hwnd, false);
+            render_retained_frame_from_window_message(hwnd, false, false);
         }
         if message == WM_DPICHANGED && lparam != 0 {
             let new_dpi = (wparam as u32 & 0xffff).max(96);
@@ -3966,37 +3663,39 @@ mod windows {
                 }
             }
             DrawMenuBar(hwnd);
-            render_retained_frame_from_window_message(hwnd, true);
+            render_retained_frame_from_window_message(hwnd, true, false);
             return 0;
         }
         if message == WM_ENTERSIZEMOVE {
             // DefWindowProc owns a nested modal loop while a top-level window is
             // moved or resized. The ordinary JS-driven pump is blocked during
             // that loop, so keep capture/composition alive from a window timer.
+            set_modal_size_move_active(hwnd, true);
             SetTimer(
                 hwnd,
                 MODAL_PRESENT_TIMER_ID,
                 MODAL_PRESENT_INTERVAL_MS,
                 None,
             );
-            render_retained_frame_from_window_message(hwnd, true);
+            render_retained_frame_from_window_message(hwnd, true, false);
         }
         if message == WM_TIMER && wparam == MODAL_PRESENT_TIMER_ID {
-            render_retained_frame_from_window_message(hwnd, false);
+            render_retained_frame_from_window_message(hwnd, false, true);
             return 0;
         }
         if message == WM_EXITSIZEMOVE {
             KillTimer(hwnd, MODAL_PRESENT_TIMER_ID);
+            set_modal_size_move_active(hwnd, false);
             remember_standalone_logical_client_size(hwnd);
-            render_retained_frame_from_window_message(hwnd, true);
+            render_retained_frame_from_window_message(hwnd, true, true);
         }
         if message == WM_MOVE {
-            render_retained_frame_from_window_message(hwnd, false);
+            render_retained_frame_from_window_message(hwnd, false, false);
         }
         if message == WM_PAINT {
             let mut paint: PAINTSTRUCT = mem::zeroed();
             BeginPaint(hwnd, &mut paint);
-            render_retained_frame_from_window_message(hwnd, false);
+            render_retained_frame_from_window_message(hwnd, false, false);
             EndPaint(hwnd, &paint);
             return 0;
         }
@@ -4105,15 +3804,8 @@ mod windows {
         }
     }
 
-    fn base_ex_style(attached: bool, pass_through: bool) -> u32 {
-        let mut style = WS_EX_LAYERED;
-        if attached {
-            style |= WS_EX_TOOLWINDOW;
-        }
-        if pass_through {
-            style |= WS_EX_NOACTIVATE | WS_EX_TRANSPARENT;
-        }
-        style
+    fn base_ex_style() -> u32 {
+        WS_EX_LAYERED
     }
 
     fn reset_window_message_diagnostics() {
@@ -4149,6 +3841,7 @@ mod windows {
             command_id: None,
             client_width: (client.right - client.left).max(1),
             client_height: (client.bottom - client.top).max(1),
+            minimized: unsafe { IsIconic(hwnd) != 0 },
         };
         let mut events = WINDOW_INPUT_EVENTS
             .lock()
@@ -4235,6 +3928,8 @@ mod windows {
             command_id: (message == WM_COMMAND).then(|| wparam as u32 & u16::MAX as u32),
             client_width: (client.right - client.left).max(1),
             client_height: (client.bottom - client.top).max(1),
+            minimized: (message == WM_SIZE && wparam == SIZE_MINIMIZED as usize)
+                || unsafe { IsIconic(hwnd) != 0 },
         };
         let mut events = WINDOW_INPUT_EVENTS
             .lock()
