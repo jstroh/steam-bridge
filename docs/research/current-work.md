@@ -229,6 +229,55 @@ stalls therefore occur while Steam's injected `gameoverlayui` process remains
 attached, not from passive presenter pumping. A fresh app without that
 post-activation process returns to the 90 FPS baseline.
 
+On 2026-07-23, a focused Steam Deck Desktop Mode pass used a real Steam-launched
+consumer game package in KDE Wayland. The Linux package helper path moved into
+`steam-bridge/electron-builder`: the packaged executable is now a launcher that
+renames the real Electron binary to `.bin` and starts it with
+`--no-zygote --no-sandbox` before Chromium can create its first zygote. That
+closed the Steam-injected `gameoverlayrenderer` zygote crash without leaving the
+workaround in the consumer app. The game app still owns Deck window policy: it
+creates its fullscreen BrowserWindow at the current display bounds from frame
+zero, so the focused launch showed `1280x800` from the first overlay snapshot
+and no transient `800x600` or tiny top-left Steam surface. A temporary CDP QA
+harness drove DOM buttons because fixed Wayland/XTest coordinates selected the
+wrong character and a later Shift+Tab XTest attempt opened KWin's switcher
+instead of Steam; that input route remains rejected. The harness was removed and
+the Deck wrapper restored after the run.
+
+The same focused run reached the live game canvas, logged Babylon.js WebGL2
+startup, and measured a `1280x800` canvas with rect `[0,0,1280,800]` at DPR 1.
+It exposed and fixed a consumer cursor bug: `setGameCursorHidden(true)` returned
+`false` on the Deck BrowserWindow path because the app only handled the Windows
+native-host renderer. After the app fix, the IPC returned `true` and computed
+cursor style was `none` on `html`, `body`, and the canvas. Programmatic
+application IPC activation of a Steam web route over the live canvas returned
+`true`, emitted `active=true`, used bounds `1280x800`, rendered Steam's
+fullscreen overlay shell without KDE decoration or a tiny browser, then Escape
+emitted `active=false` and returned to the game. KWin reported the display at
+90.004 Hz; the live game measured 90.094 FPS before activation, 90.030 FPS while
+Steam overlay was active, and 90.084 FPS after close, with 11.1 ms p50 frame
+intervals in all three phases. Environment gotchas recorded for future runs:
+keep the Deck in Plasma Wayland, keep QA wrappers LF-only, close DevTools, avoid
+fixed compositor coordinates, and close Steam on every other platform before
+collecting evidence.
+
+After restoring the Deck wrapper to the normal non-CDP form, a final
+Steam-launched sanity check showed no remote-debugging endpoint, no CDP command
+line arguments, the packaged launcher still starting the `.bin` process with
+`--no-zygote --no-sandbox`, `gameoverlayui` attached to the normal process, and
+first snapshots still at `1280x800`. A bounded synthetic Shift+Tab retry with
+explicit key-up cleanup again opened KWin's switcher and emitted no Steam
+activation callback. That remains rejected automation evidence; use the app IPC
+route or a physical/user hotkey for release QA instead of tuning XTest.
+
+Local validation after the Deck pass: the consumer app passed `npm run lint`,
+`npm run typecheck`, `npm test`, `node --check main/main.js`, and two Linux dir
+packages. Steam Bridge passed `npm test` and `npm run package:smoke`. The first
+package-smoke attempt exposed a Windows harness bug: Git Bash received a
+`python3` shim but one POSIX self-test invoked `python`, falling through to the
+Windows Store alias. The smoke harness now creates both shims and the rerun
+passes with `STEAM_BRIDGE_PYTHON` pointing at the local Python executable.
+
 Current Apple Silicon qualification uses the signed arm64 package on
 `jeromystroh@Jeromys-MacBook-Pro.local`. Metal host readiness, Steam
 launch/injection, direct web activation, native window transitions, and frame

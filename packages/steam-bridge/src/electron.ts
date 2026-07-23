@@ -166,7 +166,12 @@ export function electronConfigureSteamOverlay(
   const scrubbedEnvKeys = scrubSteamOverlayChildProcessEnv ? electronScrubSteamOverlayChildProcessEnv() : [];
 
   if (isolateSteamOverlayChildProcesses) {
+    // Electron 43 rejects --no-zygote while the Chromium sandbox is still
+    // enabled. The paired switches keep Steam's overlay preload out of
+    // Chromium zygote/renderer children on Linux instead of letting
+    // gameoverlayrenderer crash inside the zygote at process startup.
     appendSwitchOnce(electron.app, switches, "no-zygote");
+    appendSwitchOnce(electron.app, switches, "no-sandbox");
   }
 
   if (enableInProcessGpu) {

@@ -26,7 +26,7 @@ If the session was compacted, resumed, or the task state is unclear:
 | Information | Location |
 | --- | --- |
 | Stable repo-wide recovery, privacy, platform, and workflow rules | `AGENTS.md` |
-| Active goal, current blocker, next actions, and last verification | `docs/research/current-work.md` |
+| Canonical continuity checkpoint: active goal, blocker, next actions, and last verification | `docs/research/current-work.md` |
 | Expensive, manual, live, negative, or environment-sensitive test findings and rerun conditions | `docs/research/test-findings-ledger.md` |
 | Detailed platform artifact history and live evidence | `docs/research/cross-platform-overlay-status.md` |
 | Presenter architecture, decisions, milestones, and non-goals | `docs/research/native-overlay-presenter-plan.md` |
@@ -36,6 +36,58 @@ If the session was compacted, resumed, or the task state is unclear:
 
 Update the existing entry instead of copying the same conclusion into more
 places. Link to detailed evidence rather than pasting raw logs.
+
+Keep `docs/research/current-work.md` concise and replace-in-place. Refresh it
+after an objective, decision, blocker, file set, validation result, or rejected
+approach materially changes, and before a long stop or likely compaction. It is
+a checkpoint, not a transcript.
+
+## Development Boundaries and Commands
+
+- This is an npm monorepo with a Rust workspace. The main implementation areas
+  are `packages/steam-bridge`, `crates/native`, and
+  `examples/electron-basic`; public research and recovery state lives under
+  `docs/research`.
+- Use Node.js 22.13 or newer for repository development and Rust stable. The
+  normal checks are `npm run check:platform`, `npm test`,
+  `npm run native:fmt`, `npm run native:check`, and `npm run api:check`.
+  `npm test` includes the TypeScript type check. There is no established lint
+  command or JavaScript/TypeScript formatter; do not invent one.
+- Treat `node_modules`, `dist`, `target`, `sdk`, native binaries and Steamworks
+  redistributables, `steam_appid.txt`, and generated
+  `packages/steam-bridge/index.d.ts` as generated or external areas. Do not
+  hand-edit or commit them unless a task explicitly targets the relevant
+  generation or packaging flow.
+- Treat `.env`, ignored `.env.*` files other than the tracked `.env.example`,
+  `.private/`, and `*.private.{env,json}` as private runtime inputs. Never read,
+  copy, summarize, or commit their contents.
+- Preserve the compatibility-shaped JavaScript export and existing TypeScript
+  and Rust API shapes. Public behavior changes require proportionate tests and
+  user-facing documentation review.
+- If `.codex/hooks/reanchor.cjs` changes, refresh its embedded SHA-256 in both
+  `.codex/hooks.json` handlers, rerun every synthetic lifecycle check, and
+  expect the changed command hook to require review again through `/hooks`.
+
+## Engineering Discipline
+
+- Understand the real execution path and inspect the exact edit context before
+  changing it; do not reconstruct an implementation from memory.
+- Make the smallest safe change that addresses the actual task. Preserve public
+  APIs, signatures, imports, events, field names, behavior, formatting, and
+  file structure unless the task explicitly requires a change.
+- Do not perform speculative cleanup, unrelated refactoring, or remove existing
+  functionality while fixing a local issue. Do not add code comments unless
+  the project requires them or the user asks for them.
+- Prefer reproductions, tests, traces, benchmarks, and measurements over
+  intuition. Revert experiments that perform worse or invalidate behavior.
+- For complex or risky work, use a plan and a falsifiable hypothesis. Run the
+  narrowest meaningful validation first, expand with risk, compare before and
+  after evidence, and never infer runtime, visual, performance, device,
+  networking, or integration success from a build alone.
+- In runtime hot paths, avoid repeated allocations; allocate up front and
+  retain, pool, or grow reusable buffers when appropriate.
+- Review the exact diff before editing or validating and never use destructive
+  Git recovery commands.
 
 ## Project Invariants
 
@@ -96,3 +148,25 @@ For requested repository changes:
    fixture paths before committing.
 6. Commit intentionally, push, and verify GitHub CI after each meaningful slice
    when the user has authorized repository changes.
+
+## GPT-5.6 Ultra and Subagents
+
+- The main thread owns the user goal, scope, constraints, architecture,
+  evidence synthesis, implementation choice, integration, final validation,
+  and `docs/research/current-work.md`.
+- Delegate only genuinely independent work such as targeted exploration,
+  documentation verification, test discovery, log, trace, benchmark, or test
+  output analysis, isolated design comparisons, or independent correctness,
+  performance, security, and regression review. Prefer read-only assignments;
+  do not spawn agents merely because parallelism is available.
+- Give each subagent a bounded question and require distilled findings with
+  only the context it needs. Require exact paths, symbols, evidence, and
+  unresolved uncertainty instead of raw logs. Wait for required investigations
+  before making an architectural decision.
+- Use one implementation owner for a coherent patch. Parallel writes are only
+  for isolated file sets with no shared ownership or generated outputs; the
+  main thread must inspect and integrate every subagent change.
+- Keep nesting depth at one unless deeper delegation has a demonstrated
+  benefit. Keep concurrency bounded, prefer built-in roles, and do not create
+  custom profiles. Let the orchestrator choose model and reasoning settings
+  unless a recurring, measured role requirement proves otherwise.

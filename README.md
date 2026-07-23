@@ -194,6 +194,11 @@ change Chromium surface activity and timing; it is not a supported way to make
 the Steam surface repaint, and results collected with it open are not treated as
 release evidence.
 
+For live qualification, keep only one Steam client signed in and running at a
+time. Close Steam on other platforms before collecting evidence from the current
+machine; cross-machine client ownership drift is an environment failure, not
+package proof.
+
 ### macOS managed window states
 
 The application owns macOS window transitions. Reuse one managed overlay
@@ -489,6 +494,12 @@ of source control and logs.
 - Electron packagers must keep the native addon and its Steam runtime libraries
   outside ASAR. The repository's smoke app demonstrates the supported package
   shape.
+- Linux Electron packages should call
+  `prepareLinuxSteamAppAfterPack(context)` from
+  `steam-bridge/electron-builder`. The helper writes a process-start launcher
+  with the paired `--no-zygote --no-sandbox` switches required before
+  Chromium's first zygote. The application still owns BrowserWindow size,
+  fullscreen, cursor, and input policy.
 - macOS applications must be packaged and run as native Apple Silicon apps.
 - Windows application signing is the responsibility of the final application
   distributor. It is not required to install or publish this npm package.

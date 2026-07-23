@@ -173,6 +173,40 @@ test("electron overlay diagnostic profile does not force Windows in-process GPU"
   assert.equal(result.switches.includes("ignore-gpu-blocklist"), true);
 });
 
+test("electron overlay Linux isolation pairs no-zygote with no-sandbox", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  const appendedSwitches = [];
+  mockElectronModule(t, {
+    app: {
+      commandLine: {
+        appendSwitch(name, value) {
+          appendedSwitches.push(value === undefined ? name : `${name}=${value}`);
+        }
+      },
+      on() {}
+    },
+    BrowserWindow: {
+      getAllWindows() {
+        return [];
+      }
+    }
+  });
+
+  const electron = require(distFile("electron.js"));
+  t.after(() => {
+    electron.electronDisableSteamOverlayRepaintLoop();
+    clearSteamBridgeCache();
+  });
+
+  const result = electron.electronConfigureSteamOverlay();
+
+  assert.equal(result.isolateSteamOverlayChildProcesses, true);
+  assert.equal(result.switches.includes("no-zygote"), true);
+  assert.equal(result.switches.includes("no-sandbox"), true);
+  assert.equal(appendedSwitches.includes("no-zygote"), true);
+  assert.equal(appendedSwitches.includes("no-sandbox"), true);
+});
+
 test("electron overlay compatibility profile keeps explicit Windows in-process GPU fallback", (t) => {
   setProcessPlatformForTest(t, "win32");
   const appendedSwitches = [];
@@ -3337,6 +3371,100 @@ test("electron-builder helper supports explicit app paths and reports CLI failur
   );
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].args.slice(1), ["--app-exe", expectedAppExe]);
+});
+
+test("electron-builder Linux helper skips non-linux targets", () => {
+  const builder = require(distFile("electron-builder.js"));
+
+  assert.deepEqual(
+    builder.prepareLinuxSteamAppAfterPack({
+      appOutDir: "/tmp/steam-bridge-package-smoke",
+      electronPlatformName: "darwin",
+      arch: "arm64"
+    }),
+    {
+      skipped: true,
+      reason: "non-linux-target:darwin"
+    }
+  );
+});
+
+test("electron-builder Linux helper wraps executable with zygote-safe launcher", (t) => {
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-builder-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const executablePath = path.join(tempDir, "My Game");
+  fs.writeFileSync(executablePath, "electron binary bytes");
+
+  const result = builder.prepareLinuxSteamAppAfterPack({
+    appOutDir: tempDir,
+    electronPlatformName: "linux",
+    arch: "x64",
+    packager: {
+      appInfo: { productFilename: "My Game" }
+    }
+  });
+
+  assert.equal(result.skipped, false);
+  assert.equal(result.appExe, executablePath);
+  assert.equal(result.binaryExe, `${executablePath}.bin`);
+  assert.deepEqual(result.launcherArgs, ["--no-zygote", "--no-sandbox"]);
+  assert.equal(fs.readFileSync(`${executablePath}.bin`, "utf8"), "electron binary bytes");
+
+  const launcher = fs.readFileSync(executablePath, "utf8");
+  assert.equal(launcher.includes("\r"), false);
+  assert.match(launcher, /^#!\/usr\/bin\/env bash\n/);
+  assert.match(launcher, /exec '\.\/My Game\.bin' '--no-zygote' '--no-sandbox' "\$@"/);
+  if (process.platform !== "win32") {
+    assert.notEqual(fs.statSync(executablePath).mode & 0o111, 0);
+    assert.notEqual(fs.statSync(`${executablePath}.bin`).mode & 0o111, 0);
+  }
+});
+
+test("electron-builder Linux helper is idempotent after the executable has already been wrapped", (t) => {
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-builder-idempotent-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const executablePath = path.join(tempDir, "SteamBridgeSmoke");
+  fs.writeFileSync(executablePath, "first binary");
+
+  builder.prepareLinuxSteamAppAfterPack({
+    appOutDir: tempDir,
+    electronPlatformName: "linux",
+    arch: "x64",
+    packager: { executableName: "SteamBridgeSmoke" }
+  });
+  fs.writeFileSync(executablePath, "stale launcher");
+
+  const result = builder.prepareLinuxSteamAppAfterPack({
+    appOutDir: tempDir,
+    electronPlatformName: "linux",
+    arch: "x64",
+    packager: { executableName: "SteamBridgeSmoke" }
+  });
+
+  assert.equal(result.skipped, false);
+  assert.equal(fs.readFileSync(`${executablePath}.bin`, "utf8"), "first binary");
+  assert.match(fs.readFileSync(executablePath, "utf8"), /--no-zygote' '--no-sandbox/);
+});
+
+test("electron-builder Linux helper reports missing executable names clearly", (t) => {
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-builder-missing-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  assert.throws(
+    () =>
+      builder.prepareLinuxSteamAppAfterPack({
+        appOutDir: tempDir,
+        electronPlatformName: "linux",
+        arch: "x64",
+        packager: { appInfo: { productFilename: "Missing Game" } }
+      }),
+    /could not determine the Linux executable name/
+  );
 });
 
 test("smoke result verifier accepts passive notification evidence with lifecycle callbacks", (t) => {

@@ -177,6 +177,12 @@ Close Chromium DevTools before validating Steam overlay behavior. DevTools can
 change Chromium surface activity and timing; it is not a supported way to make
 the Steam surface repaint.
 
+For live qualification, keep only one Steam client signed in and running at a
+time. Shut down Steam on Windows, macOS, Steam Deck, and any other test machine
+that could own the same account before collecting candidate evidence on a
+different platform. Cross-machine Steam ownership drift is an environment
+failure, not package proof.
+
 ### macOS managed window states
 
 The application owns macOS window transitions. Reuse one managed overlay
@@ -480,6 +486,29 @@ retain their upstream signatures.
 
 Steam Deck uses the Linux x64 package in both Game Mode and Desktop Mode.
 
+### Linux electron-builder helper
+
+Linux Electron games that run under Steam's overlay should prepare their
+packaged executable with the provided helper. It renames the real Electron
+binary to `<name>.bin` and writes a tiny launcher script at the original path
+that starts Electron with `--no-zygote --no-sandbox` before Chromium creates
+its first zygote process:
+
+```js
+const {
+  prepareLinuxSteamAppAfterPack
+} = require("steam-bridge/electron-builder");
+
+exports.afterPack = async (context) => {
+  prepareLinuxSteamAppAfterPack(context);
+};
+```
+
+This is process-start infrastructure, not application window policy. The game
+still owns its BrowserWindow size, minimum size, fullscreen behavior, cursor
+policy, and platform-specific input model; Steam Bridge follows the resulting
+surface.
+
 ### macOS electron-builder helper
 
 Steam overlays on macOS require the package's native launcher and Steam-compatible
@@ -487,10 +516,12 @@ entitlements. Add the provided helper to electron-builder's `afterPack` hook:
 
 ```js
 const {
+  prepareLinuxSteamAppAfterPack,
   prepareMacosSteamAppAfterPack
 } = require("steam-bridge/electron-builder");
 
 exports.afterPack = async (context) => {
+  prepareLinuxSteamAppAfterPack(context);
   prepareMacosSteamAppAfterPack(context);
 };
 ```

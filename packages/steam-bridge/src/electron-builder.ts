@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -13,8 +14,10 @@ export interface ElectronBuilderAfterPackContext {
       productFilename?: string;
       productName?: string;
       sanitizedProductName?: string;
+      sanitizedName?: string;
       name?: string;
     };
+    executableName?: string;
     config?: {
       mac?: {
         executableName?: string;
@@ -42,6 +45,20 @@ export interface PrepareMacosSteamAppAfterPackResult {
   appExe?: string;
   command?: string;
   args?: string[];
+}
+
+export interface PrepareLinuxSteamAppAfterPackOptions {
+  appExe?: string;
+  executableName?: string;
+  launcherArgs?: string[];
+}
+
+export interface PrepareLinuxSteamAppAfterPackResult {
+  skipped: boolean;
+  reason?: string;
+  appExe?: string;
+  binaryExe?: string;
+  launcherArgs?: string[];
 }
 
 export function prepareMacosSteamAppAfterPack(
@@ -81,6 +98,46 @@ export function verifyMacosSteamAppAfterSign(
   const appExe = resolveMacAppExe(context, options);
   const args = [resolvePackageBin("verify-macos-signing.cjs"), "--app-exe", appExe];
   return runPackageCli("steam-bridge macOS signing verification", appExe, args, options.quiet);
+}
+
+export function prepareLinuxSteamAppAfterPack(
+  context: ElectronBuilderAfterPackContext,
+  options: PrepareLinuxSteamAppAfterPackOptions = {}
+): PrepareLinuxSteamAppAfterPackResult {
+  const platform = normalizePlatform(context) ?? process.platform;
+  if (platform !== "linux") {
+    return { skipped: true, reason: `non-linux-target:${platform}` };
+  }
+
+  const appExe = resolveLinuxAppExe(context, options);
+  const binaryExe = `${appExe}.bin`;
+  const launcherArgs = options.launcherArgs ?? ["--no-zygote", "--no-sandbox"];
+
+  if (!fs.existsSync(binaryExe)) {
+    if (!fs.existsSync(appExe)) {
+      throw new Error(`prepareLinuxSteamAppAfterPack could not find the Linux executable at ${appExe}.`);
+    }
+    fs.renameSync(appExe, binaryExe);
+  }
+
+  const launcher = [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    'cd "$(dirname "${BASH_SOURCE[0]}")"',
+    `exec ${shellSingleQuote(`./${path.basename(binaryExe)}`)} ${launcherArgs.map(shellSingleQuote).join(" ")} "$@"`,
+    ""
+  ].join("\n");
+
+  fs.writeFileSync(appExe, launcher, { mode: 0o755 });
+  fs.chmodSync(appExe, 0o755);
+  fs.chmodSync(binaryExe, 0o755);
+
+  return {
+    skipped: false,
+    appExe,
+    binaryExe,
+    launcherArgs
+  };
 }
 
 function validateMacosArm64AfterPackContext(
@@ -190,6 +247,41 @@ function resolveMacAppExe(
   return path.join(appPath, "Contents", "MacOS", executableName);
 }
 
+function resolveLinuxAppExe(
+  context: ElectronBuilderAfterPackContext,
+  options: PrepareLinuxSteamAppAfterPackOptions
+): string {
+  if (options.appExe) {
+    return path.resolve(options.appExe);
+  }
+
+  if (!context.appOutDir) {
+    throw new Error("prepareLinuxSteamAppAfterPack requires electron-builder context.appOutDir.");
+  }
+
+  const candidates = [
+    options.executableName,
+    context.packager?.executableName,
+    context.packager?.appInfo?.productFilename,
+    context.packager?.appInfo?.productName,
+    context.packager?.appInfo?.sanitizedProductName,
+    context.packager?.appInfo?.sanitizedName,
+    context.packager?.appInfo?.name
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const candidate of candidates) {
+    const appExe = path.isAbsolute(candidate) ? candidate : path.join(context.appOutDir, candidate);
+    if (fs.existsSync(appExe) || fs.existsSync(`${appExe}.bin`)) {
+      return path.resolve(appExe);
+    }
+  }
+
+  throw new Error(
+    "prepareLinuxSteamAppAfterPack could not determine the Linux executable name. " +
+      "Pass options.executableName or options.appExe."
+  );
+}
+
 function appBundleName(context: ElectronBuilderAfterPackContext, options: PrepareMacosSteamAppAfterPackOptions): string {
   const configuredName =
     options.appBundleName ||
@@ -215,4 +307,8 @@ function basenameWithoutAppSuffix(appPath: string): string {
 
 function formatValue(value: unknown): string {
   return value == null ? "<unknown>" : String(value);
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }

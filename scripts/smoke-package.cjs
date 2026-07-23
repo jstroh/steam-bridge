@@ -5042,15 +5042,17 @@ function windowsBashEnvironment() {
   );
 
   const shimDirectory = path.join(tempRoot, "windows-bash-bin");
-  const python3Shim = path.join(shimDirectory, "python3");
   fs.mkdirSync(shimDirectory, { recursive: true });
-  if (!fs.existsSync(python3Shim)) {
-    fs.writeFileSync(
-      python3Shim,
-      '#!/usr/bin/env bash\nexec "$STEAM_BRIDGE_PYTHON" "$@"\n',
-      { mode: 0o755 }
-    );
-    fs.chmodSync(python3Shim, 0o755);
+  for (const shimName of ["python", "python3"]) {
+    const shimPath = path.join(shimDirectory, shimName);
+    if (!fs.existsSync(shimPath)) {
+      fs.writeFileSync(
+        shimPath,
+        '#!/usr/bin/env bash\nexec "$STEAM_BRIDGE_PYTHON" "$@"\n',
+        { mode: 0o755 }
+      );
+      fs.chmodSync(shimPath, 0o755);
+    }
   }
 
   const environment = {
