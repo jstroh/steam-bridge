@@ -382,6 +382,12 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
     bridgeSource,
     /process\.platform === "win32" && continuousPresentApplied === true && !usesNativeHostView/
   );
+  assert.match(bridgeSource, /let pumpImmediate: NodeJS\.Immediate \| undefined/);
+  assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
+  assert.match(
+    bridgeSource,
+    /if \(displaySynchronizedStandaloneHost\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
+  );
   assert.match(d3dSource, /D3D11_QUERY_EVENT/);
   assert.match(d3dSource, /CopySubresourceRegion\(/);
   assert.match(d3dSource, /wait_for_shared_texture_copy\(\)/);

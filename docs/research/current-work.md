@@ -776,3 +776,63 @@ Consumer gates on registry `0.2.14` passed:
   only complete clean roots from one unchanged candidate and Steam identity.
 - The checkout contains unrelated user-owned `AGENTS.md`, `.codex`, and input
   probe files. They must remain unstaged and untouched.
+
+## 2026-07-22 Windows actual-game exhaustive QA update
+
+An actual FOV4 game pass was run from
+`C:\Users\admin\source\fov4-steam` with Steam Bridge QA overlay and FPS
+reporting enabled. Receipts live under
+`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-20260722-205311`.
+
+Covered launch, menu clickability, fast title drag, resize sweeps, exact
+`640x480` logical minimum, maximize/restore, minimize/restore,
+fullscreen/restore, focus loss/return, Friends overlay open/close, 165 Hz,
+60 Hz, high DPI, and `1280x800` low-resolution mode. The overlay stayed bounded
+to the client and did not reproduce the old purple/tiny/full-chrome/seam/crash
+failures.
+
+Important result: game presentation hits the active display target at both
+60 Hz and 165 Hz after transitions. The initial exhaustive pass found
+Steam-overlay-active presentation visually correct but paced around 130-133 FPS
+median on the 165 Hz display, below the 95% high-refresh pass threshold.
+
+A focused local-source repair retest then linked the unpublished Steam Bridge
+build into FOV4 and repeated only that failing 165 Hz Friends-overlay scenario.
+Receipts live under
+`C:\Users\admin\steam-bridge-artifacts\fov-windows-overlay-165-focused-20260722-212404`.
+The display was switched from `1920x1200@60` to `1920x1200@165` for the retest
+and restored to `1920x1200@60` afterward. The overlay stayed bounded to the
+game client, no FOV/Electron process remained after close, stderr was empty,
+and 48 overlay-active 165 Hz samples produced `163.75 FPS` median native
+present against the `156.75 FPS` pass threshold. Treat this individual finding
+as green; do not reopen retired popup, owned-popup, or `WS_CHILD` presenter
+paths for it.
+
+Final Windows actual-game QA then passed after the individual failures were
+green. Receipts live under
+`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-final-20260722-2230`.
+The final run covered actual-game launch into the world, Steam startup toast,
+File/Edit/View menu clicks, title drag, fast drag, resize, minimum clamp,
+maximize/restore, fullscreen/restore, focus away/back, baseline overlay,
+60->165 Hz live transition, 165 Hz game hold, 165 Hz overlay, `1280x800@60`
+low-resolution overlay, restore to `1920x1200@60`, `200%->100%` scale change,
+overlay at `100%`, restore to `200%`, and clean File -> Exit. The overlay
+remained bounded to the client with no chrome coverage, no right/bottom seam,
+no tiny top-left Steam surface, no steady flicker, no crash, empty stderr, and
+no leftover Electron process. Display settings were restored to
+`1920x1200@60` and `200%` scale.
+
+Final representative medians were: baseline 60 Hz overlay `59.9 FPS`, 165 Hz
+overlay `162.65 FPS`, 165 Hz steady-state game surface `157.55 FPS` against
+the `156.75 FPS` pass threshold, low-resolution overlay `59.9 FPS`, and
+`100%`-scale overlay `59.9 FPS`. High-refresh game-surface scoring must use
+steady-state windows after the live mode transition and outside overlay
+open/close boundaries; transition-contaminated all-sample medians are useful
+diagnostics, not the pass/fail number.
+
+The current fixes validated by the pass are Steam Bridge's Windows standalone
+display-synchronized immediate pump scheduling and FOV4's renderer display /
+`webContents.setFrameRate()` refresh pulses after live display or DPI changes.
+Going forward, if a QA item fails, fix and focused-retest only that item until
+it is green. Run the full exhaustive Windows actual-game pass only after every
+known individual failure is green and immediately before a release decision.

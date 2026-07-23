@@ -8264,6 +8264,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let nativeHostUnavailableReason: NativeOverlayHostUnavailableReason | undefined;
   let macOverlayEnvironment: MacOverlayEnvironment | undefined;
   let pumpTimer: NodeJS.Timeout | undefined;
+  let pumpImmediate: NodeJS.Immediate | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let hideNativeHostTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
@@ -8364,6 +8365,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (pumpTimer) {
       clearTimeout(pumpTimer);
       pumpTimer = undefined;
+    }
+
+    if (pumpImmediate) {
+      clearImmediate(pumpImmediate);
+      pumpImmediate = undefined;
     }
 
     if (restoreFocusTimer) {
@@ -8577,9 +8583,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     if (pumpTimer) {
       clearTimeout(pumpTimer);
+      pumpTimer = undefined;
+    }
+    if (pumpImmediate) {
+      clearImmediate(pumpImmediate);
+      pumpImmediate = undefined;
     }
     const runScheduledPump = (): void => {
       pumpTimer = undefined;
+      pumpImmediate = undefined;
       const pumpStartedAt = performance.now();
       try {
         pump();
@@ -8592,19 +8604,22 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       const pumpDurationMs = performance.now() - pumpStartedAt;
       const displaySynchronizedStandaloneHost =
         process.platform === "win32" && continuousPresentApplied === true && !usesNativeHostView;
-      // Wake the Windows standalone host ahead of its target only on this
+      // Wake the Windows standalone host immediately on this
       // display-synchronized path. DXGI's frame-latency waitable object gates
       // the actual Present, while other platforms keep the requested cadence.
       // Overlay activation enables retained-frame presentation even when the
       // consumer did not request continuous presentation at construction time;
-      // that runtime state needs the same early wake-up or the JS timer delay
-      // is added to Steam's hooked Present and drops below the display rate.
-      const scheduledIntervalMs = displaySynchronizedStandaloneHost
-        ? Math.max(1, Math.floor(pumpIntervalMs / 2))
-        : pumpIntervalMs;
-      const nextDelayMs = Math.max(0, scheduledIntervalMs - pumpDurationMs);
-      pumpTimer = setTimeout(runScheduledPump, nextDelayMs);
-      pumpTimer.unref?.();
+      // that runtime state needs the same immediate wake-up or Windows timer
+      // jitter is added to Steam's hooked Present and drops below high-refresh
+      // display rates after live mode transitions.
+      if (displaySynchronizedStandaloneHost) {
+        pumpImmediate = setImmediate(runScheduledPump);
+        pumpImmediate.unref?.();
+      } else {
+        const nextDelayMs = Math.max(0, pumpIntervalMs - pumpDurationMs);
+        pumpTimer = setTimeout(runScheduledPump, nextDelayMs);
+        pumpTimer.unref?.();
+      }
     };
     pumpTimer = setTimeout(runScheduledPump, pumpIntervalMs);
     pumpTimer.unref?.();
