@@ -848,7 +848,11 @@ function selfTest() {
 }
 
 function runGeneratorSelfTest() {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-standalone-proof-"));
+  const canonicalTemporaryDirectory = fs.realpathSync.native(os.tmpdir());
+  const tempRoot = fs.mkdtempSync(
+    path.join(canonicalTemporaryDirectory, "steam-bridge-standalone-proof-")
+  );
+  let linkedParent;
   try {
     const candidateDirectory = path.join(tempRoot, "candidate");
     const consumerDirectory = path.join(tempRoot, "consumer");
@@ -1059,7 +1063,19 @@ function runGeneratorSelfTest() {
       () => generateLiveProofReceipt({ ...options, consumerPackageDirectory: linkedConsumer }),
       /real registry\/tarball install/
     );
+    linkedParent = tempRoot + "-linked-parent";
+    fs.symlinkSync(tempRoot, linkedParent, process.platform === "win32" ? "junction" : "dir");
+    assert.throws(
+      () => generateLiveProofReceipt({
+        ...options,
+        consumerPackageDirectory: path.join(linkedParent, "consumer")
+      }),
+      /must not traverse a junction or reparse point/
+    );
   } finally {
+    if (linkedParent) {
+      fs.rmSync(linkedParent, { recursive: true, force: true });
+    }
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 }
