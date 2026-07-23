@@ -65,6 +65,12 @@ include `Steam.exe`/`steam`, `steam_osx`, `steamwebhelper`, and
 prevents a competing session from invalidating launch, focus, overlay-routing,
 or client-health evidence.
 
+Windows release proof is computer-driven. The actual-game consumer exposes an
+opt-in native-menu command for the ordinary Friends overlay, and the receipt
+requires its `qa-menu` marker plus real Steam active/inactive callbacks. A human
+Shift+Tab is a one-time qualification only when shortcut routing changes, not a
+recurring candidate or publication requirement.
+
 ## Quick start
 
 ```ts

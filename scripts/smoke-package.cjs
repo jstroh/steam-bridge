@@ -695,7 +695,12 @@ function runWindowsSmokeHelperStaticChecks() {
     "overlayMedianPresentFpsTenths",
     "minimumGameMedianPaintAndPresentPercentOfDisplayTarget",
     "minimumOverlayMedianPresentPercentOfDisplayTarget",
+    "maximumPacingSampleIntervalMs",
+    "maximumFrameLatencyWaitTimeoutCount",
+    "humanInputRequired: false",
+    "ordinaryOverlayQaMenuRequired: true",
     "frameLatencyWaitTimeoutCount",
+    "steam-native-host-overlay-open",
     "sameSteamIdentityAcrossProfiles",
     "verifyCandidateDirectory",
     "readAndValidateLiveProofReceipt"
@@ -4980,6 +4985,7 @@ function assertExecutableFile(filePath) {
 function run(command, args, options = {}) {
   let executable = command;
   let executableArgs = args;
+  let childEnvironment = process.env;
   if (process.platform === "win32" && command === "node") {
     executable = process.execPath;
   } else if (process.platform === "win32" && command === "npm") {
@@ -4995,11 +5001,13 @@ function run(command, args, options = {}) {
         path.join(process.env["ProgramFiles(x86)"], "Git", "bin", "bash.exe")
     ].filter(Boolean);
     executable = bashCandidates.find((candidate) => fs.existsSync(candidate)) || command;
+    childEnvironment = windowsBashEnvironment();
   }
 
   const result = spawnSync(executable, executableArgs, {
     cwd: options.cwd,
     encoding: options.encoding,
+    env: childEnvironment,
     stdio: options.encoding ? ["ignore", "pipe", "inherit"] : "inherit",
     windowsHide: true
   });
@@ -5015,4 +5023,38 @@ function run(command, args, options = {}) {
   }
 
   return result;
+}
+
+function windowsBashEnvironment() {
+  const configuredPython =
+    process.env.STEAM_BRIDGE_PYTHON || process.env.PYTHON || process.env.npm_config_python;
+  if (!configuredPython) {
+    return process.env;
+  }
+
+  const pythonPath = path.resolve(configuredPython);
+  assert.ok(
+    fs.existsSync(pythonPath),
+    `Configured package-smoke Python does not exist: ${pythonPath}`
+  );
+
+  const shimDirectory = path.join(tempRoot, "windows-bash-bin");
+  const python3Shim = path.join(shimDirectory, "python3");
+  fs.mkdirSync(shimDirectory, { recursive: true });
+  if (!fs.existsSync(python3Shim)) {
+    fs.writeFileSync(
+      python3Shim,
+      '#!/usr/bin/env bash\nexec "$STEAM_BRIDGE_PYTHON" "$@"\n',
+      { mode: 0o755 }
+    );
+    fs.chmodSync(python3Shim, 0o755);
+  }
+
+  const environment = {
+    ...process.env,
+    STEAM_BRIDGE_PYTHON: pythonPath.replaceAll("\\", "/")
+  };
+  const pathKey = Object.keys(environment).find((key) => key.toLowerCase() === "path") || "PATH";
+  environment[pathKey] = `${shimDirectory}${path.delimiter}${environment[pathKey] || ""}`;
+  return environment;
 }

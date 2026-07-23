@@ -128,12 +128,23 @@ policy, and Steam web routes.
 
 Install the exact candidate tarball into the consumer as a normal directory,
 not an npm link or junction. Run the actual game with
-`STEAM_BRIDGE_FPS_REPORT=1` and `STEAM_BRIDGE_DEBUG_OVERLAY_SNAPSHOT=1`, then
-manually verify startup chrome, File/Edit/View, title drag, resize and the
-logical minimum, maximize/restore, minimize/restore, focus return,
-fullscreen/restore, rounded corners, cursor behavior, and ordinary Shift+Tab
-overlay alignment/close. Do not open or authorize checkout or a subscription.
-Keep DevTools closed because it materially changes Chromium/Steam behavior.
+`STEAM_BRIDGE_FPS_REPORT=1`, `STEAM_BRIDGE_DEBUG_OVERLAY_SNAPSHOT=1`, and the
+consumer's explicit ordinary-overlay QA gate. In FOV4 that gate is
+`STEAM_BRIDGE_QA_OVERLAY=1`, which adds `Steam Friends Overlay (QA)` to the
+native View menu and is absent otherwise. A computer-driven controller must
+select that visible command, verify the real Steam surface and callbacks, and
+close it with Escape. The command must call `activateDialog("Friends")` and log
+`[steam-native-host-overlay-open] {"dialog":"Friends","source":"qa-menu"}`.
+Do not substitute checkout, authorize a purchase/subscription, or ask a human
+to supply Shift+Tab. Physical shortcut qualification is a one-time routing
+check and is repeated only when shortcut routing changes; it is not a release-
+candidate prerequisite.
+
+Use the same controller to verify startup chrome, File/Edit/View, title drag,
+resize and the logical minimum, maximize/restore, minimize/restore, focus
+return, fullscreen/restore, rounded corners, cursor behavior, and ordinary
+Friends-overlay alignment/close. Keep DevTools closed because it materially
+changes Chromium/Steam behavior.
 
 Create the fail-closed evidence template beside the captured stdout/stderr:
 
@@ -149,11 +160,13 @@ node .\\windows-live-proof-receipt.cjs `
 Review the run and change a field to `true` only when that exact check passed.
 The receipt generator independently parses the logs and rejects missing
 standalone identity, any parent HWND, missing Steam active/inactive lifecycle,
-missing resize/minimize/fullscreen transitions, less than 95% of the current
-display target for median game paint/native-present FPS or active-overlay
-native-present FPS using at least three samples per phase, device loss, latency
-timeouts, slow shared-texture
-copies, stderr, crashes, or a linked/reparse/mismatched consumer package.
+missing QA-menu activation, missing resize/minimize/fullscreen transitions,
+less than 95% of the current display target for median game paint/native-
+present FPS or active-overlay native-present FPS using at least three qualified
+samples per phase, more than three cumulative frame-latency waits, device loss,
+recovery, slow shared-texture copies, stderr, crashes, or a linked/reparse/
+mismatched consumer package. Qualified pacing samples have intervals of at most
+two seconds so the Win32 modal menu loop is not misreported as renderer pacing.
 
 Generate the candidate-bound receipt only after every manual field is true:
 

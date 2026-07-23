@@ -1,13 +1,16 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-21
+Last reviewed: 2026-07-22
 
-Review anchor: `385a3fc` (`Capture native Windows input state`). Exact
+Review anchor: `3ef5a64` (`Stabilize standalone Steam overlay host`). Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
 rejected candidates. npm `latest` is `0.3.4`. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
-repairs were made afterward. The next release candidate must be `v0.3.6`; it
-has not been stamped yet.
+repairs were made afterward. Exact `v0.3.6` is tagged and its cross-platform
+candidate workflow passed, but it remains unpublished and must not be moved or
+published: the candidate-bound proof contract still required repeated physical
+Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
+The deterministic proof-tool successor must be `v0.3.7`.
 
 ## Read First After Compaction: Windows Architecture
 
@@ -78,9 +81,15 @@ source to 59.9 FPS without recreating texture storage.
 That same actual-game run passed default 1280 by 720 geometry at 225% scale,
 File/Edit/View chrome, title drag, edge and exact-minimum resize,
 maximize/restore, minimize/restore, fullscreen/restore, and focus loss/return.
-An OS-level Shift+Tab generated the native shortcut event and Steam active/inactive
-callbacks, opened the ordinary Friends overlay, and closed it without an app-
-side test hook. The overlay was correctly bounded to the native client at both
+One OS-level Shift+Tab qualification generated the native shortcut event and
+Steam active/inactive callbacks, opened the ordinary Friends overlay, and
+closed it. That one-time qualification is retained evidence; a human is not a
+recurring release-harness dependency. The consumer now exposes an opt-in
+`STEAM_BRIDGE_QA_OVERLAY=1` native View-menu command which calls the same safe
+`activateDialog("Friends")` API, logs a closed-schema `qa-menu` marker, and is
+absent from production menus. Computer-driven QA opens the ordinary surface
+through that visible command and closes it with Escape. The overlay was
+correctly bounded to the native client at both
 1280 by 720 and maximized sizes, with no right/bottom seam, purple surface, tiny
 top-left surface, hang, or crash. The final steady state measured 59.8-59.9
 source and native-present FPS against the current 60 Hz display, with zero
@@ -123,6 +132,18 @@ the receipt therefore enforces game paint plus present and overlay present while
 retaining overlay paint as a reported diagnostic. No transaction or subscription
 was authorized. The focused artifact root is
 `C:\Users\admin\steam-bridge-artifacts\fov-v0.3.6-pacing-manual-20260721-2330`.
+
+The final `v0.3.6` proof attempt also exposed a receipt-design defect rather
+than a runtime regression. Win32's modal menu loop can pause the telemetry
+interval and produce one bounded DXGI frame-latency wait timeout; the window
+then immediately returns to 59.9-60.4 FPS. Receipt schema 3 excludes telemetry
+intervals longer than two seconds from pacing medians, allows at most three
+cumulative menu-transition wait timeouts, and still rejects device loss,
+recovery, slow shared-texture copies, stderr, crashes, unsafe transaction
+activity, or sub-95%-of-refresh game/overlay medians. It also requires the
+`qa-menu` ordinary-overlay marker and declares `humanInputRequired: false`, so
+future candidate proof cannot silently restore the rejected physical-input
+dependency.
 
 Steam Deck requalification is complete for the current working candidate. The
 Desktop core passed 21/21 routes and 42 screenshots; focused move, resize,

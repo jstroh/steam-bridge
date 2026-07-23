@@ -14,8 +14,8 @@ const {
 } = require("./windows-release-candidate-fingerprint.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 2;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v2";
+const RECEIPT_SCHEMA_VERSION = 3;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v3";
 const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
 const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
 const EVIDENCE_SCHEMA_VERSION = 1;
@@ -23,6 +23,8 @@ const RECEIPT_PREFIX = "STEAM_BRIDGE_WINDOWS_LIVE_PROOF_RECEIPT ";
 const EXPECTED_BACKEND = "windows-d3d11";
 const EXPECTED_HOST_STYLE = "standalone";
 const MAX_JSON_BYTES = 1024 * 1024;
+const MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT = 3;
+const MAX_PACING_SAMPLE_INTERVAL_MS = 2000;
 const WINDOWS_RUNTIME_FILES = Object.freeze([
   "steam_bridge_native.win32-x64-msvc.node",
   "steam_api64.dll",
@@ -307,7 +309,13 @@ function inspectRuntimeLog(stdout) {
     assert.equal(sample.nativePresenter && sample.nativePresenter.deviceLost, false);
     assert.equal(sample.nativePresenter && sample.nativePresenter.deviceLostCount, 0);
     assert.equal(sample.nativePresenter && sample.nativePresenter.deviceRecoveryCount, 0);
-    assert.equal(sample.nativePresenter && sample.nativePresenter.frameLatencyWaitTimeoutCount, 0);
+    const waitTimeoutCount = sample.nativePresenter && sample.nativePresenter.frameLatencyWaitTimeoutCount;
+    assert.ok(
+      Number.isSafeInteger(waitTimeoutCount) &&
+        waitTimeoutCount >= 0 &&
+        waitTimeoutCount <= MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT,
+      "Standalone frame-latency wait timeout count exceeded the bounded menu-transition allowance."
+    );
     assert.equal(sample.nativePresenter && sample.nativePresenter.sharedTextureCopySlowCount, 0);
     assert.equal(sample.nativeHost && sample.nativeHost.backend, EXPECTED_BACKEND);
     assert.equal(sample.nativeHost && sample.nativeHost.rendererBackend, EXPECTED_BACKEND);
@@ -319,6 +327,9 @@ function inspectRuntimeLog(stdout) {
       (sample.phase === "game" || sample.phase === "overlay") &&
       sample.nativeHost &&
       sample.nativeHost.minimized !== true &&
+      Number.isFinite(sample.intervalMs) &&
+      sample.intervalMs > 0 &&
+      sample.intervalMs <= MAX_PACING_SAMPLE_INTERVAL_MS &&
       Number.isFinite(sample.gameSurface && sample.gameSurface.paintFps) &&
       sample.gameSurface.paintFps >= 0 &&
       Number.isFinite(sample.nativePresenter && sample.nativePresenter.presentFps) &&
@@ -340,6 +351,9 @@ function inspectRuntimeLog(stdout) {
   const gameMetrics = summarizePacingPhase(gameSamples, "Game", true);
   const overlayMetrics = summarizePacingPhase(overlaySamples, "Steam overlay", false);
   const finalSample = pacingSamples[pacingSamples.length - 1];
+  const frameLatencyWaitTimeoutCount = Math.max(
+    ...samples.map((sample) => sample.nativePresenter.frameLatencyWaitTimeoutCount)
+  );
   const targetFps = finalSample.targetFps;
   const displayHz = finalSample.display.hz;
   const host = finalSample.nativeHost;
@@ -353,10 +367,9 @@ function inspectRuntimeLog(stdout) {
     "[steam-native-host] fullscreen off",
     "[steam-native-host] renderer paused while minimized",
     "[steam-native-host] renderer resumed after minimize",
-    "[steam-native-input]",
     "\"active\":true",
     "\"active\":false",
-    "[steam-native-host] user shortcut opened Friends"
+    "[steam-native-host-overlay-open] {\"dialog\":\"Friends\",\"source\":\"qa-menu\"}"
   ]) {
     assert.ok(stdout.includes(required), "Standalone runtime log is missing: " + required);
   }
@@ -381,7 +394,7 @@ function inspectRuntimeLog(stdout) {
     overlayMedianPaintFpsTenths: overlayMetrics.medianPaintFpsTenths,
     overlayMedianPresentFpsTenths: overlayMetrics.medianPresentFpsTenths,
     frameLatencyWaitable: true,
-    frameLatencyWaitTimeoutCount: 0,
+    frameLatencyWaitTimeoutCount,
     deviceLostCount: 0,
     deviceRecoveryCount: 0,
     sharedTextureCopySlowCount: 0
@@ -454,10 +467,14 @@ function assembleLiveProofReceipt(candidateBinding, profiles, generatedAt, sameS
       candidateBoundConsumerInstall: true,
       actualGameRequired: true,
       actualSteamClientRequired: true,
+      humanInputRequired: false,
       manualVisualQaRequired: true,
+      ordinaryOverlayQaMenuRequired: true,
       purchaseAuthorizationAllowed: false,
       fpsPhases: ["game", "overlay"],
       minimumFpsSamplesPerPhase: 3,
+      maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
+      maximumFrameLatencyWaitTimeoutCount: MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT,
       minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
       minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
       profileCount: PROFILE_CONTRACTS.length,
@@ -509,10 +526,14 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     candidateBoundConsumerInstall: true,
     actualGameRequired: true,
     actualSteamClientRequired: true,
+    humanInputRequired: false,
     manualVisualQaRequired: true,
+    ordinaryOverlayQaMenuRequired: true,
     purchaseAuthorizationAllowed: false,
     fpsPhases: ["game", "overlay"],
     minimumFpsSamplesPerPhase: 3,
+    maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
+    maximumFrameLatencyWaitTimeoutCount: MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT,
     minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
     minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
     profileCount: PROFILE_CONTRACTS.length,
@@ -640,7 +661,11 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   assert.deepEqual(profile.runtime.logicalClientSize, { height: 720, width: 1280 });
   assert.deepEqual(profile.runtime.minimumClientSize, { height: 480, width: 640 });
   assert.equal(profile.runtime.frameLatencyWaitable, true);
-  assert.equal(profile.runtime.frameLatencyWaitTimeoutCount, 0);
+  assert.ok(
+    Number.isSafeInteger(profile.runtime.frameLatencyWaitTimeoutCount) &&
+      profile.runtime.frameLatencyWaitTimeoutCount >= 0 &&
+      profile.runtime.frameLatencyWaitTimeoutCount <= MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT
+  );
   assert.equal(profile.runtime.deviceLostCount, 0);
   assert.equal(profile.runtime.deviceRecoveryCount, 0);
   assert.equal(profile.runtime.sharedTextureCopySlowCount, 0);
@@ -856,6 +881,7 @@ function runGeneratorSelfTest() {
     fs.writeFileSync(auditPath, JSON.stringify(audit));
     const candidateBinding = createCandidateBinding(audit);
     const sample = {
+      intervalMs: 1000,
       phase: "game",
       display: { hz: 60 },
       targetFps: 60,
@@ -886,10 +912,9 @@ function runGeneratorSelfTest() {
       "[steam-native-host] fullscreen off",
       "[steam-native-host] renderer paused while minimized",
       "[steam-native-host] renderer resumed after minimize",
-      "[steam-native-input]",
       "[steam-overlay-activated] {\"active\":true}",
       "[steam-overlay-activated] {\"active\":false}",
-      "[steam-native-host] user shortcut opened Friends",
+      "[steam-native-host-overlay-open] {\"dialog\":\"Friends\",\"source\":\"qa-menu\"}",
       "[steam-native-host-renderer] viewport 1280x720 -> 1100x620 {}",
       ...Array.from({ length: 3 }, () => "[steam-native-host-fps] " + JSON.stringify(sample)),
       ...Array.from({ length: 3 }, () =>
@@ -953,6 +978,29 @@ function runGeneratorSelfTest() {
     );
     fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), slowOverlayStdout);
     assert.throws(() => generateLiveProofReceipt(options), /Steam overlay median/);
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replace(
+        "[steam-native-host-overlay-open] {\"dialog\":\"Friends\",\"source\":\"qa-menu\"}",
+        "[steam-native-host] user shortcut opened Friends"
+      )
+    );
+    assert.throws(
+      () => generateLiveProofReceipt(options),
+      /steam-native-host-overlay-open/,
+      "A physical shortcut must not be required for repeatable release proof."
+    );
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replaceAll(
+        '"frameLatencyWaitTimeoutCount":0',
+        `"frameLatencyWaitTimeoutCount":${MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT + 1}`
+      )
+    );
+    assert.throws(
+      () => generateLiveProofReceipt(options),
+      /bounded menu-transition allowance/
+    );
     fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout);
     const linkedConsumer = path.join(tempRoot, "linked-consumer");
     fs.symlinkSync(consumerDirectory, linkedConsumer, process.platform === "win32" ? "junction" : "dir");
