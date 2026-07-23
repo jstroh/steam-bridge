@@ -2,9 +2,10 @@
 
 Last reviewed: 2026-07-22
 
-Review anchor: `f0fa629` (`Automate Windows release proof`). Exact
+Review anchor: `45a43686b465e8fa6c84184f946fbc372705c496`
+(`Bound Windows restore pacing proof`). npm `latest` is `0.3.8`. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
-rejected candidates. npm `latest` is `0.3.4`. Exact `v0.3.5` is also immutable
+rejected candidates. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
 repairs were made afterward. Exact `v0.3.6` is tagged and its cross-platform
 candidate workflow passed, but it remains unpublished and must not be moved or
@@ -12,8 +13,9 @@ published: the candidate-bound proof contract still required repeated physical
 Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
-minimize/restore target transition as steady-state pacing. The bounded,
-transition-aware proof-tool successor must be `v0.3.8`.
+minimize/restore target transition as steady-state pacing. `v0.3.8` is the
+published successor and current stable release. Never move, reuse, or publish
+any rejected tag.
 
 ## Read First After Compaction: Windows Architecture
 
@@ -56,17 +58,48 @@ presentation should be repaired with another popup or child-window experiment.
   platform release matrix once after the implementation is stable and directly
   before publication.
 
-## Active Goal
+## Completed Goal
 
-Finish Steam Bridge and the FOV4 port around the proven standalone native-host
-architecture. Permanently close failed Windows attached popup/child paths, make
-unsupported attached Windows use fail clearly, validate the actual game with
-change-scoped manual and automated QA, requalify affected platforms, then run
-one complete immutable release-candidate review before documentation, version,
-commit, push, tag, GitHub Release, npm publication, and registry verification.
-Do not move or reuse a tag or publish any rejected candidate.
+Steam Bridge and the FOV4 port now use the proven standalone native-host
+architecture. The release permanently closes failed Windows attached
+popup/child paths, makes unsupported attached Windows use fail clearly,
+validates the actual game with change-scoped manual and automated QA,
+requalifies affected platforms, and completes one immutable release-candidate
+review through documentation, version, commit, push, tag, GitHub Release, npm
+publication, and registry verification. That sequence completed for `v0.3.8`;
+do not reopen it without a new code change and a new version.
 
 ## Current State
+
+`steam-bridge@0.3.8` is published to npm and is the stable GitHub Release:
+<https://github.com/jstroh/steam-bridge/releases/tag/v0.3.8>. Source commit
+`45a43686b465e8fa6c84184f946fbc372705c496` is bound to immutable tag
+`v0.3.8`. Tag workflow `29973234900` passed macOS arm64, Windows x64, Linux
+x64, and the exact Windows publish-tarball ASAR/package gate. Trusted publish
+workflow `29974384230` passed from the tag. The earlier main-ref dispatch
+`29974354896` was rejected before any step ran and changed no npm state.
+
+The canonical Windows candidate contains 118 files with content SHA-256
+`69b706aff775f227e241e9080adbb38da6d259b6dcba8940ac9e0e3a429c56ff`.
+Its Windows archive SHA-256 is
+`a429b0fb8115c8ddc224f0d6ad803ed02d69858609c5c49749726a9b9bec98ce` and
+the npm tarball SHA-256 is
+`b3bf553560f40455ca36c22854d02c31f770b2588c71e238258140f340c7ae13`.
+The downloaded registry tarball is byte-identical to that audited tarball.
+npm reports integrity
+`sha512-Cth1icQaTBf+Q21HZSdzaWjDel2J8+PODgH1JcRNAAHESDJfzYAHbQfLsEHmGDyVS7wDTdpJm44HaydOaf9pKQ==`,
+shasum `72154de8b9b5a489ae7b5e924c14a21e2da524c2`, and SLSA provenance.
+
+The final candidate-bound actual-game receipt is schema 4 with SHA-256
+`facfddeacd9c32f30a5208dee1046e7091b5e8a9000e7d5f5c95f8a9b9b9ab41`.
+It contains 110 game samples and 14 ordinary Friends-overlay samples. Game
+paint, game present, and overlay present medians were all 59.9 FPS against the
+60 Hz display, with zero unsynchronized steady-state samples, latency waits,
+slow copies, device losses, or recoveries. It records
+`humanInputRequired: false`. One earlier physical Shift+Tab qualification is
+retained as sufficient product evidence and must never become recurring QA
+input; automated releases use the opt-in native QA menu and the same safe
+`activateDialog("Friends")` API. No purchase or subscription was authorized.
 
 The 2026-07-21 source-linked FOV4 Windows pass now exercises the actual game on
 the standalone native host rather than any attached presenter. A long modal
@@ -520,6 +553,21 @@ assets were independently verified before and after trusted publication.
 
 ## Consumer Evidence
 
+FOV4 commit `04769fd` (`Port native host to Steam Bridge 0.3.8`) is pushed to
+`master`. Its manifest, lockfile, and ordinary non-link install resolve exact
+registry `steam-bridge@0.3.8` with the published integrity above. The final
+registry-backed actual-game smoke opened the ordinary Friends overlay at the
+same 1280 by 720 client bounds, closed it with Escape, returned to the game,
+and shut down with empty stderr. The broad immutable candidate pass also
+covered exact 640 by 480 minimum sizing, title move, native menus,
+maximize/restore, minimize/restore, focus loss/return, fullscreen/restore,
+rounded bottom corners, cursor behavior, overlay alignment, and clean close.
+The consumer passes 16/16 tests, ESLint, TypeScript, 705 verified registry
+signatures, and 132 verified attestations.
+
+The remaining consumer paragraphs are retained historical evidence from the
+`0.2.x` qualification path; they do not override the current `0.3.8` state.
+
 The Electron game consumer now has an exact non-junction registry install of
 `steam-bridge@0.2.14`; its manifest and lockfile bind the published tarball and
 integrity. The opt-in FPS report measured both Electron paint/
@@ -578,7 +626,7 @@ Steam composite only into the visible host. A repeat at the exact minimum
 showed one centered checkout surface; Escape returned to a fresh game frame and
 authorized no transaction. Consumer commit `44b8928` is pushed to `master`.
 
-## Exact Release Evidence
+## Historical `v0.2.14` Release Evidence
 
 Source and automation:
 
@@ -626,6 +674,19 @@ attestations. All five GitHub Release asset digests match their retained local
 files. The release-scoped GitHub proof secret was deleted after publication.
 
 ## Verification
+
+Current `v0.3.8` verification is complete: 203/203 Steam Bridge tests pass with
+zero skips, the full cross-platform package smoke and exact Windows packaged
+native-load gate pass, tag workflow `29973234900` passes all release jobs, the
+candidate-bound actual-game receipt passes, all five public GitHub Release
+assets match retained local digests, the registry tarball is byte-identical to
+the audited candidate, and npm provenance is present. FOV4's exact registry
+consumer passes 16/16 tests, ESLint, TypeScript, signature/attestation audit,
+and the focused post-publication actual-game smoke. The temporary release proof
+secret was deleted after publication.
+
+The remaining paragraphs in this section are retained historical verification
+for `v0.2.14`; they are not the current release status.
 
 The reviewed `0.2.14` source passes 206/206 repository tests, TypeScript, Rust
 format and compile checks, the platform policy, Steam API coverage, and the
