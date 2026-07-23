@@ -14,8 +14,8 @@ const {
 } = require("./windows-release-candidate-fingerprint.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 3;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v3";
+const RECEIPT_SCHEMA_VERSION = 4;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v4";
 const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
 const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
 const EVIDENCE_SCHEMA_VERSION = 1;
@@ -25,6 +25,8 @@ const EXPECTED_HOST_STYLE = "standalone";
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT = 3;
 const MAX_PACING_SAMPLE_INTERVAL_MS = 2000;
+const MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT = 3;
+const TARGET_DISPLAY_TOLERANCE_HZ = 1;
 const WINDOWS_RUNTIME_FILES = Object.freeze([
   "steam_bridge_native.win32-x64-msvc.node",
   "steam_api64.dll",
@@ -322,7 +324,7 @@ function inspectRuntimeLog(stdout) {
     assert.equal(sample.nativeHost && sample.nativeHost.hostStyle, EXPECTED_HOST_STYLE);
     assert.equal(sample.nativeHost && sample.nativeHost.parentHwnd, null);
   }
-  const pacingSamples = samples.filter(
+  const pacingCandidates = samples.filter(
     (sample) =>
       (sample.phase === "game" || sample.phase === "overlay") &&
       sample.nativeHost &&
@@ -335,19 +337,29 @@ function inspectRuntimeLog(stdout) {
       Number.isFinite(sample.nativePresenter && sample.nativePresenter.presentFps) &&
       sample.nativePresenter.presentFps > 0
   );
+  for (const sample of pacingCandidates) {
+    assert.ok(Number.isFinite(sample.targetFps) && sample.targetFps > 0, "Standalone target FPS is missing.");
+    assert.ok(
+      Number.isFinite(sample.display && sample.display.hz) && sample.display.hz > 0,
+      "Standalone display refresh is missing."
+    );
+  }
+  const targetUnsynchronizedSampleCount = pacingCandidates.filter(
+    (sample) => Math.abs(sample.targetFps - sample.display.hz) > TARGET_DISPLAY_TOLERANCE_HZ
+  ).length;
+  assert.ok(
+    targetUnsynchronizedSampleCount <= MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT,
+    "Standalone target/display transition sample count exceeded the bounded allowance."
+  );
+  const pacingSamples = pacingCandidates.filter(
+    (sample) => Math.abs(sample.targetFps - sample.display.hz) <= TARGET_DISPLAY_TOLERANCE_HZ
+  );
   const gameSamples = pacingSamples.filter(
     (sample) => sample.phase === "game" && sample.gameSurface.paintFps > 0
   );
   const overlaySamples = pacingSamples.filter((sample) => sample.phase === "overlay");
   assert.ok(gameSamples.length >= 3, "Standalone proof requires at least three active game FPS samples.");
   assert.ok(overlaySamples.length >= 3, "Standalone proof requires at least three active Steam-overlay FPS samples.");
-  for (const sample of pacingSamples) {
-    const targetFps = sample.targetFps;
-    const displayHz = sample.display && sample.display.hz;
-    assert.ok(Number.isFinite(targetFps) && targetFps > 0, "Standalone target FPS is missing.");
-    assert.ok(Number.isFinite(displayHz) && displayHz > 0, "Standalone display refresh is missing.");
-    assert.ok(Math.abs(targetFps - displayHz) <= 1, "Standalone target FPS does not match display refresh.");
-  }
   const gameMetrics = summarizePacingPhase(gameSamples, "Game", true);
   const overlayMetrics = summarizePacingPhase(overlaySamples, "Steam overlay", false);
   const finalSample = pacingSamples[pacingSamples.length - 1];
@@ -397,7 +409,8 @@ function inspectRuntimeLog(stdout) {
     frameLatencyWaitTimeoutCount,
     deviceLostCount: 0,
     deviceRecoveryCount: 0,
-    sharedTextureCopySlowCount: 0
+    sharedTextureCopySlowCount: 0,
+    targetUnsynchronizedSampleCount
   };
 }
 
@@ -475,6 +488,8 @@ function assembleLiveProofReceipt(candidateBinding, profiles, generatedAt, sameS
       minimumFpsSamplesPerPhase: 3,
       maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
       maximumFrameLatencyWaitTimeoutCount: MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT,
+      maximumTargetUnsynchronizedSampleCount: MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT,
+      targetDisplayToleranceHz: TARGET_DISPLAY_TOLERANCE_HZ,
       minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
       minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
       profileCount: PROFILE_CONTRACTS.length,
@@ -534,6 +549,8 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     minimumFpsSamplesPerPhase: 3,
     maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
     maximumFrameLatencyWaitTimeoutCount: MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT,
+    maximumTargetUnsynchronizedSampleCount: MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT,
+    targetDisplayToleranceHz: TARGET_DISPLAY_TOLERANCE_HZ,
     minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
     minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
     profileCount: PROFILE_CONTRACTS.length,
@@ -651,6 +668,7 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
       "parentHwnd",
       "sharedTextureCopySlowCount",
       "targetFps",
+      "targetUnsynchronizedSampleCount",
       "windowDpi"
     ],
     "live-proof runtime summary"
@@ -672,6 +690,11 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   assert.ok(Number.isSafeInteger(profile.runtime.windowDpi) && profile.runtime.windowDpi > 0);
   assert.ok(Number.isSafeInteger(profile.runtime.displayHz) && profile.runtime.displayHz > 0);
   assert.ok(Number.isSafeInteger(profile.runtime.targetFps) && profile.runtime.targetFps > 0);
+  assert.ok(
+    Number.isSafeInteger(profile.runtime.targetUnsynchronizedSampleCount) &&
+      profile.runtime.targetUnsynchronizedSampleCount >= 0 &&
+      profile.runtime.targetUnsynchronizedSampleCount <= MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT
+  );
   assert.ok(Number.isSafeInteger(profile.runtime.gameSampleCount));
   assert.ok(Number.isSafeInteger(profile.runtime.overlaySampleCount));
   assert.ok(profile.runtime.gameSampleCount >= 3);
@@ -687,7 +710,9 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   assert.ok(profile.runtime.gameMedianPaintFpsTenths >= profile.runtime.targetFps * 9.5);
   assert.ok(profile.runtime.gameMedianPresentFpsTenths >= profile.runtime.targetFps * 9.5);
   assert.ok(profile.runtime.overlayMedianPresentFpsTenths >= profile.runtime.targetFps * 9.5);
-  assert.ok(Math.abs(profile.runtime.targetFps - profile.runtime.displayHz) <= 1);
+  assert.ok(
+    Math.abs(profile.runtime.targetFps - profile.runtime.displayHz) <= TARGET_DISPLAY_TOLERANCE_HZ
+  );
   assertExactKeys(profile.artifacts, ["stderr", "stdout"], "live-proof artifacts");
   for (const name of ["stdout", "stderr"]) {
     assertExactKeys(profile.artifacts[name], ["bytes", "sha256"], "live-proof " + name);
@@ -744,7 +769,8 @@ function createSelfTestProfile(candidateBinding, index = 0) {
       frameLatencyWaitTimeoutCount: 0,
       deviceLostCount: 0,
       deviceRecoveryCount: 0,
-      sharedTextureCopySlowCount: 0
+      sharedTextureCopySlowCount: 0,
+      targetUnsynchronizedSampleCount: 0
     },
     artifacts: {
       stdout: { bytes: 200, sha256: "6".repeat(64) },
@@ -906,6 +932,12 @@ function runGeneratorSelfTest() {
         windowDpi: 216
       }
     };
+    const targetTransitionSample = {
+      ...sample,
+      targetFps: 1,
+      gameSurface: { paintFps: 1 },
+      nativePresenter: { ...sample.nativePresenter, presentFps: 1 }
+    };
     const stdout = [
       "[steam-native-host] first Electron shared texture",
       "[steam-native-host] fullscreen on",
@@ -916,6 +948,7 @@ function runGeneratorSelfTest() {
       "[steam-overlay-activated] {\"active\":false}",
       "[steam-native-host-overlay-open] {\"dialog\":\"Friends\",\"source\":\"qa-menu\"}",
       "[steam-native-host-renderer] viewport 1280x720 -> 1100x620 {}",
+      "[steam-native-host-fps] " + JSON.stringify(targetTransitionSample),
       ...Array.from({ length: 3 }, () => "[steam-native-host-fps] " + JSON.stringify(sample)),
       ...Array.from({ length: 3 }, () =>
         "[steam-native-host-fps] " + JSON.stringify({
@@ -955,7 +988,11 @@ function runGeneratorSelfTest() {
       evidence: evidencePath,
       output: path.join(tempRoot, "receipt.json")
     };
-    validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding);
+    const generatedReceipt = validateLiveProofReceipt(
+      generateLiveProofReceipt(options),
+      candidateBinding
+    );
+    assert.equal(generatedReceipt.profiles[0].runtime.targetUnsynchronizedSampleCount, 1);
     const slowOverlaySample = {
       ...sample,
       phase: "overlay",
@@ -1000,6 +1037,20 @@ function runGeneratorSelfTest() {
     assert.throws(
       () => generateLiveProofReceipt(options),
       /bounded menu-transition allowance/
+    );
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replace(
+        "[steam-native-host-fps] " + JSON.stringify(targetTransitionSample),
+        Array.from(
+          { length: MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT + 1 },
+          () => "[steam-native-host-fps] " + JSON.stringify(targetTransitionSample)
+        ).join("\n")
+      )
+    );
+    assert.throws(
+      () => generateLiveProofReceipt(options),
+      /target\/display transition sample count exceeded/
     );
     fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout);
     const linkedConsumer = path.join(tempRoot, "linked-consumer");

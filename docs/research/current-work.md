@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-22
 
-Review anchor: `3ef5a64` (`Stabilize standalone Steam overlay host`). Exact
+Review anchor: `f0fa629` (`Automate Windows release proof`). Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
 rejected candidates. npm `latest` is `0.3.4`. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
@@ -10,7 +10,10 @@ repairs were made afterward. Exact `v0.3.6` is tagged and its cross-platform
 candidate workflow passed, but it remains unpublished and must not be moved or
 published: the candidate-bound proof contract still required repeated physical
 Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
-The deterministic proof-tool successor must be `v0.3.7`.
+Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
+actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
+minimize/restore target transition as steady-state pacing. The bounded,
+transition-aware proof-tool successor must be `v0.3.8`.
 
 ## Read First After Compaction: Windows Architecture
 
@@ -103,7 +106,7 @@ external bounds override, or fallback branch. The ABI-compatible attach calls
 return an explicit unsupported error without closing or replacing an existing
 standalone surface, and external `setBounds` calls fail because the standalone
 host owns its native geometry. Linux and macOS attachment code is unchanged.
-The focused Rust, TypeScript, package, and unit gates pass, including 215/215
+The focused Rust, TypeScript, package, and unit gates pass, including 203/203
 repository tests.
 
 The post-pruning actual-game regression repeated ordinary Steam Friends open
@@ -136,14 +139,32 @@ was authorized. The focused artifact root is
 The final `v0.3.6` proof attempt also exposed a receipt-design defect rather
 than a runtime regression. Win32's modal menu loop can pause the telemetry
 interval and produce one bounded DXGI frame-latency wait timeout; the window
-then immediately returns to 59.9-60.4 FPS. Receipt schema 3 excludes telemetry
+then immediately returns to 59.9-60.4 FPS. Receipt schema 4 excludes telemetry
 intervals longer than two seconds from pacing medians, allows at most three
-cumulative menu-transition wait timeouts, and still rejects device loss,
+cumulative menu-transition wait timeouts and three valid target/display
+transition samples, and still rejects device loss,
 recovery, slow shared-texture copies, stderr, crashes, unsafe transaction
 activity, or sub-95%-of-refresh game/overlay medians. It also requires the
 `qa-menu` ordinary-overlay marker and declares `humanInputRequired: false`, so
 future candidate proof cannot silently restore the rejected physical-input
 dependency.
+
+Exact `v0.3.7` then passed its tag-bound GitHub Release workflow on macOS
+arm64, Windows x64, Linux x64, and the exact Windows package/ASAR gate. Its
+fully computer-driven actual-game pass covered the native File/Edit/View menus,
+title drag, exact 640 by 480 minimum, maximize/restore, minimize/restore,
+fullscreen/restore, focus return, rounded client edges, and an ordinary Friends
+overlay opened at minimum size through the opt-in QA menu and closed with
+Escape. The surface remained aligned to the client with no purple or tiny
+surface, seam, flicker, device loss, slow copy, crash, or stderr. Focused
+overlay presentation held a roughly 59.9 FPS median against 60 Hz. One valid
+post-minimize sample reported the restored window while the renderer target was
+still 1 FPS; later samples immediately returned to 60 FPS. Schema 3 rejected
+that transition, so `v0.3.7` remains immutable and unpublished. Schema 4 was
+tested against the unchanged raw logs and exact extracted 118-file candidate
+and accepts that single transition while rejecting four. The retained evidence
+root is
+`C:\Users\admin\steam-bridge-artifacts\v0.3.7-rc-run-29971691514`.
 
 Steam Deck requalification is complete for the current working candidate. The
 Desktop core passed 21/21 routes and 42 screenshots; focused move, resize,
@@ -670,15 +691,17 @@ Consumer gates on registry `0.2.14` passed:
   standalone receipt self-test, and all 203 active repository tests pass with
   zero skips after this review.
 - The standalone receipt no longer accepts a single best FPS sample or ignores
-  Steam-overlay-active pacing. It requires at least three non-minimized game
-  samples and three overlay samples, validates every sample's target against
-  the current display, requires median Electron paint plus native present FPS
-  to reach 95% during the game phase, and requires median native present FPS to
-  reach 95% while Steam owns the visible overlay frame. Overlay-phase Electron
-  paint FPS remains reported but may be zero. Critical consumer files, the evidence
-  manifest, and both logs must be real in-root files rather than symlink or
-  reparse escapes, and the consumer runtime is re-read after validation to
-  detect mutation during receipt generation.
+  Steam-overlay-active pacing. It requires at least three synchronized,
+  non-minimized game samples and three synchronized overlay samples. A target
+  within 1 Hz of the current display is steady state; at most three otherwise-
+  valid target/display transition samples may be excluded, while four fail the
+  proof. It requires median Electron paint plus native present FPS to reach 95%
+  during the game phase, and median native present FPS to reach 95% while Steam
+  owns the visible overlay frame. Overlay-phase Electron paint FPS remains
+  reported but may be zero. Critical consumer files, the evidence manifest,
+  and both logs must be real in-root files rather than symlink or reparse
+  escapes, and the consumer runtime is re-read after validation to detect
+  mutation during receipt generation.
 - During implementation, run only tests and live transitions affected by the
   current edit. Run the complete cross-platform/release matrix once, after the
   implementation is stable and immediately before publication.

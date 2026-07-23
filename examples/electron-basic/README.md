@@ -166,7 +166,9 @@ present FPS or active-overlay native-present FPS using at least three qualified
 samples per phase, more than three cumulative frame-latency waits, device loss,
 recovery, slow shared-texture copies, stderr, crashes, or a linked/reparse/
 mismatched consumer package. Qualified pacing samples have intervals of at most
-two seconds so the Win32 modal menu loop is not misreported as renderer pacing.
+two seconds and a target within 1 Hz of the current display. At most three
+otherwise-valid target/display transition samples may be excluded, covering
+the bounded 1 FPS minimized target before restore reapplies the display rate.
 
 Generate the candidate-bound receipt only after every manual field is true:
 
