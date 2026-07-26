@@ -25,7 +25,7 @@ import {
   type KWinWaylandOverlayPresentationConvergedState
 } from "./kwin";
 import { isMainThread } from "node:worker_threads";
-import { SteamworksEnums } from "./generated-steamworks-enums";
+import { SteamworksEnums as GeneratedSteamworksEnums } from "./generated-steamworks-enums";
 import type {
   SteamworksEnumName,
   SteamworksEnumValue,
@@ -202,7 +202,10 @@ import {
   NativeWorkshopItemsResult
 } from "./native";
 
-export { SteamworksEnums };
+// Bind the generated object as a local exported constant instead of a getter
+// re-export. Node 22's CommonJS named-export lexer can then recognize it after
+// minification, while callers receive the same immutable generated object.
+export const SteamworksEnums = GeneratedSteamworksEnums;
 export type { SteamworksEnumName, SteamworksEnumValue, SteamworksEnumValueName };
 
 export interface InitOptions {

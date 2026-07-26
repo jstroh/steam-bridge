@@ -4592,6 +4592,15 @@ function installConsumer(tarball) {
 
 function runConsumerChecks() {
   const installedPackageRoot = path.join(consumerDir, "node_modules", "steam-bridge");
+  const installedIndexSource = fs.readFileSync(
+    path.join(installedPackageRoot, "dist", "index.js"),
+    "utf8"
+  );
+  assert.doesNotMatch(
+    installedIndexSource,
+    /Object\.defineProperty\(exports,["']SteamworksEnums["']/,
+    "Packed SteamworksEnums must remain a direct CommonJS export that Node 22 can import by name"
+  );
   const initTxnCapture = path.join(installedPackageRoot, "bin", "init-client-txn.cjs");
   const macosPrepareApp = path.join(installedPackageRoot, "bin", "prepare-macos-app.cjs");
   const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
