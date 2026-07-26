@@ -5,6 +5,7 @@ const Module = require("node:module");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const repoRoot = path.resolve(__dirname, "..");
 const distRoot = path.join(repoRoot, "packages", "steam-bridge", "dist");
@@ -23,6 +24,13 @@ function clearSteamBridgeCache() {
       // execution from failing during cache cleanup.
     }
   }
+  // Each test that intentionally tears down/reloads the built module also
+  // releases its process-global KWin controller claim. Production never does
+  // this; a second live physical package copy must remain fail-closed.
+  Reflect.deleteProperty(
+    process,
+    Symbol.for("steam-bridge.kwin-overlay-host-sync.controller-owner.v2")
+  );
 }
 
 function loadSteamWithFakeNative(fakeNative, options = {}) {
@@ -137,6 +145,138 @@ function setProcessEnvForTest(t, values = {}) {
   });
 }
 
+function prepareKWinScriptLifecycleTest(t, prefix, spawnImplementation) {
+  setProcessPlatformForTest(t, "linux");
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  t.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0",
+    KDE_FULL_SESSION: "true",
+    XDG_CURRENT_DESKTOP: "KDE",
+    XDG_RUNTIME_DIR: runtimeDir
+  });
+  const spawnCalls = mockSpawnSyncForTest(t, spawnImplementation);
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const kwin = require(distFile("kwin.js"));
+  return { kwin, runtimeDir, spawnCalls };
+}
+
+const successfulKWinLoadedByRuntime = new Map();
+
+function successfulKWinScriptLifecycleSpawn(_command, args) {
+  const runtimeKey = process.env.XDG_RUNTIME_DIR || "<default>";
+  if (args.length === 1) {
+    return { status: 0, stdout: "/Scripting\n", stderr: "" };
+  }
+  if (args[2] === "org.kde.kwin.Scripting.unloadScript") {
+    successfulKWinLoadedByRuntime.set(runtimeKey, false);
+    return { status: 0, stdout: "true\n", stderr: "" };
+  }
+  if (args[2] === "org.kde.kwin.Scripting.isScriptLoaded") {
+    return {
+      status: 0,
+      stdout: successfulKWinLoadedByRuntime.get(runtimeKey) === true ? "true\n" : "false\n",
+      stderr: ""
+    };
+  }
+  if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+    successfulKWinLoadedByRuntime.set(runtimeKey, true);
+    return { status: 0, stdout: "71\n", stderr: "" };
+  }
+  if (args[1] === "/Scripting/Script71" && args.length === 2) {
+    return {
+      status: 0,
+      stdout: "method void org.kde.kwin.Script.run()\n",
+      stderr: ""
+    };
+  }
+  if (args[2] === "org.kde.kwin.Script.run") {
+    return { status: 0, stdout: "", stderr: "" };
+  }
+  return { status: 1, stdout: "", stderr: "unexpected KWin D-Bus mock call" };
+}
+
+function createKWinScriptSignal() {
+  const listeners = [];
+  return {
+    connect(listener) {
+      listeners.push(listener);
+    },
+    disconnect(listener) {
+      const index = listeners.indexOf(listener);
+      if (index >= 0) listeners.splice(index, 1);
+    },
+    emit(...args) {
+      for (const listener of [...listeners]) listener(...args);
+    },
+    listenerCount() {
+      return listeners.length;
+    }
+  };
+}
+
+function assertKWinCallDbusArity(args) {
+  // KWin exposes arg1..arg9 after the method name. A callback consumes one of
+  // those nine slots just like a serialized D-Bus argument does.
+  const optionalArgumentCount = args.length - 4;
+  assert.ok(
+    optionalArgumentCount <= 9,
+    `KWin callDBus supports at most nine arguments after the method; ${args[3]} used ${optionalArgumentCount}`
+  );
+}
+
+function createKWinScriptTimerHarness() {
+  const timers = [];
+  class QTimer {
+    constructor() {
+      this.interval = 0;
+      this.singleShot = false;
+      this.running = false;
+      this.timeout = createKWinScriptSignal();
+      timers.push(this);
+    }
+    start() {
+      this.running = true;
+    }
+    stop() {
+      this.running = false;
+    }
+  }
+  return { QTimer, timers };
+}
+
+function createKWinLifecycleWindow(properties = {}) {
+  return {
+    pid: process.pid,
+    deleted: false,
+    minimized: false,
+    fullScreen: false,
+    opacity: 0,
+    resize: false,
+    resourceClass: "fov4-steam",
+    frameGeometry: { x: 0, y: 0, width: 100, height: 100 },
+    clientGeometry: { x: 0, y: 0, width: 100, height: 100 },
+    frameGeometryChanged: createKWinScriptSignal(),
+    clientGeometryChanged: createKWinScriptSignal(),
+    fullScreenChanged: createKWinScriptSignal(),
+    minimizedChanged: createKWinScriptSignal(),
+    windowClassChanged: createKWinScriptSignal(),
+    windowRoleChanged: createKWinScriptSignal(),
+    opacityChanged: createKWinScriptSignal(),
+    stackingOrderChanged: createKWinScriptSignal(),
+    interactiveMoveResizeStarted: createKWinScriptSignal(),
+    interactiveMoveResizeFinished: createKWinScriptSignal(),
+    ...properties
+  };
+}
+
 test("electron overlay diagnostic profile does not force Windows in-process GPU", (t) => {
   setProcessPlatformForTest(t, "win32");
   const appendedSwitches = [];
@@ -248,7 +388,7 @@ test("Windows attached native presenters fail closed instead of creating a popup
 
   const windowsStart = source.indexOf("mod windows {");
   const windowsEnd = source.indexOf('#[cfg(target_os = "linux")]', windowsStart);
-  const attachStart = source.indexOf("pub fn attach_to_parent(parent_handle: usize)", windowsStart);
+  const attachStart = source.indexOf("pub fn attach_to_parent(", windowsStart);
   const overlayAttachStart = source.indexOf(
     "pub fn attach_to_parent_for_overlay(parent_handle: usize)",
     attachStart
@@ -264,7 +404,7 @@ test("Windows attached native presenters fail closed instead of creating a popup
   assert.match(attachedEntryPoints, /Windows attached overlay hosts are unsupported/);
   assert.match(attachedEntryPoints, /tested WS_CHILD swapchain/);
   assert.match(attachedEntryPoints, /Use startNativeOverlaySession\(\)/);
-  assert.match(attachedEntryPoints, /attach_to_parent\(parent_handle\)/);
+  assert.match(attachedEntryPoints, /attach_to_parent\(parent_handle, None\)/);
   assert.doesNotMatch(attachedEntryPoints, /create_surface\(/);
   assert.doesNotMatch(attachedEntryPoints, /WS_POPUP/);
   assert.doesNotMatch(attachedEntryPoints, /close\(\)/);
@@ -1886,6 +2026,16 @@ function actionErrorSmokeResult(error, presenter = undefined, events = []) {
 function createFakeNative(overrides = {}) {
   const calls = [];
   const callbacks = new Map();
+  const activationState = {
+    inputPassthrough: true,
+    opaque: false,
+    overlayActive: false,
+    inputActivationPrepared: false,
+    inputActivationCommitPending: false,
+    activationCommitFailed: false,
+    activationCommitFailureCount: 0,
+    focusObservations: 0
+  };
 
   const fake = {
     calls,
@@ -2978,8 +3128,177 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "workshopGetUserContentDescriptorPreferences", args: [maxEntries] });
       return [1, 5];
     },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {
+      calls.push({ method: "stopKWinWaylandOverlayHostSyncEvents", args: [] });
+    },
+    prepareNativeOverlayHostActivation() {
+      calls.push({ method: "prepareNativeOverlayHostActivation", args: [] });
+    },
+    commitNativeOverlayHostActivation(requestWmActivation) {
+      calls.push({
+        method: "commitNativeOverlayHostActivation",
+        args: [requestWmActivation]
+      });
+    },
+    setNativeOverlayHostOverlayActive(active) {
+      calls.push({ method: "setNativeOverlayHostOverlayActive", args: [active] });
+    },
+    setNativeOverlayHostPresentationEpoch(instanceId, epoch) {
+      calls.push({
+        method: "setNativeOverlayHostPresentationEpoch",
+        args: [instanceId, epoch]
+      });
+    },
+    setNativeOverlayHostPresentationTransportClosed(instanceId) {
+      calls.push({
+        method: "setNativeOverlayHostPresentationTransportClosed",
+        args: [instanceId]
+      });
+    },
+    setNativeOverlayHostContentSeed(
+      instanceId,
+      epoch,
+      pairGeneration,
+      receiptSequence,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      x,
+      y,
+      width,
+      height
+    ) {
+      calls.push({
+        method: "setNativeOverlayHostContentSeed",
+        args: [
+          instanceId,
+          epoch,
+          pairGeneration,
+          receiptSequence,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          x,
+          y,
+          width,
+          height
+        ]
+      });
+    },
     ...overrides
   };
+
+  const wrap = (name, after) => {
+    const original = fake[name];
+    if (typeof original !== "function") {
+      return;
+    }
+    fake[name] = function (...args) {
+      const result = original.apply(this, args);
+      after(...args);
+      return result;
+    };
+  };
+  wrap("attachNativeOverlayHostWindow", () => {
+    Object.assign(activationState, {
+      inputPassthrough: true,
+      opaque: false,
+      overlayActive: false,
+      inputActivationPrepared: false,
+      inputActivationCommitPending: false,
+      activationCommitFailed: false,
+      focusObservations: 0
+    });
+  });
+  wrap("setNativeOverlayHostInputPassthrough", (passThrough) => {
+    activationState.inputPassthrough = passThrough;
+    if (passThrough) {
+      activationState.inputActivationPrepared = false;
+      activationState.inputActivationCommitPending = false;
+      activationState.focusObservations = 0;
+    }
+  });
+  wrap("setNativeOverlayHostOpacity", (opaque) => {
+    activationState.opaque = opaque;
+    if (!opaque) {
+      activationState.inputPassthrough = true;
+      activationState.inputActivationPrepared = false;
+      activationState.inputActivationCommitPending = false;
+      activationState.focusObservations = 0;
+    }
+  });
+  wrap("setNativeOverlayHostOverlayActive", (active) => {
+    activationState.overlayActive = active;
+    if (!active) {
+      activationState.inputPassthrough = true;
+      activationState.opaque = false;
+      activationState.inputActivationPrepared = false;
+      activationState.inputActivationCommitPending = false;
+      activationState.focusObservations = 0;
+    }
+  });
+  wrap("prepareNativeOverlayHostActivation", () => {
+    activationState.inputActivationPrepared = true;
+    activationState.activationCommitFailed = false;
+    activationState.focusObservations = 0;
+  });
+  wrap("commitNativeOverlayHostActivation", () => {
+    activationState.inputActivationCommitPending = true;
+    activationState.focusObservations = 0;
+  });
+  wrap("pumpNativeOverlayProbeWindow", () => {
+    if (
+      activationState.inputActivationCommitPending &&
+      activationState.overlayActive &&
+      activationState.opaque &&
+      activationState.inputActivationPrepared
+    ) {
+      activationState.focusObservations += 1;
+      if (activationState.focusObservations >= 2) {
+        activationState.inputPassthrough = false;
+        activationState.inputActivationCommitPending = false;
+      }
+    }
+  });
+  wrap("hideNativeOverlayHostView", () => {
+    activationState.inputPassthrough = true;
+    activationState.opaque = false;
+    activationState.inputActivationPrepared = false;
+    activationState.inputActivationCommitPending = false;
+    activationState.focusObservations = 0;
+  });
+  wrap("detachNativeOverlayHostView", () => {
+    activationState.inputPassthrough = true;
+    activationState.opaque = false;
+    activationState.overlayActive = false;
+    activationState.inputActivationPrepared = false;
+    activationState.inputActivationCommitPending = false;
+    activationState.focusObservations = 0;
+  });
+  const diagnosticsReader = fake.getNativeOverlayHostDiagnosticsJson;
+  if (typeof diagnosticsReader === "function") {
+    fake.getNativeOverlayHostDiagnosticsJson = function (...args) {
+      const parsed = JSON.parse(diagnosticsReader.apply(this, args));
+      return JSON.stringify({
+        inputPassthrough: activationState.inputPassthrough,
+        opaque: activationState.opaque,
+        inputActivationPrepared: activationState.inputActivationPrepared,
+        inputActivationCommitPending: activationState.inputActivationCommitPending,
+        activationCommitFailed: activationState.activationCommitFailed,
+        activationCommitFailureCount: activationState.activationCommitFailureCount,
+        ...parsed
+      });
+    };
+  }
+  fake.activationState = activationState;
 
   return fake;
 }
@@ -8190,6 +8509,1026 @@ test("electron overlay helper converts BrowserWindow content DIP to Win32 screen
   assert.deepEqual(convertedBounds, contentBounds);
 });
 
+test("electron overlay helper converts BrowserWindow content DIP to X11 screen pixels", (t) => {
+  clearSteamBridgeCache();
+  setProcessPlatformForTest(t, "linux");
+  setProcessPropertyForTest(t, "argv", ["electron", "--ozone-platform=x11"]);
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0"
+  });
+  const convertedPoints = [];
+  mockElectronModule(t, {
+    screen: {
+      dipToScreenPoint(point) {
+        convertedPoints.push(point);
+        return {
+          x: Math.round(point.x * 1.25),
+          y: Math.round(point.y * 1.25)
+        };
+      }
+    }
+  });
+  const electron = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+
+  const contentBounds = { x: 100, y: 60, width: 1024, height: 768 };
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([1, 2, 3, 4]);
+    },
+    getContentBounds() {
+      return contentBounds;
+    },
+    webContents: {
+      invalidate() {}
+    }
+  };
+
+  const options = electron.electronOverlayPresenterOptions(window);
+  assert.deepEqual(options.getBounds(), { x: 125, y: 75, width: 1280, height: 960 });
+  assert.deepEqual(convertedPoints, [
+    { x: 100, y: 60 },
+    { x: 1124, y: 828 }
+  ]);
+});
+
+test("overlay cadence subtracts frame work and skips missed deadlines", () => {
+  const {
+    nextOverlayFrameDelayMs,
+    resetOverlayFrameDeadline,
+    resolveManagedOverlayDisplayFrameRate
+  } = require(distFile("overlay-cadence.js"));
+  const state = {};
+  let nowMs = 0;
+
+  for (let frame = 0; frame < 90; frame += 1) {
+    nowMs += 2;
+    nowMs += nextOverlayFrameDelayMs(state, 90, nowMs);
+  }
+
+  assert.ok(Math.abs(nowMs - 1002) < 0.001, `90 frames drifted to ${nowMs} ms`);
+
+  nowMs += 100;
+  const skippedDelayMs = nextOverlayFrameDelayMs(state, 90, nowMs);
+  assert.ok(skippedDelayMs > 0 && skippedDelayMs <= 1000 / 90);
+
+  resetOverlayFrameDeadline(state);
+  assert.deepEqual(state, { frameRate: undefined, nextFrameAtMs: undefined });
+
+  assert.equal(resolveManagedOverlayDisplayFrameRate(true, 60, 89.87), 89.87);
+  assert.equal(resolveManagedOverlayDisplayFrameRate(true, 0, 89.87), 89.87);
+  assert.equal(resolveManagedOverlayDisplayFrameRate(false, 120, 89.87), 120);
+  assert.equal(resolveManagedOverlayDisplayFrameRate(false, 0, 89.87), 89.87);
+});
+
+test("KWin script lifecycle rejects a negative loadScript id without running an object", (t) => {
+  const loadedByCommand = new Map();
+  const { kwin, runtimeDir, spawnCalls } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-negative-id-",
+    (command, args) => {
+      if (args.length === 1) {
+        return { status: 0, stdout: "/Scripting\n/Scripting/Script4\n", stderr: "" };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.unloadScript") {
+        loadedByCommand.set(command, false);
+        return { status: 0, stdout: "true\n", stderr: "" };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.isScriptLoaded") {
+        return {
+          status: 0,
+          stdout: loadedByCommand.get(command) === true ? "true\n" : "false\n",
+          stderr: ""
+        };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        loadedByCommand.set(command, true);
+        return { status: 0, stdout: "-1\n", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "unexpected object call" };
+    }
+  );
+
+  assert.deepEqual(kwin.ensureKWinWaylandOverlayHostSync(), {
+    attempted: true,
+    active: false,
+    reason: "kwin-dbus-unavailable"
+  });
+  assert.equal(
+    spawnCalls.filter((call) => call.args[2] === "org.kde.kwin.Scripting.loadScript").length,
+    2
+  );
+  assert.equal(
+    spawnCalls.filter((call) => call.args[2] === "org.kde.kwin.Scripting.unloadScript").length,
+    2,
+    "each malformed load must be retired by fixed name before fallback or exit"
+  );
+  assert.equal(
+    spawnCalls.some((call) =>
+      call.args.includes("org.kde.kwin.Script.run") ||
+      call.args.includes("org.kde.kwin.Script.stop")
+    ),
+    false
+  );
+  assert.deepEqual(fs.readdirSync(runtimeDir), []);
+});
+
+test("KWin script lifecycle refuses a loadScript object-path collision", (t) => {
+  const { kwin, spawnCalls } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-path-collision-",
+    (_command, args) => {
+      if (args.length === 1) {
+        return {
+          status: 0,
+          stdout: "/Scripting/Script12\n/Scripting/Script12/child\nprefix/Scripting/Script12\n",
+          stderr: ""
+        };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.unloadScript") {
+        return { status: 0, stdout: "true\n", stderr: "" };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.isScriptLoaded") {
+        return { status: 0, stdout: "false\n", stderr: "" };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        return { status: 0, stdout: "12\n", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "collided object was touched" };
+    }
+  );
+
+  assert.equal(kwin.ensureKWinWaylandOverlayHostSync().active, false);
+  assert.equal(
+    spawnCalls.some((call) => call.args[1] === "/Scripting/Script12"),
+    false
+  );
+  assert.equal(
+    spawnCalls.some((call) =>
+      call.args.includes("org.kde.kwin.Script.run") ||
+      call.args.includes("org.kde.kwin.Script.stop")
+    ),
+    false
+  );
+});
+
+test("KWin script lifecycle polls delayed unload and keeps the file through direct run", (t) => {
+  let unloadPolls = 0;
+  let scriptRan = false;
+  let scriptPath;
+  let scriptExistedDuringRun = false;
+  const { kwin, runtimeDir, spawnCalls } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-delayed-unload-",
+    (_command, args) => {
+      if (args.length === 1) {
+        return { status: 0, stdout: "/Scripting\n/Scripting/Script2\n", stderr: "" };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.unloadScript") {
+        return { status: 0, stdout: "true\n", stderr: "" };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.isScriptLoaded") {
+        if (scriptRan) {
+          return { status: 0, stdout: "true\n", stderr: "" };
+        }
+        unloadPolls += 1;
+        return {
+          status: 0,
+          stdout: unloadPolls < 3 ? "true\n" : "false\n",
+          stderr: ""
+        };
+      }
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        scriptPath = args[3];
+        return { status: 0, stdout: "19\n", stderr: "" };
+      }
+      if (args[1] === "/Scripting/Script19" && args.length === 2) {
+        return {
+          status: 0,
+          stdout: "method void org.kde.kwin.Script.run()\n",
+          stderr: ""
+        };
+      }
+      if (args[2] === "org.kde.kwin.Script.run") {
+        scriptRan = true;
+        scriptExistedDuringRun = fs.existsSync(scriptPath);
+        assert.match(fs.readFileSync(scriptPath, "utf8"), /steamBridgeSyncAll/);
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return { status: 1, stdout: "", stderr: "unexpected KWin D-Bus mock call" };
+    }
+  );
+
+  assert.deepEqual(kwin.ensureKWinWaylandOverlayHostSync(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: false,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: false,
+    receiverHealth: "unavailable"
+  });
+  assert.equal(
+    unloadPolls,
+    4,
+    "three delayed retirement polls plus the alternate-client absence preflight complete"
+  );
+  assert.equal(scriptExistedDuringRun, true);
+  assert.equal(fs.existsSync(scriptPath), false);
+  assert.deepEqual(fs.readdirSync(runtimeDir), []);
+  const loadIndex = spawnCalls.findIndex(
+    (call) => call.args[2] === "org.kde.kwin.Scripting.loadScript"
+  );
+  const introspectionIndex = spawnCalls.findIndex(
+    (call) => call.args[1] === "/Scripting/Script19" && call.args.length === 2
+  );
+  const runIndex = spawnCalls.findIndex(
+    (call) => call.args[2] === "org.kde.kwin.Script.run"
+  );
+  assert.ok(loadIndex >= 0 && introspectionIndex > loadIndex && runIndex > introspectionIndex);
+});
+
+test("KWin script retires only after its receiver owner was seen and then missed twice", (t) => {
+  let loadedScript;
+  const { kwin } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-owner-heartbeat-",
+    (command, args) => {
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        loadedScript = fs.readFileSync(args[3], "utf8");
+      }
+      return successfulKWinScriptLifecycleSpawn(command, args);
+    }
+  );
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    startKWinWaylandOverlayHostSyncEvents() {
+      return ":1.5150";
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {},
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {}
+  });
+
+  assert.equal(kwin.ensureKWinWaylandOverlayHostSync().presentationProtocolReady, true);
+  assert.match(loadedScript, /let steamBridgeStrictPresentationProtocol = true/);
+  const { QTimer, timers } = createKWinScriptTimerHarness();
+  const windowAdded = createKWinScriptSignal();
+  const windowRemoved = createKWinScriptSignal();
+  const windowActivated = createKWinScriptSignal();
+  const windows = [];
+  const workspace = {
+    activeWindow: null,
+    stackingOrder: [],
+    windowList() {
+      return windows;
+    },
+    raiseWindow() {},
+    windowAdded,
+    windowRemoved,
+    windowActivated
+  };
+  const ownerAnswers = [true, false, true, false, false];
+  const dbusCalls = [];
+  vm.runInNewContext(loadedScript, {
+    QTimer,
+    workspace,
+    callDBus(...args) {
+      assertKWinCallDbusArity(args);
+      dbusCalls.push(args);
+      if (args[3] === "NameHasOwner") {
+        args.at(-1)(ownerAnswers.shift());
+      }
+    }
+  });
+
+  assert.equal(timers.length, 2);
+  assert.equal(timers[0].interval, 1000);
+  assert.equal(timers[0].running, true);
+  assert.equal(timers[1].interval, 3000);
+  assert.equal(timers[1].running, false, "the synchronous owner reply cancels its timeout");
+  assert.equal(
+    dbusCalls.filter((call) => call[3] === "unloadScript").length,
+    0,
+    "the initial positive owner observation must not retire the script"
+  );
+  timers[0].timeout.emit();
+  assert.equal(dbusCalls.filter((call) => call[3] === "unloadScript").length, 0);
+  timers[0].timeout.emit();
+  assert.equal(
+    dbusCalls.filter((call) => call[3] === "unloadScript").length,
+    0,
+    "a renewed owner observation must reset the missing-owner count"
+  );
+  timers[0].timeout.emit();
+  assert.equal(dbusCalls.filter((call) => call[3] === "unloadScript").length, 0);
+  timers[0].timeout.emit();
+  const unloadCalls = dbusCalls.filter((call) => call[3] === "unloadScript");
+  assert.equal(
+    unloadCalls.length,
+    0,
+    "an old script retires inertly and cannot asynchronously unload its replacement"
+  );
+  assert.equal(timers[0].running, false);
+  const firstRetirementTimer = timers.filter((timer) => timer.interval === 30000).at(-1);
+  assert.ok(firstRetirementTimer);
+  assert.equal(firstRetirementTimer.running, true, "receiverless retirement allows BrowserWindow recreation");
+  assert.equal(windowAdded.listenerCount(), 1);
+  assert.equal(windowRemoved.listenerCount(), 1);
+
+  const recreatedWindow = createKWinLifecycleWindow();
+  windows.push(recreatedWindow);
+  windowAdded.emit(recreatedWindow);
+  assert.equal(firstRetirementTimer.running, false, "a same-process replacement cancels retirement");
+  windows.splice(0, 1);
+  recreatedWindow.deleted = true;
+  windowRemoved.emit(recreatedWindow);
+  const secondRetirementTimer = timers.filter((timer) => timer.interval === 30000).at(-1);
+  assert.notEqual(secondRetirementTimer, firstRetirementTimer);
+  assert.equal(secondRetirementTimer.running, true);
+  secondRetirementTimer.timeout.emit();
+  assert.equal(windowAdded.listenerCount(), 0);
+  assert.equal(windowRemoved.listenerCount(), 0);
+  assert.equal(windowActivated.listenerCount(), 0);
+});
+
+test("KWin receiver bootstrap retires after ten false replies and recovers on the ninth", (t) => {
+  let loadedScript;
+  const { kwin } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-owner-bootstrap-",
+    (command, args) => {
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        loadedScript = fs.readFileSync(args[3], "utf8");
+      }
+      return successfulKWinScriptLifecycleSpawn(command, args);
+    }
+  );
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    startKWinWaylandOverlayHostSyncEvents() {
+      return ":1.5151";
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {},
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {}
+  });
+  assert.equal(kwin.ensureKWinWaylandOverlayHostSync().presentationProtocolReady, true);
+  assert.ok(
+    loadedScript.indexOf("steamBridgeStartLifecycleWatch();") <
+      loadedScript.indexOf("workspace.windowAdded.connect"),
+    "the owner watchdog starts before workspace handlers or initial pairing"
+  );
+
+  function runHeartbeat(answers) {
+    const pendingAnswers = [...answers];
+    const { QTimer, timers } = createKWinScriptTimerHarness();
+    const workspace = {
+      activeWindow: null,
+      stackingOrder: [],
+      windowList() {
+        return [];
+      },
+      raiseWindow() {},
+      windowAdded: createKWinScriptSignal(),
+      windowRemoved: createKWinScriptSignal(),
+      windowActivated: createKWinScriptSignal()
+    };
+    const dbusCalls = [];
+    vm.runInNewContext(loadedScript, {
+      QTimer,
+      workspace,
+      callDBus(...args) {
+        assertKWinCallDbusArity(args);
+        dbusCalls.push(args);
+        if (args[3] === "NameHasOwner") {
+          assert.ok(pendingAnswers.length > 0, "test must provide each owner reply");
+          args.at(-1)(pendingAnswers.shift());
+        }
+      }
+    });
+    return { timer: timers[0], dbusCalls };
+  }
+
+  const neverObserved = runHeartbeat(Array(10).fill(false));
+  for (let poll = 2; poll <= 9; poll += 1) {
+    neverObserved.timer.timeout.emit();
+    assert.equal(
+      neverObserved.dbusCalls.filter((call) => call[3] === "unloadScript").length,
+      0,
+      `bootstrap false reply ${poll} must remain inside the grace window`
+    );
+  }
+  neverObserved.timer.timeout.emit();
+  assert.equal(
+    neverObserved.dbusCalls.filter((call) => call[3] === "unloadScript").length,
+    0,
+    "a crash-before-owner script becomes inert without a fixed-name unload race"
+  );
+  assert.equal(neverObserved.timer.running, false);
+
+  const recovered = runHeartbeat([
+    false, false, false, false, false, false, false, false,
+    true,
+    false,
+    false
+  ]);
+  for (let poll = 2; poll <= 8; poll += 1) {
+    recovered.timer.timeout.emit();
+  }
+  recovered.timer.timeout.emit();
+  assert.equal(
+    recovered.dbusCalls.filter((call) => call[3] === "unloadScript").length,
+    0,
+    "a true reply on poll nine permanently completes bootstrap"
+  );
+  recovered.timer.timeout.emit();
+  assert.equal(recovered.dbusCalls.filter((call) => call[3] === "unloadScript").length, 0);
+  recovered.timer.timeout.emit();
+  assert.equal(
+    recovered.dbusCalls.filter((call) => call[3] === "unloadScript").length,
+    0,
+    "after bootstrap, two false replies retire inertly without unloading by name"
+  );
+  assert.equal(recovered.timer.running, false);
+});
+
+test("receiverless KWin script preserves same-process window recreation before retiring", (t) => {
+  let loadedScript;
+  const { kwin } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-recreation-grace-",
+    (command, args) => {
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        loadedScript = fs.readFileSync(args[3], "utf8");
+      }
+      return successfulKWinScriptLifecycleSpawn(command, args);
+    }
+  );
+  assert.deepEqual(kwin.ensureKWinWaylandOverlayHostSync(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: false,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: false,
+    receiverHealth: "unavailable"
+  });
+  assert.match(loadedScript, /let steamBridgeStrictPresentationProtocol = false/);
+
+  const source = createKWinLifecycleWindow();
+  const host = createKWinLifecycleWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    frameGeometry: { x: 0, y: 20, width: 90, height: 80 },
+    clientGeometry: { x: 0, y: 20, width: 90, height: 80 }
+  });
+  const windows = [source, host];
+  const windowAdded = createKWinScriptSignal();
+  const windowRemoved = createKWinScriptSignal();
+  const windowActivated = createKWinScriptSignal();
+  const workspace = {
+    activeWindow: source,
+    stackingOrder: [...windows],
+    windowList() {
+      return windows.filter((window) => !window.deleted);
+    },
+    raiseWindow() {},
+    windowAdded,
+    windowRemoved,
+    windowActivated
+  };
+  const { QTimer, timers } = createKWinScriptTimerHarness();
+  const dbusCalls = [];
+  vm.runInNewContext(loadedScript, {
+    QTimer,
+    workspace,
+    callDBus(...args) {
+      assertKWinCallDbusArity(args);
+      dbusCalls.push(args);
+    }
+  });
+
+  assert.equal(timers.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(host.frameGeometry)), {
+    x: 0,
+    y: 20,
+    width: 90,
+    height: 80
+  }, "legacy pairing must accept the expected PID/class without a role marker");
+  source.deleted = true;
+  windowRemoved.emit(source);
+  assert.equal(timers.length, 0, "one surviving expected-PID window prevents retirement");
+  host.deleted = true;
+  windowRemoved.emit(host);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].interval, 30000);
+  assert.equal(timers[0].singleShot, true);
+  assert.equal(timers[0].running, true);
+
+  const replacement = createKWinLifecycleWindow({
+    resourceClass: "replacement",
+    frameGeometry: { x: 50, y: 60, width: 800, height: 600 },
+    clientGeometry: { x: 50, y: 60, width: 800, height: 600 }
+  });
+  const replacementHost = createKWinLifecycleWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    frameGeometry: { x: 50, y: 80, width: 790, height: 580 },
+    clientGeometry: { x: 50, y: 80, width: 790, height: 580 }
+  });
+  workspace.activeWindow = replacement;
+  windows.push(replacement, replacementHost);
+  workspace.stackingOrder.push(replacement, replacementHost);
+  windowAdded.emit(replacement);
+  windowAdded.emit(replacementHost);
+  assert.equal(timers[0].running, false, "window recreation cancels the pending retirement");
+  replacement.frameGeometry = { x: 100, y: 120, width: 1000, height: 700 };
+  replacement.clientGeometry = { x: 100, y: 120, width: 1000, height: 700 };
+  replacement.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(replacementHost.frameGeometry)), {
+    x: 100,
+    y: 140,
+    width: 990,
+    height: 680
+  }, "receiverless ownership resumes geometry authoring after recreation");
+  timers[0].timeout.emit();
+  assert.equal(dbusCalls.filter((call) => call[3] === "unloadScript").length, 0);
+
+  replacement.deleted = true;
+  windowRemoved.emit(replacement);
+  assert.equal(timers.length, 1, "the surviving recreated host retains the lease");
+  replacementHost.deleted = true;
+  windowRemoved.emit(replacementHost);
+  assert.equal(timers.length, 2);
+  assert.equal(timers[1].running, true);
+  timers[1].timeout.emit();
+  const unloadCalls = dbusCalls.filter((call) => call[3] === "unloadScript");
+  assert.equal(unloadCalls.length, 0);
+  assert.equal(windowAdded.listenerCount(), 0);
+  assert.equal(windowRemoved.listenerCount(), 0);
+});
+
+test("KWin process-exit cleanup is one exact bounded unload after receiver stop", (t) => {
+  const events = [];
+  const { kwin, spawnCalls } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-bounded-exit-",
+    (command, args) => {
+      events.push(`spawn:${args[2] || "baseline"}`);
+      return successfulKWinScriptLifecycleSpawn(command, args);
+    }
+  );
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    startKWinWaylandOverlayHostSyncEvents() {
+      return ":1.6160";
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {},
+    stopKWinWaylandOverlayHostSyncEvents() {
+      events.push("native-stop");
+    }
+  });
+  assert.equal(kwin.ensureKWinWaylandOverlayHostSync().active, true);
+  const registryKey = Symbol.for("steam-bridge.kwin-overlay-host-sync.process-cleanup.v2");
+  const registry = Reflect.get(process, registryKey);
+  assert.equal(typeof registry?.cleanup, "function");
+  const beforeCleanupCalls = spawnCalls.length;
+  events.length = 0;
+  registry.cleanup();
+  assert.deepEqual(events, ["native-stop", "spawn:org.kde.kwin.Scripting.unloadScript"]);
+  assert.equal(spawnCalls.length, beforeCleanupCalls + 1);
+  assert.deepEqual(spawnCalls.at(-1).args.slice(0, 4), [
+    "org.kde.KWin",
+    "/Scripting",
+    "org.kde.kwin.Scripting.unloadScript",
+    `steam-bridge-overlay-host-sync-v2-${process.pid}`
+  ]);
+  assert.equal(spawnCalls.at(-1).options.timeout, 250);
+  registry.cleanup();
+  assert.equal(spawnCalls.length, beforeCleanupCalls + 1, "cleanup is idempotent");
+  registry.cleanup = undefined;
+});
+
+test("KWin first ensure requires literal no-host proof before any lifecycle mutation", (t) => {
+  clearSteamBridgeCache();
+  setProcessPlatformForTest(t, "linux");
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0",
+    KDE_FULL_SESSION: "true",
+    XDG_CURRENT_DESKTOP: "KDE"
+  });
+  const spawnCalls = mockSpawnSyncForTest(t, () => {
+    throw new Error("KWin D-Bus must not run without literal no-host proof");
+  });
+
+  for (const hostProbe of [true, undefined, new Error("host probe failed")]) {
+    clearSteamBridgeCache();
+    let receiverStarts = 0;
+    let capabilityReads = 0;
+    const nativeModule = require(distFile("native.js"));
+    nativeModule.loadNativeBinding = () => ({
+      isNativeOverlayHostViewOpen() {
+        if (hostProbe instanceof Error) throw hostProbe;
+        return hostProbe;
+      },
+      getKWinWaylandOverlayPresentationProtocolVersion() {
+        capabilityReads += 1;
+        return 1;
+      },
+      startKWinWaylandOverlayHostSyncEvents() {
+        receiverStarts += 1;
+        return ":1.9990";
+      }
+    });
+    const kwin = require(distFile("kwin.js"));
+    assert.deepEqual(kwin.ensureKWinWaylandOverlayHostSync(), {
+      attempted: true,
+      active: true,
+      interactiveResizeReceiverStarted: false,
+      presentationProtocolReady: false,
+      hostIdentityMarkerReady: false,
+      receiverHealth: "closed",
+      ownershipUncertain: true,
+      reason: "kwin-script-retirement-unconfirmed"
+    });
+    assert.equal(receiverStarts, 0);
+    assert.equal(capabilityReads, 0);
+    assert.equal(spawnCalls.length, 0);
+  }
+});
+
+test("KWin rejects a second module evaluation without process-global takeover", (t) => {
+  clearSteamBridgeCache();
+  const { kwin: primary, spawnCalls } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-controller-owner-",
+    successfulKWinScriptLifecycleSpawn
+  );
+  let receiverStarts = 0;
+  let receiverStops = 0;
+  let capabilityReads = 0;
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      capabilityReads += 1;
+      return 1;
+    },
+    startKWinWaylandOverlayHostSyncEvents() {
+      receiverStarts += 1;
+      return ":1.9991";
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {
+      receiverStops += 1;
+    },
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {}
+  });
+  assert.equal(primary.ensureKWinWaylandOverlayHostSync().active, true);
+  const beforeSecondary = {
+    spawn: spawnCalls.length,
+    starts: receiverStarts,
+    stops: receiverStops,
+    capabilities: capabilityReads
+  };
+
+  delete require.cache[require.resolve(distFile("kwin.js"))];
+  const secondary = require(distFile("kwin.js"));
+  const expectedSecondaryStatus = {
+    attempted: true,
+    active: true,
+    interactiveResizeReceiverStarted: false,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: false,
+    receiverHealth: "closed",
+    ownershipUncertain: true,
+    reason: "kwin-controller-owned-by-another-copy"
+  };
+  assert.deepEqual(secondary.ensureKWinWaylandOverlayHostSync(), expectedSecondaryStatus);
+  assert.deepEqual(secondary.ensureFreshKWinWaylandOverlayHostSyncLease(), expectedSecondaryStatus);
+  assert.deepEqual({
+    spawn: spawnCalls.length,
+    starts: receiverStarts,
+    stops: receiverStops,
+    capabilities: capabilityReads
+  }, beforeSecondary);
+
+  const cleanupRegistry = Reflect.get(
+    process,
+    Symbol.for("steam-bridge.kwin-overlay-host-sync.process-cleanup.v2")
+  );
+  const primaryCleanup = cleanupRegistry.cleanup;
+  const physicalCopyDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-kwin-copy-"));
+  t.after(() => fs.rmSync(physicalCopyDir, { recursive: true, force: true }));
+  fs.copyFileSync(distFile("kwin.js"), path.join(physicalCopyDir, "kwin.js"));
+  fs.copyFileSync(distFile("native.js"), path.join(physicalCopyDir, "native.js"));
+  const physicalSecondary = require(path.join(physicalCopyDir, "kwin.js"));
+  assert.deepEqual(
+    physicalSecondary.ensureKWinWaylandOverlayHostSync(),
+    expectedSecondaryStatus
+  );
+  assert.strictEqual(cleanupRegistry.cleanup, primaryCleanup);
+  assert.deepEqual({
+    spawn: spawnCalls.length,
+    starts: receiverStarts,
+    stops: receiverStops,
+    capabilities: capabilityReads
+  }, beforeSecondary, "a distinct physical package copy cannot mutate the active controller");
+
+  cleanupRegistry.cleanup();
+  const afterOwnerCleanup = {
+    spawn: spawnCalls.length,
+    starts: receiverStarts,
+    stops: receiverStops,
+    capabilities: capabilityReads
+  };
+  assert.deepEqual(secondary.ensureKWinWaylandOverlayHostSync(), expectedSecondaryStatus);
+  assert.deepEqual({
+    spawn: spawnCalls.length,
+    starts: receiverStarts,
+    stops: receiverStops,
+    capabilities: capabilityReads
+  }, afterOwnerCleanup, "cleanup does not transfer ownership to a stale second copy");
+  cleanupRegistry.cleanup = undefined;
+});
+
+test("Electron KWin option preflight is mutation-free outside the main thread", async () => {
+  const { Worker } = require("node:worker_threads");
+  const nativePath = distFile("native.js");
+  const electronPath = distFile("electron.js");
+  const kwinPath = distFile("kwin.js");
+  const worker = new Worker(`
+    const { parentPort } = require("node:worker_threads");
+    Object.defineProperty(process, "platform", { value: "linux" });
+    Object.defineProperty(process, "argv", {
+      value: ["electron", "--ozone-platform=wayland"],
+      configurable: true
+    });
+    Object.assign(process.env, {
+      DISPLAY: ":0",
+      XDG_SESSION_TYPE: "wayland",
+      WAYLAND_DISPLAY: "wayland-0",
+      KDE_FULL_SESSION: "true",
+      XDG_CURRENT_DESKTOP: "KDE"
+    });
+    let nativeLoads = 0;
+    let dbusCalls = 0;
+    require("node:child_process").spawnSync = () => {
+      dbusCalls += 1;
+      throw new Error("worker KWin D-Bus mutation");
+    };
+    const nativeModule = require(${JSON.stringify(nativePath)});
+    nativeModule.loadNativeBinding = () => {
+      nativeLoads += 1;
+      return {};
+    };
+    const electron = require(${JSON.stringify(electronPath)});
+    const options = electron.electronOverlayPresenterOptions({
+      isDestroyed() { return false; },
+      getContentBounds() { return { x: 0, y: 0, width: 800, height: 600 }; },
+      webContents: { invalidate() {} }
+    });
+    const status = require(${JSON.stringify(kwinPath)}).getKWinWaylandOverlayHostSyncStatus();
+    parentPort.postMessage({
+      nativeLoads,
+      dbusCalls,
+      standalone: options.useStandaloneLinuxHost,
+      status
+    });
+  `, { eval: true });
+  const result = await new Promise((resolve, reject) => {
+    worker.once("message", resolve);
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code !== 0) reject(new Error(`KWin worker exited with ${code}`));
+    });
+  });
+  assert.deepEqual(result, {
+    nativeLoads: 0,
+    dbusCalls: 0,
+    standalone: true,
+    status: {
+      attempted: true,
+      active: true,
+      interactiveResizeReceiverStarted: false,
+      presentationProtocolReady: false,
+      hostIdentityMarkerReady: false,
+      receiverHealth: "closed",
+      ownershipUncertain: true,
+      reason: "kwin-controller-not-main-thread"
+    }
+  });
+});
+
+test("KWin fresh lease rotates identities, fences stale callbacks, and preserves pair floor", (t) => {
+  clearSteamBridgeCache();
+  const loadedScripts = [];
+  const { kwin } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-fresh-identity-",
+    (command, args) => {
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        loadedScripts.push(fs.readFileSync(args[3], "utf8"));
+      }
+      return successfulKWinScriptLifecycleSpawn(command, args);
+    }
+  );
+  const tokens = [];
+  const handlers = [];
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    startKWinWaylandOverlayHostSyncEvents(token, handler) {
+      tokens.push(token);
+      handlers.push(handler);
+      return `:1.${10000 + handlers.length}`;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {},
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {}
+  });
+
+  assert.equal(kwin.ensureKWinWaylandOverlayHostSync().presentationProtocolReady, true);
+  const firstInstance = kwin.getKWinWaylandOverlayPresentationInstanceId();
+  handlers[0]({
+    kind: "presentationState",
+    pairId: `${tokens[0]}:900`,
+    sequence: 1,
+    epoch: 0,
+    fullScreen: false,
+    sourceBounds: { x: 0, y: 0, width: 1000, height: 700 },
+    target: { x: 0, y: 32, width: 998, height: 668 }
+  });
+  assert.equal(kwin.getKWinWaylandOverlayPresentationState().pairGeneration, 900);
+
+  assert.equal(
+    kwin.ensureFreshKWinWaylandOverlayHostSyncLease().presentationProtocolReady,
+    true
+  );
+  const secondInstance = kwin.getKWinWaylandOverlayPresentationInstanceId();
+  assert.notEqual(secondInstance, firstInstance);
+  assert.notEqual(tokens[1], tokens[0]);
+  assert.match(loadedScripts[1], /let steamBridgePresentationPairCounter = 900;/);
+  assert.equal(kwin.getKWinWaylandOverlayPresentationState(), undefined);
+
+  handlers[0]({
+    kind: "presentationState",
+    pairId: `${tokens[0]}:901`,
+    sequence: 1,
+    epoch: 0,
+    fullScreen: false,
+    sourceBounds: { x: 0, y: 0, width: 900, height: 600 },
+    target: { x: 0, y: 32, width: 898, height: 568 }
+  });
+  assert.equal(
+    kwin.getKWinWaylandOverlayPresentationState(),
+    undefined,
+    "the old receiver generation cannot repopulate a restarted lease"
+  );
+  handlers[1]({
+    kind: "presentationState",
+    pairId: `${tokens[1]}:901`,
+    sequence: 1,
+    epoch: 0,
+    fullScreen: false,
+    sourceBounds: { x: 0, y: 0, width: 900, height: 600 },
+    target: { x: 0, y: 32, width: 898, height: 568 }
+  });
+  assert.equal(kwin.getKWinWaylandOverlayPresentationState().pairGeneration, 901);
+});
+
+test("KWin strict presentation protocol degrades on ABI version or marker mismatch", (t) => {
+  const loadedScripts = [];
+  const { kwin } = prepareKWinScriptLifecycleTest(
+    t,
+    "steam-bridge-kwin-protocol-negotiation-",
+    (command, args) => {
+      if (args[2] === "org.kde.kwin.Scripting.loadScript") {
+        loadedScripts.push(fs.readFileSync(args[3], "utf8"));
+      }
+      return successfulKWinScriptLifecycleSpawn(command, args);
+    }
+  );
+  let nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    startKWinWaylandOverlayHostSyncEvents() {
+      return ":1.7170";
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 2;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {},
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {}
+  });
+  assert.deepEqual(kwin.ensureKWinWaylandOverlayHostSync(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: true,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: false,
+    receiverHealth: "active",
+    presentationProtocolVersion: 2
+  });
+  assert.match(loadedScripts[0], /let steamBridgeStrictPresentationProtocol = false/);
+
+  clearSteamBridgeCache();
+  nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    startKWinWaylandOverlayHostSyncEvents() {
+      return ":1.7171";
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {},
+    setNativeOverlayHostPresentationEpoch() {}
+  });
+  const markerMismatchKwin = require(distFile("kwin.js"));
+  assert.deepEqual(markerMismatchKwin.ensureKWinWaylandOverlayHostSync(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: true,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: false,
+    receiverHealth: "active",
+    presentationProtocolVersion: 1
+  });
+  assert.match(loadedScripts[1], /let steamBridgeStrictPresentationProtocol = false/);
+  const registry = Reflect.get(
+    process,
+    Symbol.for("steam-bridge.kwin-overlay-host-sync.process-cleanup.v2")
+  );
+  if (registry) registry.cleanup = undefined;
+});
+
 test("electron overlay installs KWin client-geometry synchronization in a KDE Wayland session", (t) => {
   setProcessPlatformForTest(t, "linux");
   setProcessPropertyForTest(t, "argv", [
@@ -8209,13 +9548,79 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
     XDG_RUNTIME_DIR: runtimeDir
   });
   let loadedScript;
-  const spawnCalls = mockSpawnSyncForTest(t, (_command, args) => {
-    if (args[2] === "org.kde.kwin.Scripting.loadScript") {
-      loadedScript = fs.readFileSync(args[3], "utf8");
+  let scriptExistedDuringRun = false;
+  let scriptLoaded = false;
+  let nativeEventHandler;
+  let nativeEventToken;
+  const startupOrder = [];
+  const spawnCalls = mockSpawnSyncForTest(t, (_command, args, options) => {
+    const method = args[2];
+    if (method) startupOrder.push(method);
+    if (args.length === 1) {
+      startupOrder.push("script-object-baseline");
+      return {
+        status: 0,
+        stdout: "/Scripting\n/Scripting/Script7\n/not/a/script/path\n",
+        stderr: ""
+      };
     }
-    return { status: 0, stdout: "", stderr: "" };
+    if (method === "org.kde.kwin.Scripting.unloadScript") {
+      scriptLoaded = false;
+      return { status: 0, stdout: "true\n", stderr: "" };
+    }
+    if (method === "org.kde.kwin.Scripting.isScriptLoaded") {
+      return { status: 0, stdout: scriptLoaded ? "true\n" : "false\n", stderr: "" };
+    }
+    if (method === "org.kde.kwin.Scripting.loadScript") {
+      scriptLoaded = true;
+      loadedScript = fs.readFileSync(args[3], "utf8");
+      return { status: 0, stdout: "42\n", stderr: "" };
+    }
+    if (args[1] === "/Scripting/Script42" && args.length === 2) {
+      startupOrder.push("script-introspection");
+      return {
+        status: 0,
+        stdout: "method void org.kde.kwin.Script.run()\nmethod void org.kde.kwin.Script.stop()\n",
+        stderr: ""
+      };
+    }
+    if (method === "org.kde.kwin.Script.run") {
+      const loadCall = spawnCalls.find(
+        (call) => call.args[2] === "org.kde.kwin.Scripting.loadScript"
+      );
+      assert.ok(loadCall);
+      scriptExistedDuringRun = fs.existsSync(loadCall.args[3]);
+      assert.equal(fs.readFileSync(loadCall.args[3], "utf8"), loadedScript);
+      assert.equal(options.timeout, 10000);
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    return { status: 1, stdout: "", stderr: "unexpected KWin D-Bus mock call" };
+  });
+  const nativeModule = require(distFile("native.js"));
+  nativeModule.loadNativeBinding = () => ({
+    isNativeOverlayHostViewOpen() {
+      return false;
+    },
+    startKWinWaylandOverlayHostSyncEvents(token, handler) {
+      startupOrder.push("native-resize-events");
+      assert.match(token, /^[a-f0-9]{32}$/);
+      nativeEventToken = token;
+      nativeEventHandler = handler;
+      return ":1.4242";
+    },
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 1;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return true;
+    },
+    stopKWinWaylandOverlayHostSyncEvents() {},
+    setNativeOverlayHostPresentationEpoch() {},
+    setNativeOverlayHostPresentationTransportClosed() {},
+    setNativeOverlayHostContentSeed() {}
   });
   const electron = require(distFile("electron.js"));
+  const kwin = require(distFile("kwin.js"));
 
   const window = {
     isDestroyed() {
@@ -8237,29 +9642,2141 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   assert.deepEqual(electron.getKWinWaylandOverlayHostSyncStatus(), {
     attempted: true,
     active: true,
-    command: "qdbus6"
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: true,
+    presentationProtocolReady: true,
+    hostIdentityMarkerReady: true,
+    receiverHealth: "active",
+    presentationProtocolVersion: 1
   });
-  assert.deepEqual(
-    spawnCalls.map((call) => [call.command, call.args[2]]),
-    [
-      ["qdbus6", "org.kde.kwin.Scripting.unloadScript"],
-      ["qdbus6", "org.kde.kwin.Scripting.loadScript"],
-      ["qdbus6", "org.kde.kwin.Scripting.start"]
-    ]
+  assert.deepEqual(startupOrder, [
+    "org.kde.kwin.Scripting.isScriptLoaded",
+    "org.kde.kwin.Scripting.isScriptLoaded",
+    "native-resize-events",
+    "script-object-baseline",
+    "org.kde.kwin.Scripting.loadScript",
+    "script-introspection",
+    "org.kde.kwin.Script.run",
+    "org.kde.kwin.Scripting.isScriptLoaded"
+  ]);
+  assert.equal(
+    spawnCalls.some((call) => call.args.includes("org.kde.kwin.Scripting.start")),
+    false
   );
-  const scriptPath = spawnCalls[1].args[3];
+  const loadCall = spawnCalls.find(
+    (call) => call.args[2] === "org.kde.kwin.Scripting.loadScript"
+  );
+  assert.ok(loadCall);
+  const scriptPath = loadCall.args[3];
   assert.equal(path.dirname(scriptPath), runtimeDir);
+  assert.equal(scriptExistedDuringRun, true);
   assert.equal(fs.existsSync(scriptPath), false);
   const script = loadedScript;
   assert.equal(typeof script, "string");
-  assert.match(script, /const geometryMatches = candidates\.filter/);
-  assert.match(script, /geometryMatches\.indexOf\(activeWindow\)/);
-  assert.match(script, /host\.frameGeometry = source\.clientGeometry/);
-  assert.match(script, /host\.fullScreen = source\.fullScreen/);
+  assert.doesNotThrow(() => new vm.Script(script));
+  assert.match(script, /const geometryMatches = candidates\.map/);
+  assert.match(script, /geometryMatches\.some\(\(candidate\) => candidate\.window === activeWindow\)/);
+  assert.match(script, /pair\.initialContentInsetsCandidate \|\| \{ top: 0, right: 0 \}/);
+  assert.match(script, /pair\.contentInsets = measuredInsets/);
+  assert.match(script, /pair\.awaitingIndependentWindowedContentInset = false/);
+  assert.match(script, /presentationCommand\.receiptSequence === pair\.windowedSeedEligibleReceiptSequence/);
+  assert.match(script, /steamBridgeStrictPresentationProtocol/);
+  assert.match(script, /steamBridgeResolveHostGeometry\(/);
+  assert.match(script, /host\.frameGeometry = targetGeometry/);
+  assert.match(script, /host\.fullScreen = sourceFullScreen/);
   assert.match(script, /host\.minimized = true/);
   assert.match(script, /host\.minimized = false/);
   assert.match(script, /host\.skipSwitcher = true/);
+  assert.match(script, /workspace\.raiseWindow\(host\)/);
+  assert.match(script, /workspace\.windowActivated\.connect\(steamBridgeSyncAll\)/);
+  assert.doesNotMatch(script, /unloadScript/);
+  assert.match(script, /NameHasOwner/);
+  assert.match(script, /steamBridgeReceiverOwnerObserved \? 2 : 10/);
+  assert.match(script, /steamBridgeDisconnectSignal\(workspace\.windowAdded/);
   assert.match(script, /workspace\.windowAdded\.connect/);
+  assert.match(script, /interactiveMoveResizeStarted\.connect/);
+  assert.match(script, /interactiveMoveResizeFinished\.connect/);
+  assert.match(script, /NotifyPresentationState/);
+
+  const observedResizeEvents = [];
+  const disconnectResizeEvents = electron.onKWinWaylandOverlaySourceInteractiveResize((event) => {
+    observedResizeEvents.push({ listener: "first", ...event });
+  });
+  assert.equal(typeof nativeEventHandler, "function");
+  nativeEventHandler({ sourceId: "source-a", sequence: 1, paired: true, active: false });
+  nativeEventHandler({ sourceId: "source-a", sequence: 1, paired: true, active: true });
+  nativeEventHandler({ sourceId: "source-a", sequence: 2, paired: true, active: false });
+  nativeEventHandler({ sourceId: "source-a", sequence: 3, paired: true, active: true });
+  assert.deepEqual(observedResizeEvents, [
+    { listener: "first", sourceId: "source-a", sequence: 1, paired: true, active: false },
+    { listener: "first", sourceId: "source-a", sequence: 3, paired: true, active: true }
+  ]);
+  const lateResizeEvents = [];
+  const disconnectLateResizeEvents = electron.onKWinWaylandOverlaySourceInteractiveResize((event) => {
+    lateResizeEvents.push(event);
+  });
+  assert.deepEqual(lateResizeEvents, [
+    { sourceId: "source-a", sequence: 3, paired: true, active: true }
+  ]);
+
+  const presentationBaseline = kwin.getKWinWaylandOverlayPresentationState();
+  const resizeListenerCounts = [observedResizeEvents.length, lateResizeEvents.length];
+  nativeEventHandler({
+    kind: "presentationState",
+    pairId: `${nativeEventToken}:900`,
+    sequence: 1,
+    epoch: 7,
+    fullScreen: false,
+    sourceBounds: { x: 1, y: 28, width: 1278, height: 691 },
+    target: { x: 1, y: 60, width: 1278, height: 659 }
+  });
+  const firstPresentationState = kwin.getKWinWaylandOverlayPresentationState();
+  assert.equal(firstPresentationState.generation, (presentationBaseline?.generation ?? 0) + 1);
+  assert.equal(firstPresentationState.kind, "converged");
+  assert.equal(firstPresentationState.pairId, `${nativeEventToken}:900`);
+  assert.equal(firstPresentationState.pairGeneration, 900);
+  assert.equal(firstPresentationState.sequence, 1);
+  assert.equal(firstPresentationState.epoch, 7);
+  assert.equal(firstPresentationState.fullScreen, false);
+  assert.deepEqual(firstPresentationState.sourceBounds, {
+    x: 1, y: 28, width: 1278, height: 691
+  });
+  assert.deepEqual(firstPresentationState.target, {
+    x: 1, y: 60, width: 1278, height: 659
+  });
+  assert.equal(Object.isFrozen(firstPresentationState), true);
+  assert.equal(Object.isFrozen(firstPresentationState.sourceBounds), true);
+  assert.equal(Object.isFrozen(firstPresentationState.target), true);
+  assert.deepEqual(
+    [observedResizeEvents.length, lateResizeEvents.length],
+    resizeListenerCounts
+  );
+
+  for (const malformedPresentationState of [
+    {
+      kind: "presentationState",
+      pairId: `${nativeEventToken}:900`,
+      sequence: 1,
+      epoch: 7,
+      fullScreen: true,
+      sourceBounds: { x: 0, y: 0, width: 1280, height: 800 },
+      target: { x: 0, y: 0, width: 1280, height: 800 }
+    },
+    {
+      kind: "presentationState",
+      pairId: `${nativeEventToken}:900`,
+      sequence: 2,
+      epoch: 7,
+      fullScreen: false,
+      sourceBounds: { x: 0, y: 0, width: Number.NaN, height: 800 },
+      target: { x: 0, y: 0, width: 1280, height: 800 }
+    },
+    {
+      kind: "presentationState",
+      pairId: `${nativeEventToken}:900`,
+      sequence: 2,
+      epoch: 7,
+      fullScreen: false,
+      sourceBounds: { x: 0, y: 0, width: 1280, height: 800 },
+      target: { x: 2147483648, y: 0, width: 1280, height: 800 }
+    },
+    {
+      kind: "presentationState",
+      pairId: `${nativeEventToken}:900`,
+      sequence: 2,
+      epoch: 7,
+      fullScreen: false,
+      sourceBounds: { x: 0, y: 0, width: 1280, height: 800 },
+      target: { x: 0, y: 0, width: 0, height: 800 }
+    }
+  ]) {
+    nativeEventHandler(malformedPresentationState);
+    assert.strictEqual(
+      kwin.getKWinWaylandOverlayPresentationState(),
+      firstPresentationState
+    );
+  }
+
+  nativeEventHandler({
+    kind: "presentationState",
+    pairId: `${nativeEventToken}:900`,
+    sequence: 2,
+    epoch: 8,
+    fullScreen: true,
+    sourceBounds: { x: 0, y: 0, width: 1280, height: 800 },
+    target: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const secondPresentationState = kwin.getKWinWaylandOverlayPresentationState();
+  assert.equal(secondPresentationState.generation, firstPresentationState.generation + 1);
+  assert.equal(secondPresentationState.kind, "converged");
+  assert.equal(secondPresentationState.sequence, 2);
+  assert.equal(secondPresentationState.epoch, 8);
+  assert.equal(secondPresentationState.fullScreen, true);
+  nativeEventHandler({
+    kind: "presentationStateInvalidated",
+    pairId: `${nativeEventToken}:900`,
+    sequence: 3
+  });
+  const invalidatedPresentationState = kwin.getKWinWaylandOverlayPresentationState();
+  assert.equal(invalidatedPresentationState.kind, "invalidated");
+  assert.equal(invalidatedPresentationState.generation, secondPresentationState.generation + 1);
+  assert.equal(invalidatedPresentationState.pairId, `${nativeEventToken}:900`);
+  assert.equal(invalidatedPresentationState.pairGeneration, 900);
+  assert.equal(invalidatedPresentationState.sequence, 3);
+  assert.equal(Object.isFrozen(invalidatedPresentationState), true);
+  nativeEventHandler({
+    kind: "presentationState",
+    pairId: `${nativeEventToken}:900`,
+    sequence: 4,
+    epoch: 8,
+    fullScreen: false,
+    sourceBounds: { x: 1, y: 28, width: 1278, height: 691 },
+    target: { x: 1, y: 60, width: 1278, height: 659 }
+  });
+  assert.strictEqual(
+    kwin.getKWinWaylandOverlayPresentationState(),
+    invalidatedPresentationState
+  );
+  nativeEventHandler({
+    kind: "presentationState",
+    pairId: `${nativeEventToken}:899`,
+    sequence: 1,
+    epoch: 8,
+    fullScreen: false,
+    sourceBounds: { x: 1, y: 28, width: 1278, height: 691 },
+    target: { x: 1, y: 60, width: 1278, height: 659 }
+  });
+  assert.strictEqual(
+    kwin.getKWinWaylandOverlayPresentationState(),
+    invalidatedPresentationState
+  );
+  assert.deepEqual(
+    [observedResizeEvents.length, lateResizeEvents.length],
+    resizeListenerCounts
+  );
+  disconnectResizeEvents();
+  nativeEventHandler({ sourceId: "source-a", sequence: 4, paired: true, active: false });
+  assert.equal(observedResizeEvents.length, 2);
+  assert.deepEqual(lateResizeEvents, [
+    { sourceId: "source-a", sequence: 3, paired: true, active: true },
+    { sourceId: "source-a", sequence: 4, paired: true, active: false }
+  ]);
+  nativeEventHandler({ sourceId: "source-a", sequence: 5, paired: false, active: false });
+  assert.deepEqual(lateResizeEvents.at(-1), {
+    sourceId: "source-a",
+    sequence: 5,
+    paired: false,
+    active: false
+  });
+  disconnectLateResizeEvents();
+
+  const listenerOrder = [];
+  const listenerErrors = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => listenerErrors.push(args);
+  t.after(() => {
+    console.error = originalConsoleError;
+  });
+  let disconnectReentrant;
+  const disconnectPrimary = electron.onKWinWaylandOverlaySourceInteractiveResize((event) => {
+    listenerOrder.push("primary");
+    assert.equal(Object.isFrozen(event), true);
+    assert.equal(Reflect.set(event, "active", !event.active), false);
+    if (!disconnectReentrant) {
+      disconnectReentrant = electron.onKWinWaylandOverlaySourceInteractiveResize(() => {
+        listenerOrder.push("reentrant");
+      });
+    }
+  });
+  const disconnectThrowing = electron.onKWinWaylandOverlaySourceInteractiveResize(() => {
+    listenerOrder.push("throwing");
+    throw new Error("listener failure sentinel");
+  });
+  const disconnectSurvivor = electron.onKWinWaylandOverlaySourceInteractiveResize(() => {
+    listenerOrder.push("survivor");
+  });
+  nativeEventHandler({ sourceId: "source-safety", sequence: 1, paired: true, active: false });
+  assert.deepEqual(listenerOrder, ["primary", "reentrant", "throwing", "survivor"]);
+  assert.equal(listenerErrors.length, 1);
+
+  let failedReplayCalls = 0;
+  assert.throws(
+    () => electron.onKWinWaylandOverlaySourceInteractiveResize(() => {
+      failedReplayCalls += 1;
+      throw new Error("replay failure sentinel");
+    }),
+    /replay failure sentinel/
+  );
+  nativeEventHandler({ sourceId: "source-safety", sequence: 2, paired: true, active: true });
+  assert.equal(failedReplayCalls, 1);
+  assert.deepEqual(listenerOrder.slice(-4), ["primary", "throwing", "survivor", "reentrant"]);
+  assert.equal(listenerErrors.length, 2);
+  disconnectPrimary();
+  disconnectThrowing();
+  disconnectSurvivor();
+  disconnectReentrant();
+  nativeEventHandler({ sourceId: "source-safety", sequence: 3, paired: false, active: false });
+
+  function signal() {
+    const listeners = [];
+    return {
+      connect(listener) {
+        listeners.push(listener);
+      },
+      disconnect(listener) {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+      },
+      emit(...args) {
+        for (const listener of listeners) listener(...args);
+      }
+    };
+  }
+
+  function scriptedWindow(properties) {
+    return {
+      deleted: false,
+      minimized: false,
+      skipTaskbar: false,
+      skipPager: false,
+      skipSwitcher: false,
+      frameGeometryChanged: signal(),
+      clientGeometryChanged: signal(),
+      fullScreenChanged: signal(),
+      minimizedChanged: signal(),
+      windowClassChanged: signal(),
+      windowRoleChanged: signal(),
+      opacityChanged: signal(),
+      stackingOrderChanged: signal(),
+      interactiveMoveResizeStarted: signal(),
+      interactiveMoveResizeFinished: signal(),
+      internalId: "source-default",
+      move: false,
+      resize: false,
+      ...properties
+    };
+  }
+
+  const presentationInstanceId = kwin.getKWinWaylandOverlayPresentationInstanceId();
+
+  function runScriptedPair(source, host, extraWindows = [], options = {}) {
+    source.pid = process.pid;
+    host.pid = process.pid;
+    host.windowRole ??= `steam-bridge:${presentationInstanceId}:state:0`;
+    const initialHostGeometry = { ...host.frameGeometry };
+    const windows = [source, ...extraWindows, host];
+    const stackingOrder = options.stackingOrder
+      ? [...options.stackingOrder]
+      : [...windows];
+    const raiseCalls = [];
+    const dbusCalls = [];
+    const workspace = {
+      activeWindow: options.activeWindow ?? source,
+      stackingOrder,
+      raiseCalls,
+      windowList() {
+        return windows.filter((window) => !window.deleted);
+      },
+      raiseWindow(window) {
+        raiseCalls.push(window);
+        const index = stackingOrder.indexOf(window);
+        if (index >= 0) stackingOrder.splice(index, 1);
+        stackingOrder.push(window);
+        window.stackingOrderChanged.emit();
+      },
+      windowAdded: signal(),
+      windowRemoved: signal(),
+      windowActivated: signal()
+    };
+    const scriptContext = {
+      workspace,
+      callDBus(...args) {
+        assertKWinCallDbusArity(args);
+        dbusCalls.push(args);
+      }
+    };
+    vm.runInNewContext(script, scriptContext);
+    if (options.autoSeed !== false && !source.fullScreen && source.resize !== true) {
+      const phaseOne = dbusCalls.find((call) => call[3] === "NotifyPresentationState");
+      if (phaseOne) {
+        const sourceGeometry = source.clientGeometry;
+        const sourceLeft = Math.round(sourceGeometry.x);
+        const sourceRight = Math.round(sourceGeometry.x + sourceGeometry.width);
+        const sourceBottom = Math.round(sourceGeometry.y + sourceGeometry.height);
+        const width = Math.max(1, Math.min(sourceRight - sourceLeft, Math.round(initialHostGeometry.width)));
+        const height = Math.max(1, Math.min(
+          sourceBottom - Math.round(sourceGeometry.y),
+          Math.round(initialHostGeometry.height)
+        ));
+        const pairGeneration = phaseOne[5].slice(phaseOne[5].lastIndexOf(":") + 1);
+        host.windowRole = [
+          `steam-bridge:${presentationInstanceId}:seed`,
+          phaseOne[7],
+          pairGeneration,
+          phaseOne[6],
+          sourceGeometry.x,
+          sourceGeometry.y,
+          sourceGeometry.width,
+          sourceGeometry.height,
+          sourceLeft,
+          sourceBottom - height,
+          width,
+          height
+        ].join(":");
+        host.windowRoleChanged.emit();
+      }
+    }
+    workspace.dbusCalls = dbusCalls;
+    workspace.windows = windows;
+    workspace.scriptContext = scriptContext;
+    return workspace;
+  }
+
+  function dbusCallsFor(workspace, method) {
+    return workspace.dbusCalls.filter((call) => call[3] === method);
+  }
+
+  function publishPinnedSeed(workspace, host, target) {
+    const receipt = dbusCallsFor(workspace, "NotifyPresentationState").at(-1);
+    assert.ok(receipt, "a converged phase receipt is required before publishing a seed");
+    const pairGeneration = receipt[5].slice(receipt[5].lastIndexOf(":") + 1);
+    const sourceBounds = receipt[9].split(",");
+    assert.equal(sourceBounds.length, 4);
+    host.windowRole = [
+      `steam-bridge:${presentationInstanceId}:seed`,
+      receipt[7],
+      pairGeneration,
+      receipt[6],
+      ...sourceBounds,
+      target.x,
+      target.y,
+      target.width,
+      target.height
+    ].join(":");
+    host.windowRoleChanged.emit();
+  }
+
+  function publishStateEpoch(host, epoch) {
+    host.windowRole = `steam-bridge:${presentationInstanceId}:state:${epoch}`;
+    host.windowRoleChanged.emit();
+  }
+
+  const source = scriptedWindow({
+    pid: 101,
+    internalId: "source-windowed",
+    resourceClass: "fov4-steam",
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 720 },
+    clientGeometry: { x: 1, y: 28, width: 1278, height: 691 }
+  });
+  const host = scriptedWindow({
+    pid: 101,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 32, width: 1278, height: 659 },
+    clientGeometry: { x: 0, y: 32, width: 1278, height: 659 }
+  });
+  const workspace = runScriptedPair(source, host);
+  const initialResizeCalls = dbusCallsFor(workspace, "NotifyResizeState");
+  const initialPresentationCalls = dbusCallsFor(workspace, "NotifyPresentationState");
+  assert.deepEqual(initialResizeCalls.map((call) => call.slice(0, 4)), [
+    [
+      ":1.4242",
+      "/com/steambridge/OverlayHostSync",
+      "com.steambridge.OverlayHostSync",
+      "NotifyResizeState"
+    ]
+  ]);
+  assert.deepEqual(initialResizeCalls[0].slice(5), ["source-windowed", "1", true, false]);
+  assert.equal(initialPresentationCalls.length, 2);
+  assert.deepEqual(initialPresentationCalls[0].slice(0, 4), [
+    ":1.4242",
+    "/com/steambridge/OverlayHostSync",
+    "com.steambridge.OverlayHostSync",
+    "NotifyPresentationState"
+  ]);
+  assert.equal(initialPresentationCalls[0][5], `${nativeEventToken}:1`);
+  assert.deepEqual(initialPresentationCalls.at(-1).slice(6), [
+    "2",
+    "0",
+    false,
+    "1,28,1278,691",
+    "1,60,1278,659"
+  ]);
+  assert.equal(source.skipSwitcher, false);
+  assert.equal(host.skipSwitcher, true);
+
+  // Moving a title bar uses the same KWin start/finish signals but must not
+  // release a game-canvas resize. Only a source with resize=true is reported.
+  source.resize = false;
+  source.interactiveMoveResizeStarted.emit();
+  source.interactiveMoveResizeFinished.emit();
+  assert.equal(dbusCallsFor(workspace, "NotifyResizeState").length, 1);
+  source.resize = true;
+  source.interactiveMoveResizeStarted.emit();
+  assert.deepEqual(dbusCallsFor(workspace, "NotifyResizeState")[1].slice(5), [
+    "source-windowed", "2", true, true
+  ]);
+  source.resize = false;
+  source.interactiveMoveResizeFinished.emit();
+  assert.deepEqual(dbusCallsFor(workspace, "NotifyResizeState")[2].slice(5), [
+    "source-windowed", "3", true, false
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(host.frameGeometry)), {
+    x: 1,
+    y: 60,
+    width: 1278,
+    height: 659
+  });
+
+  host.opacity = 1;
+  workspace.stackingOrder.splice(0, 2, host, source);
+  host.opacityChanged.emit();
+  assert.deepEqual(workspace.stackingOrder, [source, host]);
+  assert.equal(workspace.raiseCalls.length, 1);
+  assert.equal(
+    source.skipSwitcher,
+    true,
+    "the covered Electron source leaves Alt+Tab while Steam is visible"
+  );
+  assert.equal(
+    host.skipSwitcher,
+    false,
+    "the opaque Steam surface is the pair's one Alt+Tab entry"
+  );
+
+  // KWin loans focus to the Electron source while its native title/edge
+  // interaction runs. Once a real resize finishes, the same still-opaque
+  // host must regain focus so Escape and keyboard input keep reaching Steam.
+  workspace.activeWindow = source;
+  source.resize = true;
+  source.interactiveMoveResizeStarted.emit();
+  source.resize = false;
+  source.interactiveMoveResizeFinished.emit();
+  assert.equal(workspace.activeWindow, host);
+  assert.deepEqual(
+    dbusCallsFor(workspace, "NotifyResizeState").slice(-2).map((call) => call.slice(5)),
+    [
+      ["source-windowed", "4", true, true],
+      ["source-windowed", "5", true, false]
+    ]
+  );
+  assert.deepEqual(workspace.stackingOrder, [source, host]);
+
+  // Moving the title bar needs the same focus return without masquerading as
+  // a renderer resize notification.
+  const resizeCallCountBeforeMove = dbusCallsFor(workspace, "NotifyResizeState").length;
+  workspace.activeWindow = source;
+  source.move = true;
+  source.interactiveMoveResizeStarted.emit();
+  source.move = false;
+  source.interactiveMoveResizeFinished.emit();
+  assert.equal(workspace.activeWindow, host);
+  assert.equal(
+    dbusCallsFor(workspace, "NotifyResizeState").length,
+    resizeCallCountBeforeMove
+  );
+
+  // Completing the interaction after Alt+Tab must never steal activation
+  // back from an unrelated desktop window.
+  const interactionAltTabTarget = {};
+  workspace.activeWindow = source;
+  source.move = true;
+  source.interactiveMoveResizeStarted.emit();
+  workspace.activeWindow = interactionAltTabTarget;
+  source.move = false;
+  source.interactiveMoveResizeFinished.emit();
+  assert.equal(workspace.activeWindow, interactionAltTabTarget);
+  assert.equal(
+    dbusCallsFor(workspace, "NotifyResizeState").length,
+    resizeCallCountBeforeMove
+  );
+
+  // A close/park edge during the interaction cancels the focus return, and a
+  // duplicate finish signal cannot revive it later.
+  workspace.activeWindow = source;
+  source.move = true;
+  source.interactiveMoveResizeStarted.emit();
+  host.opacity = 0;
+  host.opacityChanged.emit();
+  source.move = false;
+  source.interactiveMoveResizeFinished.emit();
+  assert.equal(workspace.activeWindow, source);
+  assert.equal(source.skipSwitcher, false);
+  assert.equal(host.skipSwitcher, true);
+  source.interactiveMoveResizeFinished.emit();
+  assert.equal(workspace.activeWindow, source);
+  host.opacity = 1;
+  host.opacityChanged.emit();
+  assert.equal(workspace.activeWindow, host);
+  assert.equal(source.skipSwitcher, true);
+  assert.equal(host.skipSwitcher, false);
+
+  // Steam can transfer activation to its separate web helper before the
+  // persistent host becomes opaque. The opacity edge must still raise the
+  // host once, without turning it into a permanent keep-above window.
+  const transferredSource = scriptedWindow({
+    pid: 202,
+    internalId: "source-focus-transferred",
+    resourceClass: "fov4-steam",
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const transferredHost = scriptedWindow({
+    pid: 202,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const steamWebHelper = scriptedWindow({
+    pid: 303,
+    resourceClass: "steam",
+    opacity: 1,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const transferredWorkspace = runScriptedPair(
+    transferredSource,
+    transferredHost,
+    [steamWebHelper]
+  );
+  const noOpPresentationCalls = dbusCallsFor(
+    transferredWorkspace,
+    "NotifyPresentationState"
+  );
+  assert.equal(noOpPresentationCalls.length, 1);
+  assert.deepEqual(noOpPresentationCalls[0].slice(6), [
+    "1",
+    "0",
+    true,
+    "0,0,1280,800",
+    "0,0,1280,800"
+  ]);
+  transferredWorkspace.activeWindow = steamWebHelper;
+  transferredWorkspace.windowActivated.emit(steamWebHelper);
+  transferredWorkspace.stackingOrder.splice(0, 3, transferredHost, transferredSource, steamWebHelper);
+  transferredHost.opacity = 1;
+  transferredHost.opacityChanged.emit();
+  assert.deepEqual(transferredWorkspace.stackingOrder, [transferredSource, steamWebHelper, transferredHost]);
+  assert.equal(
+    transferredWorkspace.activeWindow,
+    transferredHost,
+    "the authenticated opacity edge delegates activation to KWin"
+  );
+  assert.equal(transferredWorkspace.raiseCalls.length, 1);
+  transferredHost.opacity = 0;
+  transferredHost.opacityChanged.emit();
+  assert.equal(
+    transferredWorkspace.activeWindow,
+    transferredSource,
+    "the authenticated transparent edge returns activation to the live source"
+  );
+  transferredHost.opacity = 1;
+  transferredHost.opacityChanged.emit();
+  assert.equal(transferredWorkspace.activeWindow, transferredHost);
+  transferredWorkspace.activeWindow = steamWebHelper;
+  transferredWorkspace.windowActivated.emit(steamWebHelper);
+  transferredHost.opacity = 0;
+  transferredHost.opacityChanged.emit();
+  assert.equal(
+    transferredWorkspace.activeWindow,
+    steamWebHelper,
+    "a transparent edge never steals focus from an unrelated Alt+Tab target"
+  );
+  transferredHost.opacity = 1;
+  transferredHost.opacityChanged.emit();
+  transferredSource.minimized = true;
+  transferredWorkspace.activeWindow = transferredHost;
+  transferredHost.opacity = 0;
+  transferredHost.opacityChanged.emit();
+  assert.equal(
+    transferredWorkspace.activeWindow,
+    transferredHost,
+    "a transparent edge never reactivates a minimized source"
+  );
+  assert.equal(transferredSource.skipSwitcher, false);
+  assert.equal(transferredHost.skipSwitcher, true);
+  transferredSource.minimized = false;
+  transferredHost.opacity = 1;
+  transferredHost.opacityChanged.emit();
+  assert.equal(transferredSource.skipSwitcher, true);
+  assert.equal(transferredHost.skipSwitcher, false);
+  transferredSource.hidden = true;
+  transferredWorkspace.activeWindow = transferredHost;
+  transferredHost.opacity = 0;
+  transferredHost.opacityChanged.emit();
+  assert.equal(
+    transferredWorkspace.activeWindow,
+    transferredHost,
+    "a transparent edge never reactivates a hidden source"
+  );
+  assert.equal(transferredSource.skipSwitcher, false);
+  assert.equal(transferredHost.skipSwitcher, true);
+  transferredSource.hidden = false;
+  transferredWorkspace.stackingOrder.splice(0, 3, transferredHost, transferredSource, steamWebHelper);
+  transferredWorkspace.activeWindow = steamWebHelper;
+  transferredWorkspace.windowActivated.emit(steamWebHelper);
+  assert.deepEqual(transferredWorkspace.stackingOrder, [transferredHost, transferredSource, steamWebHelper]);
+  assert.equal(transferredWorkspace.raiseCalls.length, 1);
+  assert.equal(dbusCallsFor(transferredWorkspace, "NotifyPresentationState").length, 1);
+
+  const preOpaqueSource = scriptedWindow({
+    pid: 212,
+    internalId: "source-pre-opaque",
+    resourceClass: "fov4-steam",
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const preOpaqueHost = scriptedWindow({
+    pid: 212,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 1,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const preOpaqueHelper = scriptedWindow({
+    pid: 313,
+    resourceClass: "steam",
+    opacity: 1,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const preOpaqueWorkspace = runScriptedPair(
+    preOpaqueSource,
+    preOpaqueHost,
+    [preOpaqueHelper],
+    {
+      activeWindow: preOpaqueHelper,
+      stackingOrder: [preOpaqueHost, preOpaqueSource, preOpaqueHelper]
+    }
+  );
+  assert.equal(preOpaqueWorkspace.activeWindow, preOpaqueHost);
+  assert.deepEqual(
+    preOpaqueWorkspace.stackingOrder,
+    [preOpaqueSource, preOpaqueHelper, preOpaqueHost]
+  );
+  assert.equal(preOpaqueWorkspace.raiseCalls.length, 1);
+  preOpaqueWorkspace.activeWindow = preOpaqueHelper;
+  preOpaqueWorkspace.windowActivated.emit(preOpaqueHelper);
+  assert.equal(preOpaqueWorkspace.activeWindow, preOpaqueHelper);
+  assert.equal(preOpaqueWorkspace.raiseCalls.length, 1);
+
+  // KWin must see the pair as exactly one switcher entry. A source that was
+  // already excluded stays excluded, and ambiguous/unauthenticated presenters
+  // never become independent entries.
+  const originallySkippedSource = scriptedWindow({
+    internalId: "source-originally-skipped",
+    resourceClass: "fov4-steam",
+    skipSwitcher: true,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const originallySkippedHost = scriptedWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 1,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  runScriptedPair(originallySkippedSource, originallySkippedHost);
+  assert.equal(originallySkippedSource.skipSwitcher, true);
+  assert.equal(originallySkippedHost.skipSwitcher, true);
+
+  const ambiguousSource = scriptedWindow({
+    internalId: "source-ambiguous-switcher",
+    resourceClass: "fov4-steam",
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const ambiguousHostOne = scriptedWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 1,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const ambiguousHostTwo = scriptedWindow({
+    pid: process.pid,
+    resourceClass: "SteamBridgeNativeProbe",
+    windowRole: `steam-bridge:${presentationInstanceId}:state:0`,
+    opacity: 1,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  runScriptedPair(ambiguousSource, ambiguousHostOne, [ambiguousHostTwo]);
+  assert.equal(ambiguousSource.skipSwitcher, false);
+  assert.equal(ambiguousHostOne.skipSwitcher, true);
+  assert.equal(ambiguousHostTwo.skipSwitcher, true);
+
+  const invalidRoleSource = scriptedWindow({
+    internalId: "source-invalid-role-switcher",
+    resourceClass: "fov4-steam",
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const invalidRoleHost = scriptedWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    windowRole: "invalid-role",
+    opacity: 1,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  runScriptedPair(invalidRoleSource, invalidRoleHost);
+  assert.equal(invalidRoleSource.skipSwitcher, false);
+  assert.equal(invalidRoleHost.skipSwitcher, true);
+
+  const switcherWriteOrder = [];
+  const orderedSource = scriptedWindow({
+    internalId: "source-switcher-order",
+    resourceClass: "fov4-steam",
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const orderedHost = scriptedWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  for (const [label, window] of [["source", orderedSource], ["host", orderedHost]]) {
+    let skipSwitcher = window.skipSwitcher;
+    Object.defineProperty(window, "skipSwitcher", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return skipSwitcher;
+      },
+      set(value) {
+        switcherWriteOrder.push(`${label}:${value}`);
+        skipSwitcher = value;
+      }
+    });
+  }
+  const orderedWorkspace = runScriptedPair(orderedSource, orderedHost);
+  assert.deepEqual(switcherWriteOrder, ["host:true"]);
+  switcherWriteOrder.length = 0;
+  orderedWorkspace.windowActivated.emit(orderedSource);
+  assert.deepEqual(switcherWriteOrder, [], "a no-op sync does not churn switcher state");
+  orderedHost.opacity = 1;
+  orderedHost.opacityChanged.emit();
+  assert.deepEqual(switcherWriteOrder, ["host:false", "source:true"]);
+  switcherWriteOrder.length = 0;
+  orderedWorkspace.windowActivated.emit(orderedHost);
+  assert.deepEqual(switcherWriteOrder, [], "stable host ownership is delta-only");
+  orderedHost.opacity = 0;
+  orderedHost.opacityChanged.emit();
+  assert.deepEqual(switcherWriteOrder, ["source:false", "host:true"]);
+
+  // Re-running synchronization with the host already above its source is a no-op.
+  workspace.windowActivated.emit(source);
+  assert.deepEqual(workspace.stackingOrder, [source, host]);
+  assert.equal(workspace.raiseCalls.length, 1);
+
+  // Steam can focus its host while the overlay is active; that path must repair
+  // the same source-over-host ordering without changing the active window.
+  workspace.activeWindow = host;
+  workspace.stackingOrder.splice(0, 2, host, source);
+  workspace.windowActivated.emit(host);
+  assert.deepEqual(workspace.stackingOrder, [source, host]);
+  assert.equal(workspace.activeWindow, host);
+  assert.equal(workspace.raiseCalls.length, 2);
+
+  // Minimize while Steam is opaque returns the switcher entry to Electron.
+  // A background restore preserves unrelated focus, then the first actual
+  // source activation consumes one narrowly armed handoff back to Steam.
+  const unrelatedWindow = {};
+  source.minimized = true;
+  source.minimizedChanged.emit();
+  assert.equal(source.skipSwitcher, false);
+  assert.equal(host.skipSwitcher, true);
+  workspace.activeWindow = unrelatedWindow;
+  source.minimized = false;
+  source.minimizedChanged.emit();
+  assert.equal(workspace.activeWindow, unrelatedWindow);
+  assert.equal(source.skipSwitcher, true);
+  assert.equal(host.skipSwitcher, false);
+  workspace.activeWindow = source;
+  workspace.windowActivated.emit(source);
+  assert.equal(workspace.activeWindow, host);
+  workspace.activeWindow = source;
+  workspace.windowActivated.emit(source);
+  assert.equal(
+    workspace.activeWindow,
+    source,
+    "ordinary source activation is untouched after the restore handoff"
+  );
+
+  // KWin can reject the first host activation while its minimized Xwayland
+  // window is still settling. The bounded one-shot retry may use an empty
+  // active slot, but still never an unrelated active window.
+  const restoreTimers = [];
+  workspace.scriptContext.QTimer = function FakeQTimer() {
+    this.interval = 0;
+    this.singleShot = false;
+    this.timeout = signal();
+    this.stopped = false;
+    this.stop = () => { this.stopped = true; };
+    this.start = () => { restoreTimers.push(this); };
+  };
+  workspace.activeWindow = host;
+  source.minimized = true;
+  source.minimizedChanged.emit();
+  workspace.activeWindow = unrelatedWindow;
+  source.minimized = false;
+  source.minimizedChanged.emit();
+  let trackedActiveWindow = source;
+  let rejectNextHostActivation = true;
+  Object.defineProperty(workspace, "activeWindow", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      return trackedActiveWindow;
+    },
+    set(value) {
+      if (value === host && rejectNextHostActivation) {
+        rejectNextHostActivation = false;
+        trackedActiveWindow = null;
+      } else {
+        trackedActiveWindow = value;
+      }
+    }
+  });
+  workspace.windowActivated.emit(source);
+  assert.equal(workspace.activeWindow, null);
+  assert.equal(restoreTimers.length, 1);
+  assert.equal(restoreTimers[0].singleShot, true);
+  assert.equal(restoreTimers[0].interval, 50);
+  restoreTimers[0].timeout.emit();
+  assert.equal(workspace.activeWindow, host);
+  assert.equal(restoreTimers[0].stopped, true);
+  workspace.activeWindow = host;
+
+  // Activation elsewhere on the desktop must not pull a paired Steam host up.
+  workspace.activeWindow = unrelatedWindow;
+  workspace.stackingOrder.splice(0, 2, host, source);
+  workspace.windowActivated.emit(unrelatedWindow);
+  assert.deepEqual(workspace.stackingOrder, [host, source]);
+  assert.equal(workspace.raiseCalls.length, 2);
+
+  host.opacity = 0;
+  workspace.activeWindow = source;
+  workspace.stackingOrder.splice(0, 2, host, source);
+  workspace.windowActivated.emit(source);
+  assert.deepEqual(workspace.stackingOrder, [host, source]);
+  assert.equal(workspace.raiseCalls.length, 2);
+
+  // KWin learns the content inset once, so source-first interactive resize
+  // follows the web content atomically instead of stretching over the menu.
+  source.clientGeometry = { x: 101, y: 88, width: 1000, height: 600 };
+  source.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(host.frameGeometry)), {
+    x: 101,
+    y: 120,
+    width: 1000,
+    height: 568
+  });
+  const resizedPresentationCalls = dbusCallsFor(workspace, "NotifyPresentationState");
+  assert.equal(resizedPresentationCalls.length, 3);
+  assert.deepEqual(resizedPresentationCalls.at(-1).slice(6), [
+    "3",
+    "0",
+    false,
+    "101,88,1000,600",
+    "101,120,1000,568"
+  ]);
+
+  const activeRemovalSource = scriptedWindow({
+    pid: 303,
+    internalId: "source-active-removal",
+    resourceClass: "fov4-steam",
+    resize: true,
+    fullScreen: false,
+    frameGeometry: { x: 20, y: 20, width: 900, height: 700 },
+    clientGeometry: { x: 21, y: 48, width: 898, height: 671 }
+  });
+  const activeRemovalHost = scriptedWindow({
+    pid: 303,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 20, y: 52, width: 898, height: 639 },
+    clientGeometry: { x: 20, y: 52, width: 898, height: 639 }
+  });
+  const activeRemovalWorkspace = runScriptedPair(activeRemovalSource, activeRemovalHost);
+  assert.deepEqual(dbusCallsFor(activeRemovalWorkspace, "NotifyResizeState")[0].slice(5), [
+    "source-active-removal", "1", true, true
+  ]);
+  const removedPairId = dbusCallsFor(
+    activeRemovalWorkspace,
+    "NotifyPresentationState"
+  )[0][5];
+  activeRemovalHost.deleted = true;
+  activeRemovalWorkspace.windowRemoved.emit(activeRemovalHost);
+  assert.deepEqual(dbusCallsFor(activeRemovalWorkspace, "NotifyResizeState")[1].slice(5), [
+    "source-active-removal", "2", false, false
+  ]);
+  assert.deepEqual(
+    dbusCallsFor(activeRemovalWorkspace, "NotifyPresentationInvalidated")[0].slice(5),
+    [removedPairId, "2"]
+  );
+
+  const replacementHost = scriptedWindow({
+    pid: process.pid,
+    resourceClass: "SteamBridgeNativeProbe",
+    windowRole: `steam-bridge:${presentationInstanceId}:state:0`,
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 20, y: 52, width: 898, height: 639 },
+    clientGeometry: { x: 20, y: 52, width: 898, height: 639 }
+  });
+  activeRemovalWorkspace.windows.push(replacementHost);
+  activeRemovalWorkspace.stackingOrder.push(replacementHost);
+  activeRemovalWorkspace.windowAdded.emit(replacementHost);
+  assert.deepEqual(dbusCallsFor(activeRemovalWorkspace, "NotifyResizeState")[2].slice(5), [
+    "source-active-removal", "3", true, true
+  ]);
+  const replacementPairCall = dbusCallsFor(
+    activeRemovalWorkspace,
+    "NotifyPresentationState"
+  )[1];
+  assert.notEqual(replacementPairCall[5], removedPairId);
+  assert.equal(replacementPairCall[6], "1");
+  activeRemovalSource.resize = false;
+  activeRemovalSource.interactiveMoveResizeFinished.emit();
+  assert.deepEqual(dbusCallsFor(activeRemovalWorkspace, "NotifyResizeState")[3].slice(5), [
+    "source-active-removal", "4", true, false
+  ]);
+
+  activeRemovalSource.resize = true;
+  activeRemovalSource.interactiveMoveResizeStarted.emit();
+  activeRemovalSource.deleted = true;
+  activeRemovalWorkspace.windowRemoved.emit(activeRemovalSource);
+  assert.deepEqual(
+    dbusCallsFor(activeRemovalWorkspace, "NotifyResizeState").slice(-2).map((call) => call.slice(5)),
+    [
+    ["source-active-removal", "5", true, true],
+    ["source-active-removal", "6", false, false]
+    ]
+  );
+  activeRemovalSource.resize = false;
+  activeRemovalSource.interactiveMoveResizeFinished.emit();
+  assert.equal(dbusCallsFor(activeRemovalWorkspace, "NotifyResizeState").length, 6);
+
+  const auxiliarySource = scriptedWindow({
+    pid: 404,
+    internalId: "source-auxiliary",
+    resourceClass: "electron-devtools",
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
+    clientGeometry: { x: 1, y: 28, width: 998, height: 671 }
+  });
+  const intendedSource = scriptedWindow({
+    pid: 404,
+    internalId: "source-intended",
+    resourceClass: "fov4-steam",
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
+    clientGeometry: { x: 1, y: 28, width: 998, height: 671 }
+  });
+  const migratingHost = scriptedWindow({
+    pid: 404,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 32, width: 998, height: 639 },
+    clientGeometry: { x: 0, y: 32, width: 998, height: 639 }
+  });
+  const migratingWorkspace = runScriptedPair(auxiliarySource, migratingHost, [intendedSource]);
+  assert.deepEqual(dbusCallsFor(migratingWorkspace, "NotifyResizeState")[0].slice(5), [
+    "source-auxiliary", "1", true, false
+  ]);
+  const auxiliaryPairId = dbusCallsFor(migratingWorkspace, "NotifyPresentationState")[0][5];
+  migratingWorkspace.activeWindow = intendedSource;
+  migratingWorkspace.windowActivated.emit(intendedSource);
+  assert.deepEqual(
+    dbusCallsFor(migratingWorkspace, "NotifyResizeState").slice(1).map((call) => call.slice(5)),
+    []
+  );
+  assert.equal(dbusCallsFor(migratingWorkspace, "NotifyPresentationState").length, 2);
+  assert.equal(
+    dbusCallsFor(migratingWorkspace, "NotifyPresentationInvalidated").length,
+    0,
+    "an active same-PID auxiliary window must not steal an existing valid pair"
+  );
+  assert.equal(dbusCallsFor(migratingWorkspace, "NotifyPresentationState").at(-1)[5], auxiliaryPairId);
+
+  const fullscreenSource = scriptedWindow({
+    pid: 202,
+    internalId: "source-fullscreen",
+    resourceClass: "fov4-steam",
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
+  });
+  const fullscreenHost = scriptedWindow({
+    pid: 202,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: true,
+    frameGeometry: { x: 0, y: 0, width: 1280, height: 768 },
+    clientGeometry: { x: 0, y: 0, width: 1280, height: 768 }
+  });
+  const fullscreenWorkspace = runScriptedPair(fullscreenSource, fullscreenHost);
+  assert.equal(dbusCallsFor(fullscreenWorkspace, "NotifyPresentationState").length, 0);
+  fullscreenHost.frameGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  fullscreenHost.clientGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  fullscreenHost.frameGeometryChanged.emit();
+  const convergedFullscreenCalls = dbusCallsFor(
+    fullscreenWorkspace,
+    "NotifyPresentationState"
+  );
+  assert.equal(convergedFullscreenCalls.length, 1);
+  assert.deepEqual(convergedFullscreenCalls[0].slice(6), [
+    "1",
+    "0",
+    true,
+    "0,0,1280,800",
+    "0,0,1280,800"
+  ]);
+  fullscreenSource.fullScreen = false;
+  fullscreenSource.clientGeometry = { x: 1, y: 28, width: 1278, height: 691 };
+  // KWin can restore the Xwayland host to the whole client before Electron
+  // publishes its smaller menu-excluding content bounds. Do not freeze inset 0.
+  fullscreenHost.frameGeometry = { x: 1, y: 28, width: 1278, height: 691 };
+  fullscreenSource.fullScreenChanged.emit();
+  const firstRestoredPresentation = dbusCallsFor(
+    fullscreenWorkspace,
+    "NotifyPresentationState"
+  ).at(-1);
+  assert.deepEqual(firstRestoredPresentation.slice(6), [
+    "2",
+    "0",
+    false,
+    "1,28,1278,691",
+    "1,28,1278,691"
+  ], "the first restored receipt must use a fresh zero-inset phase, never retained fullscreen-era content insets");
+  fullscreenSource.clientGeometry = { x: 2, y: 20, width: 1400, height: 760 };
+  fullscreenSource.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(fullscreenHost.frameGeometry)), {
+    x: 2,
+    y: 20,
+    width: 1400,
+    height: 760
+  });
+  // Publish the receipt-pinned content seed; KWin remains the geometry writer.
+  publishPinnedSeed(
+    fullscreenWorkspace,
+    fullscreenHost,
+    { x: 2, y: 52, width: 1400, height: 728 }
+  );
+  fullscreenSource.clientGeometry = { x: 1, y: 28, width: 1278, height: 691 };
+  fullscreenSource.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(fullscreenHost.frameGeometry)), {
+    x: 1,
+    y: 60,
+    width: 1278,
+    height: 659
+  });
+
+  const coldWindowedSource = scriptedWindow({
+    pid: 505,
+    internalId: "source-cold-windowed",
+    resourceClass: "fov4-steam",
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
+    clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
+  });
+  const coldWindowedHost = scriptedWindow({
+    pid: 505,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
+    clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
+  });
+  const coldWindowedWorkspace = runScriptedPair(coldWindowedSource, coldWindowedHost);
+  // Equal cold-start dimensions remain a provisional zero-inset placement:
+  // they must follow source growth without becoming authoritative.
+  coldWindowedSource.clientGeometry = { x: 50, y: 40, width: 1100, height: 800 };
+  coldWindowedSource.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(coldWindowedHost.frameGeometry)), {
+    x: 50,
+    y: 40,
+    width: 1100,
+    height: 800
+  });
+  // A later native content seed replaces that provisional zero inset and
+  // survives subsequent source resizes.
+  publishStateEpoch(coldWindowedHost, 1);
+  publishPinnedSeed(
+    coldWindowedWorkspace,
+    coldWindowedHost,
+    { x: 50, y: 72, width: 1098, height: 768 }
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(coldWindowedHost.frameGeometry)), {
+    x: 50,
+    y: 72,
+    width: 1098,
+    height: 768
+  });
+  coldWindowedSource.clientGeometry = { x: 50, y: 40, width: 900, height: 600 };
+  coldWindowedSource.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(coldWindowedHost.frameGeometry)), {
+    x: 50,
+    y: 72,
+    width: 898,
+    height: 568
+  });
+
+  const roundTripSource = scriptedWindow({
+    pid: 606,
+    internalId: "source-round-trip",
+    resourceClass: "fov4-steam",
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
+    clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
+  });
+  const roundTripHost = scriptedWindow({
+    pid: 606,
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 0, y: 32, width: 998, height: 668 },
+    clientGeometry: { x: 0, y: 32, width: 998, height: 668 }
+  });
+  const roundTripWorkspace = runScriptedPair(roundTripSource, roundTripHost);
+  roundTripSource.fullScreen = true;
+  roundTripSource.frameGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  roundTripSource.clientGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  roundTripHost.frameGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  roundTripSource.fullScreenChanged.emit();
+  roundTripSource.fullScreen = false;
+  roundTripSource.frameGeometry = { x: 10, y: 20, width: 1000, height: 700 };
+  roundTripSource.clientGeometry = { x: 10, y: 20, width: 1000, height: 700 };
+  roundTripSource.fullScreenChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(roundTripHost.frameGeometry)), {
+    x: 10,
+    y: 52,
+    width: 998,
+    height: 668
+  });
+  // Electron's restored content seed now reports a changed 40px/4px inset.
+  // It differs from KWin's provisional write and must become authoritative.
+  publishPinnedSeed(
+    roundTripWorkspace,
+    roundTripHost,
+    { x: 10, y: 60, width: 996, height: 660 }
+  );
+  roundTripSource.clientGeometry = { x: 80, y: 70, width: 900, height: 600 };
+  roundTripSource.clientGeometryChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(roundTripHost.frameGeometry)), {
+    x: 80,
+    y: 110,
+    width: 896,
+    height: 560
+  });
+
+  const dragSeedSource = scriptedWindow({
+    internalId: "source-drag-seed",
+    resourceClass: "fov4-steam",
+    fullScreen: false,
+    frameGeometry: { x: 20, y: 20, width: 1000, height: 700 },
+    clientGeometry: { x: 21, y: 48, width: 998, height: 671 }
+  });
+  const dragSeedHost = scriptedWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 21, y: 80, width: 998, height: 639 },
+    clientGeometry: { x: 21, y: 80, width: 998, height: 639 }
+  });
+  const dragSeedWorkspace = runScriptedPair(dragSeedSource, dragSeedHost);
+  dragSeedSource.resize = true;
+  dragSeedSource.interactiveMoveResizeStarted.emit();
+  publishStateEpoch(dragSeedHost, 1);
+  publishPinnedSeed(
+    dragSeedWorkspace,
+    dragSeedHost,
+    { x: 21, y: 88, width: 994, height: 631 }
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(dragSeedHost.frameGeometry)), {
+    x: 21,
+    y: 80,
+    width: 998,
+    height: 639
+  }, "a pinned seed stays unapplied during interactive resize");
+  dragSeedSource.resize = false;
+  dragSeedSource.interactiveMoveResizeFinished.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(dragSeedHost.frameGeometry)), {
+    x: 21,
+    y: 88,
+    width: 994,
+    height: 631
+  }, "finishing resize retries and consumes the still-current pinned seed");
+
+  // A transport-loss role is authenticated by the per-attempt instance id.
+  // This VM deliberately omits QTimer/NameHasOwner callbacks: the exact marker
+  // must still downgrade immediately, while a foreign instance must do nothing.
+  const degradedSource = scriptedWindow({
+    internalId: "source-explicit-degraded",
+    resourceClass: "fov4-steam",
+    fullScreen: false,
+    frameGeometry: { x: 10, y: 20, width: 1000, height: 700 },
+    clientGeometry: { x: 10, y: 20, width: 1000, height: 700 }
+  });
+  const degradedHost = scriptedWindow({
+    resourceClass: "SteamBridgeNativeProbe",
+    opacity: 0,
+    fullScreen: false,
+    frameGeometry: { x: 10, y: 52, width: 998, height: 668 },
+    clientGeometry: { x: 10, y: 52, width: 998, height: 668 }
+  });
+  const degradedWorkspace = runScriptedPair(degradedSource, degradedHost);
+  const foreignInstance = presentationInstanceId === "ffffffffffffffff"
+    ? "0000000000000000"
+    : "ffffffffffffffff";
+  degradedHost.windowRole = `steam-bridge:${foreignInstance}:degraded`;
+  degradedHost.windowRoleChanged.emit();
+  degradedHost.windowRole = `steam-bridge:${presentationInstanceId}:state:0`;
+  degradedHost.windowRoleChanged.emit();
+  const receiptsAfterForeignMarker = dbusCallsFor(
+    degradedWorkspace,
+    "NotifyPresentationState"
+  ).length;
+  degradedSource.clientGeometry = { x: 20, y: 30, width: 980, height: 680 };
+  degradedSource.clientGeometryChanged.emit();
+  assert.ok(
+    dbusCallsFor(degradedWorkspace, "NotifyPresentationState").length >
+      receiptsAfterForeignMarker,
+    "a degraded marker for another instance must not disable strict receipts"
+  );
+
+  degradedHost.windowRole = `steam-bridge:${presentationInstanceId}:degraded`;
+  degradedHost.windowRoleChanged.emit();
+  const receiptsAfterExactMarker = dbusCallsFor(
+    degradedWorkspace,
+    "NotifyPresentationState"
+  ).length;
+  degradedSource.fullScreen = true;
+  degradedSource.frameGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  degradedSource.clientGeometry = { x: 0, y: 0, width: 1280, height: 800 };
+  degradedSource.fullScreenChanged.emit();
+  degradedSource.fullScreen = false;
+  degradedSource.frameGeometry = { x: 40, y: 50, width: 900, height: 600 };
+  degradedSource.clientGeometry = { x: 40, y: 50, width: 900, height: 600 };
+  degradedSource.fullScreenChanged.emit();
+  assert.deepEqual(JSON.parse(JSON.stringify(degradedHost.frameGeometry)), {
+    x: 40,
+    y: 82,
+    width: 898,
+    height: 568
+  });
+  assert.equal(
+    dbusCallsFor(degradedWorkspace, "NotifyPresentationState").length,
+    receiptsAfterExactMarker,
+    "the exact degraded marker disables all later receipt calls"
+  );
+});
+
+test("KWin Wayland overlay host keeps Electron menu space above the Steam surface", () => {
+  const kwin = require(distFile("kwin.js"));
+
+  const menuInsets = kwin.measureKWinWaylandOverlayContentInsets(
+    { x: 0, y: 32, width: 1278, height: 659 },
+    { x: 1, y: 28, width: 1278, height: 691 }
+  );
+  assert.deepEqual(menuInsets, { top: 32, right: 0 });
+
+  assert.deepEqual(
+    kwin.measureKWinWaylandOverlayContentInsets(
+      { x: 0, y: 31.75, width: 1000.25, height: 668.25 },
+      { x: 0, y: 0, width: 1000, height: 700 }
+    ),
+    { top: 31.75, right: 0 }
+  );
+
+  assert.deepEqual(
+    kwin.resolveKWinWaylandOverlayHostGeometry(
+      { x: 0, y: 32, width: 1278, height: 659 },
+      { x: 1, y: 28, width: 1278, height: 691 },
+      menuInsets
+    ),
+    { x: 1, y: 60, width: 1278, height: 659 }
+  );
+  assert.deepEqual(
+    kwin.resolveKWinWaylandOverlayHostGeometry(
+      { x: 0, y: 0, width: 1280, height: 800 },
+      { x: 0, y: 0, width: 1280, height: 800 },
+      { top: 0, right: 0 }
+    ),
+    { x: 0, y: 0, width: 1280, height: 800 }
+  );
+  assert.deepEqual(
+    kwin.resolveKWinWaylandOverlayHostGeometry(
+      { x: 20, y: 40, width: 1600, height: 900 },
+      { x: 4, y: 28, width: 640, height: 480 }
+    ),
+    { x: 4, y: 28, width: 640, height: 480 }
+  );
+  assert.equal(
+    kwin.measureKWinWaylandOverlayContentInsets(
+      { x: 0, y: 0, width: 900, height: 700 },
+      { x: 0, y: 0, width: 640, height: 480 }
+    ),
+    undefined
+  );
+});
+
+test("KWin owns live Wayland geometry after Electron seeds the first windowed content bounds", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  setProcessPropertyForTest(t, "argv", ["electron", "--ozone-platform=wayland"]);
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-kwin-owner-"));
+  t.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0",
+    KDE_FULL_SESSION: "true",
+    XDG_CURRENT_DESKTOP: "KDE",
+    XDG_RUNTIME_DIR: runtimeDir
+  });
+  mockSpawnSyncForTest(t, successfulKWinScriptLifecycleSpawn);
+
+  // Electron can expose its pre-fullscreen bounds during the first mapped
+  // frame even though KWin has already configured the native host fullscreen.
+  const provisionalFullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 768 };
+  const fullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  const restoredNativeBounds = { x: 1, y: 28, width: 1278, height: 691 };
+  const restoredContentBounds = { x: 0, y: 32, width: 1278, height: 659 };
+  const nativeContentBounds = { x: 1, y: 60, width: 1278, height: 659 };
+  let bounds = provisionalFullScreenElectronBounds;
+  let fullScreen = true;
+  let hostOpen = false;
+  let nativeConfigureCount = 10;
+  let nativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  let nativeViewportSize = { width: 1280, height: 800 };
+  let pendingNativeBounds;
+  let pendingNativeViewportSize;
+  let pendingNativeViewportPumps = 0;
+  let nativeFullScreen = true;
+  let queueFullScreenConfigure = true;
+  let kWinEventToken;
+  let kWinEventHandler;
+  let kWinPresentationSequence = 0;
+  let kWinPresentationEpoch = 0;
+  const emitKWinPresentation = ({ fullScreen, sourceBounds, target }) => {
+    kWinEventHandler({
+      kind: "presentationState",
+      pairId: `${kWinEventToken}:1`,
+      sequence: ++kWinPresentationSequence,
+      epoch: kWinPresentationEpoch,
+      fullScreen,
+      sourceBounds,
+      target
+    });
+  };
+  const fake = createFakeNative({
+    startKWinWaylandOverlayHostSyncEvents(token, handler) {
+      kWinEventToken = token;
+      kWinEventHandler = handler;
+      return ":1.9304";
+    },
+    setNativeOverlayHostPresentationEpoch(instanceId, epoch) {
+      this.calls.push({ method: "setNativeOverlayHostPresentationEpoch", args: [instanceId, epoch] });
+      kWinPresentationEpoch = epoch;
+    },
+    setNativeOverlayHostContentSeed(
+      instanceId, epoch, pairGeneration, receiptSequence,
+      sourceX, sourceY, sourceWidth, sourceHeight,
+      x, y, width, height
+    ) {
+      this.calls.push({
+        method: "setNativeOverlayHostContentSeed",
+        args: [
+          instanceId, epoch, pairGeneration, receiptSequence,
+          sourceX, sourceY, sourceWidth, sourceHeight,
+          x, y, width, height
+        ]
+      });
+      kWinPresentationEpoch = epoch;
+      pendingNativeBounds = { x, y, width, height };
+      pendingNativeViewportSize = { width, height };
+      pendingNativeViewportPumps = 1;
+    },
+    attachNativeOverlayHostWindow(x, y, width, height, fullScreen) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostWindow", args: [x, y, width, height, fullScreen] });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+      if (
+        nativeBounds.x === x &&
+        nativeBounds.y === y &&
+        nativeBounds.width === width &&
+        nativeBounds.height === height &&
+        nativeViewportSize.width === width &&
+        nativeViewportSize.height === height
+      ) {
+        return;
+      }
+      pendingNativeBounds = { x, y, width, height };
+      pendingNativeViewportSize = { width, height };
+      pendingNativeViewportPumps = 1;
+    },
+    setNativeOverlayHostFullScreen(value) {
+      this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [value] });
+      const previousNativeFullScreen = nativeFullScreen;
+      nativeFullScreen = value;
+      if (value && !previousNativeFullScreen && queueFullScreenConfigure) {
+        pendingNativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+        pendingNativeViewportSize = { width: 1280, height: 800 };
+        pendingNativeViewportPumps = 1;
+      } else if (!value && previousNativeFullScreen && queueFullScreenConfigure) {
+        pendingNativeBounds = restoredNativeBounds;
+        pendingNativeViewportSize = {
+          width: restoredNativeBounds.width,
+          height: restoredNativeBounds.height
+        };
+        pendingNativeViewportPumps = 1;
+      }
+    },
+    setNativeOverlayHostInputPassthrough(value) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [value] });
+    },
+    setNativeOverlayHostOpacity(value) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [value] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+      if (pendingNativeViewportSize) {
+        if (pendingNativeViewportPumps > 0) {
+          pendingNativeViewportPumps -= 1;
+        } else {
+          nativeBounds = pendingNativeBounds;
+          nativeViewportSize = pendingNativeViewportSize;
+          pendingNativeBounds = undefined;
+          pendingNativeViewportSize = undefined;
+          nativeConfigureCount += 1;
+          this.calls.push({ method: "applyNativeConfigureNotify", args: [nativeConfigureCount] });
+        }
+      }
+    },
+    getNativeOverlayHostDiagnosticsJson() {
+      return JSON.stringify({
+        bounds: nativeBounds,
+        configureCount: nativeConfigureCount,
+        viewportSize: nativeViewportSize,
+        fullScreen: nativeFullScreen,
+        mapped: true
+      });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    hideNativeOverlayHostView() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getContentBounds() {
+      return bounds;
+    },
+    isFullScreen() {
+      return fullScreen;
+    },
+    isMinimized() {
+      return false;
+    },
+    isVisible() {
+      return true;
+    },
+    on() {},
+    off() {},
+    once() {},
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    pollIntervalMs: 10000
+  });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow"),
+    [{ method: "attachNativeOverlayHostWindow", args: [0, 0, 1280, 768, true] }]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed"),
+    []
+  );
+
+  emitKWinPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  overlay.presenter.prepareForOverlay(10000);
+  // The presenter preparation pump accepts compositor/native fullscreen
+  // authority even while Electron keeps reporting its stale content size.
+  // Input remains empty through the first focus observation.
+  assert.equal(overlay.snapshot().transparent, false);
+  assert.equal(overlay.snapshot().clickThrough, true);
+  overlay.pump();
+  assert.equal(overlay.snapshot().clickThrough, true);
+  overlay.pump();
+  assert.equal(overlay.snapshot().clickThrough, false);
+  assert.equal(
+    fake.calls.some(
+      (call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" &&
+        call.args[0] === false
+    ),
+    false,
+    "only the native focus-confirmed commit may open the input shape"
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] }
+  );
+  const transitionCallStart = fake.calls.length;
+  fullScreen = false;
+  // The fullscreen event can arrive before Electron publishes its restored
+  // content bounds. Any number of stale fullscreen samples must keep the
+  // active host transparent and must not be mistaken for the one-shot seed.
+  overlay.pump();
+  overlay.pump();
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed"),
+    []
+  );
+  const staleTransitionCalls = fake.calls.slice(transitionCallStart);
+  const fullScreenOffIndex = staleTransitionCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostFullScreen" && call.args[0] === false
+  );
+  const inputEmptyIndex = staleTransitionCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+  );
+  const transparentIndex = staleTransitionCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+  );
+  assert.ok(inputEmptyIndex >= 0 && transparentIndex > inputEmptyIndex && fullScreenOffIndex > transparentIndex);
+
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: restoredNativeBounds
+  });
+  bounds = restoredContentBounds;
+  const seedCallStart = fake.calls.length;
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostContentSeed")
+      .map((call) => call.args.slice(-4)),
+    [[1, 60, 1278, 659]]
+  );
+  // Model a ConfigureNotify that is not visible to the first native pump.
+  // Activation during that gap must not override the transition hold.
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] }
+  );
+  overlay.pump();
+  overlay.pump();
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: nativeContentBounds
+  });
+  overlay.pump();
+  const seedCalls = fake.calls.slice(seedCallStart);
+  const seedBoundsIndex = seedCalls.findIndex((call) => call.method === "setNativeOverlayHostContentSeed");
+  const configureAckIndex = seedCalls.findIndex((call) => call.method === "applyNativeConfigureNotify");
+  const restorePrepareIndex = seedCalls.findIndex(
+    (call) => call.method === "prepareNativeOverlayHostActivation"
+  );
+  const restoreOpacityIndex = seedCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+  );
+  const restoreCommitIndex = seedCalls.findIndex(
+    (call) =>
+      call.method === "commitNativeOverlayHostActivation" &&
+      call.args[0] === false
+  );
+  assert.ok(
+    seedBoundsIndex >= 0 &&
+    configureAckIndex > seedBoundsIndex &&
+    restorePrepareIndex > configureAckIndex &&
+    restoreOpacityIndex > restorePrepareIndex &&
+    restoreCommitIndex > restoreOpacityIndex
+  );
+  assert.equal(
+    seedCalls.some(
+      (call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" &&
+        call.args[0] === false
+    ),
+    false
+  );
+
+  // A normal windowed -> fullscreen transition must not release merely
+  // because the native fullScreen flag flips synchronously. The old windowed
+  // drawable remains hidden until KWin's ConfigureNotify reaches 1280x800.
+  fullScreen = true;
+  bounds = fullScreenElectronBounds;
+  const normalEnterConfigureCount = nativeConfigureCount;
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  assert.equal(nativeConfigureCount, normalEnterConfigureCount);
+  emitKWinPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  overlay.pump();
+  assert.equal(nativeConfigureCount, normalEnterConfigureCount + 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
+  assert.equal(overlay.snapshot().clickThrough, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] }
+  );
+
+  // Restore again through the native raw geometry, reject the unchanged
+  // fullscreen Electron sample, then apply exactly one content-bounds seed.
+  fullScreen = false;
+  overlay.pump();
+  overlay.pump();
+  overlay.pump();
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: restoredNativeBounds
+  });
+  bounds = restoredContentBounds;
+  overlay.pump();
+  overlay.pump();
+  overlay.pump();
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: nativeContentBounds
+  });
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostContentSeed")
+      .map((call) => call.args.slice(-4)),
+    [
+      [1, 60, 1278, 659],
+      [1, 60, 1278, 659]
+    ]
+  );
+
+  // Rapid enter -> exit can coalesce before KWin changes the drawable. The
+  // restored host already equals the remembered content seed, so no second
+  // ConfigureNotify is required to release the replacement hold.
+  queueFullScreenConfigure = false;
+  const rapidConfigureCount = nativeConfigureCount;
+  const rapidBoundsCallCount = fake.calls.filter(
+    (call) => call.method === "setNativeOverlayHostContentSeed"
+  ).length;
+  fullScreen = true;
+  bounds = fullScreenElectronBounds;
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  fullScreen = false;
+  bounds = restoredContentBounds;
+  overlay.pump();
+  assert.equal(nativeConfigureCount, rapidConfigureCount);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").length,
+    rapidBoundsCallCount
+  );
+  assert.deepEqual(nativeBounds, nativeContentBounds);
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: nativeContentBounds
+  });
+  overlay.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
+  assert.equal(overlay.snapshot().clickThrough, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] }
+  );
+
+  // KWin can resize the host before the bridge observes Electron's fullscreen
+  // flag. Because the drawable has already left the remembered windowed
+  // anchor, the synchronously updated native flag is sufficient and no
+  // impossible extra ConfigureNotify is demanded.
+  nativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  nativeViewportSize = { width: 1280, height: 800 };
+  nativeConfigureCount += 1;
+  fullScreen = true;
+  bounds = provisionalFullScreenElectronBounds;
+  const preconfiguredEnterCount = nativeConfigureCount;
+  overlay.pump();
+  emitKWinPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  overlay.pump();
+  assert.equal(nativeConfigureCount, preconfiguredEnterCount);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
+  assert.equal(overlay.snapshot().clickThrough, true);
+  overlay.close();
+});
+
+test("Linux GLX host applies ConfigureNotify dimensions before presenting resized frames", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = source.slice(source.indexOf("mod linux {"));
+  const configureIndex = linuxSource.indexOf("event.get_type() == xlib::ConfigureNotify");
+  const viewportIndex = linuxSource.indexOf("gl::Viewport(0, 0, width as c_int, height as c_int)", configureIndex);
+  const swapIndex = linuxSource.indexOf("surface.glx_dispatch.swap_buffers", viewportIndex);
+
+  assert.notEqual(configureIndex, -1);
+  assert.notEqual(viewportIndex, -1);
+  assert.notEqual(swapIndex, -1);
+  assert.ok(configureIndex < viewportIndex && viewportIndex < swapIndex);
+  assert.match(linuxSource, /XSync\)\(surface\.display, xlib::False\)/);
+  assert.match(linuxSource, /"configureCount": surface\.configure_count/);
+  assert.match(linuxSource, /"viewportSize":/);
+  const inputPolicyStart = linuxSource.indexOf("unsafe fn apply_host_input_mode(");
+  const inputPolicyEnd = linuxSource.indexOf(
+    "unsafe fn apply_standalone_host_shape(",
+    inputPolicyStart
+  );
+  assert.notEqual(inputPolicyStart, -1);
+  assert.notEqual(inputPolicyEnd, -1);
+  assert.doesNotMatch(
+    linuxSource.slice(inputPolicyStart, inputPolicyEnd),
+    /XMapRaised|XSetInputFocus/,
+    "native input-shape changes must not race KWin's redirected mapping or activation"
+  );
+});
+
+test("Linux attached GLX host stays a real persistent child of the Electron X11 window", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = source.slice(source.indexOf("mod linux {"));
+  const createStart = linuxSource.indexOf("unsafe fn create_probe_window(");
+  const createEnd = linuxSource.indexOf("unsafe fn display_refresh_rate_for_window(", createStart);
+  const pumpStart = linuxSource.indexOf("pub fn pump() -> Result<(), Error>");
+  const pumpEnd = linuxSource.indexOf("pub fn show() -> Result<(), Error>", pumpStart);
+  const boundsStart = linuxSource.indexOf("pub fn set_bounds(");
+  const boundsEnd = linuxSource.indexOf("pub fn update_frame(", boundsStart);
+  const closeStart = linuxSource.indexOf("pub fn close()", boundsEnd);
+  const closeEnd = linuxSource.indexOf("pub fn close_probe()", closeStart);
+  const closeMatchingStart = linuxSource.indexOf("fn close_matching(", closeEnd);
+  const closeMatchingEnd = linuxSource.indexOf("unsafe fn create_probe_window(", closeMatchingStart);
+  for (const index of [
+    createStart,
+    createEnd,
+    pumpStart,
+    pumpEnd,
+    boundsStart,
+    boundsEnd,
+    closeStart,
+    closeEnd,
+    closeMatchingStart,
+    closeMatchingEnd
+  ]) {
+    assert.notEqual(index, -1);
+  }
+
+  const create = linuxSource.slice(createStart, createEnd);
+  assert.match(create, /parent_window: Option<xlib::Window>,\s*attached_initial_bounds:/);
+  assert.doesNotMatch(create, /XSetTransientForHint/);
+  assert.match(create, /let creation_parent = if parent_window\.is_some\(\) \{\s*\(xlib\.XRootWindow\)/);
+  assert.match(create, /XCreateWindow\)\(\s*display,\s*creation_parent,/);
+  assert.match(create, /with_x11_error_trap\(&xlib, display/);
+  const bootstrapSwap = create.indexOf("glx_dispatch.swap_buffers");
+  const trapStart = create.indexOf("with_x11_error_trap");
+  const reparent = create.indexOf("XReparentWindow");
+  const parentReadback = create.indexOf("XQueryTree");
+  const map = create.indexOf("XMapRaised");
+  const trapEnd = create.indexOf("});", trapStart);
+  assert.ok(
+    bootstrapSwap >= 0 && bootstrapSwap < reparent && reparent < parentReadback && parentReadback < map,
+    "the unmapped registration swap must precede confirmed reparenting and first map"
+  );
+  assert.ok(
+    trapStart >= 0 && trapStart < reparent && map < trapEnd,
+    "the reparent, parent readback, and first map must share one checked X11 trap"
+  );
+  assert.match(create, /attached_initial_bounds\.unwrap_or/);
+  assert.match(create, /XReparentWindow\)\(display, window, attached_parent, attached_x, attached_y\)/);
+
+  const pump = linuxSource.slice(pumpStart, pumpEnd);
+  assert.doesNotMatch(pump, /XMoveResizeWindow/);
+  assert.ok(pump.indexOf("xlib::DestroyNotify") < pump.indexOf("glx_dispatch.make_current"));
+
+  const setBounds = linuxSource.slice(boundsStart, boundsEnd);
+  assert.match(setBounds, /x11_attached_child_bounds/);
+  assert.match(setBounds, /XMoveResizeWindow/);
+
+  for (const close of [
+    linuxSource.slice(closeStart, closeEnd),
+    linuxSource.slice(closeMatchingStart, closeMatchingEnd)
+  ]) {
+    assert.doesNotMatch(close, /XDestroyWindow|make_current\)\(\s*surface\.display,\s*surface\.window/);
+    assert.match(close, /surface\.glx_dispatch\.destroy_context/);
+    assert.doesNotMatch(close, /surface\.glx\.glXDestroyContext/);
+  }
+  assert.match(linuxSource, /"attachedChildHost": surface\.managed_host && surface\.parent_window\.is_some\(\)/);
+  assert.match(linuxSource, /"hiddenRootBootstrap": surface\.managed_host && surface\.parent_window\.is_some\(\)/);
+});
+
+test("Linux GLX host uploads a complete BGRA game frame before Steam swaps", () => {
+  const nativeSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = nativeSource.slice(nativeSource.indexOf("mod linux {"));
+  const updateStart = linuxSource.indexOf("pub fn update_frame(");
+  const updateEnd = linuxSource.indexOf("pub fn update_shared_texture(", updateStart);
+  const pumpStart = linuxSource.indexOf("pub fn pump() -> Result<(), Error>");
+  const pumpEnd = linuxSource.indexOf("pub fn show() -> Result<(), Error>", pumpStart);
+  const drawStart = linuxSource.indexOf("unsafe fn draw_source_frame(");
+  const drawEnd = linuxSource.indexOf("unsafe fn create_frame_renderer(", drawStart);
+  for (const index of [updateStart, updateEnd, pumpStart, pumpEnd, drawStart, drawEnd]) {
+    assert.notEqual(index, -1);
+  }
+
+  const update = linuxSource.slice(updateStart, updateEnd);
+  assert.match(update, /checked_mul\(height as usize\)/);
+  assert.match(update, /checked_mul\(4\)/);
+  assert.match(update, /source_frame = Some\(LinuxFrameUpload/);
+  assert.match(update, /source_frame_dirty = true/);
+
+  const pump = linuxSource.slice(pumpStart, pumpEnd);
+  assert.ok(pump.indexOf("draw_source_frame(surface)?") < pump.indexOf("swap_buffers"));
+
+  const draw = linuxSource.slice(drawStart, drawEnd);
+  assert.match(draw, /gl::BGRA/);
+  assert.match(draw, /gl::TexImage2D/);
+  assert.match(draw, /gl::TexSubImage2D/);
+  assert.match(draw, /gl::DrawArrays\(gl::TRIANGLE_STRIP/);
+  assert.match(linuxSource, /"frameUploadCount": surface\.frame_upload_count/);
+  assert.match(linuxSource, /"frameDrawCount": surface\.frame_draw_count/);
+});
+
+test("Linux GLX presentation resolves Steam LD_PRELOAD interposition instead of bypassing it", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = source.slice(source.indexOf("mod linux {"));
+  const resolverStart = linuxSource.indexOf("unsafe fn resolve_glx_dispatch(");
+  const resolverEnd = linuxSource.indexOf("unsafe fn process_glx_symbol", resolverStart);
+  const createStart = linuxSource.indexOf("unsafe fn create_probe_window(");
+  const createEnd = linuxSource.indexOf("unsafe fn display_refresh_rate_for_window(", createStart);
+  const pumpStart = linuxSource.indexOf("pub fn pump() -> Result<(), Error>");
+  const pumpEnd = linuxSource.indexOf("pub fn show() -> Result<(), Error>", pumpStart);
+  for (const index of [resolverStart, resolverEnd, createStart, createEnd, pumpStart, pumpEnd]) {
+    assert.notEqual(index, -1);
+  }
+
+  const resolver = linuxSource.slice(resolverStart, resolverEnd);
+  for (const symbol of [
+    "glXChooseVisual",
+    "glXCreateContext",
+    "glXDestroyContext",
+    "glXMakeCurrent",
+    "glXSwapBuffers",
+    "glXGetProcAddress"
+  ]) {
+    assert.match(resolver, new RegExp(`process_glx_symbol::<[^>]+>\\(b\"${symbol}\\\\0\"\\)`));
+  }
+
+  const create = linuxSource.slice(createStart, createEnd);
+  assert.match(create, /glx_dispatch\.choose_visual/);
+  assert.match(create, /glx_dispatch\.create_context/);
+  assert.match(create, /glx_dispatch\.destroy_context/);
+  assert.match(create, /glx_dispatch\.make_current/);
+  assert.match(create, /load_gl_functions\(&glx_dispatch\)/);
+
+  const pump = linuxSource.slice(pumpStart, pumpEnd);
+  assert.match(pump, /glx_dispatch\.make_current/);
+  assert.match(pump, /glx_dispatch\.swap_buffers/);
+  assert.doesNotMatch(pump, /surface\.glx\.glX(?:MakeCurrent|SwapBuffers)/);
+  assert.match(linuxSource, /"glxInterposition":/);
+});
+
+test("Linux managed-host input readback uses SHAPE 1.1 instead of an invalid XFixes window region", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = source.slice(source.indexOf("mod linux {"));
+  const inputPolicyStart = linuxSource.indexOf("unsafe fn apply_host_input_mode(");
+  const inputPolicyEnd = linuxSource.indexOf(
+    "unsafe fn apply_host_input_hint(",
+    inputPolicyStart
+  );
+  assert.notEqual(inputPolicyStart, -1);
+  assert.notEqual(inputPolicyEnd, -1);
+  const inputPolicy = linuxSource.slice(inputPolicyStart, inputPolicyEnd);
+
+  assert.doesNotMatch(
+    inputPolicy,
+    /XFixesCreateRegionFromWindow/,
+    "XFixes CreateRegionFromWindow accepts only bounding and clip shapes"
+  );
+  assert.match(inputPolicy, /xshape\.get_rectangles/);
+  assert.match(linuxSource, /XShapeQueryVersion/);
+  assert.match(linuxSource, /Shape 1\.1 input regions/);
+  assert.match(linuxSource, /XFixesQueryVersion/);
+  assert.match(linuxSource, /XFixes 2\.0/);
+  assert.match(inputPolicy, /rectangle_count:\s*c_int\s*=\s*-1/);
+  assert.match(inputPolicy, /input_shape_readback_matches/);
+  assert.match(inputPolicy, /let mut input_shape_ready = false/);
+  assert.match(linuxSource, /if managed_host && !application_host \{\s*let Some\(xfixes\)/);
+});
+
+test("Linux standalone input commit is focus-confirmed, bounded, and cancellation-safe", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = source.slice(source.indexOf("mod linux {"));
+  const timeoutMatch = linuxSource.match(
+    /STANDALONE_HOST_ACTIVATION_TIMEOUT:\s*Duration\s*=\s*Duration::from_millis\((\d+)\)/
+  );
+  const observationMatch = linuxSource.match(
+    /STANDALONE_HOST_ACTIVATION_MAX_PUMP_OBSERVATIONS:\s*u8\s*=\s*(\d+)/
+  );
+  const focusObservationMatch = linuxSource.match(
+    /STANDALONE_HOST_FOCUS_CONFIRMATION_OBSERVATIONS:\s*u8\s*=\s*(\d+)/
+  );
+  assert.ok(timeoutMatch, "activation must have an explicit wall-clock deadline");
+  assert.ok(observationMatch, "activation must have an explicit pump-observation limit");
+  assert.ok(focusObservationMatch, "input commit must require repeated focus observations");
+  assert.ok(Number(timeoutMatch[1]) <= 250, "activation may not survive beyond 250 ms");
+  assert.ok(Number(observationMatch[1]) <= 8, "activation may not survive beyond eight pumps");
+  assert.equal(Number(focusObservationMatch[1]), 2);
+
+  const functionSlice = (startText, endText) => {
+    const start = linuxSource.indexOf(startText);
+    const end = linuxSource.indexOf(endText, start + startText.length);
+    assert.notEqual(start, -1, `missing ${startText}`);
+    assert.notEqual(end, -1, `missing terminator for ${startText}`);
+    return linuxSource.slice(start, end);
+  };
+  const advanceActivation = functionSlice(
+    "unsafe fn advance_standalone_host_activation(",
+    "unsafe fn request_standalone_host_activation("
+  );
+  assert.match(advanceActivation, /attributes\.map_state\s*==\s*xlib::IsViewable/);
+  const advanceInputCommit = functionSlice(
+    "unsafe fn advance_standalone_host_input_commit(",
+    "unsafe fn request_standalone_host_activation("
+  );
+  assert.match(advanceInputCommit, /attributes\.map_state\s*==\s*xlib::IsViewable/);
+  assert.match(advanceInputCommit, /XGetInputFocus/);
+  assert.match(
+    advanceInputCommit,
+    /consecutive_focus_observations\s*>=\s*STANDALONE_HOST_FOCUS_CONFIRMATION_OBSERVATIONS/
+  );
+  assert.match(
+    advanceInputCommit,
+    /apply_host_input_mode\([\s\S]*?false,\s*\)/,
+    "only the confirmed commit opens the standalone XFixes input shape"
+  );
+  assert.doesNotMatch(
+    linuxSource,
+    /XSetInputFocus/,
+    "generic-WM activation must remain compositor-mediated"
+  );
+
+  const hide = functionSlice("pub fn hide()", "pub fn prepare_activation()");
+  const inputPolicy = functionSlice(
+    "pub fn set_input_passthrough(",
+    "pub fn set_opaque("
+  );
+  const opacityPolicy = functionSlice("pub fn set_opaque(", "pub fn set_overlay_active(");
+  const overlayActive = functionSlice("pub fn set_overlay_active(", "pub fn set_cursor_hidden(");
+  assert.match(hide, /restore_standalone_host_inert_input\(surface\)/);
+  assert.match(
+    inputPolicy,
+    /if pass_through && surface\.parent_window\.is_none\(\)\s*\{\s*return restore_standalone_host_inert_input\(surface\)/s
+  );
+  assert.match(
+    opacityPolicy,
+    /if !opaque\s*\{\s*restore_standalone_host_inert_input\(surface\)/s
+  );
+  assert.match(
+    overlayActive,
+    /if !active[\s\S]*restore_standalone_host_inert_input\(surface\)/
+  );
+  const armWmActivation = functionSlice(
+    "unsafe fn arm_standalone_host_wm_activation(",
+    "unsafe fn advance_standalone_host_activation("
+  );
+  assert.match(armWmActivation, /if surface\.activation_requested_for_input_epoch/);
+  assert.match(armWmActivation, /activation_requested_for_input_epoch = true/);
+  const commitApi = functionSlice("pub fn commit_activation(", "pub fn set_input_passthrough(");
+  assert.match(
+    commitApi,
+    /if request_window_manager_activation\s*\{\s*arm_standalone_host_wm_activation\(surface\)/s
+  );
 });
 
 test("electron overlay reuses a bounds-backed Xwayland host across native Wayland activations", async (t) => {
@@ -8277,7 +11794,20 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
   let minimized = false;
   let visible = true;
   let nativeHandleReads = 0;
+  let focusCalls = 0;
   const windowHandlers = new Map();
+  mockElectronModule(t, {
+    screen: {
+      dipToScreenPoint() {
+        throw new Error("native Wayland bounds must stay in compositor coordinates");
+      },
+      getDisplayMatching() {
+        // Wayland can report originless BrowserWindow bounds that select the
+        // wrong Electron display. The paired Xwayland host is authoritative.
+        return { displayFrequency: 60 };
+      }
+    }
+  });
   const fake = createFakeNative({
     attachNativeOverlayHostWindow(x, y, width, height, initialFullScreen) {
       hostOpen = true;
@@ -8318,6 +11848,8 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
       return hostOpen;
     }
   });
+  fake.getNativeOverlayHostDiagnosticsJson = () =>
+    JSON.stringify({ ...fake.activationState, displayRefreshRate: 89.87 });
   const steam = loadSteamWithFakeNative(fake);
   t.after(clearSteamBridgeCache);
 
@@ -8341,6 +11873,9 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
     isVisible() {
       return visible;
     },
+    focus() {
+      focusCalls += 1;
+    },
     on(event, handler) {
       windowHandlers.set(event, handler);
     },
@@ -8361,10 +11896,13 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
     title: "Wayland Managed Overlay",
     pollIntervalMs: 10000
   });
+  t.after(() => overlay.close());
 
   assert.equal(nativeHandleReads, 0);
   assert.equal(overlay.snapshot().backend, "x11-glx");
   assert.equal(overlay.snapshot().nativeHostOpen, true);
+  assert.equal(overlay.snapshot().activeOverlayFps, 90);
+  assert.equal(overlay.snapshot().needsPresentFps, 90);
   assert.deepEqual(overlay.snapshot().bounds, contentBounds);
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow"),
@@ -8409,6 +11947,7 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
     true
   );
 
+  overlay.presenter.prepareForOverlay(1000);
   overlayActivated({ active: true });
   overlayActivated({ active: false });
   assert.equal(fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length, 3);
@@ -8420,6 +11959,7 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
     true
   );
 
+  overlay.presenter.prepareForOverlay(1000);
   overlayActivated({ active: true });
   overlayActivated({ active: false });
   assert.equal(fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length, 4);
@@ -8434,6 +11974,18 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
     fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow").length,
     1
   );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "prepareNativeOverlayHostActivation").length,
+    2
+  );
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "commitNativeOverlayHostActivation")
+      .map((call) => call.args),
+    [[true], [true]],
+    "each generic-WM input epoch sends exactly one deferred commit/EWMH request"
+  );
+  assert.ok(focusCalls >= 2, "generic Wayland retains its Electron focus fallback");
   assert.equal(overlay.snapshot().nativeSurfaceAttachCount, 1);
 
   fullScreen = false;
@@ -8457,6 +12009,7 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
     presenterMode: "session",
     pollIntervalMs: 10000
   });
+  t.after(() => sessionOverlay.close());
   assert.equal(sessionOverlay.snapshot().electronOverlay.presenterMode, "session");
   assert.equal(sessionOverlay.snapshot().electronOverlay.effectivePresenterMode, "persistent");
   assert.equal(sessionOverlay.snapshot().attached, true);
@@ -8469,19 +12022,80 @@ test("electron overlay reuses a bounds-backed Xwayland host across native Waylan
   assert.equal(hostOpen, false);
 });
 
-test("electron native overlay session follows Wayland bounds and fullscreen state through Xwayland", (t) => {
+test("KWin native overlay session waits for authoritative restored bounds after fullscreen", (t) => {
   setProcessPlatformForTest(t, "linux");
-  setProcessPropertyForTest(t, "argv", ["electron"]);
+  setProcessPropertyForTest(t, "argv", ["electron", "--ozone-platform=wayland"]);
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-kwin-session-owner-"));
+  t.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
   setProcessEnvForTest(t, {
     DISPLAY: ":0",
     XDG_SESSION_TYPE: "wayland",
-    WAYLAND_DISPLAY: "wayland-0"
+    WAYLAND_DISPLAY: "wayland-0",
+    KDE_FULL_SESSION: "true",
+    XDG_CURRENT_DESKTOP: "KDE",
+    XDG_RUNTIME_DIR: runtimeDir
   });
+  mockSpawnSyncForTest(t, successfulKWinScriptLifecycleSpawn);
 
-  let bounds = { x: 0, y: 0, width: 1280, height: 800 };
+  const provisionalFullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 768 };
+  const fullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  const restoredNativeBounds = { x: 1, y: 28, width: 1278, height: 691 };
+  const restoredContentBounds = { x: 0, y: 32, width: 1278, height: 659 };
+  const nativeContentBounds = { x: 1, y: 60, width: 1278, height: 659 };
+  let bounds = provisionalFullScreenElectronBounds;
   let fullScreen = true;
   let hostOpen = false;
+  let nativeConfigureCount = 10;
+  let nativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  let nativeViewportSize = { width: 1280, height: 800 };
+  let pendingNativeBounds;
+  let pendingNativeViewportSize;
+  let pendingNativeViewportPumps = 0;
+  let nativeFullScreen = true;
+  let queueFullScreenConfigure = true;
+  let kWinEventToken;
+  let kWinEventHandler;
+  let kWinPresentationSequence = 0;
+  let kWinPresentationEpoch = 0;
+  const emitKWinPresentation = ({ fullScreen, sourceBounds, target }) => {
+    kWinEventHandler({
+      kind: "presentationState",
+      pairId: `${kWinEventToken}:1`,
+      sequence: ++kWinPresentationSequence,
+      epoch: kWinPresentationEpoch,
+      fullScreen,
+      sourceBounds,
+      target
+    });
+  };
   const fake = createFakeNative({
+    startKWinWaylandOverlayHostSyncEvents(token, handler) {
+      kWinEventToken = token;
+      kWinEventHandler = handler;
+      return ":1.9905";
+    },
+    setNativeOverlayHostPresentationEpoch(instanceId, epoch) {
+      this.calls.push({ method: "setNativeOverlayHostPresentationEpoch", args: [instanceId, epoch] });
+      kWinPresentationEpoch = epoch;
+    },
+    setNativeOverlayHostContentSeed(
+      instanceId, epoch, pairGeneration, receiptSequence,
+      sourceX, sourceY, sourceWidth, sourceHeight,
+      x, y, width, height
+    ) {
+      this.calls.push({
+        method: "setNativeOverlayHostContentSeed",
+        args: [
+          instanceId, epoch, pairGeneration, receiptSequence,
+          sourceX, sourceY, sourceWidth, sourceHeight,
+          x, y, width, height
+        ]
+      });
+      kWinPresentationEpoch = epoch;
+      pendingNativeBounds = { x, y, width, height };
+      pendingNativeViewportSize = { width, height };
+      pendingNativeViewportPumps = 1;
+    },
     attachNativeOverlayHostWindow(x, y, width, height, initialFullScreen) {
       hostOpen = true;
       this.calls.push({
@@ -8491,11 +12105,61 @@ test("electron native overlay session follows Wayland bounds and fullscreen stat
     },
     setNativeOverlayHostBounds(x, y, width, height) {
       this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+      if (
+        nativeBounds.x === x &&
+        nativeBounds.y === y &&
+        nativeBounds.width === width &&
+        nativeBounds.height === height &&
+        nativeViewportSize.width === width &&
+        nativeViewportSize.height === height
+      ) {
+        return;
+      }
+      pendingNativeBounds = { x, y, width, height };
+      pendingNativeViewportSize = { width, height };
+      pendingNativeViewportPumps = 1;
     },
     setNativeOverlayHostFullScreen(value) {
       this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [value] });
+      const previousNativeFullScreen = nativeFullScreen;
+      nativeFullScreen = value;
+      if (value && !previousNativeFullScreen && queueFullScreenConfigure) {
+        pendingNativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+        pendingNativeViewportSize = { width: 1280, height: 800 };
+        pendingNativeViewportPumps = 1;
+      } else if (!value && previousNativeFullScreen && queueFullScreenConfigure) {
+        pendingNativeBounds = restoredNativeBounds;
+        pendingNativeViewportSize = {
+          width: restoredNativeBounds.width,
+          height: restoredNativeBounds.height
+        };
+        pendingNativeViewportPumps = 1;
+      }
     },
-    pumpNativeOverlayProbeWindow() {},
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+      if (pendingNativeViewportSize) {
+        if (pendingNativeViewportPumps > 0) {
+          pendingNativeViewportPumps -= 1;
+        } else {
+          nativeBounds = pendingNativeBounds;
+          nativeViewportSize = pendingNativeViewportSize;
+          pendingNativeBounds = undefined;
+          pendingNativeViewportSize = undefined;
+          nativeConfigureCount += 1;
+          this.calls.push({ method: "applyNativeConfigureNotify", args: [nativeConfigureCount] });
+        }
+      }
+    },
+    getNativeOverlayHostDiagnosticsJson() {
+      return JSON.stringify({
+        bounds: nativeBounds,
+        configureCount: nativeConfigureCount,
+        viewportSize: nativeViewportSize,
+        fullScreen: nativeFullScreen,
+        mapped: true
+      });
+    },
     showNativeOverlayHostView() {},
     hideNativeOverlayHostView() {},
     setNativeOverlayHostInputPassthrough(value) {
@@ -8545,7 +12209,7 @@ test("electron native overlay session follows Wayland bounds and fullscreen stat
   assert.equal(session.snapshot().fullScreen, true);
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "attachNativeOverlayHostWindow"),
-    [{ method: "attachNativeOverlayHostWindow", args: [0, 0, 1280, 800, true] }]
+    [{ method: "attachNativeOverlayHostWindow", args: [0, 0, 1280, 768, true] }]
   );
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
@@ -8556,25 +12220,2843 @@ test("electron native overlay session follows Wayland bounds and fullscreen stat
     { method: "setNativeOverlayHostOpacity", args: [false] }
   );
 
-  bounds = { x: 100, y: 80, width: 960, height: 640 };
-  fullScreen = false;
+  emitKWinPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] }
+  );
   session.pump();
   assert.deepEqual(
-    fake.calls.filter((call) => call.method === "setNativeOverlayHostBounds"),
-    [{ method: "setNativeOverlayHostBounds", args: [100, 80, 960, 640] }]
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] }
+  );
+  assert.equal(session.snapshot().nativeHostDiagnostics.inputPassthrough, true);
+  session.pump();
+  session.pump();
+  assert.equal(session.snapshot().nativeHostDiagnostics.inputPassthrough, false);
+  const transitionCallStart = fake.calls.length;
+  fullScreen = false;
+  session.pump();
+  session.pump();
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed"),
+    []
+  );
+  const staleTransitionCalls = fake.calls.slice(transitionCallStart);
+  const fullScreenOffIndex = staleTransitionCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostFullScreen" && call.args[0] === false
+  );
+  const inputEmptyIndex = staleTransitionCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+  );
+  const transparentIndex = staleTransitionCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+  );
+  assert.ok(inputEmptyIndex >= 0 && transparentIndex > inputEmptyIndex && fullScreenOffIndex > transparentIndex);
+
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: restoredNativeBounds
+  });
+  bounds = restoredContentBounds;
+  const seedCallStart = fake.calls.length;
+  session.pump();
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostContentSeed")
+      .map((call) => call.args.slice(-4)),
+    [[1, 60, 1278, 659]]
+  );
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] }
+  );
+  session.pump();
+  session.pump();
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: nativeContentBounds
+  });
+  session.pump();
+  const seedCalls = fake.calls.slice(seedCallStart);
+  const seedBoundsIndex = seedCalls.findIndex((call) => call.method === "setNativeOverlayHostContentSeed");
+  const configureAckIndex = seedCalls.findIndex((call) => call.method === "applyNativeConfigureNotify");
+  const restorePrepareIndex = seedCalls.findIndex(
+    (call) => call.method === "prepareNativeOverlayHostActivation"
+  );
+  const restoreOpacityIndex = seedCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+  );
+  const restoreCommitIndex = seedCalls.findIndex(
+    (call) =>
+      call.method === "commitNativeOverlayHostActivation" &&
+      call.args[0] === false
+  );
+  assert.ok(
+    seedBoundsIndex >= 0 &&
+    configureAckIndex > seedBoundsIndex &&
+    restorePrepareIndex > configureAckIndex &&
+    restoreOpacityIndex > restorePrepareIndex &&
+    restoreCommitIndex > restoreOpacityIndex
   );
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostFullScreen"),
-    [
-      { method: "setNativeOverlayHostFullScreen", args: [true] },
-      { method: "setNativeOverlayHostFullScreen", args: [false] }
-    ]
+    [{ method: "setNativeOverlayHostFullScreen", args: [false] }]
   );
   assert.equal(session.snapshot().fullScreen, false);
+
+  // Normal entry holds on the still-windowed drawable after the native flag
+  // flips and releases only after the fullscreen ConfigureNotify is pumped.
+  bounds = fullScreenElectronBounds;
+  fullScreen = true;
+  const normalEnterConfigureCount = nativeConfigureCount;
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] }
+  );
+  assert.equal(nativeConfigureCount, normalEnterConfigureCount);
+  emitKWinPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  session.pump();
+  assert.equal(nativeConfigureCount, normalEnterConfigureCount + 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] }
+  );
+
+  // A second restore repeats the two authoritative phases: native geometry
+  // must first leave 1280x800, then the stale 1280x768 Electron sample is
+  // rejected until the 1278x659 windowed content size arrives. Its Wayland
+  // x/y are not reused as X11 root coordinates.
+  fullScreen = false;
+  session.pump();
+  session.pump();
+  session.pump();
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: restoredNativeBounds
+  });
+  bounds = restoredContentBounds;
+  session.pump();
+  session.pump();
+  session.pump();
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: nativeContentBounds
+  });
+  session.pump();
+
+  // A rapid enter -> exit that never changes the drawable must not wait for a
+  // ConfigureNotify that KWin has no reason to emit.
+  queueFullScreenConfigure = false;
+  const rapidConfigureCount = nativeConfigureCount;
+  const rapidBoundsCallCount = fake.calls.filter(
+    (call) => call.method === "setNativeOverlayHostContentSeed"
+  ).length;
+  fullScreen = true;
+  bounds = fullScreenElectronBounds;
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  fullScreen = false;
+  bounds = restoredContentBounds;
+  session.pump();
+  assert.equal(nativeConfigureCount, rapidConfigureCount);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").length,
+    rapidBoundsCallCount
+  );
+  assert.deepEqual(nativeBounds, nativeContentBounds);
+  emitKWinPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: nativeContentBounds
+  });
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] }
+  );
+
+  // KWin-before-bridge ordering: geometry/configure is already fullscreen,
+  // while the native flag is not. The remembered windowed anchor proves the
+  // transition already happened, so no second configure is required.
+  nativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  nativeViewportSize = { width: 1280, height: 800 };
+  nativeConfigureCount += 1;
+  fullScreen = true;
+  bounds = provisionalFullScreenElectronBounds;
+  const preconfiguredEnterCount = nativeConfigureCount;
+  session.pump();
+  emitKWinPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  session.pump();
+  assert.equal(nativeConfigureCount, preconfiguredEnterCount);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+    { method: "commitNativeOverlayHostActivation", args: [false] }
+  );
 
   session.close();
   assert.equal(hostOpen, false);
 });
+
+function createKWinCoordinateHoldReviewHarness(t, state, overrides = {}) {
+  setProcessPlatformForTest(t, "linux");
+  setProcessPropertyForTest(t, "argv", ["electron", "--ozone-platform=wayland"]);
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-coordinate-hold-review-"));
+  t.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
+  setProcessEnvForTest(t, {
+    DISPLAY: ":0",
+    XDG_SESSION_TYPE: "wayland",
+    WAYLAND_DISPLAY: "wayland-0",
+    KDE_FULL_SESSION: "true",
+    XDG_CURRENT_DESKTOP: "KDE",
+    XDG_RUNTIME_DIR: runtimeDir
+  });
+  mockSpawnSyncForTest(t, successfulKWinScriptLifecycleSpawn);
+
+  let hostOpen = false;
+  let kWinEventToken;
+  let kWinEventHandler;
+  let presentationPairGeneration = 0;
+  let presentationSequence = 0;
+  let presentationPairId;
+  let presentationEpoch = 0;
+  const fake = createFakeNative({
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return overrides.getKWinWaylandOverlayPresentationProtocolVersion?.() ?? 1;
+    },
+    startKWinWaylandOverlayHostSyncEvents(token, handler) {
+      kWinEventToken = token;
+      kWinEventHandler = handler;
+      if (overrides.receiverUnavailable) {
+        return undefined;
+      }
+      return ":1.10250";
+    },
+    attachNativeOverlayHostWindow(x, y, width, height, fullScreen) {
+      hostOpen = true;
+      state.nativeMapped = false;
+      this.calls.push({ method: "attachNativeOverlayHostWindow", args: [x, y, width, height, fullScreen] });
+      overrides.onAttach?.(state, { x, y, width, height }, fullScreen);
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+      if (overrides.onSetBounds) {
+        overrides.onSetBounds(state, { x, y, width, height });
+      } else {
+        state.nativeBounds = { x, y, width, height };
+        state.nativeViewportSize = { width, height };
+        state.nativeConfigureCount += 1;
+      }
+    },
+    setNativeOverlayHostFullScreen(fullScreen) {
+      this.calls.push({ method: "setNativeOverlayHostFullScreen", args: [fullScreen] });
+      if (overrides.onSetFullScreen) {
+        overrides.onSetFullScreen(state, fullScreen);
+      } else {
+        state.nativeFullScreen = fullScreen;
+      }
+    },
+    setNativeOverlayHostPresentationEpoch(instanceId, epoch) {
+      this.calls.push({ method: "setNativeOverlayHostPresentationEpoch", args: [instanceId, epoch] });
+      const result = overrides.onPresentationEpochMarker?.(state, instanceId, epoch);
+      if (result !== undefined) return result;
+      presentationEpoch = epoch;
+    },
+    setNativeOverlayHostPresentationTransportClosed(instanceId) {
+      this.calls.push({
+        method: "setNativeOverlayHostPresentationTransportClosed",
+        args: [instanceId]
+      });
+      overrides.onTransportClosedMarker?.(state, instanceId);
+    },
+    setNativeOverlayHostContentSeed(
+      instanceId,
+      epoch,
+      pairGeneration,
+      receiptSequence,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      x,
+      y,
+      width,
+      height
+    ) {
+      this.calls.push({
+        method: "setNativeOverlayHostContentSeed",
+        args: [
+          instanceId,
+          epoch,
+          pairGeneration,
+          receiptSequence,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          x,
+          y,
+          width,
+          height
+        ]
+      });
+      presentationEpoch = epoch;
+      const seed = {
+        x,
+        y,
+        width,
+        height,
+        pairGeneration,
+        receiptSequence,
+        sourceBounds: { x: sourceX, y: sourceY, width: sourceWidth, height: sourceHeight }
+      };
+      if (overrides.onContentSeed) {
+        overrides.onContentSeed(state, seed);
+      } else {
+        state.nativeBounds = { x, y, width, height };
+        state.nativeViewportSize = { width, height };
+        state.nativeConfigureCount += 1;
+      }
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+      overrides.onPump?.(state, this.calls);
+    },
+    getNativeOverlayHostDiagnosticsJson() {
+      this.calls.push({ method: "getNativeOverlayHostDiagnosticsJson", args: [] });
+      return JSON.stringify({
+        bounds: state.nativeBounds,
+        configureCount: state.nativeConfigureCount,
+        viewportSize: state.nativeViewportSize,
+        fullScreen: state.nativeFullScreen,
+        mapped: state.nativeMapped === true
+      });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+      overrides.onShowHost?.(state);
+      state.nativeMapped = true;
+    },
+    hideNativeOverlayHostView() {
+      this.calls.push({ method: "hideNativeOverlayHostView", args: [] });
+      overrides.onHideHost?.(state);
+      state.nativeMapped = false;
+    },
+    setNativeOverlayHostInputPassthrough(value) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [value] });
+      overrides.onSetInputPassthrough?.(state, value);
+    },
+    setNativeOverlayHostOpacity(value) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [value] });
+      overrides.onSetOpacity?.(state, value);
+    },
+    detachNativeOverlayHostView() {
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return overrides.getHostOpen?.(state, hostOpen) ?? hostOpen;
+    },
+    isKWinWaylandOverlayHostSyncEventsRunning() {
+      return overrides.isReceiverRunning?.(state) ?? true;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const kwin = require(distFile("kwin.js"));
+  assert.equal(kwin.ensureKWinWaylandOverlayHostSync().active, true);
+  t.after(clearSteamBridgeCache);
+  const windowHandlers = new Map();
+  let controller;
+  const session = overrides.manager
+    ? (() => {
+        const window = {
+          isDestroyed() {
+            return false;
+          },
+          getContentBounds() {
+            return state.electronBounds;
+          },
+          isFullScreen() {
+            return state.electronFullScreen;
+          },
+          isMinimized() {
+            return false;
+          },
+          isVisible() {
+            return true;
+          },
+          on(event, handler) {
+            windowHandlers.set(event, handler);
+          },
+          off(event, handler) {
+            if (windowHandlers.get(event) === handler) windowHandlers.delete(event);
+          },
+          once() {},
+          webContents: {
+            once() {},
+            invalidate() {},
+            send() {}
+          }
+        };
+        controller = steam.overlay.createElectronSteamOverlay(window, { pollIntervalMs: 10000 });
+        return controller.presenter;
+      })()
+    : overrides.presenter
+      ? steam.overlay.attachPresenter({
+          useStandaloneLinuxHost: true,
+          getBounds: () => state.electronBounds,
+          getFullScreen: () => state.electronFullScreen,
+          pollIntervalMs: 10000,
+          restoreFocus: overrides.restoreFocus,
+          restoreFocusDelayMs: overrides.restoreFocusDelayMs
+        })
+      : steam.overlay.startNativeOverlaySession({
+          useStandaloneLinuxHost: true,
+          getBounds: () => state.electronBounds,
+          getFullScreen: () => state.electronFullScreen,
+          pumpIntervalMs: 10000,
+          restoreFocus: overrides.restoreFocus,
+          restoreFocusDelayMs: overrides.restoreFocusDelayMs,
+          hideNativeHostOnOverlayDeactivate:
+            overrides.hideNativeHostOnOverlayDeactivate
+        });
+  t.after(() => controller ? controller.close() : session.close());
+  const startPresentationPair = () => {
+    presentationPairGeneration += 1;
+    presentationSequence = 0;
+    presentationPairId = `${kWinEventToken}:${presentationPairGeneration}`;
+    return presentationPairId;
+  };
+  const emitPresentation = ({ fullScreen, sourceBounds, target, pairId, epoch = presentationEpoch } = {}) => {
+    const effectivePairId = pairId ?? presentationPairId ?? startPresentationPair();
+    kWinEventHandler({
+      kind: "presentationState",
+      pairId: effectivePairId,
+      sequence: ++presentationSequence,
+      epoch,
+      fullScreen,
+      sourceBounds,
+      target
+    });
+    return effectivePairId;
+  };
+  const invalidatePresentation = (pairId = presentationPairId) => {
+    kWinEventHandler({
+      kind: "presentationStateInvalidated",
+      pairId,
+      sequence: ++presentationSequence
+    });
+  };
+  return {
+    fake,
+    session,
+    steam,
+    kwin,
+    controller,
+    windowHandlers,
+    emitPresentation,
+    invalidatePresentation,
+    emitTransportClosed() {
+      kWinEventHandler({ kind: "transportClosed" });
+    },
+    emitRawKWinEvent(value) {
+      kWinEventHandler(value);
+    },
+    startPresentationPair,
+    setHostOpen(value) {
+      hostOpen = value;
+    }
+  };
+}
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} parks the ordinary inactive host without unmap/remap churn`, async (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    let restoreFocusCalls = 0;
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      restoreFocus() {
+        restoreFocusCalls += 1;
+      },
+      restoreFocusDelayMs: 20
+    });
+    const { fake, session, steam, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    restoreFocusCalls = 0;
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+      { method: "commitNativeOverlayHostActivation", args: [false] },
+      "KWin opacity-edge activation owns focus, so native commit must not request generic-WM activation"
+    );
+    restoreFocusCalls = 0;
+    const inactiveStart = fake.calls.length;
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: false });
+    const inactiveCalls = fake.calls.slice(inactiveStart);
+    assert.equal(
+      inactiveCalls.some((call) =>
+        call.method === "hideNativeOverlayHostView" ||
+        call.method === "showNativeOverlayHostView"
+      ),
+      false
+    );
+    assert.deepEqual(
+      inactiveCalls.filter((call) => call.method === "setNativeOverlayHostOverlayActive").at(-1),
+      { method: "setNativeOverlayHostOverlayActive", args: [false] },
+      "native deactivation atomically restores inert input before opacity"
+    );
+    assert.deepEqual(
+      inactiveCalls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] }
+    );
+    assert.equal(state.nativeMapped, true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(
+      restoreFocusCalls,
+      0,
+      "KWin owns reverse focus; a delayed JS focus call must not steal from Alt+Tab or hidden sources"
+    );
+  });
+
+  test(`KWin ${controllerKind} cancels stale inactive timers on rapid reactivation`, async (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    let restoreFocusCalls = 0;
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      restoreFocus() {
+        restoreFocusCalls += 1;
+      },
+      restoreFocusDelayMs: 20,
+      ...(controllerKind === "session"
+        ? { hideNativeHostOnOverlayDeactivate: true }
+        : {})
+    });
+    const { fake, session, steam, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    restoreFocusCalls = 0;
+    const overlayActivated = fake.callbacks.get(steam.SteamCallback.GameOverlayActivated);
+    overlayActivated({ active: true });
+    const rapidStart = fake.calls.length;
+    overlayActivated({ active: false });
+    if (controllerKind === "presenter") {
+      session.prepareForOverlay(1000);
+      restoreFocusCalls = 0;
+    }
+    overlayActivated({ active: true });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const rapidCalls = fake.calls.slice(rapidStart);
+    assert.equal(restoreFocusCalls, 0);
+    assert.equal(
+      rapidCalls.some((call) => call.method === "hideNativeOverlayHostView"),
+      false
+    );
+    assert.equal(state.nativeMapped, true);
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] }
+    );
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+      { method: "commitNativeOverlayHostActivation", args: [false] }
+    );
+  });
+}
+
+test("KWin session explicit deactivate-hide remaps inert and waits for a replacement pair", async (t) => {
+  const state = {
+    electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+    hideNativeHostOnOverlayDeactivate: true,
+    restoreFocusDelayMs: 0
+  });
+  const { fake, session, steam, emitPresentation, startPresentationPair } = harness;
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: state.nativeBounds,
+    target: state.nativeBounds
+  });
+  session.pump();
+  const overlayActivated = fake.callbacks.get(steam.SteamCallback.GameOverlayActivated);
+  overlayActivated({ active: true });
+  const hideCount = fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length;
+  const showCount = fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length;
+  overlayActivated({ active: false });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "deactivation parks the host synchronously before the delayed explicit unmap"
+  );
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.filter((call) => call.method === "hideNativeOverlayHostView").length > hideCount,
+      1000
+    ),
+    true
+  );
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.filter((call) => call.method === "showNativeOverlayHostView").length > showCount,
+      1000
+    ),
+    true
+  );
+  overlayActivated({ active: true });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "the remapped window cannot expose using the retired compositor pair"
+  );
+  startPresentationPair();
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: state.nativeBounds,
+    target: state.nativeBounds
+  });
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] },
+    "an authenticated replacement-pair receipt releases the strict remap hold"
+  );
+});
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} publishes degraded marker before releasing a transport-loss hold`, async (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter"
+    });
+    const { fake, session, steam, kwin, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] }
+    );
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").at(-1),
+      { method: "commitNativeOverlayHostActivation", args: [false] }
+    );
+    session.pump();
+    session.pump();
+    assert.equal(
+      session.snapshot().nativeHostDiagnostics.inputPassthrough,
+      false,
+      "two later focus-confirmed pumps open native input before transport loss"
+    );
+    const diagnosticsBeforeClose = fake.calls.filter(
+      (call) => call.method === "getNativeOverlayHostDiagnosticsJson"
+    ).length;
+    const closeStart = fake.calls.length;
+    harness.emitTransportClosed();
+    const immediateCalls = fake.calls.slice(closeStart);
+    const immediateMarkerIndex = immediateCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+    );
+    const immediateInputIndex = immediateCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+    );
+    const immediateOpacityIndex = immediateCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+    );
+    assert.ok(
+      immediateInputIndex >= 0 &&
+      immediateOpacityIndex > immediateInputIndex &&
+      immediateMarkerIndex > immediateOpacityIndex,
+      "confirmed transport loss parks the mapped host before publishing degradation"
+    );
+    assert.equal(
+      immediateCalls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").length,
+      1
+    );
+    assert.equal(
+      immediateCalls.filter((call) => call.method === "setNativeOverlayHostOpacity").length,
+      1
+    );
+    assert.equal(
+      immediateCalls.some((call) =>
+        call.method === "hideNativeOverlayHostView" ||
+        call.method === "showNativeOverlayHostView"
+      ),
+      false,
+      "a confirmed degraded transition keeps the persistent host mapped"
+    );
+    session.pump();
+
+    const firstSampleCalls = fake.calls.slice(closeStart);
+    const markerIndex = firstSampleCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+    );
+    const firstSampleExposedIndex = firstSampleCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    );
+    assert.ok(markerIndex >= 0);
+    assert.equal(firstSampleExposedIndex, -1, "the first mapped diagnostics sample stays inert");
+    assert.equal(
+      fake.calls.filter((call) => call.method === "getNativeOverlayHostDiagnosticsJson").length,
+      diagnosticsBeforeClose + 1,
+      "one pump takes exactly one degraded stability sample"
+    );
+    session.pump();
+    const closeCalls = fake.calls.slice(closeStart);
+    const exposedIndex = closeCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    );
+    assert.ok(exposedIndex > markerIndex, "only the second identical sample releases exposure");
+    assert.equal(
+      fake.calls.filter((call) => call.method === "getNativeOverlayHostDiagnosticsJson").length,
+      diagnosticsBeforeClose + 2,
+      "the release uses a later pump, never two reads in one call"
+    );
+    const policyCallsAfterRelease = fake.calls.filter((call) =>
+      call.method === "setNativeOverlayHostInputPassthrough" ||
+      call.method === "setNativeOverlayHostOpacity"
+    ).length;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(
+      fake.calls.filter((call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" ||
+        call.method === "setNativeOverlayHostOpacity"
+      ).length,
+      policyCallsAfterRelease,
+      "sample-two release cancels the stale remap timer"
+    );
+    assert.equal(
+      closeCalls.some((call) =>
+        call.method === "setNativeOverlayHostPresentationEpoch" ||
+        call.method === "setNativeOverlayHostContentSeed"
+      ),
+      false,
+      "the one-way degraded marker must be the last role marker for this host lifetime"
+    );
+    assert.equal(
+      closeCalls.some((call) => call.method === "setNativeOverlayHostBounds"),
+      false,
+      "KWin remains the sole geometry writer after transport degradation"
+    );
+    assert.deepEqual(kwin.getKWinWaylandOverlayHostSyncStatus(), {
+      attempted: true,
+      active: true,
+      command: "qdbus6",
+      interactiveResizeReceiverStarted: false,
+      presentationProtocolReady: false,
+      hostIdentityMarkerReady: false,
+      receiverHealth: "closed",
+      presentationProtocolVersion: 1,
+      reason: "receiver-closed"
+    });
+  });
+}
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} degraded initial fullscreen waits for its first compositor configure`, (t) => {
+    const state = {
+      electronBounds: { x: 0, y: 0, width: 1280, height: 768 },
+      electronFullScreen: true,
+      nativeBounds: { x: 0, y: 0, width: 1280, height: 768 },
+      nativeViewportSize: { width: 1280, height: 768 },
+      nativeConfigureCount: 0,
+      nativeFullScreen: true
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      receiverUnavailable: true
+    });
+    const { fake, session, steam } = harness;
+    if (controllerKind === "presenter") {
+      session.prepareForOverlay(1000);
+    }
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    session.pump();
+    session.pump();
+    assert.equal(
+      fake.calls.some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "stable provisional fullscreen samples cannot expose a fresh lifetime"
+    );
+
+    state.nativeBounds = { x: 0, y: 0, width: 1280, height: 800 };
+    state.nativeViewportSize = { width: 1280, height: 800 };
+    state.nativeConfigureCount = 1;
+    session.pump();
+    assert.equal(
+      fake.calls.some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "the first post-configure sample remains inert"
+    );
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] },
+      "only two stable post-configure samples release fullscreen exposure"
+    );
+  });
+
+  test(`KWin ${controllerKind} degraded fullscreen transitions require a later configure`, (t) => {
+    const windowedBounds = { x: 21, y: 62, width: 998, height: 668 };
+    const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+    const state = {
+      electronBounds: windowedBounds,
+      electronFullScreen: false,
+      nativeBounds: windowedBounds,
+      nativeViewportSize: { width: windowedBounds.width, height: windowedBounds.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      receiverUnavailable: true,
+      onSetFullScreen(current, fullScreen) {
+        // Native state changes synchronously, but KWin's ConfigureNotify is
+        // deliberately delayed until the test advances it below.
+        current.nativeFullScreen = fullScreen;
+      }
+    });
+    const { fake, session, steam } = harness;
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    session.pump();
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] }
+    );
+
+    const runTransition = (fullScreen, electronBounds, configuredBounds) => {
+      state.electronFullScreen = fullScreen;
+      state.electronBounds = electronBounds;
+      const transitionStart = fake.calls.length;
+      session.pump();
+      const transitionCalls = fake.calls.slice(transitionStart);
+      const inputIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+      );
+      const opacityIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+      );
+      const fullScreenIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostFullScreen" && call.args[0] === fullScreen
+      );
+      assert.ok(
+        inputIndex >= 0 && opacityIndex > inputIndex && fullScreenIndex > opacityIndex,
+        "the host must park before the fullscreen EWMH request"
+      );
+      session.pump();
+      session.pump();
+      assert.equal(
+        fake.calls.slice(transitionStart).some((call) =>
+          call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+        ),
+        false,
+        "stable pre-ConfigureNotify geometry cannot release the transition"
+      );
+
+      state.nativeBounds = configuredBounds;
+      state.nativeViewportSize = {
+        width: configuredBounds.width,
+        height: configuredBounds.height
+      };
+      state.nativeConfigureCount += 1;
+      session.pump();
+      assert.equal(
+        fake.calls.slice(transitionStart).some((call) =>
+          call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+        ),
+        false,
+        "the first post-configure sample stays inert"
+      );
+      session.pump();
+      assert.equal(
+        fake.calls.slice(transitionStart).some((call) =>
+          call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+        ),
+        true
+      );
+      assert.equal(
+        fake.calls
+          .slice(transitionStart)
+          .some((call) => call.method === "setNativeOverlayHostBounds"),
+        false,
+        "KWin remains the sole geometry writer"
+      );
+    };
+
+    runTransition(true, fullScreenBounds, fullScreenBounds);
+    runTransition(false, windowedBounds, windowedBounds);
+  });
+
+  test(`KWin ${controllerKind} degraded rapid fullscreen reversal accepts an exact origin without Configure`, (t) => {
+    const windowedBounds = { x: 21, y: 62, width: 998, height: 668 };
+    const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+    const state = {
+      electronBounds: windowedBounds,
+      electronFullScreen: false,
+      nativeBounds: windowedBounds,
+      nativeViewportSize: { width: windowedBounds.width, height: windowedBounds.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      receiverUnavailable: true,
+      onSetFullScreen(current, fullScreen) {
+        // Exercise KWin's legal enter->exit coalescing: EWMH state changes,
+        // while the drawable never leaves the exact pre-enter geometry.
+        current.nativeFullScreen = fullScreen;
+      }
+    });
+    const { fake, session, steam } = harness;
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    session.pump();
+    session.pump();
+
+    const reversalStart = fake.calls.length;
+    state.electronBounds = fullScreenBounds;
+    state.electronFullScreen = true;
+    session.pump();
+    state.electronBounds = windowedBounds;
+    state.electronFullScreen = false;
+    session.pump();
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "the first exact-origin reversal sample remains inert"
+    );
+    session.pump();
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      true,
+      "two stable exact-origin samples release without an impossible Configure"
+    );
+    assert.equal(state.nativeConfigureCount, 1);
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostBounds"
+      ),
+      false
+    );
+  });
+
+  test(`KWin ${controllerKind} degraded rapid reversal fences a stale enter Configure until resized exit geometry`, (t) => {
+    const windowedBounds = { x: 21, y: 62, width: 998, height: 668 };
+    const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+    const resizedWindowedBounds = { x: 32, y: 74, width: 914, height: 612 };
+    const state = {
+      electronBounds: windowedBounds,
+      electronFullScreen: false,
+      nativeBounds: windowedBounds,
+      nativeViewportSize: { width: windowedBounds.width, height: windowedBounds.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      receiverUnavailable: true,
+      onSetFullScreen(current, fullScreen) {
+        current.nativeFullScreen = fullScreen;
+      }
+    });
+    const { fake, session, steam } = harness;
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    session.pump();
+    session.pump();
+
+    const reversalStart = fake.calls.length;
+    state.electronBounds = fullScreenBounds;
+    state.electronFullScreen = true;
+    session.pump();
+    state.electronBounds = resizedWindowedBounds;
+    state.electronFullScreen = false;
+    session.pump();
+
+    // A queued Configure from the abandoned enter arrives after the exit
+    // request. The EWMH state is already windowed, but this drawable is stale.
+    state.nativeBounds = fullScreenBounds;
+    state.nativeViewportSize = {
+      width: fullScreenBounds.width,
+      height: fullScreenBounds.height
+    };
+    state.nativeConfigureCount += 1;
+    session.pump();
+    session.pump();
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "stable stale-enter geometry cannot release the reversed transition"
+    );
+
+    // The later exit Configure legitimately differs from the old origin due
+    // to a simultaneous window resize. It becomes sample one, not an escape
+    // hatch around the ordinary two-sample stability requirement.
+    state.nativeBounds = resizedWindowedBounds;
+    state.nativeViewportSize = {
+      width: resizedWindowedBounds.width,
+      height: resizedWindowedBounds.height
+    };
+    state.nativeConfigureCount += 1;
+    session.pump();
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "the first valid resized-exit sample remains inert"
+    );
+    session.pump();
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      true
+    );
+    assert.equal(
+      fake.calls.slice(reversalStart).some((call) =>
+        call.method === "setNativeOverlayHostBounds"
+      ),
+      false,
+      "KWin remains the sole geometry writer throughout the reversal"
+    );
+  });
+
+  test(`KWin ${controllerKind} preserves fullscreen configure baseline across strict transport loss`, (t) => {
+    const windowedBounds = { x: 21, y: 62, width: 998, height: 668 };
+    const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+    const state = {
+      electronBounds: windowedBounds,
+      electronFullScreen: false,
+      nativeBounds: windowedBounds,
+      nativeViewportSize: { width: windowedBounds.width, height: windowedBounds.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      onSetFullScreen(current, fullScreen) {
+        current.nativeFullScreen = fullScreen;
+      }
+    });
+    const { fake, session, steam, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: windowedBounds,
+      target: windowedBounds
+    });
+    session.pump();
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    state.electronBounds = fullScreenBounds;
+    state.electronFullScreen = true;
+    session.pump();
+    const closeStart = fake.calls.length;
+    harness.emitTransportClosed();
+    session.pump();
+    session.pump();
+    session.pump();
+    assert.equal(
+      fake.calls.slice(closeStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "transport degradation cannot forget the strict pre-request configure baseline"
+    );
+
+    state.nativeBounds = fullScreenBounds;
+    state.nativeViewportSize = {
+      width: fullScreenBounds.width,
+      height: fullScreenBounds.height
+    };
+    state.nativeConfigureCount += 1;
+    session.pump();
+    assert.equal(
+      fake.calls.slice(closeStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false
+    );
+    session.pump();
+    assert.equal(
+      fake.calls.slice(closeStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      true
+    );
+  });
+
+  test(`KWin ${controllerKind} degraded stability resets on bounds revision and mapped loss`, (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter"
+    });
+    const { fake, session, steam, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    const closeStart = fake.calls.length;
+    harness.emitTransportClosed();
+    const exposedAfterClose = () => fake.calls.slice(closeStart).some((call) =>
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    );
+    session.pump();
+    assert.equal(exposedAfterClose(), false, "the first valid sample stays inert");
+
+    session.notifyBoundsChanged();
+    session.pump();
+    assert.equal(
+      exposedAfterClose(),
+      false,
+      "an unchanged-size Electron bounds revision invalidates the prior sample"
+    );
+
+    state.nativeMapped = false;
+    session.pump();
+    state.nativeMapped = true;
+    session.pump();
+    assert.equal(
+      exposedAfterClose(),
+      false,
+      "mapped availability loss requires a new pair of stable samples"
+    );
+    session.pump();
+    assert.equal(exposedAfterClose(), true);
+  });
+}
+
+for (const controllerKind of ["session", "presenter"]) {
+  for (const failurePoint of ["setter", "marker"]) {
+    test(`KWin ${controllerKind} fullscreen ${failurePoint} failure terminally detaches its armed transition`, (t) => {
+      const windowedBounds = { x: 21, y: 62, width: 998, height: 668 };
+      const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+      const state = {
+        electronBounds: windowedBounds,
+        electronFullScreen: false,
+        nativeBounds: windowedBounds,
+        nativeViewportSize: { width: windowedBounds.width, height: windowedBounds.height },
+        nativeConfigureCount: 1,
+        nativeFullScreen: false
+      };
+      let injectFailure = false;
+      let failureInjected = false;
+      let markerObservedMutatedFullScreen = false;
+      const failureMessage = `simulated fullscreen ${failurePoint} failure`;
+      const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+        presenter: controllerKind === "presenter",
+        onSetFullScreen(current, fullScreen) {
+          if (
+            injectFailure &&
+            failurePoint === "setter" &&
+            !failureInjected
+          ) {
+            failureInjected = true;
+            throw new Error(failureMessage);
+          }
+          current.nativeFullScreen = fullScreen;
+        },
+        onPresentationEpochMarker(current) {
+          if (
+            injectFailure &&
+            failurePoint === "marker" &&
+            !failureInjected
+          ) {
+            failureInjected = true;
+            markerObservedMutatedFullScreen = current.nativeFullScreen === true;
+            throw new Error(failureMessage);
+          }
+        }
+      });
+      const { fake, session, emitPresentation } = harness;
+      emitPresentation({
+        fullScreen: false,
+        sourceBounds: windowedBounds,
+        target: windowedBounds
+      });
+      session.pump();
+
+      state.electronBounds = fullScreenBounds;
+      state.electronFullScreen = true;
+      injectFailure = true;
+      const transitionStart = fake.calls.length;
+      const transition = () => {
+        if (controllerKind === "session") {
+          session.setFullScreen(true);
+        } else {
+          session.pump();
+        }
+      };
+      assert.throws(transition, new RegExp(failureMessage));
+      const transitionCalls = fake.calls.slice(transitionStart);
+      assert.equal(failureInjected, true);
+      assert.equal(session.snapshot().closed, true);
+      assert.equal(session.snapshot().closeReason, "error");
+      assert.equal(
+        transitionCalls.filter((call) =>
+          call.method === "detachNativeOverlayHostView"
+        ).length,
+        1,
+        "an armed transition error must terminate its native lifetime"
+      );
+
+      const inputIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+      );
+      const opacityIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+      );
+      const detachIndex = transitionCalls.findIndex((call) =>
+        call.method === "detachNativeOverlayHostView"
+      );
+      assert.ok(
+        inputIndex >= 0 && opacityIndex > inputIndex && detachIndex > opacityIndex,
+        "terminal close must park input, then opacity, before detach"
+      );
+
+      const fullScreenSetterIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostFullScreen" && call.args[0] === true
+      );
+      const markerIndex = transitionCalls.findIndex((call) =>
+        call.method === "setNativeOverlayHostPresentationEpoch"
+      );
+      assert.ok(fullScreenSetterIndex >= 0);
+      if (failurePoint === "setter") {
+        assert.equal(markerIndex, -1, "a pre-mutation setter failure cannot publish an epoch");
+        assert.equal(state.nativeFullScreen, false);
+      } else {
+        assert.ok(markerIndex > fullScreenSetterIndex);
+        assert.equal(
+          markerObservedMutatedFullScreen,
+          true,
+          "the applied fullscreen cache must be committed before the fallible marker"
+        );
+        assert.equal(
+          state.nativeFullScreen,
+          controllerKind === "session" ? false : true,
+          "the session unwinds its applied fullscreen state; the detached presenter retains the aligned last state"
+        );
+      }
+    });
+  }
+}
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} polling-detected transport loss parks exactly once`, (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false,
+      receiverRunning: true
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      isReceiverRunning(current) {
+        return current.receiverRunning;
+      }
+    });
+    const { fake, session, steam, kwin, emitPresentation, emitRawKWinEvent } = harness;
+    const resizeEvents = [];
+    const disconnectResize = kwin.onKWinWaylandOverlaySourceInteractiveResize(
+      (event) => resizeEvents.push(event)
+    );
+    t.after(disconnectResize);
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    emitRawKWinEvent({
+      kind: "resizeState",
+      sourceId: "delayed-source",
+      sequence: 1,
+      paired: true,
+      active: true
+    });
+    session.pump();
+    if (controllerKind === "presenter") session.prepareForOverlay(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    state.receiverRunning = false;
+    const closeStart = fake.calls.length;
+    session.pump();
+    const closeCalls = fake.calls.slice(closeStart);
+    const markerIndex = closeCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+    );
+    const inputIndex = closeCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+    );
+    const opacityIndex = closeCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+    );
+    assert.ok(inputIndex >= 0 && opacityIndex > inputIndex && markerIndex > opacityIndex);
+    assert.equal(
+      closeCalls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").length,
+      1,
+      "reentrant status degradation must not duplicate the controller transaction"
+    );
+    assert.equal(
+      closeCalls.filter((call) => call.method === "setNativeOverlayHostOpacity").length,
+      1
+    );
+    assert.equal(
+      closeCalls.some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false
+    );
+    assert.equal(kwin.getKWinWaylandOverlayPresentationState(), undefined);
+    assert.equal(kwin.isKWinWaylandOverlaySourceInteractiveResizeActive(), false);
+    const resizeEventCountAfterClose = resizeEvents.length;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    emitRawKWinEvent({
+      kind: "resizeState",
+      sourceId: "delayed-source",
+      sequence: 3,
+      paired: true,
+      active: true
+    });
+    assert.equal(
+      kwin.getKWinWaylandOverlayPresentationState(),
+      undefined,
+      "queued receipts from the closed native callback generation stay fenced"
+    );
+    assert.equal(kwin.isKWinWaylandOverlaySourceInteractiveResizeActive(), false);
+    assert.equal(
+      resizeEvents.length,
+      resizeEventCountAfterClose,
+      "queued active-resize events cannot follow the synthetic inactive edge"
+    );
+  });
+}
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} degraded remap timer contains native pump errors`, async (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    let injectPumpError = false;
+    let injectedPumpAttempts = 0;
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      onTransportClosedMarker() {
+        throw new Error("keep the degraded marker unconfirmed for the remap timer path");
+      },
+      onPump() {
+        if (injectPumpError) {
+          injectedPumpAttempts += 1;
+          throw new Error("simulated degraded remap timer pump failure");
+        }
+      }
+    });
+    const { session, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+
+    harness.emitTransportClosed();
+    injectPumpError = true;
+    assert.equal(
+      await waitForCondition(() => session.snapshot().closed === true, 1000),
+      true
+    );
+    assert.equal(injectedPumpAttempts, 1);
+    assert.equal(session.snapshot().closeReason, "error");
+  });
+}
+
+test("KWin degraded-marker failure keeps a strict host fail-closed", (t) => {
+  const state = {
+    electronBounds: { x: 20, y: 30, width: 1000, height: 700 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+    onTransportClosedMarker() {
+      throw new Error("simulated X role write failure");
+    }
+  });
+  const { fake, session, steam, kwin } = harness;
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  const closeStart = fake.calls.length;
+  harness.emitTransportClosed();
+  const immediateCalls = fake.calls.slice(closeStart);
+  const immediateMarkerIndex = immediateCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+  );
+  const immediateInputIndex = immediateCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+  );
+  const immediateOpacityIndex = immediateCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+  );
+  assert.ok(
+    immediateInputIndex >= 0 &&
+    immediateOpacityIndex > immediateInputIndex &&
+    immediateMarkerIndex > immediateOpacityIndex,
+    "transport failure must park before publishing the one-way degraded marker"
+  );
+  assert.equal(
+    immediateCalls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").length,
+    1,
+    "a lease-valid controller safety barrier suppresses duplicate binding-level writes"
+  );
+  assert.equal(
+    immediateCalls.filter((call) => call.method === "setNativeOverlayHostOpacity").length,
+    1
+  );
+  session.pump();
+  const closeCalls = fake.calls.slice(closeStart);
+  assert.equal(
+    closeCalls.some((call) =>
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    ),
+    false
+  );
+  assert.deepEqual(
+    closeCalls.filter((call) => call.method === "setNativeOverlayHostInputPassthrough").at(-1),
+    { method: "setNativeOverlayHostInputPassthrough", args: [true] }
+  );
+  assert.equal(kwin.getKWinWaylandOverlayHostSyncStatus().ownershipUncertain, true);
+  assert.equal(
+    kwin.getKWinWaylandOverlayHostSyncStatus().reason,
+    "kwin-degraded-marker-unconfirmed"
+  );
+});
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} retries a one-shot degraded marker failure before restoring exposure`, (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    let markerAttempts = 0;
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      onTransportClosedMarker() {
+        markerAttempts += 1;
+        if (markerAttempts === 1) {
+          throw new Error("simulated one-shot X role write failure");
+        }
+      }
+    });
+    const { fake, session, steam, kwin, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    session.prepareForOverlay?.(1000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    const closeStart = fake.calls.length;
+    harness.emitTransportClosed();
+    const immediateCalls = fake.calls.slice(closeStart);
+    assert.equal(markerAttempts, 1);
+    assert.deepEqual(
+      immediateCalls.filter((call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" ||
+        call.method === "setNativeOverlayHostOpacity"
+      ),
+      [
+        { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+        { method: "setNativeOverlayHostOpacity", args: [false] }
+      ],
+      "the host must become inert synchronously and only once"
+    );
+    assert.equal(kwin.getKWinWaylandOverlayHostSyncStatus().ownershipUncertain, true);
+
+    const recoveryStart = fake.calls.length;
+    session.pump();
+    let recoveryCalls = fake.calls.slice(recoveryStart);
+    const markerIndex = recoveryCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+    );
+    assert.ok(markerIndex >= 0);
+    assert.equal(
+      recoveryCalls.some((call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ),
+      false,
+      "marker recovery alone cannot release exposure"
+    );
+    session.pump();
+    recoveryCalls = fake.calls.slice(recoveryStart);
+    const opacityIndex = recoveryCalls.findIndex(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    );
+    const prepareIndex = recoveryCalls.findIndex(
+      (call) => call.method === "prepareNativeOverlayHostActivation"
+    );
+    const commitIndex = recoveryCalls.findIndex(
+      (call) =>
+        call.method === "commitNativeOverlayHostActivation" &&
+        call.args[0] === false
+    );
+    assert.equal(markerAttempts, 2);
+    assert.ok(
+      markerIndex >= 0 &&
+      prepareIndex > markerIndex &&
+      opacityIndex > prepareIndex &&
+      commitIndex > opacityIndex,
+      "marker recovery takes sample one; sample two prepares opacity and a KWin focus-confirmed commit"
+    );
+    assert.equal(
+      recoveryCalls.some(
+        (call) =>
+          call.method === "setNativeOverlayHostInputPassthrough" &&
+          call.args[0] === false
+      ),
+      false
+    );
+    session.pump();
+    session.pump();
+    assert.equal(session.snapshot().nativeHostDiagnostics.inputPassthrough, false);
+    assert.equal(
+      recoveryCalls.some((call) => call.method === "showNativeOverlayHostView"),
+      false,
+      "a mapped host must not be remapped during degraded recovery"
+    );
+    assert.equal(
+      recoveryCalls.some((call) =>
+        call.method === "setNativeOverlayHostPresentationEpoch" ||
+        call.method === "setNativeOverlayHostContentSeed"
+      ),
+      false,
+      "a recovered degraded role remains the last presentation marker for this host lifetime"
+    );
+    assert.equal(kwin.getKWinWaylandOverlayHostSyncStatus().ownershipUncertain, undefined);
+    assert.equal(kwin.getKWinWaylandOverlayHostSyncStatus().reason, "receiver-closed");
+  });
+}
+
+test("KWin presenter recovers after controller emergency hide fails and binding fallback hides", async (t) => {
+  const state = {
+    electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  let markerAttempts = 0;
+  let failPassThrough = false;
+  let hideAttempts = 0;
+  let awaitRecoveryShow = false;
+  let resolveRecoveryShow;
+  const recoveryShow = new Promise((resolve) => {
+    resolveRecoveryShow = resolve;
+  });
+  const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+    presenter: true,
+    onTransportClosedMarker() {
+      markerAttempts += 1;
+      if (markerAttempts === 1) {
+        throw new Error("simulated one-shot X role write failure");
+      }
+    },
+    onSetInputPassthrough(_current, value) {
+      if (failPassThrough && value === true) {
+        throw new Error("simulated emergency input-policy failure");
+      }
+    },
+    onHideHost() {
+      hideAttempts += 1;
+      if (hideAttempts === 1) {
+        throw new Error("simulated controller hide failure");
+      }
+    },
+    onShowHost() {
+      if (awaitRecoveryShow) {
+        awaitRecoveryShow = false;
+        resolveRecoveryShow();
+      }
+    }
+  });
+  const { fake, session, steam, emitPresentation } = harness;
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: state.nativeBounds,
+    target: state.nativeBounds
+  });
+  session.pump();
+  session.prepareForOverlay(1000);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+  failPassThrough = true;
+  const closeStart = fake.calls.length;
+  harness.emitTransportClosed();
+  const immediateCalls = fake.calls.slice(closeStart);
+  assert.equal(hideAttempts, 2, "the binding-level fallback must retry hide after the controller throws");
+  assert.equal(
+    immediateCalls.filter((call) => call.method === "hideNativeOverlayHostView").length,
+    2
+  );
+  assert.equal(
+    immediateCalls.some((call) =>
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    ),
+    false,
+    "no failure path may expose the host"
+  );
+
+  failPassThrough = false;
+  awaitRecoveryShow = true;
+  const recoveryStart = fake.calls.length;
+  session.pump();
+  let recoveryCalls = fake.calls.slice(recoveryStart);
+  const markerIndex = recoveryCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+  );
+  assert.ok(markerIndex >= 0);
+  assert.equal(
+    await Promise.race([
+      recoveryShow.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 1000))
+    ]),
+    true,
+    "recovery remaps the failed host in an inert state"
+  );
+  session.pump();
+  assert.equal(
+    fake.calls.slice(recoveryStart).some((call) =>
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    ),
+    false,
+    "the first remapped diagnostics sample remains inert"
+  );
+  session.pump();
+  recoveryCalls = fake.calls.slice(recoveryStart);
+  const opacityIndex = recoveryCalls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+  );
+  const prepareIndex = recoveryCalls.findIndex(
+    (call) => call.method === "prepareNativeOverlayHostActivation"
+  );
+  const commitIndex = recoveryCalls.findIndex(
+    (call) =>
+      call.method === "commitNativeOverlayHostActivation" &&
+      call.args[0] === false
+  );
+  const showIndex = recoveryCalls.findIndex((call) => call.method === "showNativeOverlayHostView");
+  assert.ok(
+    showIndex > markerIndex &&
+    prepareIndex > showIndex &&
+    opacityIndex > prepareIndex &&
+    commitIndex > opacityIndex,
+    `recovery must remap inert, prove two stable samples, then defer input until focus: ${JSON.stringify(recoveryCalls)}`
+  );
+  assert.equal(
+    recoveryCalls.some(
+      (call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" &&
+        call.args[0] === false
+    ),
+    false
+  );
+  session.pump();
+  session.pump();
+  assert.equal(session.snapshot().nativeHostDiagnostics.inputPassthrough, false);
+});
+
+test("KWin confirmed degraded marker still retries a failed controller emergency hide", (t) => {
+  const state = {
+    electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  let failPassThrough = false;
+  let hideAttempts = 0;
+  const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+    presenter: true,
+    onSetInputPassthrough(_current, value) {
+      if (failPassThrough && value === true) {
+        throw new Error("simulated emergency input-policy failure");
+      }
+    },
+    onHideHost() {
+      hideAttempts += 1;
+      if (hideAttempts === 1) {
+        throw new Error("simulated controller hide failure");
+      }
+    }
+  });
+  const { fake, session, steam, emitPresentation } = harness;
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: state.nativeBounds,
+    target: state.nativeBounds
+  });
+  session.pump();
+  session.prepareForOverlay(1000);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+  failPassThrough = true;
+  const closeStart = fake.calls.length;
+  harness.emitTransportClosed();
+  const closeCalls = fake.calls.slice(closeStart);
+  assert.equal(
+    closeCalls.filter(
+      (call) => call.method === "setNativeOverlayHostPresentationTransportClosed"
+    ).length,
+    1,
+    "the degraded marker itself succeeds"
+  );
+  assert.equal(
+    hideAttempts,
+    2,
+    "binding-level safety retries hide whenever the controller cannot confirm safety"
+  );
+  assert.equal(
+    closeCalls.filter((call) => call.method === "hideNativeOverlayHostView").length,
+    2
+  );
+  assert.equal(
+    closeCalls.some((call) =>
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    ),
+    false
+  );
+});
+
+for (const controllerKind of ["session", "presenter"]) {
+  test(`KWin ${controllerKind} opacity failure never enables input on a transparent host`, (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    let failOpaque = false;
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter",
+      onSetOpacity(_current, value) {
+        if (failOpaque && value === true) {
+          throw new Error("simulated opaque-policy failure");
+        }
+      }
+    });
+    const { fake, session, steam, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    failOpaque = true;
+    const actionStart = fake.calls.length;
+    const activation = controllerKind === "presenter"
+      ? session.beginOverlayActivation()
+      : undefined;
+    if (controllerKind === "session") {
+      fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    }
+    const calls = fake.calls.slice(actionStart);
+    const prepareIndex = calls.findIndex(
+      (call) => call.method === "prepareNativeOverlayHostActivation"
+    );
+    const opaqueAttempt = calls.findIndex(
+      (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    );
+    const rollbackInputIndex = calls.findIndex(
+      (call, index) =>
+        index > opaqueAttempt &&
+        call.method === "setNativeOverlayHostInputPassthrough" &&
+        call.args[0] === true
+    );
+    const rollbackOpacityIndex = calls.findIndex(
+      (call, index) =>
+        index > rollbackInputIndex &&
+        call.method === "setNativeOverlayHostOpacity" &&
+        call.args[0] === false
+    );
+    assert.ok(
+      prepareIndex >= 0 &&
+      opaqueAttempt > prepareIndex &&
+      rollbackInputIndex > opaqueAttempt &&
+      rollbackOpacityIndex > rollbackInputIndex
+    );
+    assert.equal(
+      calls.some((call) => call.method === "commitNativeOverlayHostActivation"),
+      false,
+      "an opacity failure cannot arm a deferred input commit"
+    );
+    assert.equal(
+      calls.some((call) =>
+        call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === false
+      ),
+      false,
+      "input cannot be enabled until opaque policy succeeds"
+    );
+    activation?.disconnect();
+  });
+
+  test(`KWin ${controllerKind} focus timeout stays parked until a new input-intent epoch`, async (t) => {
+    const state = {
+      electronBounds: { x: 21, y: 62, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+      nativeViewportSize: { width: 998, height: 668 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const harness = createKWinCoordinateHoldReviewHarness(t, state, {
+      presenter: controllerKind === "presenter"
+    });
+    const { fake, session, steam, emitPresentation } = harness;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: state.nativeBounds,
+      target: state.nativeBounds
+    });
+    session.pump();
+    const activation = controllerKind === "presenter"
+      ? session.beginOverlayActivation()
+      : undefined;
+    if (controllerKind === "session") {
+      fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    }
+    const prepareCount = fake.calls.filter(
+      (call) => call.method === "prepareNativeOverlayHostActivation"
+    ).length;
+    const commitCount = fake.calls.filter(
+      (call) => call.method === "commitNativeOverlayHostActivation"
+    ).length;
+    const opaqueCount = fake.calls.filter(
+      (call) =>
+        call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+    ).length;
+    assert.ok(prepareCount > 0 && commitCount > 0 && opaqueCount > 0);
+
+    Object.assign(fake.activationState, {
+      inputPassthrough: true,
+      opaque: false,
+      inputActivationPrepared: false,
+      inputActivationCommitPending: false,
+      activationCommitFailed: true,
+      activationCommitFailureCount:
+        fake.activationState.activationCommitFailureCount + 1
+    });
+    session.pump();
+    for (let index = 0; index < 5; index += 1) {
+      session.pump();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    assert.equal(
+      fake.calls.filter((call) => call.method === "prepareNativeOverlayHostActivation").length,
+      prepareCount,
+      "parking/remap timers must not retry focus in the same failed intent epoch"
+    );
+    assert.equal(
+      fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").length,
+      commitCount
+    );
+    assert.equal(
+      fake.calls.filter(
+        (call) =>
+          call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+      ).length,
+      opaqueCount
+    );
+    assert.equal(
+      fake.calls.some((call) => call.method === "hideNativeOverlayHostView"),
+      false,
+      "a confirmed inert KWin host remains mapped instead of entering a map/hide loop"
+    );
+
+    const overlayActivated = fake.callbacks.get(steam.SteamCallback.GameOverlayActivated);
+    overlayActivated({ active: false });
+    if (controllerKind === "presenter") {
+      session.prepareForOverlay(1000);
+    }
+    overlayActivated({ active: true });
+    assert.equal(
+      fake.calls.filter((call) => call.method === "prepareNativeOverlayHostActivation").length,
+      prepareCount + 1,
+      "a confirmed false->true intent edge opens one new activation epoch"
+    );
+    assert.equal(
+      fake.calls.filter((call) => call.method === "commitNativeOverlayHostActivation").length,
+      commitCount + 1
+    );
+    activation?.disconnect();
+  });
+}
+
+test("KWin hidden presenter retries a transient passive-remap show failure", async (t) => {
+  const state = {
+    electronBounds: { x: 20, y: 30, width: 1000, height: 700 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  let injectShowFailure = false;
+  let injectedShowAttempts = 0;
+  const { fake, session } = createKWinCoordinateHoldReviewHarness(t, state, {
+    presenter: true,
+    onShowHost() {
+      if (injectShowFailure) {
+        injectedShowAttempts += 1;
+        if (injectedShowAttempts === 1) {
+          throw new Error("simulated transient XMap failure");
+        }
+      }
+    }
+  });
+  const remapStart = fake.calls.length;
+  injectShowFailure = true;
+  session.hide();
+  assert.equal(
+    await waitForCondition(() => injectedShowAttempts >= 2, 1000),
+    true,
+    "the hidden lease remap should retry without activation or a Steam callback"
+  );
+  const remapCalls = fake.calls.slice(remapStart);
+  assert.ok(remapCalls.filter((call) => call.method === "showNativeOverlayHostView").length >= 2);
+  const successfulShowIndex = remapCalls.map((call) => call.method).lastIndexOf("showNativeOverlayHostView");
+  const precedingInputIndex = remapCalls.findLastIndex(
+    (call, index) => index < successfulShowIndex &&
+      call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+  );
+  const precedingOpacityIndex = remapCalls.findLastIndex(
+    (call, index) => index < successfulShowIndex &&
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+  );
+  assert.ok(precedingInputIndex >= 0 && precedingOpacityIndex > precedingInputIndex);
+});
+
+test("coordinate hold review: restore freshness is based on the Electron size that will be consumed", (t) => {
+  const provisionalFullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 768 };
+  const fullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  const restoredNativeBounds = { x: 1, y: 28, width: 1278, height: 691 };
+  const state = {
+    electronBounds: provisionalFullScreenElectronBounds,
+    electronFullScreen: true,
+    nativeBounds: { x: 0, y: 0, width: 1280, height: 800 },
+    nativeViewportSize: { width: 1280, height: 800 },
+    nativeConfigureCount: 10,
+    nativeFullScreen: true
+  };
+  const { fake, session, emitPresentation } = createKWinCoordinateHoldReviewHarness(t, state, {
+    onSetFullScreen(current, fullScreen) {
+      current.nativeFullScreen = fullScreen;
+      if (!fullScreen) {
+        current.nativeBounds = restoredNativeBounds;
+        current.nativeViewportSize = {
+          width: restoredNativeBounds.width,
+          height: restoredNativeBounds.height
+        };
+        current.nativeConfigureCount += 1;
+      }
+    }
+  });
+
+  emitPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  session.pump();
+
+  state.electronFullScreen = false;
+  session.pump();
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: restoredNativeBounds
+  });
+  assert.equal(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").length,
+    0,
+    "the unchanged fullscreen sample must remain rejected"
+  );
+
+  state.electronBounds = { x: 9, y: 7, width: 1280, height: 800 };
+  session.pump();
+  assert.equal(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").length,
+    0,
+    "an origin-only change must not make the unchanged fullscreen size fresh"
+  );
+});
+
+test("coordinate hold review: compositor-corrected restored seed releases after its configure", (t) => {
+  const provisionalFullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 768 };
+  const fullScreenElectronBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  const restoredNativeBounds = { x: 1, y: 28, width: 1278, height: 691 };
+  const restoredContentBounds = { x: 0, y: 32, width: 1278, height: 659 };
+  const correctedContentBounds = { x: 2, y: 60, width: 1278, height: 659 };
+  const state = {
+    electronBounds: provisionalFullScreenElectronBounds,
+    electronFullScreen: true,
+    nativeBounds: { x: 0, y: 0, width: 1280, height: 800 },
+    nativeViewportSize: { width: 1280, height: 800 },
+    nativeConfigureCount: 20,
+    nativeFullScreen: true
+  };
+  const { fake, session, steam, emitPresentation } = createKWinCoordinateHoldReviewHarness(t, state, {
+    onSetFullScreen(current, fullScreen) {
+      current.nativeFullScreen = fullScreen;
+      if (!fullScreen) {
+        current.nativeBounds = restoredNativeBounds;
+        current.nativeViewportSize = {
+          width: restoredNativeBounds.width,
+          height: restoredNativeBounds.height
+        };
+        current.nativeConfigureCount += 1;
+      }
+    },
+    onContentSeed(current, requested) {
+      current.nativeBounds = {
+        x: requested.x + 1,
+        y: requested.y,
+        width: requested.width,
+        height: requested.height
+      };
+      current.nativeViewportSize = { width: requested.width, height: requested.height };
+      current.nativeConfigureCount += 1;
+    }
+  });
+
+  emitPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenElectronBounds,
+    target: fullScreenElectronBounds
+  });
+  session.pump();
+
+  state.electronFullScreen = false;
+  session.pump();
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: restoredNativeBounds
+  });
+  state.electronBounds = restoredContentBounds;
+  session.pump();
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  session.pump();
+
+  assert.deepEqual(state.nativeBounds, correctedContentBounds);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "native configure convergence alone must not release the acknowledgment hold"
+  );
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: restoredNativeBounds,
+    target: correctedContentBounds
+  });
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] },
+    "the matching post-seed compositor receipt releases the transition hold"
+  );
+});
+
+test("coordinate hold review: initial fullscreen attach waits past provisional drawable geometry", (t) => {
+  const provisionalBounds = { x: 0, y: 0, width: 1280, height: 768 };
+  const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+  const state = {
+    electronBounds: provisionalBounds,
+    electronFullScreen: true,
+    nativeBounds: provisionalBounds,
+    nativeViewportSize: { width: provisionalBounds.width, height: provisionalBounds.height },
+    nativeConfigureCount: 0,
+    nativeFullScreen: true,
+    pendingFullScreenConfigure: false,
+    pendingPumps: 0
+  };
+  const { fake, session, steam, emitPresentation } = createKWinCoordinateHoldReviewHarness(t, state, {
+    onAttach(current, attachedBounds, fullScreen) {
+      current.nativeConfigureCount = 0;
+      current.nativeBounds = attachedBounds;
+      current.nativeViewportSize = { width: attachedBounds.width, height: attachedBounds.height };
+      current.nativeFullScreen = fullScreen;
+      current.pendingFullScreenConfigure = fullScreen;
+      current.pendingPumps = 1;
+    },
+    onPump(current, calls) {
+      if (!current.pendingFullScreenConfigure) {
+        return;
+      }
+      if (current.pendingPumps > 0) {
+        current.pendingPumps -= 1;
+        return;
+      }
+      current.pendingFullScreenConfigure = false;
+      current.nativeBounds = fullScreenBounds;
+      current.nativeViewportSize = { width: fullScreenBounds.width, height: fullScreenBounds.height };
+      current.nativeConfigureCount += 1;
+      calls.push({ method: "applyNativeConfigureNotify", args: [current.nativeConfigureCount] });
+    }
+  });
+
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "the host must remain hidden until KWin configures the real fullscreen drawable"
+  );
+  session.pump();
+  assert.equal(state.nativeConfigureCount, 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "ConfigureNotify updates the drawable but cannot acknowledge KWin presentation"
+  );
+  emitPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenBounds,
+    target: fullScreenBounds
+  });
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] },
+    "the first lifetime matching KWin receipt releases the initial fullscreen hold"
+  );
+});
+
+test("coordinate hold review: KWin stays sole geometry writer when the receipt receiver is unavailable", (t) => {
+  const state = {
+    electronBounds: { x: 20, y: 30, width: 1000, height: 700 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  const { fake, session, steam, kwin } = createKWinCoordinateHoldReviewHarness(t, state, {
+    receiverUnavailable: true
+  });
+
+  assert.deepEqual(kwin.getKWinWaylandOverlayHostSyncStatus(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: false,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: true,
+    receiverHealth: "unavailable",
+    presentationProtocolVersion: 1
+  });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  state.electronBounds = { x: 80, y: 90, width: 998, height: 668 };
+  state.nativeConfigureCount += 1;
+  session.pump();
+  assert.equal(
+    fake.calls.some((call) => call.method === "setNativeOverlayHostBounds"),
+    false,
+    "JS must not fight the active KWin geometry writer"
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "configure activity resets degraded stability and keeps the first new sample inert"
+  );
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] },
+    "a second identical mapped/drawable sample releases degraded mode"
+  );
+});
+
+test("coordinate hold review: ABI mismatch keeps KWin geometry ownership without presentation hold", (t) => {
+  const state = {
+    electronBounds: { x: 20, y: 30, width: 1000, height: 700 },
+    electronFullScreen: false,
+    nativeBounds: { x: 21, y: 62, width: 998, height: 668 },
+    nativeViewportSize: { width: 998, height: 668 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: false
+  };
+  const { fake, session, steam, kwin } = createKWinCoordinateHoldReviewHarness(t, state, {
+    getKWinWaylandOverlayPresentationProtocolVersion() {
+      return 2;
+    }
+  });
+
+  assert.deepEqual(kwin.getKWinWaylandOverlayHostSyncStatus(), {
+    attempted: true,
+    active: true,
+    command: "qdbus6",
+    interactiveResizeReceiverStarted: true,
+    presentationProtocolReady: false,
+    hostIdentityMarkerReady: false,
+    receiverHealth: "active",
+    presentationProtocolVersion: 2
+  });
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  state.electronBounds = { x: 80, y: 90, width: 998, height: 668 };
+  state.nativeConfigureCount += 1;
+  session.pump();
+  assert.equal(
+    fake.calls.some((call) => call.method === "setNativeOverlayHostBounds"),
+    false,
+    "active KWin remains the only geometry writer even when strict ABI negotiation fails"
+  );
+  assert.equal(
+    fake.calls.some((call) => call.method === "setNativeOverlayHostPresentationEpoch"),
+    false,
+    "a mismatched native ABI must not publish strict presentation markers"
+  );
+  assert.equal(
+    fake.calls.some((call) => call.method === "setNativeOverlayHostContentSeed"),
+    false,
+    "a mismatched native ABI must not attempt receipt-pinned seeds"
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [false] },
+    "ABI-degraded stability resets across ConfigureNotify activity"
+  );
+  session.pump();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+    { method: "setNativeOverlayHostOpacity", args: [true] },
+    "ABI-degraded mode releases after two identical mapped/drawable samples"
+  );
+});
+
+test("coordinate hold review: managed Linux fullscreen exit waits for resize-authoritative content bounds", (t) => {
+  const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 768 };
+  const restoredSource = { x: 0, y: 0, width: 1280, height: 800 };
+  const restoredContent = { x: 0, y: 40, width: 1280, height: 760 };
+  const state = {
+    electronBounds: fullScreenBounds,
+    electronFullScreen: true,
+    nativeBounds: fullScreenBounds,
+    nativeViewportSize: { width: 1280, height: 768 },
+    nativeConfigureCount: 1,
+    nativeFullScreen: true
+  };
+  const {
+    fake,
+    controller,
+    windowHandlers,
+    emitPresentation
+  } = createKWinCoordinateHoldReviewHarness(t, state, {
+    manager: true,
+    onSetFullScreen(current, fullScreen) {
+      current.nativeFullScreen = fullScreen;
+      if (!fullScreen) {
+        current.nativeBounds = restoredSource;
+        current.nativeViewportSize = {
+          width: restoredSource.width,
+          height: restoredSource.height
+        };
+        current.nativeConfigureCount += 1;
+      }
+    }
+  });
+
+  assert.equal(typeof windowHandlers.get("resize"), "function");
+  emitPresentation({
+    fullScreen: true,
+    sourceBounds: fullScreenBounds,
+    target: fullScreenBounds
+  });
+  controller.pump();
+
+  state.electronFullScreen = false;
+  windowHandlers.get("leave-full-screen")();
+  emitPresentation({
+    fullScreen: false,
+    sourceBounds: restoredSource,
+    target: restoredSource
+  });
+  controller.pump();
+  windowHandlers.get("focus")();
+  windowHandlers.get("moved")();
+  assert.equal(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").length,
+    0,
+    "leave-full-screen, focus, and move cannot authorize the stale fullscreen sample"
+  );
+
+  state.electronBounds = restoredContent;
+  windowHandlers.get("resize")();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").at(-1)?.args.slice(-4),
+    [restoredContent.x, restoredContent.y, restoredContent.width, restoredContent.height]
+  );
+});
+
+for (const presenter of [false, true]) {
+  const owner = presenter ? "presenter" : "session";
+
+  test(`coordinate hold review: ${owner} adopts a lagged same-state resize without opacity flicker`, (t) => {
+    const initialSource = { x: 1, y: 28, width: 1000, height: 700 };
+    const initialTarget = { x: 1, y: 60, width: 998, height: 668 };
+    const resizedSource = { x: 101, y: 88, width: 900, height: 600 };
+    const resizedTarget = { x: 101, y: 120, width: 898, height: 568 };
+    const state = {
+      electronBounds: { x: 0, y: 32, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: initialTarget,
+      nativeViewportSize: { width: initialTarget.width, height: initialTarget.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false,
+      pendingResize: undefined
+    };
+    const { fake, session, steam, emitPresentation } = createKWinCoordinateHoldReviewHarness(
+      t,
+      state,
+      {
+        presenter,
+        onPump(current) {
+          if (!current.pendingResize) return;
+          current.nativeBounds = current.pendingResize;
+          current.nativeViewportSize = {
+            width: current.pendingResize.width,
+            height: current.pendingResize.height
+          };
+          current.nativeConfigureCount += 1;
+          current.pendingResize = undefined;
+        }
+      }
+    );
+
+    emitPresentation({ fullScreen: false, sourceBounds: initialSource, target: initialTarget });
+    session.pump();
+    session.prepareForOverlay?.(10000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    const mutationStart = fake.calls.length;
+
+    state.electronBounds = { x: 100, y: 120, width: 898, height: 568 };
+    emitPresentation({ fullScreen: false, sourceBounds: resizedSource, target: resizedTarget });
+    state.pendingResize = resizedTarget;
+    session.pump();
+
+    const mutations = fake.calls.slice(mutationStart);
+    assert.equal(
+      mutations.some((call) =>
+        call.method === "setNativeOverlayHostOpacity" ||
+        call.method === "setNativeOverlayHostInputPassthrough"
+      ),
+      false,
+      "one-pump diagnostics lag must not create a transparent/opaque flush"
+    );
+    assert.deepEqual(state.nativeBounds, resizedTarget);
+  });
+
+  test(`coordinate hold review: ${owner} handles explicit and coalesced presentation-pair replacement`, (t) => {
+    const sourceBounds = { x: 1, y: 28, width: 1000, height: 700 };
+    const target = { x: 1, y: 60, width: 998, height: 668 };
+    const state = {
+      electronBounds: { x: 0, y: 32, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: target,
+      nativeViewportSize: { width: target.width, height: target.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const {
+      fake,
+      session,
+      steam,
+      emitPresentation,
+      invalidatePresentation,
+      startPresentationPair
+    } = createKWinCoordinateHoldReviewHarness(t, state, { presenter });
+
+    const firstPair = emitPresentation({ fullScreen: false, sourceBounds, target });
+    session.pump();
+    session.prepareForOverlay?.(10000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    invalidatePresentation(firstPair);
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] }
+    );
+    emitPresentation({ fullScreen: false, sourceBounds, target, pairId: firstPair });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      "a tombstoned old-pair sequence cannot release the replacement hold"
+    );
+
+    startPresentationPair();
+    emitPresentation({ fullScreen: false, sourceBounds, target });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] }
+    );
+
+    const secondPair = `${firstPair.slice(0, firstPair.lastIndexOf(":"))}:2`;
+    invalidatePresentation(secondPair);
+    startPresentationPair();
+    emitPresentation({ fullScreen: false, sourceBounds, target });
+    const coalescedStart = fake.calls.length;
+    session.pump();
+    assert.equal(
+      fake.calls.slice(coalescedStart).some((call) =>
+        call.method === "setNativeOverlayHostOpacity" ||
+        call.method === "setNativeOverlayHostInputPassthrough"
+      ),
+      false,
+      "an already-converged strictly newer pair must be adopted without a fail-closed flush"
+    );
+
+    invalidatePresentation();
+    startPresentationPair();
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: { ...sourceBounds, width: 900 },
+      target: { ...target, width: 898 }
+    });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      "a mismatched replacement pair remains fail-closed"
+    );
+  });
+
+  test(`coordinate hold review: active ${owner} reattach is fail-closed before show and rejects the old pair`, (t) => {
+    const sourceBounds = { x: 1, y: 28, width: 1000, height: 700 };
+    const target = { x: 1, y: 60, width: 998, height: 668 };
+    const state = {
+      electronBounds: { x: 0, y: 32, width: 998, height: 668 },
+      electronFullScreen: false,
+      nativeBounds: target,
+      nativeViewportSize: { width: target.width, height: target.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const {
+      fake,
+      session,
+      steam,
+      emitPresentation,
+      startPresentationPair,
+      setHostOpen
+    } = createKWinCoordinateHoldReviewHarness(t, state, { presenter });
+
+    const firstPair = emitPresentation({ fullScreen: false, sourceBounds, target });
+    session.pump();
+    session.prepareForOverlay?.(10000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    setHostOpen(false);
+    const reattachStart = fake.calls.length;
+    session.pump();
+    const reattachCalls = fake.calls.slice(reattachStart);
+    const attachIndex = reattachCalls.findIndex((call) => call.method === "attachNativeOverlayHostWindow");
+    const inputIndex = reattachCalls.findIndex((call) =>
+      call.method === "setNativeOverlayHostInputPassthrough" && call.args[0] === true
+    );
+    const opacityIndex = reattachCalls.findIndex((call) =>
+      call.method === "setNativeOverlayHostOpacity" && call.args[0] === false
+    );
+    const showIndex = reattachCalls.findIndex((call) => call.method === "showNativeOverlayHostView");
+    assert.ok(
+      attachIndex >= 0 && inputIndex > attachIndex && opacityIndex > inputIndex && showIndex > opacityIndex,
+      "the replacement native lifetime must be fail-closed before it is mapped"
+    );
+
+    emitPresentation({ fullScreen: false, sourceBounds, target, pairId: firstPair });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] }
+    );
+    startPresentationPair();
+    emitPresentation({ fullScreen: false, sourceBounds, target });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] }
+    );
+  });
+
+  test(`coordinate hold review: ${owner} reseeds a concurrent restore resize and accepts one-pixel compositor clamps`, (t) => {
+    const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 800 };
+    const firstSource = { x: 1, y: 28, width: 1278, height: 691 };
+    const firstContent = { x: 1, y: 60, width: 1278, height: 659 };
+    const resizedSource = { x: 100, y: 50, width: 900, height: 600 };
+    const clampedTarget = { x: 100, y: 82, width: 900, height: 568 };
+    const clampedNative = { x: 101, y: 81, width: 899, height: 569 };
+    const state = {
+      electronBounds: fullScreenBounds,
+      electronFullScreen: true,
+      nativeBounds: fullScreenBounds,
+      nativeViewportSize: { width: fullScreenBounds.width, height: fullScreenBounds.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: true
+    };
+    const { fake, session, steam, emitPresentation } = createKWinCoordinateHoldReviewHarness(
+      t,
+      state,
+      { presenter }
+    );
+
+    emitPresentation({
+      fullScreen: true,
+      sourceBounds: fullScreenBounds,
+      target: fullScreenBounds
+    });
+    session.pump();
+    session.prepareForOverlay?.(10000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    state.electronFullScreen = false;
+    session.pump();
+    emitPresentation({ fullScreen: false, sourceBounds: firstSource, target: firstSource });
+    state.electronBounds = { x: 0, y: 32, width: 1278, height: 659 };
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").at(-1)?.args.slice(-4),
+      [firstContent.x, firstContent.y, firstContent.width, firstContent.height]
+    );
+
+    // The source resizes again before the first seed is acknowledged. The
+    // newer receipt must supersede it, and Electron's +1 fractional-scale
+    // overshoot is clamped to the compositor source before the write.
+    state.electronBounds = { x: 99, y: 49, width: 901, height: 568 };
+    emitPresentation({ fullScreen: false, sourceBounds: resizedSource, target: resizedSource });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").at(-1)?.args.slice(-4),
+      [100, 82, 900, 568]
+    );
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] }
+    );
+
+    state.nativeBounds = clampedNative;
+    state.nativeViewportSize = { width: clampedNative.width, height: clampedNative.height };
+    state.nativeConfigureCount += 1;
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: resizedSource,
+      target: clampedTarget
+    });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] },
+      "x/y/size differences of one physical pixel are accepted only after the full triple matches"
+    );
+  });
+
+  test(`coordinate hold review: ${owner} rapid enter-exit at a changed resolution cannot use the old windowed receipt`, (t) => {
+    const initialSource = { x: 0, y: 0, width: 1000, height: 700 };
+    const initialTarget = { x: 0, y: 32, width: 998, height: 668 };
+    const changedFullScreen = { x: 0, y: 0, width: 1280, height: 800 };
+    const restoredSource = { x: 10, y: 20, width: 1200, height: 800 };
+    const restoredContent = { x: 10, y: 52, width: 1198, height: 768 };
+    const state = {
+      electronBounds: initialTarget,
+      electronFullScreen: false,
+      nativeBounds: initialTarget,
+      nativeViewportSize: { width: initialTarget.width, height: initialTarget.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const { fake, session, steam, emitPresentation } = createKWinCoordinateHoldReviewHarness(
+      t,
+      state,
+      { presenter }
+    );
+
+    emitPresentation({ fullScreen: false, sourceBounds: initialSource, target: initialTarget });
+    session.pump();
+    session.prepareForOverlay?.(10000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+
+    state.electronFullScreen = true;
+    state.electronBounds = changedFullScreen;
+    session.pump();
+    state.electronFullScreen = false;
+    state.electronBounds = { x: 9, y: 19, width: 1198, height: 768 };
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [false] },
+      "the accepted old-size windowed receipt is not a same-state no-op at the new resolution"
+    );
+
+    emitPresentation({ fullScreen: false, sourceBounds: restoredSource, target: restoredSource });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").at(-1)?.args.slice(-4),
+      [restoredContent.x, restoredContent.y, restoredContent.width, restoredContent.height]
+    );
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: restoredSource,
+      target: restoredContent
+    });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity").at(-1),
+      { method: "setNativeOverlayHostOpacity", args: [true] }
+    );
+  });
+
+  test(`coordinate hold review: direct ${owner} caller authorizes a same-size restore with notifyBoundsChanged`, (t) => {
+    const fullScreenBounds = { x: 0, y: 0, width: 1280, height: 768 };
+    const restoredSource = { x: 0, y: 0, width: 1280, height: 808 };
+    const restoredContent = { x: 0, y: 40, width: 1280, height: 768 };
+    const state = {
+      electronBounds: fullScreenBounds,
+      electronFullScreen: true,
+      nativeBounds: fullScreenBounds,
+      nativeViewportSize: { width: 1280, height: 768 },
+      nativeConfigureCount: 1,
+      nativeFullScreen: true
+    };
+    const { fake, session, emitPresentation } = createKWinCoordinateHoldReviewHarness(
+      t,
+      state,
+      {
+        presenter,
+        onSetFullScreen(current, fullScreen) {
+          current.nativeFullScreen = fullScreen;
+          if (!fullScreen) {
+            current.nativeBounds = restoredSource;
+            current.nativeViewportSize = {
+              width: restoredSource.width,
+              height: restoredSource.height
+            };
+            current.nativeConfigureCount += 1;
+          }
+        }
+      }
+    );
+
+    emitPresentation({
+      fullScreen: true,
+      sourceBounds: fullScreenBounds,
+      target: fullScreenBounds
+    });
+    session.pump();
+    state.electronFullScreen = false;
+    session.pump();
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: restoredSource,
+      target: restoredSource
+    });
+    session.pump();
+    const seedCountBeforeNotification = fake.calls.filter(
+      (call) => call.method === "setNativeOverlayHostContentSeed"
+    ).length;
+    assert.equal(seedCountBeforeNotification, 0);
+
+    session.notifyBoundsChanged();
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").at(-1)?.args.slice(-4),
+      [restoredContent.x, restoredContent.y, restoredContent.width, restoredContent.height]
+    );
+    emitPresentation({
+      fullScreen: false,
+      sourceBounds: restoredSource,
+      target: restoredContent
+    });
+    session.pump();
+  });
+
+  test(`coordinate hold review: ${owner} passively reseeds same-state DPI and menu metrics`, (t) => {
+    const sourceBounds = { x: 0, y: 0, width: 1000, height: 700 };
+    const initialTarget = { x: 0, y: 32, width: 998, height: 668 };
+    const refreshedTarget = { x: 0, y: 40, width: 996, height: 660 };
+    const state = {
+      electronBounds: initialTarget,
+      electronFullScreen: false,
+      nativeBounds: initialTarget,
+      nativeViewportSize: { width: initialTarget.width, height: initialTarget.height },
+      nativeConfigureCount: 1,
+      nativeFullScreen: false
+    };
+    const { fake, session, steam, emitPresentation } = createKWinCoordinateHoldReviewHarness(
+      t,
+      state,
+      { presenter }
+    );
+
+    emitPresentation({ fullScreen: false, sourceBounds, target: initialTarget });
+    session.pump();
+    session.prepareForOverlay?.(10000);
+    fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+    const mutationStart = fake.calls.length;
+
+    state.electronBounds = refreshedTarget;
+    session.notifyBoundsChanged();
+    session.pump();
+    emitPresentation({ fullScreen: false, sourceBounds, target: initialTarget });
+    session.pump();
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostContentSeed").at(-1)?.args.slice(-4),
+      [refreshedTarget.x, refreshedTarget.y, refreshedTarget.width, refreshedTarget.height]
+    );
+    emitPresentation({ fullScreen: false, sourceBounds, target: refreshedTarget });
+    session.pump();
+
+    const visibilityMutations = fake.calls.slice(mutationStart).filter((call) =>
+      call.method === "setNativeOverlayHostOpacity" ||
+      call.method === "setNativeOverlayHostInputPassthrough"
+    );
+    assert.deepEqual(
+      visibilityMutations,
+      [],
+      "same-state metric refresh must not toggle opacity or input passthrough"
+    );
+  });
+}
 
 test("electron overlay options treat macOS simple fullscreen as fullscreen", (t) => {
   setProcessPlatformForTest(t, "darwin");
@@ -8694,9 +15176,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
   let windowFocusCount = 0;
   let windowInvalidateCount = 0;
   const fake = createFakeNative({
-    attachNativeOverlayHostView(nativeWindowHandle) {
+    attachNativeOverlayHostView(nativeWindowHandle, ...initialBounds) {
       hostOpen = true;
-      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle, ...initialBounds] });
     },
     pumpNativeOverlayProbeWindow() {
       this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
@@ -8709,6 +15191,9 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     },
     setNativeOverlayHostOpacity(opaque) {
       this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
     },
     detachNativeOverlayHostView() {
       hostOpen = false;
@@ -8989,29 +15474,34 @@ test("electron steam overlay manager owns one presenter and routes opens", async
       ].includes(call.method)
     ),
     [
-      { method: "attachNativeOverlayHostView", args: [hostHandle] },
+      {
+        method: "attachNativeOverlayHostView",
+        args: [hostHandle, 10, 20, 1280, 720]
+      },
       { method: "showNativeOverlayHostView", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: [steam.STEAM_FRIENDS_OVERLAY_URL, true] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }
     ]
@@ -9024,6 +15514,16 @@ test("electron steam overlay manager syncs the presenter on window geometry even
   const hostHandle = Buffer.from([6, 7, 8, 9]);
   let hostOpen = false;
   let windowBounds = { x: 12, y: 24, width: 900, height: 600 };
+  let displayFrequency = 90;
+  let displayMatchBounds;
+  mockElectronModule(t, {
+    screen: {
+      getDisplayMatching(bounds) {
+        displayMatchBounds = bounds;
+        return { displayFrequency };
+      }
+    }
+  });
   const fake = createFakeNative({
     attachNativeOverlayHostView(nativeWindowHandle) {
       hostOpen = true;
@@ -9041,6 +15541,9 @@ test("electron steam overlay manager syncs the presenter on window geometry even
     setNativeOverlayHostOpacity(opaque) {
       this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
     },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+    },
     detachNativeOverlayHostView() {
       hostOpen = false;
       this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
@@ -9050,6 +15553,9 @@ test("electron steam overlay manager syncs the presenter on window geometry even
     },
     isNativeOverlayHostViewOpen() {
       return hostOpen;
+    },
+    getNativeOverlayHostDiagnosticsJson() {
+      return JSON.stringify({ displayRefreshRate: 89.87 });
     }
   });
   const steam = loadSteamWithFakeNative(fake);
@@ -9065,7 +15571,7 @@ test("electron steam overlay manager syncs the presenter on window geometry even
     getNativeWindowHandle() {
       return hostHandle;
     },
-    getBounds() {
+    getContentBounds() {
       return windowBounds;
     },
     on(event, handler) {
@@ -9089,32 +15595,75 @@ test("electron steam overlay manager syncs the presenter on window geometry even
     pollIntervalMs: 10000
   });
 
-  assert.equal(handlers.has("resize"), false);
+  assert.equal(handlers.has("resize"), true);
   assert.equal(handlers.has("move"), false);
   assert.equal(handlers.has("resized"), true);
   assert.equal(handlers.has("moved"), true);
   assert.equal(handlers.has("enter-full-screen"), true);
   assert.equal(pumpCalls().length, 1);
+  assert.deepEqual(boundsCalls(), [
+    { method: "setNativeOverlayHostBounds", args: [12, 24, 900, 600] }
+  ]);
+  assert.equal(overlay.snapshot().activeOverlayFps, 90);
+  assert.equal(overlay.snapshot().needsPresentFps, 90);
+  assert.deepEqual(displayMatchBounds, windowBounds);
+
+  displayFrequency = 0;
+  handlers.get("moved")();
+  assert.equal(overlay.snapshot().activeOverlayFps, 90);
+  assert.equal(overlay.snapshot().needsPresentFps, 90);
+  assert.equal(pumpCalls().length, 2);
+  assert.equal(boundsCalls().length, 1);
+
+  displayFrequency = 120;
+  handlers.get("moved")();
+  assert.equal(overlay.snapshot().activeOverlayFps, 120);
+  assert.equal(overlay.snapshot().needsPresentFps, 120);
+  assert.equal(pumpCalls().length, 3);
+  assert.equal(boundsCalls().length, 1);
 
   const resizeHandler = handlers.get("resized");
   windowBounds = { x: 16, y: 32, width: 1280, height: 720 };
   resizeHandler();
-  assert.equal(pumpCalls().length, 2);
+  assert.equal(pumpCalls().length, 4);
+  assert.deepEqual(boundsCalls().at(-1), {
+    method: "setNativeOverlayHostBounds",
+    args: [16, 32, 1280, 720]
+  });
   assert.deepEqual(overlay.snapshot().bounds, windowBounds);
 
   handlers.get("enter-full-screen")();
-  assert.equal(pumpCalls().length, 3);
+  assert.equal(pumpCalls().length, 5);
 
   overlay.close();
   assert.equal(handlers.size, 0);
   assert.equal(removedEvents.includes("resized"), true);
+  assert.equal(removedEvents.includes("resize"), true);
   assert.equal(removedEvents.includes("enter-full-screen"), true);
 
   resizeHandler();
-  assert.equal(pumpCalls().length, 3);
+  assert.equal(pumpCalls().length, 5);
+
+  const explicitOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron Explicit Cadence Overlay",
+    pollIntervalMs: 10000,
+    activeOverlayFps: 72,
+    needsPresentFps: 48
+  });
+  assert.equal(explicitOverlay.snapshot().activeOverlayFps, 72);
+  assert.equal(explicitOverlay.snapshot().needsPresentFps, 48);
+  displayFrequency = 165;
+  handlers.get("moved")();
+  assert.equal(explicitOverlay.snapshot().activeOverlayFps, 72);
+  assert.equal(explicitOverlay.snapshot().needsPresentFps, 48);
+  explicitOverlay.close();
 
   function pumpCalls() {
     return fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow");
+  }
+
+  function boundsCalls() {
+    return fake.calls.filter((call) => call.method === "setNativeOverlayHostBounds");
   }
 });
 
@@ -9949,6 +16498,9 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     setNativeOverlayHostOpacity(opaque) {
       this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
     },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
+    },
     detachNativeOverlayHostView() {
       hostOpen = false;
       this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
@@ -9971,7 +16523,7 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     getNativeWindowHandle() {
       return hostHandle;
     },
-    getBounds() {
+    getContentBounds() {
       return windowBounds;
     },
     once() {},
@@ -10030,6 +16582,17 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
   assert.equal(overlay.snapshot().attached, true);
   assert.equal(overlay.snapshot().backend, expectedNativeOverlayBackend(true));
   assert.deepEqual(overlay.snapshot().bounds, windowBounds);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostBounds"),
+    [{ method: "setNativeOverlayHostBounds", args: [4, 8, 1024, 768] }]
+  );
+  const attachCallIndex = fake.calls.findIndex((call) => call.method === "attachNativeOverlayHostView");
+  const boundsCallIndex = fake.calls.findIndex((call) => call.method === "setNativeOverlayHostBounds");
+  const policyCallIndex = fake.calls.findIndex((call) => call.method === "setNativeOverlayHostInputPassthrough");
+  const showCallIndex = fake.calls.findIndex((call) => call.method === "showNativeOverlayHostView");
+  assert.ok(attachCallIndex < boundsCallIndex);
+  assert.ok(boundsCallIndex < policyCallIndex);
+  assert.ok(boundsCallIndex < showCallIndex);
   overlay.close();
   assert.equal(overlay.isOpen(), false);
   assert.equal(overlay.snapshot().attached, false);
@@ -10052,12 +16615,14 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     ),
     [
       { method: "attachNativeOverlayHostView", args: [hostHandle] },
-      { method: "showNativeOverlayHostView", args: [] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "showNativeOverlayHostView", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }
     ]
@@ -14485,9 +21050,9 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
       probeOpen = true;
       this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
     },
-    attachNativeOverlayHostView(nativeWindowHandle) {
+    attachNativeOverlayHostView(nativeWindowHandle, ...initialBounds) {
       hostOpen = true;
-      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle, ...initialBounds] });
     },
     pumpNativeOverlayProbeWindow() {
       if (!probeOpen && !hostOpen) {
@@ -14506,6 +21071,9 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
     },
     setNativeOverlayHostOpacity(opaque) {
       this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    setNativeOverlayHostBounds(x, y, width, height) {
+      this.calls.push({ method: "setNativeOverlayHostBounds", args: [x, y, width, height] });
     },
     closeNativeOverlayProbeWindow() {
       probeOpen = false;
@@ -14627,13 +21195,17 @@ test("native overlay session owns the probe pump lifecycle", async (t) => {
       { method: "overlayActivateToStore", args: [480, steam.StoreFlag.AddToCart] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "closeNativeOverlayProbeWindow", args: [] },
-      { method: "attachNativeOverlayHostView", args: [hostHandle] },
-      { method: "showNativeOverlayHostView", args: [] },
+      {
+        method: "attachNativeOverlayHostView",
+        args: [hostHandle, hostBounds.x, hostBounds.y, hostBounds.width, hostBounds.height]
+      },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
+      { method: "showNativeOverlayHostView", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlay", args: ["Friends"] },
-      { method: "hideNativeOverlayHostView", args: [] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
@@ -15566,6 +22138,13 @@ test("native overlay session presents shared textures and owned CPU fallback fra
     /minClientWidth and minClientHeight must be provided together/
   );
   assert.throws(
+    () => steam.overlay.startNativeOverlaySession({
+      useStandaloneLinuxHost: true,
+      useLinuxApplicationHost: true
+    }),
+    /standalone companion mode and application-host mode are mutually exclusive/
+  );
+  assert.throws(
     () =>
       steam.overlay.startNativeOverlaySession({
         menu: [
@@ -16164,10 +22743,12 @@ test("native overlay presenter reuses a passive non-Windows host for overlay act
       { method: "attachNativeOverlayHostView", args: [hostHandle] },
       { method: "showNativeOverlayHostView", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: ["https://store.steampowered.com/app/480/", true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
       { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
@@ -16175,10 +22756,12 @@ test("native overlay presenter reuses a passive non-Windows host for overlay act
       { method: "attachNativeOverlayHostView", args: [hostHandle] },
       { method: "showNativeOverlayHostView", args: [] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
-      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [false] },
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlayToWebPage", args: [steam.steamStoreAppUrl(480), true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }
     ]
@@ -16651,6 +23234,90 @@ test("native overlay presenter does not pump non-Windows frames while idle by de
   presenter.close();
 });
 
+test("attached Linux presenter captures Chromium before opaque GLX presentation", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let hostOpen = false;
+  const hostHandle = Buffer.from([9, 8, 7, 6, 0, 0, 0, 0]);
+  const frame = Buffer.from([
+    1, 2, 3, 255,
+    4, 5, 6, 255
+  ]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (!hostOpen) {
+        throw new Error("native overlay presenter is closed");
+      }
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    updateNativeOverlayHostFrame(data, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [data, width, height] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  let captureCount = 0;
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000,
+    activeGraceMs: 0,
+    async captureFrame() {
+      captureCount += 1;
+      return { data: frame, width: 2, height: 1 };
+    }
+  });
+
+  presenter.prepareForOverlay();
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.some((call) => call.method === "updateNativeOverlayHostFrame"),
+      500,
+      5
+    ),
+    true
+  );
+  assert.equal(captureCount, 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "updateNativeOverlayHostFrame"),
+    [{ method: "updateNativeOverlayHostFrame", args: [frame, 2, 1] }]
+  );
+  const opaqueIndex = fake.calls.findIndex(
+    (call) => call.method === "setNativeOverlayHostOpacity" && call.args[0] === true
+  );
+  const uploadIndex = fake.calls.findIndex((call) => call.method === "updateNativeOverlayHostFrame");
+  const postUploadPumpIndex = fake.calls.findIndex(
+    (call, index) => index > uploadIndex && call.method === "pumpNativeOverlayProbeWindow"
+  );
+  assert.ok(opaqueIndex >= 0 && opaqueIndex < uploadIndex);
+  assert.ok(postUploadPumpIndex > uploadIndex);
+
+  presenter.close();
+});
+
 test("native overlay presenter primes passive notifications without a blind frame loop", async (t) => {
   setProcessPlatformForTest(t, "linux");
   let hostOpen = false;
@@ -17002,6 +23669,7 @@ test("native overlay presenter parks modal overlays after inactive callbacks", a
     fake.calls.filter((call) => call.method === "setNativeOverlayHostOpacity"),
     [
       { method: "setNativeOverlayHostOpacity", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "setNativeOverlayHostOpacity", args: [false] }
     ]
   );
@@ -17095,6 +23763,8 @@ test("native overlay presenter keeps non-Windows dialog overlays transparent whi
       { method: "pumpNativeOverlayProbeWindow", args: [] },
       { method: "activateOverlay", args: ["Friends"] },
       { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostInputPassthrough", args: [true] },
+      { method: "setNativeOverlayHostOpacity", args: [false] },
       { method: "disconnectGameOverlayActivated", args: [] },
       { method: "detachNativeOverlayHostView", args: [] }
     ]

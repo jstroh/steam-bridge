@@ -12,6 +12,8 @@ use steamworks_sys as sys;
 use tokio::sync::oneshot;
 
 mod compat;
+#[cfg(target_os = "linux")]
+mod kwin_dbus;
 mod native_surface;
 mod state;
 #[cfg(target_os = "windows")]
@@ -365,6 +367,47 @@ pub fn get_native_overlay_host_diagnostics_json() -> Option<String> {
     native_surface::host_diagnostics_json()
 }
 
+#[napi(js_name = "getKWinWaylandOverlayPresentationProtocolVersion")]
+pub fn get_kwin_wayland_overlay_presentation_protocol_version() -> u32 {
+    1
+}
+
+#[napi(js_name = "startKWinWaylandOverlayHostSyncEvents")]
+pub fn start_kwin_wayland_overlay_host_sync_events(
+    token: String,
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, serde_json::Value>,
+) -> Result<Option<String>, Error> {
+    #[cfg(target_os = "linux")]
+    {
+        return kwin_dbus::start(token, handler).map(Some);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (token, handler);
+        Ok(None)
+    }
+}
+
+#[napi(js_name = "stopKWinWaylandOverlayHostSyncEvents")]
+pub fn stop_kwin_wayland_overlay_host_sync_events() {
+    #[cfg(target_os = "linux")]
+    kwin_dbus::stop();
+}
+
+#[napi(js_name = "isKWinWaylandOverlayHostSyncEventsRunning")]
+pub fn is_kwin_wayland_overlay_host_sync_events_running() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        return kwin_dbus::is_running();
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 fn overlay_needs_present_value(utils: *mut sys::ISteamUtils) -> bool {
     if overlay_needs_present_disabled() {
         return false;
@@ -452,10 +495,66 @@ pub fn open_native_overlay_probe_window(
     )
 }
 
-#[napi(js_name = "attachNativeOverlayHostView")]
-pub fn attach_native_overlay_host_view(native_window_handle: Buffer) -> Result<(), Error> {
+#[napi(js_name = "openNativeApplicationHostWindow")]
+pub fn open_native_application_host_window(
+    title: Option<String>,
+    client_width: Option<u32>,
+    client_height: Option<u32>,
+    min_client_width: Option<u32>,
+    min_client_height: Option<u32>,
+) -> Result<(), Error> {
     state::ensure_initialized()?;
-    native_surface::attach_to_parent(native_handle_from_buffer(&native_window_handle)?)
+
+    #[cfg(target_os = "linux")]
+    {
+        native_surface::open_application_host(
+            title,
+            client_width,
+            client_height,
+            min_client_width,
+            min_client_height,
+        )
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (
+            title,
+            client_width,
+            client_height,
+            min_client_width,
+            min_client_height,
+        );
+        Err(Error::from_reason(
+            "A native application host window is currently supported only on Linux",
+        ))
+    }
+}
+
+#[napi(js_name = "attachNativeOverlayHostView")]
+pub fn attach_native_overlay_host_view(
+    native_window_handle: Buffer,
+    initial_x: Option<i32>,
+    initial_y: Option<i32>,
+    initial_width: Option<u32>,
+    initial_height: Option<u32>,
+) -> Result<(), Error> {
+    state::ensure_initialized()?;
+    let initial_bounds = match (initial_x, initial_y, initial_width, initial_height) {
+        (None, None, None, None) => None,
+        (Some(x), Some(y), Some(width), Some(height)) if width > 0 && height > 0 => {
+            Some((x, y, width, height))
+        }
+        _ => {
+            return Err(Error::from_reason(
+                "Initial attached overlay bounds require x, y, positive width, and positive height",
+            ));
+        }
+    };
+    native_surface::attach_to_parent(
+        native_handle_from_buffer(&native_window_handle)?,
+        initial_bounds,
+    )
 }
 
 #[napi(js_name = "attachNativeOverlayHostViewForOverlay")]
@@ -510,6 +609,39 @@ pub fn hide_native_overlay_host_view() -> Result<(), Error> {
     native_surface::hide()
 }
 
+#[napi(js_name = "prepareNativeOverlayHostActivation")]
+pub fn prepare_native_overlay_host_activation() -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
+    {
+        native_surface::prepare_activation()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err(Error::from_reason(
+            "Deferred standalone overlay activation is supported only on Linux",
+        ))
+    }
+}
+
+#[napi(js_name = "commitNativeOverlayHostActivation")]
+pub fn commit_native_overlay_host_activation(
+    request_window_manager_activation: bool,
+) -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
+    {
+        native_surface::commit_activation(request_window_manager_activation)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = request_window_manager_activation;
+        Err(Error::from_reason(
+            "Deferred standalone overlay activation is supported only on Linux",
+        ))
+    }
+}
+
 #[napi(js_name = "setNativeOverlayHostInputPassthrough")]
 pub fn set_native_overlay_host_input_passthrough(pass_through: bool) -> Result<(), Error> {
     native_surface::set_input_passthrough(pass_through)
@@ -522,12 +654,12 @@ pub fn set_native_overlay_host_opacity(opaque: bool) -> Result<(), Error> {
 
 #[napi(js_name = "setNativeOverlayHostOverlayActive")]
 pub fn set_native_overlay_host_overlay_active(active: bool) -> Result<(), Error> {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         native_surface::set_overlay_active(active)
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         let _ = active;
         Ok(())
@@ -547,6 +679,246 @@ pub fn set_native_overlay_host_continuous_present(continuous: bool) -> Result<()
 #[napi(js_name = "setNativeOverlayHostFullScreen")]
 pub fn set_native_overlay_host_full_screen(full_screen: bool) -> Result<(), Error> {
     native_surface::set_full_screen(full_screen)
+}
+
+fn validate_overlay_presentation_instance_id(instance_id: &str) -> Result<(), Error> {
+    if instance_id.len() == 16
+        && instance_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Ok(());
+    }
+    Err(Error::from_reason(
+        "Native overlay presentation instance id must be 16 lowercase hexadecimal characters",
+    ))
+}
+
+fn overlay_content_seed_geometry_is_valid(
+    source_x: f64,
+    source_y: f64,
+    source_width: f64,
+    source_height: f64,
+    width: u32,
+    height: u32,
+) -> bool {
+    source_x.is_finite()
+        && source_y.is_finite()
+        && source_width.is_finite()
+        && source_height.is_finite()
+        && source_x >= i32::MIN as f64
+        && source_x <= i32::MAX as f64
+        && source_y >= i32::MIN as f64
+        && source_y <= i32::MAX as f64
+        && source_width > 0.0
+        && source_width <= i32::MAX as f64
+        && source_height > 0.0
+        && source_height <= i32::MAX as f64
+        && width > 0
+        && width <= i32::MAX as u32
+        && height > 0
+        && height <= i32::MAX as u32
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+enum OverlayPresentationMarkerMode {
+    Strict,
+    Degraded,
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn overlay_presentation_marker_mode(receiver_running: bool) -> OverlayPresentationMarkerMode {
+    if receiver_running {
+        OverlayPresentationMarkerMode::Strict
+    } else {
+        OverlayPresentationMarkerMode::Degraded
+    }
+}
+
+fn current_overlay_presentation_marker_mode() -> OverlayPresentationMarkerMode {
+    #[cfg(target_os = "linux")]
+    {
+        return overlay_presentation_marker_mode(kwin_dbus::is_running());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        OverlayPresentationMarkerMode::Strict
+    }
+}
+
+fn apply_overlay_presentation_marker(
+    mode: OverlayPresentationMarkerMode,
+    marker: String,
+) -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
+    if mode == OverlayPresentationMarkerMode::Degraded {
+        return native_surface::set_presentation_transport_closed(marker);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    let _ = mode;
+
+    native_surface::set_presentation_marker(marker)
+}
+
+#[napi(js_name = "setNativeOverlayHostPresentationEpoch")]
+pub fn set_native_overlay_host_presentation_epoch(
+    instance_id: String,
+    epoch: u32,
+) -> Result<bool, Error> {
+    validate_overlay_presentation_instance_id(&instance_id)?;
+    let mode = current_overlay_presentation_marker_mode();
+    let marker = match mode {
+        OverlayPresentationMarkerMode::Strict => {
+            format!("steam-bridge:{instance_id}:state:{epoch}")
+        }
+        OverlayPresentationMarkerMode::Degraded => {
+            format!("steam-bridge:{instance_id}:degraded")
+        }
+    };
+    apply_overlay_presentation_marker(mode, marker)?;
+    Ok(mode == OverlayPresentationMarkerMode::Strict)
+}
+
+#[napi(js_name = "setNativeOverlayHostPresentationTransportClosed")]
+pub fn set_native_overlay_host_presentation_transport_closed(
+    instance_id: String,
+) -> Result<(), Error> {
+    validate_overlay_presentation_instance_id(&instance_id)?;
+    let marker = format!("steam-bridge:{instance_id}:degraded");
+    #[cfg(target_os = "linux")]
+    {
+        return native_surface::set_presentation_transport_closed(marker);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        native_surface::set_presentation_marker(marker)
+    }
+}
+
+#[napi(js_name = "setNativeOverlayHostContentSeed")]
+pub fn set_native_overlay_host_content_seed(
+    instance_id: String,
+    epoch: u32,
+    pair_generation: u32,
+    receipt_sequence: u32,
+    source_x: f64,
+    source_y: f64,
+    source_width: f64,
+    source_height: f64,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<bool, Error> {
+    validate_overlay_presentation_instance_id(&instance_id)?;
+    if pair_generation == 0
+        || receipt_sequence == 0
+        || !overlay_content_seed_geometry_is_valid(
+            source_x,
+            source_y,
+            source_width,
+            source_height,
+            width,
+            height,
+        )
+    {
+        return Err(Error::from_reason(
+            "Native overlay content seed receipt and geometry must be valid",
+        ));
+    }
+    let mode = current_overlay_presentation_marker_mode();
+    let marker = match mode {
+        OverlayPresentationMarkerMode::Strict => format!(
+            "steam-bridge:{instance_id}:seed:{epoch}:{pair_generation}:{receipt_sequence}:\
+             {source_x}:{source_y}:{source_width}:{source_height}:{x}:{y}:{width}:{height}"
+        ),
+        OverlayPresentationMarkerMode::Degraded => {
+            format!("steam-bridge:{instance_id}:degraded")
+        }
+    };
+    apply_overlay_presentation_marker(mode, marker)?;
+    Ok(mode == OverlayPresentationMarkerMode::Strict)
+}
+
+#[cfg(test)]
+mod overlay_presentation_tests {
+    use super::{
+        overlay_content_seed_geometry_is_valid, overlay_presentation_marker_mode,
+        validate_overlay_presentation_instance_id, OverlayPresentationMarkerMode,
+    };
+
+    #[test]
+    fn marker_mode_routes_closed_receivers_to_the_one_way_degraded_role() {
+        assert_eq!(
+            overlay_presentation_marker_mode(true),
+            OverlayPresentationMarkerMode::Strict
+        );
+        assert_eq!(
+            overlay_presentation_marker_mode(false),
+            OverlayPresentationMarkerMode::Degraded
+        );
+    }
+
+    #[test]
+    fn presentation_instance_ids_are_exact_lowercase_hex() {
+        assert!(validate_overlay_presentation_instance_id("0123456789abcdef").is_ok());
+        for invalid in [
+            "0123456789abcde",
+            "0123456789abcdef0",
+            "0123456789abcdeF",
+            "0123456789abc:ef",
+        ] {
+            assert!(validate_overlay_presentation_instance_id(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn content_seed_geometry_matches_the_kwin_signed_32_bit_domain() {
+        assert!(overlay_content_seed_geometry_is_valid(
+            i32::MIN as f64,
+            i32::MAX as f64,
+            i32::MAX as f64,
+            1.0,
+            i32::MAX as u32,
+            1,
+        ));
+        assert!(!overlay_content_seed_geometry_is_valid(
+            i32::MIN as f64 - 1.0,
+            0.0,
+            1.0,
+            1.0,
+            1,
+            1,
+        ));
+        assert!(!overlay_content_seed_geometry_is_valid(
+            0.0,
+            i32::MAX as f64 + 1.0,
+            1.0,
+            1.0,
+            1,
+            1,
+        ));
+        assert!(!overlay_content_seed_geometry_is_valid(
+            0.0,
+            0.0,
+            i32::MAX as f64 + 1.0,
+            1.0,
+            1,
+            1,
+        ));
+        assert!(!overlay_content_seed_geometry_is_valid(
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            i32::MAX as u32 + 1,
+            1,
+        ));
+    }
 }
 
 #[napi(js_name = "setNativeOverlayHostMenuJson")]
@@ -600,6 +972,64 @@ pub fn update_native_overlay_host_shared_texture(
         presentation_width,
         presentation_height,
     )
+}
+
+#[napi(js_name = "updateNativeOverlayHostLinuxDmaBufSharedTexture")]
+#[allow(clippy::too_many_arguments)]
+pub fn update_native_overlay_host_linux_dma_buf_shared_texture(
+    fd: i32,
+    stride: u32,
+    offset: String,
+    size: String,
+    modifier: String,
+    pixel_format: String,
+    width: u32,
+    height: u32,
+    presentation_x: Option<u32>,
+    presentation_y: Option<u32>,
+    presentation_width: Option<u32>,
+    presentation_height: Option<u32>,
+) -> Result<(), Error> {
+    state::ensure_initialized()?;
+
+    #[cfg(target_os = "linux")]
+    {
+        native_surface::update_linux_dma_buf_shared_texture(
+            fd,
+            stride,
+            offset,
+            size,
+            modifier,
+            pixel_format,
+            width,
+            height,
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+        )
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (
+            fd,
+            stride,
+            offset,
+            size,
+            modifier,
+            pixel_format,
+            width,
+            height,
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+        );
+        Err(Error::from_reason(
+            "Electron dma-buf shared textures are supported only by the Linux native host",
+        ))
+    }
 }
 
 #[napi(js_name = "drainNativeOverlayHostInputEventsJson")]

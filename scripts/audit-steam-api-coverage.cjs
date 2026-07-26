@@ -208,7 +208,11 @@ function assertNativeBindingCoverage() {
   const nativeBindingMethodSet = new Set(nativeBindingMethods);
   const napiExports = readNapiExportNames();
   const napiExportSet = new Set(napiExports);
-  const indexSource = fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"), "utf8");
+  const facadeSource = ["index.ts", "kwin.ts"]
+    .map((fileName) =>
+      fs.readFileSync(path.join(repoRoot, "packages", "steam-bridge", "src", fileName), "utf8")
+    )
+    .join("\n");
 
   const missingBindingMethods = napiExports.filter((method) => !nativeBindingMethodSet.has(method));
   if (missingBindingMethods.length > 0) {
@@ -230,7 +234,7 @@ function assertNativeBindingCoverage() {
     );
   }
 
-  const missingFacadeReferences = nativeBindingMethods.filter((method) => !indexSource.includes(method));
+  const missingFacadeReferences = nativeBindingMethods.filter((method) => !facadeSource.includes(method));
   if (missingFacadeReferences.length > 0) {
     throw new Error(
       [
@@ -412,7 +416,11 @@ function assertNapiExportScannerSelfTest() {
     ].join("\n"),
     "self-test.rs"
   );
-  assert.deepEqual(parsed, ["alpha", "beta"]);
+  if (parsed.length !== 2 || parsed[0] !== "alpha" || parsed[1] !== "beta") {
+    throw new Error(
+      `N-API export scanner self-test returned an unexpected result: ${JSON.stringify(parsed)}`
+    );
+  }
   assert.throws(
     () => readNapiExportNamesFromSource("#[napi]\npub fn implicit() {}\n", "implicit.rs"),
     /exactly one ASCII js_name/

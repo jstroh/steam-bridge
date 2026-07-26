@@ -136,24 +136,42 @@ native host driven by an offscreen Electron renderer.
 
 ### Linux and Steam Deck
 
-Use `createElectronSteamOverlay(mainWindow)` for the managed browser/dialog
-routes in Steam Deck Desktop Mode. On a native-Wayland Electron desktop, the value returned by
-`BrowserWindow.getNativeWindowHandle()` is not an X11 window ID, so Steam Bridge
-does not reinterpret it as one. It creates one transparent Xwayland/GLX Steam
-surface instead, keeps that surface scoped to the Electron content rectangle,
-and leaves the application title bar and desktop chrome owned by Electron and
-the compositor.
+Electron games that need Steam over live WebGL content should use one visible
+native application host and render Electron offscreen into it:
 
-On KDE Plasma, Steam Bridge installs a session-local KWin script that mirrors
-the compositor's authoritative client geometry, fullscreen state, and relevant
-minimize transitions onto the Xwayland surface. The JavaScript presenter also
-tracks bounds and visibility, so move, resize, maximize, fullscreen,
-minimize/restore, focus changes, and close reuse one surface rather than
-creating a new Steam target. Restored windows receive bottom-corner clipping;
-fullscreen surfaces remain rectangular. The parked surface is transparent,
-input-empty, excluded from the taskbar/pager/switcher, and idle at zero FPS.
-Passive Steam notification pulses keep it transparent, avoiding a black frame
-over the Wayland client while Steam's compositor toast is visible.
+```ts
+const session = client.overlay.startNativeOverlaySession({
+  title: "My Game",
+  clientWidth: 1280,
+  clientHeight: 720,
+  minClientWidth: 640,
+  minClientHeight: 480,
+  useLinuxApplicationHost: true,
+  frameRate: 90,
+  onInputEvent: forwardInputToOffscreenRenderer,
+});
+```
+
+The native window is the application window. It owns the title bar, menu,
+rounded frame, move, resize, maximize, fullscreen, minimize, focus, cursor, and
+Steam's injected overlay. Do not add a visible Electron window beneath it and
+do not turn the Steam surface into a popup/topmost/`keepAbove` companion. Keep
+the same host for its full lifetime.
+
+Electron 43 exposes Linux offscreen frames as one-plane BGRA native pixmaps.
+Pass the `nativePixmap`, `pixelFormat`, dimensions, and presentation rectangle
+from `paint` to `session.updateSharedTexture(...)`, and release Electron's
+texture in `finally`. Steam Bridge imports the dma-buf through XCB DRI3 and
+`GLX_EXT_texture_from_pixmap`, copies it into a retained GL texture, and keeps
+presenting that texture while Steam pauses Electron paint. A native-Wayland
+desktop still needs an Xwayland `DISPLAY` because Steam hooks the GLX host.
+
+`createElectronSteamOverlay(mainWindow)` remains available for managed
+browser/dialog presentation genuinely attached to an existing Linux window.
+Do not use that two-surface controller as a fallback for a game host. Popup
+companions, `keepAbove`, resize-time recreate/remap, nested-child GLX, direct
+Electron desktop GL/Vulkan, and EGLImage-to-GLX import are closed game-host
+paths.
 
 Steam can report the Linux overlay as enabled just before its injected helper
 is safe to call on a freshly launched game. The managed Wayland/Xwayland path
@@ -167,14 +185,10 @@ with the game window, reuse it, and prefer the wait helpers for user-triggered
 Store, browser, and checkout flows. `activationWarmupMs` is configurable when
 platform evidence requires a different value.
 
-The application still owns window-size policy. A typical game window can use
-`1280x720` with `minWidth: 640` and `minHeight: 480`; Steam Bridge follows the
-resulting content bounds but does not override those choices. A native-Wayland
-session still needs an Xwayland `DISPLAY`, because Steam hooks the managed GLX
-presentation surface. `presenterMode: "session"` is safely backed by the
-persistent surface on this path—creating GLX during Steam's injected activation
-stack is crash-prone—and the snapshot reports
-`electronOverlay.effectivePresenterMode: "persistent"` when promoted.
+The application owns its size and refresh policy. `1280x720` client pixels with
+a `640x480` minimum is a safe desktop default; Steam Bridge applies those
+constraints to the same native application host and follows the current display
+cadence. It does not force an aspect ratio on desktop windows.
 
 Game Mode is a different presentation contract. Gamescope/SteamUI presents
 compositor-native surfaces such as Store, while the current managed web control
@@ -498,8 +512,13 @@ of source control and logs.
   `prepareLinuxSteamAppAfterPack(context)` from
   `steam-bridge/electron-builder`. The helper writes a process-start launcher
   with the paired `--no-zygote --no-sandbox` switches required before
-  Chromium's first zygote. The application still owns BrowserWindow size,
-  fullscreen, cursor, and input policy.
+  Chromium's first zygote. Linux game-host mode uses one native application
+  window and a hidden offscreen Electron renderer; the application still owns
+  size, fullscreen, cursor, input, and refresh policy.
+- Linux source builds create a link-only encrypted-ticket import stub whose
+  SONAME is `libsdkencryptedappticket.so`. The published addon therefore keeps
+  a portable runtime dependency without requiring `patchelf`; packages still
+  ship Valve's real redistributable beside the addon.
 - macOS applications must be packaged and run as native Apple Silicon apps.
 - Windows application signing is the responsibility of the final application
   distributor. It is not required to install or publish this npm package.
@@ -524,6 +543,12 @@ npm test
 `native:build` links the newest matching Cargo artifact from either the target
 release directory or its `deps` directory, which keeps source-linked consumer
 testing from accidentally loading an older addon.
+
+The TypeScript build minifies ordinary distributable JavaScript with source
+maps. `kwin.js` intentionally remains in TypeScript's emitted form because it
+serializes selected functions into KWin's separate JavaScript runtime;
+top-level mangling would break that code-generation boundary. Declarations and
+exports are unchanged.
 
 The normal repository checks are documented in [Contributing](CONTRIBUTING.md).
 

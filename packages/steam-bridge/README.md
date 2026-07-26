@@ -133,21 +133,44 @@ standalone native host driven by an offscreen Electron renderer.
 
 ### Linux and Steam Deck
 
-Use the managed browser/dialog API in Steam Deck Desktop Mode. Native-Wayland
-Electron handles are not X11 window IDs, so Steam Bridge creates one transparent
-Xwayland/GLX Steam surface and aligns it to the BrowserWindow content rectangle
-instead of parsing that handle. On KDE Plasma, a session-local KWin script
-mirrors authoritative client geometry, fullscreen state, and relevant minimize
-transitions. The presenter also follows bounds and visibility, preserving the
-Electron/KWin title bar while move, resize, maximize, fullscreen,
-minimize/restore, focus, and close reuse one Steam target. Windowed hosts clip
-their bottom corners; fullscreen hosts remain rectangular.
+Electron games that need Steam over live WebGL content should use one visible
+native application host and render Electron offscreen into it:
 
-Parked hosts are input-empty, transparent, omitted from shell window lists, and
-idle at zero FPS. Passive Steam notification pulses remain transparent so a
-compositor toast cannot expose a black GLX frame over the Electron client. The
-application owns size policy—for example `1280x720`, `minWidth: 640`, and
-`minHeight: 480`—while Steam Bridge follows the resulting content bounds.
+```ts
+const session = client.overlay.startNativeOverlaySession({
+  title: "My Game",
+  clientWidth: 1280,
+  clientHeight: 720,
+  minClientWidth: 640,
+  minClientHeight: 480,
+  useLinuxApplicationHost: true,
+  frameRate: 90,
+  onInputEvent: forwardInputToOffscreenRenderer,
+});
+```
+
+The native window is the application window. It owns chrome, rounded frame,
+move, resize, maximize, fullscreen, minimize, focus, cursor, and Steam's
+injected overlay. Keep that same host for its entire lifetime. Do not add a
+visible Electron window beneath it or turn the Steam surface into a popup,
+topmost, or `keepAbove` companion.
+
+Electron offscreen frames arrive as one-plane BGRA native pixmaps. Pass the
+`nativePixmap`, `pixelFormat`, dimensions, and presentation rectangle from
+`paint` to `session.updateSharedTexture(...)`, and release Electron's texture in
+`finally`. Steam Bridge imports the dma-buf through XCB DRI3 and
+`GLX_EXT_texture_from_pixmap`, copies it into a retained GL texture, and keeps
+presenting that texture while Steam pauses Electron paint.
+
+Popup companions, resize-time recreate/remap, nested-child GLX, direct Electron
+desktop GL/Vulkan, and EGLImage-to-GLX import are closed game-host paths. The
+managed browser/dialog API remains available when a surface is genuinely
+attached to an existing Linux window; it is not a fallback game-host design.
+
+The application owns size and refresh policy. `1280x720` client pixels with a
+`640x480` minimum is a safe desktop default. Steam Bridge does not force an
+aspect ratio on desktop windows. Native Wayland still requires an Xwayland
+`DISPLAY`, because Steam hooks the GLX application host.
 
 On a freshly launched Linux game, Steam can report the overlay enabled shortly
 before its injected helper is safe to call. The managed Wayland/Xwayland path
@@ -160,11 +183,7 @@ snapshots report `activationWarmupMs`, `activationWarmupRemainingMs`, and
 prefer the wait helpers for Store, browser, and checkout UI. Override
 `activationWarmupMs` only when platform evidence supports another value.
 
-Native Wayland still requires an Xwayland `DISPLAY` for Steam's GLX hook. A
-requested `presenterMode: "session"` is internally promoted to the proven
-persistent surface on this path; snapshots expose
-`electronOverlay.effectivePresenterMode: "persistent"`. Game Mode is a
-different contract: Gamescope/SteamUI can present compositor-native surfaces
+Game Mode is a different contract: Gamescope/SteamUI can present compositor-native surfaces
 such as Store, but the current managed web control does not activate there.
 Qualification proves presenter readiness plus native Store activation, close,
 and focus return, not parity with the Desktop browser/dialog matrix. Games that
@@ -561,6 +580,12 @@ npm test
 `native:build` links the newest matching Cargo artifact from either the target
 release directory or its `deps` directory, which keeps source-linked consumer
 testing from accidentally loading an older addon.
+
+The TypeScript build minifies ordinary distributable JavaScript with source
+maps. `kwin.js` intentionally remains in TypeScript's emitted form because it
+serializes selected functions into KWin's separate JavaScript runtime;
+top-level mangling would break that code-generation boundary. Declarations and
+exports are unchanged.
 
 See [Contributing](https://github.com/jstroh/steam-bridge/blob/main/CONTRIBUTING.md)
 for the full development and release checks.

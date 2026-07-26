@@ -86,7 +86,7 @@ fn link_sdk_encrypted_app_ticket(target: &str, target_os: &str) {
         (
             "linux64",
             vec!["libsdkencryptedappticket.so"],
-            "sdkencryptedappticket",
+            "libsdkencryptedappticket.so",
         )
     } else if target.contains("windows") {
         (
@@ -113,13 +113,71 @@ fn link_sdk_encrypted_app_ticket(target: &str, target_os: &str) {
                 destination.display()
             )
         });
-        if target_os == "linux" && file == "libsdkencryptedappticket.so" {
-            set_linux_soname(&destination, "libsdkencryptedappticket.so");
-        }
     }
 
-    println!("cargo:rustc-link-search={}", out_dir.display());
-    println!("cargo:rustc-link-lib=dylib={link_lib}");
+    if target_os == "linux" {
+        let import_stub = build_linux_import_stub(target, &out_dir, link_lib);
+        // The absolute path is link-time only. The stub's SONAME ensures the
+        // output records the portable filename and resolves to the packaged
+        // real SDK binary at runtime.
+        println!("cargo:rustc-link-arg={}", import_stub.display());
+    } else {
+        println!("cargo:rustc-link-search={}", out_dir.display());
+        println!("cargo:rustc-link-lib=dylib={link_lib}");
+    }
+}
+
+fn build_linux_import_stub(target: &str, out_dir: &Path, soname: &str) -> PathBuf {
+    let import_dir = out_dir.join("linux-import-stub");
+    fs::create_dir_all(&import_dir).expect("create Linux import-stub directory");
+    let source = import_dir.join("sdkencryptedappticket_import.c");
+    let library = import_dir.join(soname);
+    let symbols = [
+        "SteamEncryptedAppTicket_BDecryptTicket",
+        "SteamEncryptedAppTicket_BIsTicketForApp",
+        "SteamEncryptedAppTicket_GetTicketIssueTime",
+        "SteamEncryptedAppTicket_GetTicketSteamID",
+        "SteamEncryptedAppTicket_GetTicketAppID",
+        "SteamEncryptedAppTicket_BUserOwnsAppInTicket",
+        "SteamEncryptedAppTicket_BUserIsVacBanned",
+        "SteamEncryptedAppTicket_BGetAppDefinedValue",
+        "SteamEncryptedAppTicket_GetUserVariableData",
+        "SteamEncryptedAppTicket_BIsTicketSigned",
+        "SteamEncryptedAppTicket_BIsLicenseBorrowed",
+        "SteamEncryptedAppTicket_BIsLicenseTemporary",
+    ];
+    let source_text = symbols
+        .iter()
+        .map(|symbol| {
+            format!("__attribute__((visibility(\"default\"))) void {symbol}(void) {{}}\n")
+        })
+        .collect::<String>();
+    fs::write(&source, source_text).expect("write Linux import-stub source");
+
+    let host = env::var("HOST").unwrap_or_default();
+    let mut compiler = cc::Build::new();
+    compiler
+        .target(target)
+        .host(&host)
+        .cargo_metadata(false)
+        .warnings(false);
+    let tool = compiler.get_compiler();
+    let status = tool
+        .to_command()
+        .arg("-shared")
+        .arg("-fPIC")
+        .arg(format!("-Wl,-soname,{soname}"))
+        .arg("-o")
+        .arg(&library)
+        .arg(&source)
+        .status()
+        .unwrap_or_else(|error| {
+            panic!("failed to build Linux encrypted-ticket import stub: {error}")
+        });
+    if !status.success() {
+        panic!("failed to build Linux encrypted-ticket import stub");
+    }
+    library
 }
 
 fn find_steamworks_sdk_root() -> Option<PathBuf> {
@@ -178,28 +236,6 @@ fn is_steamworks_sdk_root(root: &Path) -> bool {
         .join("steam")
         .join("steamencryptedappticket.h")
         .is_file()
-}
-
-fn set_linux_soname(library: &Path, soname: &str) {
-    println!("cargo:rerun-if-env-changed=PATH");
-    if let Some(patchelf) = find_tool("patchelf") {
-        let status = Command::new(&patchelf)
-            .arg("--set-soname")
-            .arg(soname)
-            .arg(library)
-            .status()
-            .unwrap_or_else(|error| {
-                panic!("failed to run {}: {error}", patchelf.display());
-            });
-        if !status.success() {
-            panic!("failed to set SONAME on {}", library.display());
-        }
-    } else {
-        println!(
-            "cargo:warning=patchelf was not found; Linux release builds may record an absolute \
-             path for libsdkencryptedappticket.so"
-        );
-    }
 }
 
 fn configure_linux_cross_archive_tools(build: &mut cc::Build, host: &str, target: &str) {

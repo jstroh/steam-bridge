@@ -4,8 +4,26 @@ import {
   electronNativeOverlaySessionOptions as electronNativeOverlaySessionOptionsImpl,
   electronOverlayPresenterOptions as electronOverlayPresenterOptionsImpl,
   electronScrubSteamOverlayChildProcessEnv as electronScrubSteamOverlayChildProcessEnvImpl,
-  electronUsesStandaloneLinuxOverlayHost
+  electronWindowDisplayFrameRate,
+  electronUsesStandaloneLinuxOverlayHost,
+  getKWinWaylandOverlayHostSyncStatus
 } from "./electron";
+import {
+  nextOverlayFrameDelayMs,
+  resetOverlayFrameDeadline,
+  resolveManagedOverlayDisplayFrameRate,
+  type OverlayFrameDeadlineState
+} from "./overlay-cadence";
+import {
+  ensureFreshKWinWaylandOverlayHostSyncLease,
+  getKWinWaylandOverlayPresentationState,
+  isKWinWaylandOverlayStrictPresentationScriptLoaded,
+  isKWinWaylandOverlaySourceInteractiveResizeActive,
+  writeKWinWaylandOverlayHostPresentationMarker,
+  onKWinWaylandOverlayTransportSafetyRequired,
+  type KWinWaylandPresentationMarkerWriteResult,
+  type KWinWaylandOverlayPresentationConvergedState
+} from "./kwin";
 import { isMainThread } from "node:worker_threads";
 import { SteamworksEnums } from "./generated-steamworks-enums";
 import type {
@@ -1623,6 +1641,12 @@ export interface NativeOverlaySessionOptions {
    * this automatically; other callers should normally leave it unset.
    */
   useStandaloneLinuxHost?: boolean;
+  /**
+   * Make one persistent native X11/GLX window the Linux application's visible
+   * host while Electron renders offscreen into it. This is an application
+   * window, never a popup or companion layered over another window.
+   */
+  useLinuxApplicationHost?: boolean;
   onInputEvent?: (event: NativeOverlayInputEvent) => void;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
@@ -1666,7 +1690,20 @@ export interface NativeOverlayFrame {
 
 export interface NativeOverlaySharedTexture {
   /** Process-local Windows NT handle from Electron's OffscreenSharedTexture. */
-  handle: Buffer;
+  handle?: Buffer;
+  /** Linux native pixmap metadata from Electron's OffscreenSharedTexture. */
+  nativePixmap?: {
+    planes: Array<{
+      fd: number;
+      stride: number;
+      offset: number;
+      size: number;
+    }>;
+    modifier: string;
+    supportsZeroCopyWebGpuImport?: boolean;
+  };
+  /** Electron shared-texture pixel format. Linux currently accepts `bgra`. */
+  pixelFormat?: string;
   width: number;
   height: number;
   /** Electron contentRect/dirtyRect populated by this shared texture update. */
@@ -1749,6 +1786,12 @@ export interface NativeOverlaySessionSnapshot {
 export interface NativeOverlaySession extends CallbackHandle {
   close(): void;
   pump(): void;
+  /**
+   * Notify the session after its getBounds provider has crossed an
+   * authoritative resize/content commit. Required to disambiguate an
+   * unchanged-size Wayland fullscreen restore from a stale Electron sample.
+   */
+  notifyBoundsChanged(): void;
   updateFrame(frame: NativeOverlayFrame): void;
   updateSharedTexture(texture: NativeOverlaySharedTexture): void;
   setCursorHidden(hidden: boolean): void;
@@ -1843,6 +1886,10 @@ export type NativeOverlayHostDiagnostics = Record<string, unknown>;
 export interface NativeOverlayPresenter extends CallbackHandle {
   close(): void;
   pump(): void;
+  /** @see NativeOverlaySession.notifyBoundsChanged */
+  notifyBoundsChanged(): void;
+  /** Set both active-overlay and needs-present presentation rates. */
+  setFrameRate(frameRate: number): void;
   prepareForOverlay(durationMs?: number): void;
   prepareForPassiveOverlay(durationMs?: number): void;
   show(): void;
@@ -8217,6 +8264,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   assertSteamOverlayMainThread();
   assertLinuxNativeOverlayDisplayAvailable();
   assertWindowsNativeOverlayAttachmentUnsupported(options.nativeWindowHandle);
+  if (options.useStandaloneLinuxHost === true && options.useLinuxApplicationHost === true) {
+    throw new TypeError(
+      "Steam Bridge Linux standalone companion mode and application-host mode are mutually exclusive."
+    );
+  }
 
   const title = options.title ?? "Steam Bridge Native Overlay";
   const backend = resolveNativeOverlayBackend(options);
@@ -8241,8 +8293,35 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           minimumScale: minimumMenuScale
         });
   const usesStandaloneLinuxHost = shouldUseStandaloneLinuxNativeHost(options);
-  const usesNativeHostView = Boolean(options.nativeWindowHandle) || usesStandaloneLinuxHost;
-  const hideNativeHostOnOverlayDeactivate = options.hideNativeHostOnOverlayDeactivate ?? usesNativeHostView;
+  const usesLinuxApplicationHost = shouldUseLinuxNativeApplicationHost(options);
+  const usesNativeHostView = Boolean(options.nativeWindowHandle)
+    || usesStandaloneLinuxHost
+    || usesLinuxApplicationHost;
+  const usesAttachedLinuxHost =
+    process.platform === "linux" && Boolean(options.nativeWindowHandle) && !usesStandaloneLinuxHost;
+  const shouldHideNativeHostOnOverlayDeactivate = (): boolean => {
+    if (usesLinuxApplicationHost) {
+      return false;
+    }
+    if (usesAttachedLinuxHost) {
+      // A real X11 child follows its parent structurally. Keep the same child
+      // mapped and park it with empty input plus zero opacity so a later Steam
+      // activation cannot re-enter an X11 remap/flicker path. This lifecycle
+      // invariant intentionally overrides the generic hide option.
+      return false;
+    }
+    if (typeof options.hideNativeHostOnOverlayDeactivate === "boolean") {
+      return options.hideNativeHostOnOverlayDeactivate;
+    }
+    if (!usesNativeHostView) {
+      return false;
+    }
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    return syncStatus.active !== true || syncStatus.ownershipUncertain === true;
+  };
   const continuousPresentRequested = options.continuousPresent === true;
   const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
@@ -8250,6 +8329,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let closed = false;
   let pumpCount = 0;
   let lastPumpAt: number | undefined;
+  let lastFrameDrivenPumpAt: number | undefined;
   let lastError: unknown;
   let overlayActive = false;
   let overlayWasActive = false;
@@ -8263,14 +8343,46 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let nativeHostUnavailableReason: NativeOverlayHostUnavailableReason | undefined;
   let macOverlayEnvironment: MacOverlayEnvironment | undefined;
+  let hostInputPassthrough: boolean | undefined;
+  let hostOpaque: boolean | undefined;
   let pumpTimer: NodeJS.Timeout | undefined;
+  let pumpTimerDueAt: number | undefined;
   let pumpImmediate: NodeJS.Immediate | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let hideNativeHostTimer: NodeJS.Timeout | undefined;
+  let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
+  let standaloneLinuxHostMapped = false;
+  let standaloneLinuxHostDegradedRemapBarrier = false;
+  let standaloneLinuxHostDegradedRemapSample:
+    NativeOverlayHostPresentationState | undefined;
+  let standaloneLinuxHostDegradedRemapSampleBoundsRevision: number | undefined;
+  let standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure = false;
+  let standaloneLinuxHostDegradedFullScreenConfigureBaseline: number | undefined;
+  let standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+  let standaloneLinuxHostDegradedFullScreenTransitionOrigin:
+    NativeOverlayHostPresentationState | undefined;
+  let standaloneLinuxHostDegradedFullScreenReversalPending = false;
+  let standaloneLinuxHostActivationCommitPending = false;
+  let standaloneLinuxHostActivationCommitFailureBaseline: number | undefined;
+  let standaloneLinuxHostActivationCommitStartedPumpSequence = 0;
+  let standaloneLinuxHostActivationFailedForInputEpoch = false;
+  let nativePumpSequence = 0;
+  let standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence = 0;
   let overlayHandle: CallbackHandle | undefined;
+  let disconnectKWinTransportSafety: (() => void) | undefined;
   let surfaceLease: NativeOverlaySurfaceLease | undefined;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
   let lastNativeHostBounds: NativeOverlayBounds | undefined;
+  let kWinWaylandPresentationHold: KWinWaylandPresentationHold | undefined;
+  let lastAcceptedKWinWaylandPresentation:
+    KWinWaylandOverlayPresentationConvergedState | undefined;
+  let lastKWinWaylandFullScreenElectronSize:
+    Readonly<{ width: number; height: number }> | undefined;
+  let lastKWinWaylandFullScreenElectronRevision: number | undefined;
+  let electronBoundsRevision = 0;
+  let lastAcceptedKWinWaylandElectronBoundsRevision = 0;
+  let kWinWaylandPresentationEpoch = 0;
+  let kWinWaylandContentSeedMarkerActive = false;
   const stateListeners = new Set<() => void>();
 
   const pump = (): void => {
@@ -8279,14 +8391,30 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
 
     try {
+      // Read Electron's fullscreen state before opening or synchronizing the
+      // native host. On a Wayland fullscreen exit this lets the native state
+      // transition arm its one-shot restored-content seed before bounds are
+      // considered, including when both changes arrive in the same pump.
+      syncElectronFullScreenState();
       if (!ensureNativeOverlaySurfaceReady()) {
         return;
       }
-      syncElectronFullScreenState();
+      syncFullScreen();
       syncNativeHostBounds();
       syncContinuousPresent();
-      syncFullScreen();
       native().pumpNativeOverlayProbeWindow();
+      nativePumpSequence += 1;
+      advanceStandaloneLinuxHostActivationCommit();
+      completeKWinWaylandPresentationHold();
+      const degradedRemapBarrierWasActive =
+        standaloneLinuxHostDegradedRemapBarrier;
+      if (
+        degradedRemapBarrierWasActive &&
+        advanceStandaloneLinuxHostDegradedRemapBarrier() &&
+        !applyHostPolicy(!overlayActive, overlayActive)
+      ) {
+        hideHostAfterPolicyFailure();
+      }
       dispatchNativeInputEvents();
       pumpCount += 1;
       lastPumpAt = Date.now();
@@ -8348,6 +8476,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
 
     setNativeOverlayActive(false);
+    if (usesNativeHostView && !usesLinuxApplicationHost) {
+      applyFailClosedHostPolicy(true);
+    }
     setNativeCursorHidden(false);
     setNativeContinuousPresent(false);
     try {
@@ -8366,6 +8497,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       clearTimeout(pumpTimer);
       pumpTimer = undefined;
     }
+    pumpTimerDueAt = undefined;
 
     if (pumpImmediate) {
       clearImmediate(pumpImmediate);
@@ -8382,6 +8514,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       hideNativeHostTimer = undefined;
     }
 
+    if (standaloneLinuxHostRemapTimer) {
+      clearTimeout(standaloneLinuxHostRemapTimer);
+      standaloneLinuxHostRemapTimer = undefined;
+    }
+
     try {
       overlayHandle?.disconnect();
     } catch (error) {
@@ -8389,6 +8526,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     } finally {
       overlayHandle = undefined;
     }
+    disconnectKWinTransportSafety?.();
+    disconnectKWinTransportSafety = undefined;
 
     if (ownsNativeOverlaySurface(surfaceLease)) {
       try {
@@ -8421,22 +8560,21 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     native().updateNativeOverlayHostFrame(frame.data, width, height);
     // A newly captured game frame is the lowest-latency presentation trigger.
     // Keep the scheduled pump as a retained-frame/Steam-overlay fallback, but
-    // do not make active rendering compete with that JavaScript timer.
+    // re-arm it after this presentation so active rendering does not compete
+    // with an independent display-rate timer and double the GLX swap rate.
     pump();
+    lastFrameDrivenPumpAt = performance.now();
+    schedulePumpTimer();
   };
 
   const updateSharedTexture = (texture: NativeOverlaySharedTexture): void => {
     if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
       throw new Error("Steam Bridge native overlay session is closed.");
     }
-    if (!texture || !Buffer.isBuffer(texture.handle)) {
-      throw new TypeError("Steam Bridge shared texture handle must be a Buffer.");
+    if (!texture || typeof texture !== "object") {
+      throw new TypeError("Steam Bridge shared texture metadata must be an object.");
     }
     const binding = native();
-    const update = binding.updateNativeOverlayHostSharedTexture;
-    if (typeof update !== "function") {
-      throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
-    }
     const width = normalizeNativeOverlayFrameDimension(texture.width, "shared texture width");
     const height = normalizeNativeOverlayFrameDimension(texture.height, "shared texture height");
     const contentRect = normalizeNativeOverlayContentRect(texture.contentRect, width, height);
@@ -8446,21 +8584,74 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       height,
       "presentationRect"
     );
-    update.call(
-      binding,
-      texture.handle,
-      width,
-      height,
-      contentRect.x,
-      contentRect.y,
-      contentRect.width,
-      contentRect.height,
-      presentationRect.x,
-      presentationRect.y,
-      presentationRect.width,
-      presentationRect.height
-    );
+    if (Buffer.isBuffer(texture.handle)) {
+      const update = binding.updateNativeOverlayHostSharedTexture;
+      if (typeof update !== "function") {
+        throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
+      }
+      update.call(
+        binding,
+        texture.handle,
+        width,
+        height,
+        contentRect.x,
+        contentRect.y,
+        contentRect.width,
+        contentRect.height,
+        presentationRect.x,
+        presentationRect.y,
+        presentationRect.width,
+        presentationRect.height
+      );
+    } else {
+      const nativePixmap = texture.nativePixmap;
+      if (!nativePixmap || !Array.isArray(nativePixmap.planes) || nativePixmap.planes.length !== 1) {
+        throw new TypeError(
+          "Steam Bridge Linux shared textures require exactly one native pixmap plane."
+        );
+      }
+      const plane = nativePixmap.planes[0];
+      if (
+        !plane
+        || !Number.isInteger(plane.fd)
+        || plane.fd < 0
+        || !Number.isSafeInteger(plane.stride)
+        || plane.stride <= 0
+        || !Number.isSafeInteger(plane.offset)
+        || plane.offset < 0
+        || !Number.isSafeInteger(plane.size)
+        || plane.size <= 0
+      ) {
+        throw new TypeError("Steam Bridge Linux shared texture plane metadata is invalid.");
+      }
+      if (typeof nativePixmap.modifier !== "string" || !/^\d+$/.test(nativePixmap.modifier)) {
+        throw new TypeError("Steam Bridge Linux shared texture modifier must be an unsigned integer string.");
+      }
+      const update = binding.updateNativeOverlayHostLinuxDmaBufSharedTexture;
+      if (typeof update !== "function") {
+        throw new Error(
+          "The loaded Steam Bridge native payload does not support Linux dma-buf shared textures."
+        );
+      }
+      update.call(
+        binding,
+        plane.fd,
+        plane.stride,
+        String(plane.offset),
+        String(plane.size),
+        nativePixmap.modifier,
+        texture.pixelFormat ?? "",
+        width,
+        height,
+        presentationRect.x,
+        presentationRect.y,
+        presentationRect.width,
+        presentationRect.height
+      );
+    }
     pump();
+    lastFrameDrivenPumpAt = performance.now();
+    schedulePumpTimer();
   };
 
   const setCursorHidden = (hidden: boolean): void => {
@@ -8483,10 +8674,27 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const setFullScreen = (fullScreen: boolean): void => {
     const previousFullScreen = fullScreenRequested;
     fullScreenRequested = Boolean(fullScreen);
+    const kWinOwnsFullScreenTransition = Boolean(
+      usesStandaloneLinuxHost &&
+        getKWinWaylandOverlayHostSyncStatus().active === true
+    );
+    if (fullScreenRequested !== previousFullScreen) {
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+    }
     try {
       syncFullScreen();
     } catch (error) {
-      fullScreenRequested = previousFullScreen;
+      if (kWinOwnsFullScreenTransition) {
+        // KWin transition state (the strict hold/epoch or degraded configure
+        // barrier) is armed before the independently fallible native setter.
+        // Both a pre-mutation setter failure and a post-mutation marker failure
+        // are terminal for this lifetime; continuing would retain a stale hold
+        // or pretend an already-mutated native state could be rolled back.
+        fail(error);
+      } else {
+        fullScreenRequested = previousFullScreen;
+      }
       throw error;
     }
     emitStateChange();
@@ -8501,6 +8709,29 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
   surfaceLease = claimNativeOverlaySurface("session");
   try {
+    if (usesStandaloneLinuxHost) {
+      disconnectKWinTransportSafety = onKWinWaylandOverlayTransportSafetyRequired((phase) => {
+        if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+          return false;
+        }
+        if (phase === "degraded") {
+          armStandaloneLinuxHostRemapBarrier();
+          scheduleStandaloneLinuxHostLeaseRemap();
+          return true;
+        }
+        const policyConfirmed = applyHostPolicy(true, false, true);
+        if (!policyConfirmed) {
+          standaloneLinuxHostMapped = false;
+          try {
+            native().hideNativeOverlayHostView();
+          } catch (error) {
+            lastError = error;
+            return false;
+          }
+        }
+        return true;
+      });
+    }
     pump();
 
     overlayHandle = onGameOverlayActivated((event) => {
@@ -8511,12 +8742,35 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (typeof event.active === "boolean") {
         overlayActive = event.active;
       }
-      syncNativeOverlayActive();
+      if (!syncNativeOverlayActive()) {
+        applyFailClosedHostPolicy(true);
+        emitStateChange();
+        return;
+      }
       if (event.active === true) {
+        if (restoreFocusTimer) {
+          clearTimeout(restoreFocusTimer);
+          restoreFocusTimer = undefined;
+        }
+        if (hideNativeHostTimer) {
+          clearTimeout(hideNativeHostTimer);
+          hideNativeHostTimer = undefined;
+        }
         overlayWasActive = true;
-        setHostInputPassthrough(false);
-        setHostOpaque(true);
+        if (
+          !usesLinuxApplicationHost &&
+          ensureStandaloneLinuxHostMappedForActivation() &&
+          !applyHostPolicy(false, true)
+        ) {
+          hideHostAfterPolicyFailure();
+        }
       } else if (event.active === false) {
+        // Keep the managed Xwayland host mapped. Its opacity edge lets KWin
+        // return focus to the Electron source without destroying and
+        // rediscovering the compositor pair on every overlay close.
+        if (usesStandaloneLinuxHost) {
+          applyFailClosedHostPolicy();
+        }
         scheduleRestoreFocus();
       }
       syncCursorHidden();
@@ -8551,7 +8805,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return nativeHostUnavailableReason !== undefined || native().isNativeOverlayProbeWindowOpen();
     },
     snapshot,
-    onStateChange: subscribeStateChange
+    onStateChange: subscribeStateChange,
+    notifyBoundsChanged(): void {
+      if (electronBoundsRevision >= Number.MAX_SAFE_INTEGER) {
+        throw new Error("Electron bounds revision exhausted.");
+      }
+      electronBoundsRevision += 1;
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+    }
   };
 
   return session;
@@ -8585,13 +8847,43 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       clearTimeout(pumpTimer);
       pumpTimer = undefined;
     }
+    pumpTimerDueAt = undefined;
     if (pumpImmediate) {
       clearImmediate(pumpImmediate);
       pumpImmediate = undefined;
     }
+    const armPumpTimer = (dueAt: number): void => {
+      pumpTimerDueAt = dueAt;
+      pumpTimer = setTimeout(runScheduledPump, Math.max(0, dueAt - performance.now()));
+      pumpTimer.unref?.();
+    };
     const runScheduledPump = (): void => {
+      const scheduledDueAt = pumpTimerDueAt;
       pumpTimer = undefined;
+      pumpTimerDueAt = undefined;
       pumpImmediate = undefined;
+      if (
+        scheduledDueAt !== undefined
+        && process.platform !== "win32"
+        && performance.now() < scheduledDueAt
+      ) {
+        // Fractional display intervals are commonly rounded down by platform
+        // timers. Never turn that early wake-up into an extra native Present.
+        armPumpTimer(scheduledDueAt);
+        return;
+      }
+      const timerStartedAt = performance.now();
+      if (
+        overlayActive !== true
+        && lastFrameDrivenPumpAt !== undefined
+        && timerStartedAt - lastFrameDrivenPumpAt < pumpIntervalMs * 1.25
+      ) {
+        // A captured frame already drove the native presenter at this cadence.
+        // A timer racing the next fractional-rate paint is a fallback, not a
+        // second Present; defer it unless frame delivery actually stalls.
+        armPumpTimer(lastFrameDrivenPumpAt + pumpIntervalMs * 1.25);
+        return;
+      }
       const pumpStartedAt = performance.now();
       try {
         pump();
@@ -8601,7 +8893,6 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (closed) {
         return;
       }
-      const pumpDurationMs = performance.now() - pumpStartedAt;
       const displaySynchronizedStandaloneHost =
         process.platform === "win32" && continuousPresentApplied === true && !usesNativeHostView;
       // Wake the Windows standalone host immediately on this
@@ -8616,13 +8907,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         pumpImmediate = setImmediate(runScheduledPump);
         pumpImmediate.unref?.();
       } else {
-        const nextDelayMs = Math.max(0, pumpIntervalMs - pumpDurationMs);
-        pumpTimer = setTimeout(runScheduledPump, nextDelayMs);
-        pumpTimer.unref?.();
+        const completedAt = performance.now();
+        const cadenceDeadline = (scheduledDueAt ?? pumpStartedAt) + pumpIntervalMs;
+        armPumpTimer(cadenceDeadline > completedAt
+          ? cadenceDeadline
+          : completedAt + pumpIntervalMs);
       }
     };
-    pumpTimer = setTimeout(runScheduledPump, pumpIntervalMs);
-    pumpTimer.unref?.();
+    armPumpTimer(performance.now() + pumpIntervalMs);
   }
 
   function updateNativeOverlayHostAvailability(): boolean {
@@ -8640,8 +8932,52 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
 
     if (usesNativeHostView) {
-      if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
+      let nativeHostOpen: boolean;
+      try {
+        const queriedNativeHostOpen = native().isNativeOverlayHostViewOpen();
+        if (typeof queriedNativeHostOpen !== "boolean") {
+          throw new Error("Steam Bridge could not determine whether its native overlay host is open.");
+        }
+        nativeHostOpen = queriedNativeHostOpen;
+      } catch (error) {
+        lastError = error;
+        return false;
+      }
+      if (!nativeHostOpen) {
         if (usesStandaloneLinuxHost) {
+          const lease = ensureFreshKWinWaylandOverlayHostSyncLease();
+          if (lease.ownershipUncertain === true) {
+            lastError = new Error(
+              "Steam Bridge could not prove exclusive KWin geometry ownership before attaching its Linux overlay host."
+            );
+            return false;
+          }
+        }
+        const attachedKWinStatus = usesStandaloneLinuxHost
+          ? getKWinWaylandOverlayHostSyncStatus()
+          : undefined;
+        const attachedKWinGeometrySyncActive = attachedKWinStatus?.active === true;
+        const attachedKWinStrictPresentationScript =
+          usesStandaloneLinuxHost &&
+          isKWinWaylandOverlayStrictPresentationScriptLoaded();
+        let presentationMarkerConfirmed = true;
+        if (usesLinuxApplicationHost) {
+          const binding = native();
+          const openApplicationHost = binding.openNativeApplicationHostWindow;
+          if (typeof openApplicationHost !== "function") {
+            throw new Error(
+              "The loaded Steam Bridge native payload does not support the Linux application host."
+            );
+          }
+          openApplicationHost.call(
+            binding,
+            title,
+            clientWidth,
+            clientHeight,
+            minClientWidth,
+            minClientHeight
+          );
+        } else if (usesStandaloneLinuxHost) {
           const bounds = readNativeOverlayBounds(options.getBounds);
           if (!bounds) {
             throw new Error(
@@ -8655,6 +8991,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
               "The loaded Steam Bridge native payload does not support the Linux Xwayland overlay host."
             );
           }
+          if (attachedKWinStrictPresentationScript) {
+            // Baseline the transport before this lifetime can produce a pair
+            // receipt. The native host starts transparent/input-empty, and
+            // this hold is already armed before attach or show can map it.
+            armKWinWaylandPresentationHold(fullScreenRequested, true);
+          }
           attachWindow.call(
             binding,
             bounds.x,
@@ -8663,25 +9005,102 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
             bounds.height,
             fullScreenRequested
           );
+          standaloneLinuxHostMapped = false;
+          hostInputPassthrough = undefined;
+          hostOpaque = undefined;
+          standaloneLinuxHostActivationCommitPending = false;
+          standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+          standaloneLinuxHostActivationFailedForInputEpoch = false;
+          standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure =
+            fullScreenRequested;
+          standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+          standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+          standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+          standaloneLinuxHostDegradedFullScreenReversalPending = false;
+          if (attachedKWinStrictPresentationScript) {
+            const markerResult = setKWinWaylandOverlayPresentationEpoch(
+              binding,
+              kWinWaylandPresentationEpoch
+            );
+            presentationMarkerConfirmed =
+              markerResult === "strict" || markerResult === "degraded";
+            kWinWaylandContentSeedMarkerActive = false;
+          }
           lastNativeHostBounds = bounds;
         } else {
-          native().attachNativeOverlayHostView(options.nativeWindowHandle!);
+          const binding = native();
+          const initialBounds = usesAttachedLinuxHost
+            ? readNativeOverlayBounds(options.getBounds, (error) => {
+                lastError = error;
+              })
+            : undefined;
+          const roundedInitialBounds = initialBounds
+            ? roundedNativeOverlayBounds(initialBounds)
+            : undefined;
+          if (roundedInitialBounds) {
+            binding.attachNativeOverlayHostView(
+              options.nativeWindowHandle!,
+              roundedInitialBounds.x,
+              roundedInitialBounds.y,
+              roundedInitialBounds.width,
+              roundedInitialBounds.height
+            );
+          } else {
+            binding.attachNativeOverlayHostView(options.nativeWindowHandle!);
+          }
+          if (usesAttachedLinuxHost) {
+            // The native child is created transparent/input-empty with the
+            // authoritative content rectangle when one was available. Repeat
+            // the sync before policy/show so a concurrent Electron geometry
+            // change cannot expose it over native chrome.
+            lastNativeHostBounds = undefined;
+            syncNativeHostBounds();
+          }
         }
         overlayActiveApplied = undefined;
         cursorHiddenApplied = undefined;
         continuousPresentApplied = undefined;
-        fullScreenApplied = undefined;
+        fullScreenApplied = attachedKWinGeometrySyncActive
+          ? fullScreenRequested
+          : undefined;
         menuApplied = false;
-        native().showNativeOverlayHostView();
+        if (usesStandaloneLinuxHost) {
+          armStandaloneLinuxHostRemapBarrier();
+        }
         // A managed host must remain invisible and input-empty until Steam
         // confirms an interactive overlay. This matters most for the
         // standalone Xwayland host, which is a real top-level compositor
         // surface even though the Electron game remains the visual owner.
-        setHostInputPassthrough(!overlayActive);
-        setHostOpaque(overlayActive);
+        const overlayIntentConfirmed = setNativeOverlayActive(overlayActive);
+        if (usesLinuxApplicationHost) {
+          if (overlayIntentConfirmed) {
+            native().showNativeOverlayHostView();
+          }
+        } else if (!usesStandaloneLinuxHost) {
+          if (overlayIntentConfirmed && applyHostPolicy(!overlayActive, overlayActive)) {
+            native().showNativeOverlayHostView();
+          }
+        } else if (presentationMarkerConfirmed && overlayIntentConfirmed) {
+          // A replacement lifetime must be mapped from a confirmed inert
+          // state. Preparing input before this mapper would be immediately
+          // cancelled by its mandatory pre-map fence.
+          const mapped = mapStandaloneLinuxHostInert();
+          if (
+            mapped &&
+            !kWinWaylandPresentationHold &&
+            !standaloneLinuxHostDegradedRemapBarrier &&
+            !applyHostPolicy(!overlayActive, overlayActive)
+          ) {
+            hideHostAfterPolicyFailure();
+          }
+        } else {
+          scheduleStandaloneLinuxHostLeaseRemap();
+        }
       }
       syncNativeHostBounds();
-      syncNativeOverlayActive();
+      if (!syncNativeOverlayActive()) {
+        return false;
+      }
       syncCursorHidden();
       syncFullScreen();
       return true;
@@ -8708,7 +9127,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       menuApplied = false;
     }
     syncNativeHostMenu();
-    syncNativeOverlayActive();
+    if (!syncNativeOverlayActive()) {
+      return false;
+    }
     syncCursorHidden();
     syncFullScreen();
     return true;
@@ -8735,8 +9156,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function syncNativeHostBounds(): void {
+    const kWinWaylandSyncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (usesStandaloneLinuxHost && kWinWaylandSyncStatus.active) {
+      if (kWinWaylandSyncStatus.presentationProtocolReady === true) {
+        ensureKWinWaylandPresentationHoldForCurrentState();
+      }
+      return;
+    }
     if (
-      !usesStandaloneLinuxHost ||
+      (!usesStandaloneLinuxHost && !usesAttachedLinuxHost) ||
       !ownsNativeOverlaySurface(surfaceLease) ||
       !safeBoolean(() => native().isNativeOverlayHostViewOpen())
     ) {
@@ -8748,12 +9176,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (!bounds) {
       return;
     }
-    const normalizedBounds: NativeOverlayBounds = {
-      x: Math.round(bounds.x),
-      y: Math.round(bounds.y),
-      width: Math.max(1, Math.round(bounds.width)),
-      height: Math.max(1, Math.round(bounds.height))
-    };
+    const normalizedBounds = roundedNativeOverlayBounds(bounds);
     if (
       lastNativeHostBounds?.x === normalizedBounds.x &&
       lastNativeHostBounds.y === normalizedBounds.y &&
@@ -8771,33 +9194,342 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     lastNativeHostBounds = normalizedBounds;
   }
 
+  function acceptKWinWaylandPresentation(
+    receipt: KWinWaylandOverlayPresentationConvergedState
+  ): void {
+    if (kWinWaylandContentSeedMarkerActive) {
+      setKWinWaylandOverlayPresentationEpoch(native(), receipt.epoch);
+      kWinWaylandContentSeedMarkerActive = false;
+    }
+    lastAcceptedKWinWaylandPresentation = receipt;
+    lastAcceptedKWinWaylandElectronBoundsRevision = electronBoundsRevision;
+    standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+    standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+    standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+    standaloneLinuxHostDegradedFullScreenReversalPending = false;
+  }
+
+  function armKWinWaylandPresentationHold(
+    fullScreen: boolean,
+    attach = false,
+    requiredEpoch?: number
+  ): void {
+    if (attach) {
+      kWinWaylandPresentationHold = createKWinWaylandAttachPresentationHold(
+        fullScreen,
+        lastAcceptedKWinWaylandPresentation
+      );
+      return;
+    }
+    if (kWinWaylandPresentationHold?.requireNewPair) {
+      kWinWaylandPresentationHold.fullScreen = fullScreen;
+      if (requiredEpoch !== undefined) {
+        kWinWaylandPresentationHold.requiredEpoch = requiredEpoch;
+      }
+      if (!fullScreen && lastKWinWaylandFullScreenElectronSize) {
+        kWinWaylandPresentationHold.blockedWindowedSeedSize =
+          lastKWinWaylandFullScreenElectronSize;
+        if (lastKWinWaylandFullScreenElectronRevision !== undefined) {
+          kWinWaylandPresentationHold.minimumWindowedSeedBoundsRevision =
+            lastKWinWaylandFullScreenElectronRevision;
+        }
+      } else {
+        delete kWinWaylandPresentationHold.blockedWindowedSeedSize;
+        delete kWinWaylandPresentationHold.minimumWindowedSeedBoundsRevision;
+      }
+    } else if (
+      !kWinWaylandPresentationHold ||
+      kWinWaylandPresentationHold.fullScreen !== fullScreen
+    ) {
+      kWinWaylandPresentationHold = createKWinWaylandTransitionPresentationHold(
+        fullScreen,
+        lastAcceptedKWinWaylandPresentation,
+        lastKWinWaylandFullScreenElectronSize,
+        lastKWinWaylandFullScreenElectronRevision,
+        requiredEpoch
+      );
+    }
+    applyFailClosedHostPolicy();
+  }
+
+  function ensureKWinWaylandPresentationHoldForCurrentState(): void {
+    if (!isKWinWaylandOverlayPresentationSyncActive()) {
+      return;
+    }
+    if (kWinWaylandPresentationHold) {
+      return;
+    }
+    const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (!electronBounds && !fullScreenRequested) {
+      armKWinWaylandPresentationHold(fullScreenRequested);
+      return;
+    }
+    const normalizedElectronBounds = electronBounds
+      ? roundedNativeOverlayBounds(electronBounds)
+      : undefined;
+    const latest = getKWinWaylandOverlayPresentationState();
+    if (
+      lastAcceptedKWinWaylandPresentation &&
+      kWinWaylandPresentationPairNeedsReplacement(lastAcceptedKWinWaylandPresentation)
+    ) {
+      if (
+        latest?.kind === "converged" &&
+        latest.pairGeneration > lastAcceptedKWinWaylandPresentation.pairGeneration &&
+        latest.epoch === lastAcceptedKWinWaylandPresentation.epoch &&
+        fullScreenApplied === fullScreenRequested &&
+        latest.fullScreen === fullScreenRequested &&
+        kWinWaylandReceiptMatchesCurrentPresentation(
+          latest,
+          fullScreenRequested,
+          normalizedElectronBounds
+        )
+      ) {
+        // Invalidation and replacement convergence can coalesce between JS
+        // pumps. When the entire new-pair triple is already authoritative,
+        // adopt it without an unnecessary transparent/opaque X11 flush.
+        acceptKWinWaylandPresentation(latest);
+        return;
+      }
+      kWinWaylandPresentationHold = createKWinWaylandReplacementPresentationHold(
+        fullScreenRequested,
+        lastAcceptedKWinWaylandPresentation
+      );
+      applyFailClosedHostPolicy();
+      return;
+    }
+    // ensureNativeOverlaySurfaceReady() can reach this observer before the
+    // fullscreen setter below has applied the desired native state. Never
+    // consume a KWin-before-Bridge receipt in that narrow pre-transition gap.
+    if (fullScreenApplied !== fullScreenRequested) {
+      return;
+    }
+    if (
+      latest?.kind === "converged" &&
+      lastAcceptedKWinWaylandPresentation &&
+      latest.pairId === lastAcceptedKWinWaylandPresentation.pairId &&
+      latest.generation > lastAcceptedKWinWaylandPresentation.generation &&
+      latest.epoch === lastAcceptedKWinWaylandPresentation.epoch &&
+      latest.fullScreen === fullScreenRequested &&
+      kWinWaylandReceiptMatchesCurrentPresentation(
+        latest,
+        fullScreenRequested,
+        normalizedElectronBounds
+      )
+    ) {
+      acceptKWinWaylandPresentation(latest);
+      return;
+    }
+    if (
+      !fullScreenRequested &&
+      normalizedElectronBounds &&
+      lastAcceptedKWinWaylandPresentation?.fullScreen === false &&
+      electronBoundsRevision > lastAcceptedKWinWaylandElectronBoundsRevision &&
+      !isKWinWaylandOverlaySourceInteractiveResizeActive()
+    ) {
+      if (
+        kWinWaylandReceiptMatchesCurrentPresentation(
+          lastAcceptedKWinWaylandPresentation,
+          false,
+          normalizedElectronBounds
+        )
+      ) {
+        // The authoritative Electron event did not change the content-sized
+        // compositor target. Consume its revision without manufacturing a
+        // KWin presentation epoch or opacity transition.
+        lastAcceptedKWinWaylandElectronBoundsRevision = electronBoundsRevision;
+        return;
+      }
+      if (kWinWaylandPresentationEpoch >= MAX_KWIN_WAYLAND_PRESENTATION_EPOCH) {
+        throw new Error("KWin presentation epoch exhausted.");
+      }
+      kWinWaylandPresentationEpoch += 1;
+      kWinWaylandPresentationHold = createKWinWaylandTransitionPresentationHold(
+        false,
+        lastAcceptedKWinWaylandPresentation,
+        undefined,
+        undefined,
+        kWinWaylandPresentationEpoch
+      );
+      kWinWaylandPresentationHold.passive = true;
+      // A new authenticated state epoch asks KWin for a fresh, receipt-pinned
+      // same-state phase without hiding an otherwise stable overlay host.
+      setKWinWaylandOverlayPresentationEpoch(native(), kWinWaylandPresentationEpoch);
+      kWinWaylandContentSeedMarkerActive = false;
+      return;
+    }
+    // A same-state source resize is compositor-driven. Its receipt can arrive
+    // one native pump before diagnostics catch up; arming opacity here would
+    // create a false->true X11 flush and visible flicker. Adopt it after the
+    // pump once the full triple matches, without changing visibility.
+  }
+
+  function completeKWinWaylandPresentationHold(): void {
+    let syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    let degradedMarkerRecovered = false;
+    if (
+      syncStatus.ownershipUncertain === true &&
+      syncStatus.reason === "kwin-degraded-marker-unconfirmed"
+    ) {
+      degradedMarkerRecovered =
+        setKWinWaylandOverlayPresentationEpoch(native(), kWinWaylandPresentationEpoch) ===
+        "degraded";
+      if (degradedMarkerRecovered) {
+        // The degraded marker operation parks and verifies the native host
+        // before publishing the marker. Reconcile the controller-side cache
+        // so a cancelled pending activation can start a fresh recovery epoch.
+        hostInputPassthrough = true;
+        hostOpaque = false;
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+        standaloneLinuxHostActivationFailedForInputEpoch = false;
+      }
+      syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    }
+    if (syncStatus.ownershipUncertain === true) {
+      applyFailClosedHostPolicy();
+      return;
+    }
+    if (!(syncStatus.active && syncStatus.presentationProtocolReady === true)) {
+      let shouldRestorePolicy = degradedMarkerRecovered;
+      if (kWinWaylandPresentationHold) {
+        const passive = kWinWaylandPresentationHold.passive === true;
+        kWinWaylandPresentationHold = undefined;
+        shouldRestorePolicy ||= !passive;
+      }
+      if (shouldRestorePolicy) {
+        if (usesStandaloneLinuxHost && syncStatus.active === true) {
+          if (!standaloneLinuxHostDegradedRemapBarrier) {
+            armStandaloneLinuxHostRemapBarrier();
+            applyFailClosedHostPolicy();
+          }
+          if (!standaloneLinuxHostMapped) {
+            mapStandaloneLinuxHostInert();
+          }
+          scheduleStandaloneLinuxHostLeaseRemap();
+          return;
+        }
+        const hostReady = ensureStandaloneLinuxHostMappedForActivation();
+        const policyConfirmed = hostReady && applyHostPolicy(!overlayActive, overlayActive);
+        if (policyConfirmed && usesStandaloneLinuxHost) {
+          standaloneLinuxHostMapped = true;
+        } else if (usesStandaloneLinuxHost) {
+          armStandaloneLinuxHostRemapBarrier();
+          standaloneLinuxHostMapped = false;
+          try {
+            native().hideNativeOverlayHostView();
+          } catch (error) {
+            lastError = error;
+          }
+          scheduleStandaloneLinuxHostLeaseRemap();
+        }
+      }
+      return;
+    }
+    if (!kWinWaylandPresentationHold) {
+      ensureKWinWaylandPresentationHoldForCurrentState();
+      return;
+    }
+    if (
+      !kWinWaylandPresentationHold.requireNewPair &&
+      lastAcceptedKWinWaylandPresentation &&
+      kWinWaylandPresentationPairNeedsReplacement(lastAcceptedKWinWaylandPresentation)
+    ) {
+      const passive = kWinWaylandPresentationHold.passive === true;
+      kWinWaylandPresentationHold = createKWinWaylandReplacementPresentationHold(
+        kWinWaylandPresentationHold.fullScreen,
+        lastAcceptedKWinWaylandPresentation,
+        kWinWaylandPresentationHold.blockedWindowedSeedSize,
+        kWinWaylandPresentationHold.minimumWindowedSeedBoundsRevision,
+        kWinWaylandPresentationHold.requiredEpoch
+      );
+      if (passive) {
+        // Pair invalidation is a surface-identity boundary, not a same-state
+        // metric refresh. Escalate to the ordinary fail-closed replacement
+        // hold before waiting on the new pair.
+        applyFailClosedHostPolicy();
+      }
+    }
+    const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (!electronBounds && !kWinWaylandPresentationHold.fullScreen) {
+      return;
+    }
+    const progress = advanceKWinWaylandPresentationHold(
+      kWinWaylandPresentationHold,
+      electronBounds ? roundedNativeOverlayBounds(electronBounds) : undefined,
+      electronBoundsRevision
+    );
+    if (progress.kind === "seed") {
+      const markerResult = setKWinWaylandOverlayContentSeed(
+        native(),
+        kWinWaylandPresentationHold.requiredEpoch ?? progress.receipt.epoch,
+        progress.receipt,
+        progress.bounds
+      );
+      kWinWaylandContentSeedMarkerActive = markerResult === "strict";
+      return;
+    }
+    if (progress.kind !== "accepted") {
+      return;
+    }
+    const passive = kWinWaylandPresentationHold.passive === true;
+    acceptKWinWaylandPresentation(progress.receipt);
+    kWinWaylandPresentationHold = undefined;
+    if (!passive) {
+      if (!applyHostPolicy(!overlayActive, overlayActive)) {
+        hideHostAfterPolicyFailure();
+      }
+    }
+  }
+
   function syncCursorHidden(): void {
     setNativeCursorHidden(cursorHiddenRequested && !overlayActive);
   }
 
-  function syncNativeOverlayActive(): void {
-    setNativeOverlayActive(overlayActive);
+  function syncNativeOverlayActive(): boolean {
+    return setNativeOverlayActive(overlayActive);
   }
 
-  function setNativeOverlayActive(active: boolean): void {
+  function setNativeOverlayActive(active: boolean): boolean {
     if (
       closed ||
       !ownsNativeOverlaySurface(surfaceLease) ||
-      nativeHostUnavailableReason !== undefined ||
-      overlayActiveApplied === active
+      nativeHostUnavailableReason !== undefined
     ) {
-      return;
+      return false;
+    }
+    if (!active) {
+      standaloneLinuxHostActivationFailedForInputEpoch = false;
+    }
+    if (
+      overlayActiveApplied === active &&
+      !standaloneLinuxHostActivationCommitPending
+    ) {
+      return true;
     }
     const binding = native();
     const setter = binding.setNativeOverlayHostOverlayActive;
     if (typeof setter !== "function") {
-      return;
+      lastError = new Error(
+        "The loaded Steam Bridge native payload cannot synchronize overlay input intent."
+      );
+      return false;
     }
     try {
       setter.call(binding, active);
       overlayActiveApplied = active;
+      if (usesStandaloneLinuxHost && !active) {
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+        standaloneLinuxHostActivationFailedForInputEpoch = false;
+      }
+      return true;
     } catch (error) {
       lastError = error;
+      return false;
     }
   }
 
@@ -8856,13 +9588,86 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function setNativeFullScreen(fullScreen: boolean): void {
+    const kWinWaylandPresentationSyncActive =
+      usesStandaloneLinuxHost && isKWinWaylandOverlayPresentationSyncActive();
     if (
       closed ||
       !ownsNativeOverlaySurface(surfaceLease) ||
-      nativeHostUnavailableReason !== undefined ||
-      fullScreenApplied === fullScreen
+      nativeHostUnavailableReason !== undefined
     ) {
       return;
+    }
+    if (kWinWaylandPresentationSyncActive && fullScreen) {
+      const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+        lastError = error;
+      });
+      if (electronBounds) {
+        const normalizedBounds = roundedNativeOverlayBounds(electronBounds);
+        lastKWinWaylandFullScreenElectronSize = {
+          width: normalizedBounds.width,
+          height: normalizedBounds.height
+        };
+        lastKWinWaylandFullScreenElectronRevision = electronBoundsRevision;
+      }
+    }
+    if (fullScreenApplied === fullScreen) {
+      if (kWinWaylandPresentationSyncActive) {
+        ensureKWinWaylandPresentationHoldForCurrentState();
+      }
+      return;
+    }
+    const kWinSyncStatus = usesStandaloneLinuxHost
+      ? getKWinWaylandOverlayHostSyncStatus()
+      : undefined;
+    if (
+      kWinSyncStatus?.active === true &&
+      fullScreenApplied !== undefined
+    ) {
+      const presentationState = readNativeOverlayHostPresentationState();
+      const transitionReversesToOrigin = Boolean(
+        presentationState &&
+          standaloneLinuxHostDegradedFullScreenTransitionOrigin &&
+          fullScreen ===
+            standaloneLinuxHostDegradedFullScreenTransitionOrigin.fullScreen &&
+          presentationState.fullScreen === fullScreenApplied &&
+          sameNativeOverlayHostPresentationGeometry(
+            presentationState,
+            standaloneLinuxHostDegradedFullScreenTransitionOrigin
+          )
+      );
+      if (transitionReversesToOrigin) {
+        // KWin may coalesce enter->exit without ConfigureNotify when the
+        // drawable returns to its exact pre-transition state. The ordinary
+        // two-pump stability barrier remains required, but an impossible
+        // extra Configure must not hold this exact reversal forever.
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+        standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+        standaloneLinuxHostDegradedFullScreenReversalPending = true;
+      } else {
+        standaloneLinuxHostDegradedFullScreenReversalPending = false;
+        if (
+          !standaloneLinuxHostDegradedFullScreenTransitionOrigin ||
+          !presentationState ||
+          presentationState.configureCount !==
+            standaloneLinuxHostDegradedFullScreenTransitionOrigin.configureCount
+        ) {
+          standaloneLinuxHostDegradedFullScreenTransitionOrigin =
+            presentationState?.fullScreen === fullScreenApplied
+              ? presentationState
+              : undefined;
+        }
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline =
+          presentationState?.configureCount;
+        standaloneLinuxHostDegradedFullScreenConfigureRequired = true;
+      }
+    }
+    if (
+      kWinSyncStatus?.active === true &&
+      kWinSyncStatus.presentationProtocolReady !== true
+    ) {
+      armStandaloneLinuxHostRemapBarrier();
+      applyFailClosedHostPolicy(true);
+      scheduleStandaloneLinuxHostLeaseRemap();
     }
     const binding = native();
     const setter = binding.setNativeOverlayHostFullScreen;
@@ -8870,8 +9675,40 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
     try {
+      const kWinWaylandPresentationMarkersSupported =
+        usesStandaloneLinuxHost && isKWinWaylandOverlayHostIdentityMarkerActive();
+      if (kWinWaylandPresentationMarkersSupported) {
+        if (kWinWaylandPresentationEpoch >= MAX_KWIN_WAYLAND_PRESENTATION_EPOCH) {
+          throw new Error("KWin presentation epoch exhausted.");
+        }
+        kWinWaylandPresentationEpoch += 1;
+      }
+      if (kWinWaylandPresentationSyncActive) {
+        armKWinWaylandPresentationHold(
+          fullScreen,
+          false,
+          kWinWaylandPresentationEpoch
+        );
+      }
       setter.call(binding, fullScreen);
+      // The EWMH/native state has mutated at this point. Commit the JS applied
+      // state before the independently fallible strict marker write so callers
+      // can fail this controller closed without rolling desired state back.
       fullScreenApplied = fullScreen;
+      if (kWinWaylandPresentationMarkersSupported) {
+        // The role PropertyNotify is intentionally queued after the EWMH
+        // request on the native surface's X connection. A matching epoch is
+        // therefore a compositor-visible post-request barrier.
+        const markerResult = setKWinWaylandOverlayPresentationEpoch(
+          binding,
+          kWinWaylandPresentationEpoch
+        );
+        kWinWaylandContentSeedMarkerActive = false;
+        if (markerResult !== "strict" && markerResult !== "degraded") {
+          applyFailClosedHostPolicy();
+          scheduleStandaloneLinuxHostLeaseRemap();
+        }
+      }
     } catch (error) {
       lastError = error;
       throw error;
@@ -8879,7 +9716,18 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function scheduleRestoreFocus(): void {
-    if (!options.restoreFocus && !hideNativeHostOnOverlayDeactivate && !usesNativeHostView) {
+    const kWinMediatesFocus = (() => {
+      if (!usesStandaloneLinuxHost) {
+        return false;
+      }
+      const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+      return syncStatus.active === true && syncStatus.ownershipUncertain !== true;
+    })();
+    if (
+      (!options.restoreFocus || kWinMediatesFocus) &&
+      !shouldHideNativeHostOnOverlayDeactivate() &&
+      (!usesNativeHostView || kWinMediatesFocus)
+    ) {
       return;
     }
 
@@ -8890,34 +9738,40 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const restoreFocus = (): void => {
       restoreFocusTimer = undefined;
 
-      if (closed) {
+      if (closed || overlayActive) {
         return;
       }
 
-      try {
-        options.restoreFocus?.();
-      } catch (error) {
-        lastError = error;
+      if (!kWinMediatesFocus) {
+        try {
+          options.restoreFocus?.();
+        } catch (error) {
+          lastError = error;
+        }
       }
 
-      if (usesNativeHostView && hideNativeHostOnOverlayDeactivate) {
+      if (usesNativeHostView && shouldHideNativeHostOnOverlayDeactivate()) {
         hideNativeHostTimer = setTimeout(() => {
           hideNativeHostTimer = undefined;
-          if (closed) {
+          if (closed || overlayActive) {
             return;
+          }
+          applyHostPolicy(true, false);
+          if (usesStandaloneLinuxHost) {
+            armStandaloneLinuxHostRemapBarrier();
+            standaloneLinuxHostMapped = false;
           }
           try {
             native().hideNativeOverlayHostView();
-            setHostInputPassthrough(true);
-            setHostOpaque(false);
           } catch (error) {
             lastError = error;
+          } finally {
+            scheduleStandaloneLinuxHostLeaseRemap();
           }
         }, hideNativeHostDelayMs);
         hideNativeHostTimer.unref?.();
-      } else if (usesNativeHostView) {
-        setHostInputPassthrough(true);
-        setHostOpaque(false);
+      } else if (usesNativeHostView && !usesLinuxApplicationHost) {
+        applyFailClosedHostPolicy();
       }
     };
 
@@ -8928,6 +9782,338 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
     restoreFocusTimer = setTimeout(restoreFocus, restoreFocusDelayMs);
     restoreFocusTimer.unref?.();
+  }
+
+  function armStandaloneLinuxHostRemapBarrier(): void {
+    if (!usesStandaloneLinuxHost) {
+      return;
+    }
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    standaloneLinuxHostDegradedRemapSample = undefined;
+    standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+    if (
+      syncStatus.active === true &&
+      syncStatus.presentationProtocolReady === true &&
+      syncStatus.ownershipUncertain !== true
+    ) {
+      standaloneLinuxHostDegradedRemapBarrier = false;
+      if (kWinWaylandPresentationHold?.requireNewPair) {
+        kWinWaylandPresentationHold.fullScreen = fullScreenRequested;
+        return;
+      }
+      const previousHold = kWinWaylandPresentationHold;
+      kWinWaylandPresentationHold = lastAcceptedKWinWaylandPresentation
+        ? createKWinWaylandReplacementPresentationHold(
+            fullScreenRequested,
+            lastAcceptedKWinWaylandPresentation,
+            previousHold?.blockedWindowedSeedSize,
+            previousHold?.minimumWindowedSeedBoundsRevision,
+            previousHold?.requiredEpoch ?? lastAcceptedKWinWaylandPresentation.epoch
+          )
+        : createKWinWaylandAttachPresentationHold(
+            fullScreenRequested,
+            lastAcceptedKWinWaylandPresentation
+          );
+      return;
+    }
+    // When KWin still owns geometry but its receipt receiver is unavailable,
+    // release only after two later native diagnostics samples prove the remap
+    // is Viewable and its Configure/viewport state has stopped changing.
+    standaloneLinuxHostDegradedRemapBarrier = syncStatus.active === true;
+    if (standaloneLinuxHostDegradedRemapBarrier) {
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence =
+        nativePumpSequence + 1;
+    }
+  }
+
+  function advanceStandaloneLinuxHostDegradedRemapBarrier(): boolean {
+    if (!standaloneLinuxHostDegradedRemapBarrier) {
+      return true;
+    }
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (syncStatus.ownershipUncertain === true) {
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      return false;
+    }
+    if (
+      syncStatus.active === true &&
+      syncStatus.presentationProtocolReady === true
+    ) {
+      standaloneLinuxHostDegradedRemapBarrier = false;
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      armStandaloneLinuxHostRemapBarrier();
+      return false;
+    }
+    if (
+      nativePumpSequence <
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence
+    ) {
+      return false;
+    }
+    const sample = readNativeOverlayHostPresentationState();
+    const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (standaloneLinuxHostDegradedFullScreenReversalPending) {
+      const transitionOrigin =
+        standaloneLinuxHostDegradedFullScreenTransitionOrigin;
+      const sampleMatchesFinalElectronSize = Boolean(
+        sample &&
+          electronBounds &&
+          nativeOverlayBoundsSizeWithinTolerance(electronBounds, sample.bounds)
+      );
+      const returnedToExactOrigin = Boolean(
+        sample &&
+          transitionOrigin &&
+          sampleMatchesFinalElectronSize &&
+          sameNativeOverlayHostDrawableGeometry(sample, transitionOrigin)
+      );
+      const reachedLaterFinalConfigure = Boolean(
+        sample &&
+          transitionOrigin &&
+          sample.configureCount > transitionOrigin.configureCount &&
+          sample.mapped === true &&
+          nativeOverlayHostDrawableMatchesBounds(sample) &&
+          sample.fullScreen === fullScreenRequested &&
+          sampleMatchesFinalElectronSize
+      );
+      if (!returnedToExactOrigin && !reachedLaterFinalConfigure) {
+        // A queued Configure from the abandoned half of a rapid reversal is
+        // not final geometry. Stay inert until either the exact origin comes
+        // back or a later Configure matches the current Electron request.
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        return false;
+      }
+      if (reachedLaterFinalConfigure) {
+        // A resize or resolution change can make the old origin impossible.
+        // This is the first valid final sample; ordinary two-sample stability
+        // below still has to confirm it before exposure is restored.
+        standaloneLinuxHostDegradedFullScreenReversalPending = false;
+        standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+        standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      }
+    }
+    if (standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure) {
+      if (!sample || sample.configureCount === 0) {
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        return false;
+      }
+      standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure = false;
+    }
+    if (standaloneLinuxHostDegradedFullScreenConfigureRequired) {
+      if (
+        !sample ||
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline === undefined ||
+        sample.configureCount ===
+          standaloneLinuxHostDegradedFullScreenConfigureBaseline
+      ) {
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        return false;
+      }
+      standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+      standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+      standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+      standaloneLinuxHostDegradedFullScreenReversalPending = false;
+    }
+    if (
+      sample?.mapped !== true ||
+      !nativeOverlayHostDrawableMatchesBounds(sample) ||
+      sample.fullScreen !== fullScreenRequested ||
+      (
+        !fullScreenRequested &&
+        (
+          !electronBounds ||
+          !nativeOverlayBoundsSizeWithinTolerance(electronBounds, sample.bounds)
+        )
+      )
+    ) {
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence = 0;
+      return false;
+    }
+    if (
+      standaloneLinuxHostDegradedRemapSample &&
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision === electronBoundsRevision &&
+      sameNativeOverlayHostPresentationState(
+        standaloneLinuxHostDegradedRemapSample,
+        sample
+      )
+    ) {
+      standaloneLinuxHostDegradedRemapBarrier = false;
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence = 0;
+      standaloneLinuxHostDegradedFullScreenReversalPending = false;
+      standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+      if (standaloneLinuxHostRemapTimer) {
+        clearTimeout(standaloneLinuxHostRemapTimer);
+        standaloneLinuxHostRemapTimer = undefined;
+      }
+      return true;
+    }
+    standaloneLinuxHostDegradedRemapSample = sample;
+    standaloneLinuxHostDegradedRemapSampleBoundsRevision = electronBoundsRevision;
+    return false;
+  }
+
+  function ensureStandaloneLinuxHostMappedForActivation(): boolean {
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    if (standaloneLinuxHostRemapTimer) {
+      clearTimeout(standaloneLinuxHostRemapTimer);
+      standaloneLinuxHostRemapTimer = undefined;
+    }
+    const mapped = mapStandaloneLinuxHostInert();
+    if (mapped && standaloneLinuxHostDegradedRemapBarrier) {
+      scheduleStandaloneLinuxHostLeaseRemap();
+    }
+    return mapped && !standaloneLinuxHostDegradedRemapBarrier;
+  }
+
+  function mapStandaloneLinuxHostInert(): boolean {
+    if (!usesStandaloneLinuxHost || standaloneLinuxHostMapped) {
+      return true;
+    }
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (
+      syncStatus.active === true &&
+      !kWinWaylandPresentationHold?.requireNewPair &&
+      !standaloneLinuxHostDegradedRemapBarrier
+    ) {
+      armStandaloneLinuxHostRemapBarrier();
+    }
+    try {
+      syncFullScreen();
+      syncNativeHostBounds();
+      if (
+        !applyHostPolicy(true, false, true) ||
+        !confirmKWinWaylandPresentationMarkerBeforeMap()
+      ) {
+        scheduleStandaloneLinuxHostLeaseRemap();
+        return false;
+      }
+      native().showNativeOverlayHostView();
+      standaloneLinuxHostMapped = true;
+      if (standaloneLinuxHostDegradedRemapBarrier) {
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence =
+          nativePumpSequence + 1;
+        scheduleStandaloneLinuxHostLeaseRemap();
+      }
+      return true;
+    } catch (error) {
+      lastError = error;
+      standaloneLinuxHostMapped = false;
+      scheduleStandaloneLinuxHostLeaseRemap();
+      return false;
+    }
+  }
+
+  function scheduleStandaloneLinuxHostLeaseRemap(): void {
+    if (!usesStandaloneLinuxHost || closed) {
+      return;
+    }
+    if (standaloneLinuxHostRemapTimer) {
+      clearTimeout(standaloneLinuxHostRemapTimer);
+    }
+    standaloneLinuxHostRemapTimer = setTimeout(() => {
+      standaloneLinuxHostRemapTimer = undefined;
+      if (
+        closed ||
+        !ownsNativeOverlaySurface(surfaceLease)
+      ) {
+        return;
+      }
+      let nativeHostOpen: boolean;
+      try {
+        const queriedNativeHostOpen = native().isNativeOverlayHostViewOpen();
+        if (typeof queriedNativeHostOpen !== "boolean") {
+          throw new Error(
+            "Steam Bridge could not determine whether its native overlay host is open."
+          );
+        }
+        nativeHostOpen = queriedNativeHostOpen;
+      } catch (error) {
+        lastError = error;
+        scheduleStandaloneLinuxHostLeaseRemap();
+        return;
+      }
+      if (!nativeHostOpen) {
+        return;
+      }
+      if (
+        standaloneLinuxHostMapped &&
+        standaloneLinuxHostDegradedRemapBarrier
+      ) {
+        try {
+          pump();
+        } catch {
+          // pump() has already recorded the error and closed the controller.
+          return;
+        }
+        if (standaloneLinuxHostDegradedRemapBarrier) {
+          scheduleStandaloneLinuxHostLeaseRemap();
+        }
+        return;
+      }
+      if (standaloneLinuxHostMapped) {
+        if (!applyHostPolicy(!overlayActive, overlayActive)) {
+          hideHostAfterPolicyFailure();
+        }
+        return;
+      }
+      try {
+        if (!mapStandaloneLinuxHostInert()) {
+          return;
+        }
+        if (!applyHostPolicy(!overlayActive, overlayActive)) {
+          hideHostAfterPolicyFailure();
+        }
+      } catch (error) {
+        lastError = error;
+        standaloneLinuxHostMapped = false;
+        scheduleStandaloneLinuxHostLeaseRemap();
+      }
+    }, 50);
+    standaloneLinuxHostRemapTimer.unref?.();
+  }
+
+  function confirmKWinWaylandPresentationMarkerBeforeMap(): boolean {
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    let syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (
+      syncStatus.ownershipUncertain === true &&
+      syncStatus.reason === "kwin-degraded-marker-unconfirmed"
+    ) {
+      const markerResult = setKWinWaylandOverlayPresentationEpoch(
+        native(),
+        kWinWaylandPresentationEpoch
+      );
+      if (markerResult === "strict" || markerResult === "degraded") {
+        // Marker confirmation is an atomic native park+readback barrier.
+        // Reconcile the JS cache only after that operation succeeds.
+        hostInputPassthrough = true;
+        hostOpaque = false;
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+        standaloneLinuxHostActivationFailedForInputEpoch = false;
+      }
+      syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    }
+    return syncStatus.ownershipUncertain !== true;
   }
 
   function dispatchNativeInputEvents(): void {
@@ -8988,35 +10174,282 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
   }
 
-  function setHostInputPassthrough(passThrough: boolean): void {
-    if (
-      closed ||
-      !ownsNativeOverlaySurface(surfaceLease) ||
-      !usesNativeHostView ||
-      nativeHostUnavailableReason !== undefined
-    ) {
+  function applyHostPolicy(
+    passThrough: boolean,
+    opaque: boolean,
+    force = false
+  ): boolean {
+    const kWinOwnershipUncertain =
+      usesStandaloneLinuxHost &&
+      getKWinWaylandOverlayHostSyncStatus().ownershipUncertain === true;
+    const hostExposureHeld = Boolean(
+      kWinWaylandPresentationHold ||
+      standaloneLinuxHostDegradedRemapBarrier ||
+      kWinOwnershipUncertain
+    );
+    const effectivePassThrough = hostExposureHeld ? true : passThrough;
+    const effectiveOpaque = hostExposureHeld ? false : opaque;
+    if (usesStandaloneLinuxHost && !effectivePassThrough) {
+      if (!effectiveOpaque) {
+        // A standalone transparent-input surface would be an invisible X11
+        // click target. Keep that unsupported combination inert.
+        return (
+          setHostInputPassthrough(true, true) &&
+          setHostOpaque(false, true)
+        );
+      }
+      return beginStandaloneLinuxHostActivationCommit();
+    }
+    if (!effectivePassThrough) {
+      // Never make a transparent mapped host capture input. Establish its
+      // visual state first, then enable input; roll back to inert on failure.
+      if (!setHostOpaque(effectiveOpaque, force)) {
+        setHostInputPassthrough(true, true);
+        return false;
+      }
+      if (!setHostInputPassthrough(false, force)) {
+        if (setHostInputPassthrough(true, true)) {
+          setHostOpaque(false, true);
+        }
+        return false;
+      }
+      return true;
+    }
+    // Hiding/inerting goes in the opposite direction: remove input first, so
+    // an opacity failure can never leave an invisible click-capturing window.
+    if (!setHostInputPassthrough(true, force)) {
+      return false;
+    }
+    return setHostOpaque(effectiveOpaque, force);
+  }
+
+  function hideHostAfterPolicyFailure(): void {
+    if (!usesStandaloneLinuxHost || !ownsNativeOverlaySurface(surfaceLease)) {
       return;
     }
+    armStandaloneLinuxHostRemapBarrier();
+    standaloneLinuxHostMapped = false;
     try {
-      native().setNativeOverlayHostInputPassthrough(passThrough);
+      native().hideNativeOverlayHostView();
     } catch (error) {
       lastError = error;
+    }
+    scheduleStandaloneLinuxHostLeaseRemap();
+  }
+
+  function beginStandaloneLinuxHostActivationCommit(): boolean {
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    if (hostInputPassthrough === false && hostOpaque === true) {
+      return true;
+    }
+    if (standaloneLinuxHostActivationCommitPending) {
+      return true;
+    }
+    if (standaloneLinuxHostActivationFailedForInputEpoch) {
+      return hostInputPassthrough === true && hostOpaque === false;
+    }
+    if (
+      (hostInputPassthrough !== true && !setHostInputPassthrough(true, true)) ||
+      (hostOpaque !== false && !setHostOpaque(false, true))
+    ) {
+      standaloneLinuxHostActivationFailedForInputEpoch = true;
+      return false;
+    }
+
+    const binding = native();
+    const prepareActivation = binding.prepareNativeOverlayHostActivation;
+    const commitActivation = binding.commitNativeOverlayHostActivation;
+    if (
+      typeof prepareActivation !== "function" ||
+      typeof commitActivation !== "function"
+    ) {
+      lastError = new Error(
+        "The loaded Steam Bridge native payload cannot defer standalone Linux overlay input until focus is confirmed."
+      );
+      standaloneLinuxHostActivationFailedForInputEpoch = true;
+      return hostInputPassthrough === true && hostOpaque === false;
+    }
+
+    try {
+      // Preparation changes WM_HINTS focus intent only; the XFixes input
+      // region stays empty until native confirms focus on later pump turns.
+      prepareActivation.call(binding);
+      if (!setHostOpaque(true)) {
+        throw lastError instanceof Error
+          ? lastError
+          : new Error("Could not expose the prepared Linux overlay host.");
+      }
+      commitActivation.call(
+        binding,
+        getKWinWaylandOverlayHostSyncStatus().active !== true
+      );
+      standaloneLinuxHostActivationCommitPending = true;
+      standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      standaloneLinuxHostActivationCommitStartedPumpSequence = nativePumpSequence;
+      return true;
+    } catch (error) {
+      lastError = error;
+      standaloneLinuxHostActivationCommitPending = false;
+      standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      standaloneLinuxHostActivationFailedForInputEpoch = true;
+      return (
+        setHostInputPassthrough(true, true) &&
+        setHostOpaque(false, true)
+      );
     }
   }
 
-  function setHostOpaque(opaque: boolean): void {
+  function advanceStandaloneLinuxHostActivationCommit(): void {
+    if (!standaloneLinuxHostActivationCommitPending) {
+      return;
+    }
+    const state = readNativeOverlayHostActivationState();
+    if (
+      standaloneLinuxHostActivationCommitFailureBaseline === undefined &&
+      state?.inputActivationCommitPending === true &&
+      state.activationCommitFailed === false
+    ) {
+      standaloneLinuxHostActivationCommitFailureBaseline =
+        state.activationCommitFailureCount;
+    }
+    const failureCountAdvanced = Boolean(
+      state &&
+        standaloneLinuxHostActivationCommitFailureBaseline !== undefined &&
+        state.activationCommitFailureCount >
+          standaloneLinuxHostActivationCommitFailureBaseline
+    );
+    const diagnosticsTimedOut =
+      !state &&
+      nativePumpSequence - standaloneLinuxHostActivationCommitStartedPumpSequence > 8;
+    if (
+      state &&
+      state.inputActivationCommitPending === false &&
+      state.inputPassthrough === false &&
+      state.opaque === true &&
+      state.activationCommitFailed === false &&
+      !failureCountAdvanced
+    ) {
+      standaloneLinuxHostActivationCommitPending = false;
+      standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      hostInputPassthrough = false;
+      hostOpaque = true;
+      return;
+    }
+    if (
+      !diagnosticsTimedOut &&
+      !state?.activationCommitFailed &&
+      !failureCountAdvanced &&
+      state?.inputActivationCommitPending !== false
+    ) {
+      return;
+    }
+
+    standaloneLinuxHostActivationCommitPending = false;
+    standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+    standaloneLinuxHostActivationFailedForInputEpoch = true;
+    if (state) {
+      hostInputPassthrough = state.inputPassthrough;
+      hostOpaque = state.opaque;
+    }
+    lastError = new Error(
+      diagnosticsTimedOut
+        ? "Steam Bridge could not verify the deferred Linux overlay input commit."
+        : "The Linux overlay host did not receive focus before its deferred input commit expired."
+    );
+    const parked =
+      setHostInputPassthrough(true, true) && setHostOpaque(false, true);
+    standaloneLinuxHostActivationFailedForInputEpoch = true;
+    if (!parked) {
+      hideHostAfterPolicyFailure();
+    }
+  }
+
+  function applyFailClosedHostPolicy(force = false): boolean {
+    if (applyHostPolicy(true, false, force)) {
+      return true;
+    }
+    // If passthrough cannot be confirmed, leave opacity unchanged and unmap
+    // the host while its native input state is unknown.
+    hideHostAfterPolicyFailure();
+    return false;
+  }
+
+  function setHostInputPassthrough(passThrough: boolean, force = false): boolean {
     if (
       closed ||
       !ownsNativeOverlaySurface(surfaceLease) ||
       !usesNativeHostView ||
       nativeHostUnavailableReason !== undefined
     ) {
-      return;
+      return false;
     }
     try {
-      native().setNativeOverlayHostOpacity(opaque);
+      const kWinOwnershipUncertain =
+        usesStandaloneLinuxHost &&
+        getKWinWaylandOverlayHostSyncStatus().ownershipUncertain === true;
+      const effectivePassThrough = Boolean(
+        kWinWaylandPresentationHold ||
+        standaloneLinuxHostDegradedRemapBarrier ||
+        kWinOwnershipUncertain
+          ? true
+          : passThrough
+      );
+      if (
+        usesStandaloneLinuxHost &&
+        !force &&
+        !standaloneLinuxHostActivationCommitPending &&
+        hostInputPassthrough === effectivePassThrough
+      ) {
+        return true;
+      }
+      native().setNativeOverlayHostInputPassthrough(effectivePassThrough);
+      hostInputPassthrough = effectivePassThrough;
+      if (usesStandaloneLinuxHost && effectivePassThrough) {
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      }
+      return true;
     } catch (error) {
       lastError = error;
+      return false;
+    }
+  }
+
+  function setHostOpaque(opaque: boolean, force = false): boolean {
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !usesNativeHostView ||
+      nativeHostUnavailableReason !== undefined
+    ) {
+      return false;
+    }
+    try {
+      const kWinOwnershipUncertain =
+        usesStandaloneLinuxHost &&
+        getKWinWaylandOverlayHostSyncStatus().ownershipUncertain === true;
+      const effectiveOpaque = Boolean(
+        kWinWaylandPresentationHold ||
+        standaloneLinuxHostDegradedRemapBarrier ||
+        kWinOwnershipUncertain
+          ? false
+          : opaque
+      );
+      if (
+        usesStandaloneLinuxHost &&
+        !force &&
+        hostOpaque === effectiveOpaque
+      ) {
+        return true;
+      }
+      native().setNativeOverlayHostOpacity(effectiveOpaque);
+      hostOpaque = effectiveOpaque;
+      return true;
+    } catch (error) {
+      lastError = error;
+      return false;
     }
   }
 }
@@ -9245,9 +10678,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   const backend = resolveNativeOverlayBackend(options);
   const usesStandaloneLinuxHost = shouldUseStandaloneLinuxNativeHost(options);
   const usesNativeHostView = Boolean(options.nativeWindowHandle) || usesStandaloneLinuxHost;
+  const usesAttachedLinuxHost =
+    process.platform === "linux" && Boolean(options.nativeWindowHandle) && !usesStandaloneLinuxHost;
   const idleFps = normalizedFps(options.idleFps, 0);
-  const needsPresentFps = normalizedFps(options.needsPresentFps, 30);
-  const activeOverlayFps = normalizedFps(options.activeOverlayFps, 30);
+  let needsPresentFps = normalizedFps(options.needsPresentFps, 30);
+  let activeOverlayFps = normalizedFps(options.activeOverlayFps, 30);
   const pollIntervalMs = normalizeOverlayNeedsPresentPollInterval(options.pollIntervalMs);
   const diagnosticsRefreshIntervalMs = Math.max(
     pollIntervalMs,
@@ -9273,6 +10708,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let lastDiagnostics: OverlayDiagnostics | undefined;
   let overlayActive = false;
   let overlayWasActive = false;
+  let overlayActiveApplied: boolean | undefined;
   let needsPresent = false;
   let lastOverlayEvent: GameOverlayActivated | undefined;
   let nativeHostUnavailableReason: NativeOverlayHostUnavailableReason | undefined;
@@ -9280,19 +10716,47 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let hostInputPassthrough = usesNativeHostView;
   let hostOpaque = !usesNativeHostView;
   let standaloneLinuxHostMapped = false;
+  let standaloneLinuxHostDegradedRemapBarrier = false;
+  let standaloneLinuxHostDegradedRemapSample:
+    NativeOverlayHostPresentationState | undefined;
+  let standaloneLinuxHostDegradedRemapSampleBoundsRevision: number | undefined;
+  let standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure = false;
+  let standaloneLinuxHostDegradedFullScreenConfigureBaseline: number | undefined;
+  let standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+  let standaloneLinuxHostDegradedFullScreenTransitionOrigin:
+    NativeOverlayHostPresentationState | undefined;
+  let standaloneLinuxHostDegradedFullScreenReversalPending = false;
+  let standaloneLinuxHostActivationCommitPending = false;
+  let standaloneLinuxHostActivationCommitFailureBaseline: number | undefined;
+  let standaloneLinuxHostActivationCommitStartedPumpSequence = 0;
+  let standaloneLinuxHostActivationFailedForInputEpoch = false;
+  let nativePumpSequence = 0;
+  let standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence = 0;
   let hostActivationMode: NativeOverlayPresenterActivationMode = "passive";
   let suppressNeedsPresentOpacity = false;
   let boostUntil = 0;
   let activationHoldCount = 0;
   let timer: NodeJS.Timeout | undefined;
+  const frameDeadline: OverlayFrameDeadlineState = {};
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
   let overlayHandle: CallbackHandle | undefined;
+  let disconnectKWinTransportSafety: (() => void) | undefined;
   let surfaceLease: NativeOverlaySurfaceLease | undefined;
   let nativeSurfaceAttachCount = 0;
   let nativeSurfaceDetachCount = 0;
   let lastNativeHostBounds: NativeOverlayBounds | undefined;
   let lastNativeHostFullScreen: boolean | undefined;
+  let kWinWaylandPresentationHold: KWinWaylandPresentationHold | undefined;
+  let lastAcceptedKWinWaylandPresentation:
+    KWinWaylandOverlayPresentationConvergedState | undefined;
+  let lastKWinWaylandFullScreenElectronSize:
+    Readonly<{ width: number; height: number }> | undefined;
+  let lastKWinWaylandFullScreenElectronRevision: number | undefined;
+  let electronBoundsRevision = 0;
+  let lastAcceptedKWinWaylandElectronBoundsRevision = 0;
+  let kWinWaylandPresentationEpoch = 0;
+  let kWinWaylandContentSeedMarkerActive = false;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
   let frameCaptureInFlight = false;
   let frameCaptureReady = false;
@@ -9314,6 +10778,18 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       syncNativeHostFullScreen();
       syncNativeHostBounds();
       native().pumpNativeOverlayProbeWindow();
+      nativePumpSequence += 1;
+      advanceStandaloneLinuxHostActivationCommit();
+      completeKWinWaylandPresentationHold();
+      const degradedRemapBarrierWasActive =
+        standaloneLinuxHostDegradedRemapBarrier;
+      if (
+        degradedRemapBarrierWasActive &&
+        advanceStandaloneLinuxHostDegradedRemapBarrier() &&
+        !syncHostInputMode(true)
+      ) {
+        hideHostAfterPolicyFailure();
+      }
       pumpCount += 1;
       lastPumpAt = Date.now();
       emitStateChange();
@@ -9328,30 +10804,67 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
 
+    visible = true;
     try {
       if (usesNativeHostView) {
         if (!ensureNativeOverlaySurfaceReady()) {
-          visible = true;
           currentFps = 0;
+          emitStateChange();
+          return;
+        }
+        if (
+          usesStandaloneLinuxHost &&
+          !confirmKWinWaylandPresentationMarkerBeforeMap()
+        ) {
+          applyFailClosedHostPolicy(true);
+          scheduleStandaloneLinuxHostPassiveRemap();
+          currentFps = selectCurrentFps();
           emitStateChange();
           return;
         }
         syncNativeHostFullScreen();
         syncNativeHostBounds();
-        native().showNativeOverlayHostView();
+        if (
+          usesStandaloneLinuxHost &&
+          !confirmKWinWaylandPresentationMarkerBeforeMap()
+        ) {
+          applyFailClosedHostPolicy(true);
+          scheduleStandaloneLinuxHostPassiveRemap();
+          currentFps = selectCurrentFps();
+          emitStateChange();
+          return;
+        }
         if (usesStandaloneLinuxHost) {
-          standaloneLinuxHostMapped = true;
+          if (!mapStandaloneLinuxHostInert()) {
+            currentFps = selectCurrentFps();
+            emitStateChange();
+            return;
+          }
+          if (!syncHostInputMode(true)) {
+            hideHostAfterPolicyFailure();
+            currentFps = selectCurrentFps();
+            emitStateChange();
+            return;
+          }
+        } else {
+          // Child/native hosts that do not use KWin can restore policy before
+          // their ordinary show operation.
+          if (!syncHostInputMode()) {
+            currentFps = selectCurrentFps();
+            emitStateChange();
+            return;
+          }
+          native().showNativeOverlayHostView();
         }
       } else {
         if (!updateNativeOverlayHostAvailability()) {
-          visible = true;
           currentFps = 0;
           emitStateChange();
           return;
         }
         native().openNativeOverlayProbeWindow(title);
       }
-      visible = true;
+      currentFps = selectCurrentFps();
       emitStateChange();
     } catch (error) {
       fail(error);
@@ -9364,16 +10877,21 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
 
+    visible = false;
     try {
       if (usesNativeHostView) {
-        native().hideNativeOverlayHostView();
+        setNativeOverlayInputIntentActive(false);
         if (usesStandaloneLinuxHost) {
+          applyHostPolicy(true, false, true);
+          armStandaloneLinuxHostRemapBarrier();
           standaloneLinuxHostMapped = false;
         }
+        native().hideNativeOverlayHostView();
       } else {
         native().closeNativeOverlayProbeWindow();
       }
-      visible = false;
+      currentFps = selectCurrentFps();
+      scheduleStandaloneLinuxHostPassiveRemap();
       emitStateChange();
     } catch (error) {
       fail(error);
@@ -9410,15 +10928,26 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       activationHoldCount += 1;
       focusSourceWindowForActivation(activationMode);
       ensureNativeOverlaySurfaceReady();
-      showStandaloneLinuxHostForActivation();
+      const standaloneHostReady = showStandaloneLinuxHostForActivation();
       if (!visible) {
-        show();
+        if (usesStandaloneLinuxHost) {
+          visible = true;
+        } else {
+          show();
+        }
       }
       hostActivationMode = activationMode;
       suppressNeedsPresentOpacity = false;
       currentFps = selectCurrentFps();
-      syncHostInputMode();
-      pump();
+      if (standaloneHostReady) {
+        if (!syncHostInputMode()) {
+          hideHostAfterPolicyFailure();
+        }
+        pump();
+      } else {
+        applyFailClosedHostPolicy(true);
+        scheduleStandaloneLinuxHostPassiveRemap();
+      }
       schedule(0);
       emitStateChange();
     } catch (error) {
@@ -9442,7 +10971,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           suppressNeedsPresentOpacity = true;
         }
         currentFps = selectCurrentFps();
-        syncHostInputMode();
+        if (!syncHostInputMode()) {
+          hideHostAfterPolicyFailure();
+        }
         schedule(0);
         emitStateChange();
       }
@@ -9460,17 +10991,28 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     try {
       focusSourceWindowForActivation(activationMode);
       ensureNativeOverlaySurfaceReady();
-      showStandaloneLinuxHostForActivation();
+      const standaloneHostReady = showStandaloneLinuxHostForActivation();
       if (!visible) {
-        show();
+        if (usesStandaloneLinuxHost) {
+          visible = true;
+        } else {
+          show();
+        }
       }
 
       hostActivationMode = activationMode;
       suppressNeedsPresentOpacity = false;
       boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
       currentFps = selectCurrentFps();
-      syncHostInputMode();
-      pump();
+      if (standaloneHostReady) {
+        if (!syncHostInputMode()) {
+          hideHostAfterPolicyFailure();
+        }
+        pump();
+      } else {
+        applyFailClosedHostPolicy(true);
+        scheduleStandaloneLinuxHostPassiveRemap();
+      }
       schedule(0);
       emitStateChange();
     } catch (error) {
@@ -9486,17 +11028,28 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     try {
       ensureNativeOverlaySurfaceReady();
-      showStandaloneLinuxHostForActivation();
+      const standaloneHostReady = showStandaloneLinuxHostForActivation();
       if (!visible) {
-        show();
+        if (usesStandaloneLinuxHost) {
+          visible = true;
+        } else {
+          show();
+        }
       }
 
       hostActivationMode = "passive";
       suppressNeedsPresentOpacity = false;
       poll(true);
       currentFps = selectCurrentFps();
-      syncHostInputMode();
-      pump();
+      if (standaloneHostReady) {
+        if (!syncHostInputMode()) {
+          hideHostAfterPolicyFailure();
+        }
+        pump();
+      } else {
+        applyFailClosedHostPolicy(true);
+        scheduleStandaloneLinuxHostPassiveRemap();
+      }
       schedule(0);
       emitStateChange();
     } catch (error) {
@@ -9578,6 +11131,10 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return;
     }
 
+    setNativeOverlayInputIntentActive(false);
+    if (usesNativeHostView) {
+      applyFailClosedHostPolicy(true);
+    }
     closed = true;
     closeReason = reason;
     frameCaptureGeneration += 1;
@@ -9610,6 +11167,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     } finally {
       overlayHandle = undefined;
     }
+    disconnectKWinTransportSafety?.();
+    disconnectKWinTransportSafety = undefined;
 
     if (ownsNativeOverlaySurface(surfaceLease)) {
       try {
@@ -9639,6 +11198,33 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
   surfaceLease = claimNativeOverlaySurface("presenter");
   try {
+    if (usesStandaloneLinuxHost) {
+      disconnectKWinTransportSafety = onKWinWaylandOverlayTransportSafetyRequired((phase) => {
+        if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+          return false;
+        }
+        if (phase === "degraded") {
+          armStandaloneLinuxHostRemapBarrier();
+          scheduleStandaloneLinuxHostPassiveRemap();
+          return true;
+        }
+        const policyConfirmed = applyHostPolicy(true, false, true);
+        if (!policyConfirmed) {
+          // Once an emergency hide is required, the old mapped cache is no
+          // longer trustworthy even if this controller's hide throws. The
+          // binding-level transport barrier may still hide the host, and the
+          // recovery path must remap it instead of assuming it stayed mapped.
+          standaloneLinuxHostMapped = false;
+          try {
+            native().hideNativeOverlayHostView();
+          } catch (error) {
+            lastError = error;
+            return false;
+          }
+        }
+        return true;
+      });
+    }
     pump();
 
     overlayHandle = onGameOverlayActivated((event) => {
@@ -9650,11 +11236,17 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         overlayActive = event.active;
       }
       if (event.active === true) {
+        if (restoreFocusTimer) {
+          clearTimeout(restoreFocusTimer);
+          restoreFocusTimer = undefined;
+        }
         overlayWasActive = true;
         suppressNeedsPresentOpacity = false;
         boostUntil = Math.max(boostUntil, Date.now() + activationBoostMs);
         currentFps = selectCurrentFps();
-        syncHostInputMode();
+        if (!syncHostInputMode()) {
+          hideHostAfterPolicyFailure();
+        }
         schedule(0);
         emitStateChange();
       } else if (event.active === false) {
@@ -9663,13 +11255,28 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         suppressNeedsPresentOpacity = true;
         boostUntil = Date.now() + activeGraceMs;
         currentFps = selectCurrentFps();
-        syncHostInputMode();
-        if (usesStandaloneLinuxHost && standaloneLinuxHostMapped) {
-          native().hideNativeOverlayHostView();
+        if (!syncHostInputMode()) {
+          hideHostAfterPolicyFailure();
+        }
+        const kWinSyncStatus = usesStandaloneLinuxHost
+          ? getKWinWaylandOverlayHostSyncStatus()
+          : undefined;
+        if (
+          usesStandaloneLinuxHost &&
+          standaloneLinuxHostMapped &&
+          (kWinSyncStatus?.active !== true || kWinSyncStatus.ownershipUncertain === true)
+        ) {
+          armStandaloneLinuxHostRemapBarrier();
           standaloneLinuxHostMapped = false;
+          try {
+            native().hideNativeOverlayHostView();
+          } catch (error) {
+            lastError = error;
+          } finally {
+            scheduleStandaloneLinuxHostPassiveRemap();
+          }
         }
         scheduleRestoreFocus();
-        scheduleStandaloneLinuxHostPassiveRemap();
         schedule(0);
         emitStateChange();
       }
@@ -9702,7 +11309,27 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return nativeHostUnavailableReason !== undefined || native().isNativeOverlayProbeWindowOpen();
     },
     snapshot,
-    onStateChange: subscribeStateChange
+    onStateChange: subscribeStateChange,
+    notifyBoundsChanged(): void {
+      if (electronBoundsRevision >= Number.MAX_SAFE_INTEGER) {
+        throw new Error("Electron bounds revision exhausted.");
+      }
+      electronBoundsRevision += 1;
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+    },
+    setFrameRate(nextFrameRate: number): void {
+      const normalizedFrameRate = normalizeNativeOverlayFrameRate(nextFrameRate);
+      if (needsPresentFps === normalizedFrameRate && activeOverlayFps === normalizedFrameRate) {
+        return;
+      }
+      needsPresentFps = normalizedFrameRate;
+      activeOverlayFps = normalizedFrameRate;
+      resetOverlayFrameDeadline(frameDeadline);
+      currentFps = selectCurrentFps();
+      schedule(0);
+      emitStateChange();
+    }
   };
 
   return presenter;
@@ -9791,7 +11418,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       ensureNativeOverlaySurfaceReady();
       const pollChanged = poll();
       currentFps = selectCurrentFps();
-      syncHostInputMode();
+      if (!syncHostInputMode()) {
+        hideHostAfterPolicyFailure();
+      }
       let pumped = false;
       if (currentFps > 0) {
         pump();
@@ -9803,9 +11432,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       }
       schedule(
         currentFps > 0
-          ? Math.max(1, Math.round(1000 / currentFps))
+          ? nextOverlayFrameDelayMs(frameDeadline, currentFps, Date.now())
           : effectiveIdlePollIntervalMs()
       );
+      if (currentFps <= 0) {
+        resetOverlayFrameDeadline(frameDeadline);
+      }
     } catch (error) {
       fail(error);
     }
@@ -9829,6 +11461,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (nativeHostUnavailableReason !== undefined) {
       return 0;
     }
+    if (!visible) {
+      return idleFps;
+    }
     const now = Date.now();
     if (overlayActive || activationHoldCount > 0 || now < boostUntil) {
       return activeOverlayFps;
@@ -9839,14 +11474,15 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     return idleFps;
   }
 
-  function syncHostInputMode(): void {
+  function syncHostInputMode(force = false): boolean {
     if (!usesNativeHostView || nativeHostUnavailableReason !== undefined) {
-      return;
+      return false;
     }
     const now = Date.now();
     const shouldAcceptInput = shouldHostAcceptInput(now);
     const shouldShowHost =
-      hostActivationMode === "interactive"
+      visible &&
+      (hostActivationMode === "interactive"
         ? shouldAcceptInput || needsPresent
         : hostActivationMode === "passive"
           // Steam Desktop emits Linux notification toasts as separate
@@ -9855,63 +11491,349 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           // Electron client with black; keep pumping it, but leave it fully
           // transparent until Steam reports an interactive overlay.
           ? !usesStandaloneLinuxHost && needsPresent && !suppressNeedsPresentOpacity
-          : false;
-    setHostInputPassthrough(!shouldAcceptInput);
-    setHostOpaque(shouldShowHost);
+          : false);
+    if (!setNativeOverlayInputIntentActive(shouldAcceptInput)) {
+      return false;
+    }
+    if (
+      usesStandaloneLinuxHost &&
+      !standaloneLinuxHostMapped &&
+      (shouldAcceptInput || shouldShowHost)
+    ) {
+      applyHostPolicy(true, false, force);
+      scheduleStandaloneLinuxHostPassiveRemap();
+      return false;
+    }
+    if (!applyHostPolicy(!shouldAcceptInput, shouldShowHost, force)) {
+      return false;
+    }
     if (shouldShowHost) {
       requestSourceFrame();
+    }
+    return true;
+  }
+
+  function setNativeOverlayInputIntentActive(active: boolean): boolean {
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      nativeHostUnavailableReason !== undefined
+    ) {
+      return false;
+    }
+    if (!active) {
+      standaloneLinuxHostActivationFailedForInputEpoch = false;
+    }
+    if (
+      overlayActiveApplied === active &&
+      !standaloneLinuxHostActivationCommitPending
+    ) {
+      return true;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostOverlayActive;
+    if (typeof setter !== "function") {
+      lastError = new Error(
+        "The loaded Steam Bridge native payload cannot synchronize standalone Linux overlay input intent."
+      );
+      return false;
+    }
+    try {
+      setter.call(binding, active);
+      overlayActiveApplied = active;
+      if (!active) {
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+        standaloneLinuxHostActivationFailedForInputEpoch = false;
+      }
+      return true;
+    } catch (error) {
+      lastError = error;
+      return false;
     }
   }
 
   function shouldHostAcceptInput(now: number): boolean {
     return (
+      visible &&
       (hostActivationMode === "interactive" || hostActivationMode === "transparent-input") &&
       (overlayActive || activationHoldCount > 0 || now < boostUntil)
     );
   }
 
-  function setHostInputPassthrough(passThrough: boolean): void {
-    if (
-      closed ||
-      !ownsNativeOverlaySurface(surfaceLease) ||
-      !usesNativeHostView ||
-      nativeHostUnavailableReason !== undefined ||
-      hostInputPassthrough === passThrough
-    ) {
+  function applyHostPolicy(
+    passThrough: boolean,
+    opaque: boolean,
+    force = false
+  ): boolean {
+    const kWinOwnershipUncertain =
+      usesStandaloneLinuxHost &&
+      getKWinWaylandOverlayHostSyncStatus().ownershipUncertain === true;
+    const hostExposureHeld = Boolean(
+      kWinWaylandPresentationHold ||
+      standaloneLinuxHostDegradedRemapBarrier ||
+      kWinOwnershipUncertain
+    );
+    const effectivePassThrough = hostExposureHeld ? true : passThrough;
+    const effectiveOpaque = hostExposureHeld ? false : opaque;
+    if (usesStandaloneLinuxHost && !effectivePassThrough) {
+      if (!effectiveOpaque) {
+        return (
+          setHostInputPassthrough(true, true) &&
+          setHostOpaque(false, true)
+        );
+      }
+      return beginStandaloneLinuxHostActivationCommit();
+    }
+    if (!effectivePassThrough) {
+      if (!setHostOpaque(effectiveOpaque, force)) {
+        setHostInputPassthrough(true, true);
+        return false;
+      }
+      if (!setHostInputPassthrough(false, force)) {
+        if (setHostInputPassthrough(true, true)) {
+          setHostOpaque(false, true);
+        }
+        return false;
+      }
+      return true;
+    }
+    if (!setHostInputPassthrough(true, force)) {
+      return false;
+    }
+    return setHostOpaque(effectiveOpaque, force);
+  }
+
+  function hideHostAfterPolicyFailure(): void {
+    if (!usesStandaloneLinuxHost || !ownsNativeOverlaySurface(surfaceLease)) {
       return;
+    }
+    // Hide can mutate native state and still throw; invalidate the cache first
+    // so every recovery path remaps instead of trusting stale state.
+    armStandaloneLinuxHostRemapBarrier();
+    standaloneLinuxHostMapped = false;
+    try {
+      native().hideNativeOverlayHostView();
+    } catch (error) {
+      lastError = error;
+    }
+    scheduleStandaloneLinuxHostPassiveRemap();
+  }
+
+  function beginStandaloneLinuxHostActivationCommit(): boolean {
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    if (hostInputPassthrough === false && hostOpaque === true) {
+      return true;
+    }
+    if (standaloneLinuxHostActivationCommitPending) {
+      return true;
+    }
+    if (standaloneLinuxHostActivationFailedForInputEpoch) {
+      return hostInputPassthrough === true && hostOpaque === false;
+    }
+    if (
+      (hostInputPassthrough !== true && !setHostInputPassthrough(true, true)) ||
+      (hostOpaque !== false && !setHostOpaque(false, true))
+    ) {
+      standaloneLinuxHostActivationFailedForInputEpoch = true;
+      return false;
+    }
+
+    const binding = native();
+    const prepareActivation = binding.prepareNativeOverlayHostActivation;
+    const commitActivation = binding.commitNativeOverlayHostActivation;
+    if (
+      typeof prepareActivation !== "function" ||
+      typeof commitActivation !== "function"
+    ) {
+      lastError = new Error(
+        "The loaded Steam Bridge native payload cannot defer standalone Linux overlay input until focus is confirmed."
+      );
+      standaloneLinuxHostActivationFailedForInputEpoch = true;
+      return hostInputPassthrough === true && hostOpaque === false;
     }
 
     try {
-      native().setNativeOverlayHostInputPassthrough(passThrough);
-      hostInputPassthrough = passThrough;
+      prepareActivation.call(binding);
+      if (!setHostOpaque(true)) {
+        throw lastError instanceof Error
+          ? lastError
+          : new Error("Could not expose the prepared Linux overlay host.");
+      }
+      commitActivation.call(
+        binding,
+        getKWinWaylandOverlayHostSyncStatus().active !== true
+      );
+      standaloneLinuxHostActivationCommitPending = true;
+      standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      standaloneLinuxHostActivationCommitStartedPumpSequence = nativePumpSequence;
+      return true;
     } catch (error) {
       lastError = error;
+      standaloneLinuxHostActivationCommitPending = false;
+      standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      standaloneLinuxHostActivationFailedForInputEpoch = true;
+      return (
+        setHostInputPassthrough(true, true) &&
+        setHostOpaque(false, true)
+      );
     }
   }
 
-  function setHostOpaque(opaque: boolean): void {
+  function advanceStandaloneLinuxHostActivationCommit(): void {
+    if (!standaloneLinuxHostActivationCommitPending) {
+      return;
+    }
+    const state = readNativeOverlayHostActivationState();
     if (
-      closed ||
-      !ownsNativeOverlaySurface(surfaceLease) ||
-      !usesNativeHostView ||
-      nativeHostUnavailableReason !== undefined ||
-      hostOpaque === opaque
+      standaloneLinuxHostActivationCommitFailureBaseline === undefined &&
+      state?.inputActivationCommitPending === true &&
+      state.activationCommitFailed === false
+    ) {
+      standaloneLinuxHostActivationCommitFailureBaseline =
+        state.activationCommitFailureCount;
+    }
+    const failureCountAdvanced = Boolean(
+      state &&
+        standaloneLinuxHostActivationCommitFailureBaseline !== undefined &&
+        state.activationCommitFailureCount >
+          standaloneLinuxHostActivationCommitFailureBaseline
+    );
+    const diagnosticsTimedOut =
+      !state &&
+      nativePumpSequence - standaloneLinuxHostActivationCommitStartedPumpSequence > 8;
+    if (
+      state &&
+      state.inputActivationCommitPending === false &&
+      state.inputPassthrough === false &&
+      state.opaque === true &&
+      state.activationCommitFailed === false &&
+      !failureCountAdvanced
+    ) {
+      standaloneLinuxHostActivationCommitPending = false;
+      standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      hostInputPassthrough = false;
+      hostOpaque = true;
+      return;
+    }
+    if (
+      !diagnosticsTimedOut &&
+      !state?.activationCommitFailed &&
+      !failureCountAdvanced &&
+      state?.inputActivationCommitPending !== false
     ) {
       return;
     }
 
+    standaloneLinuxHostActivationCommitPending = false;
+    standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+    standaloneLinuxHostActivationFailedForInputEpoch = true;
+    if (state) {
+      hostInputPassthrough = state.inputPassthrough;
+      hostOpaque = state.opaque;
+    }
+    lastError = new Error(
+      diagnosticsTimedOut
+        ? "Steam Bridge could not verify the deferred Linux overlay input commit."
+        : "The Linux overlay host did not receive focus before its deferred input commit expired."
+    );
+    const parked =
+      setHostInputPassthrough(true, true) && setHostOpaque(false, true);
+    standaloneLinuxHostActivationFailedForInputEpoch = true;
+    if (!parked) {
+      hideHostAfterPolicyFailure();
+    }
+  }
+
+  function applyFailClosedHostPolicy(force = false): boolean {
+    if (applyHostPolicy(true, false, force)) {
+      return true;
+    }
+    hideHostAfterPolicyFailure();
+    return false;
+  }
+
+  function setHostInputPassthrough(passThrough: boolean, force = false): boolean {
+    const kWinOwnershipUncertain =
+      usesStandaloneLinuxHost &&
+      getKWinWaylandOverlayHostSyncStatus().ownershipUncertain === true;
+    const effectivePassThrough =
+      kWinWaylandPresentationHold ||
+      standaloneLinuxHostDegradedRemapBarrier ||
+      kWinOwnershipUncertain
+        ? true
+        : passThrough;
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !usesNativeHostView ||
+      nativeHostUnavailableReason !== undefined
+    ) {
+      return false;
+    }
+    if (
+      !force &&
+      !standaloneLinuxHostActivationCommitPending &&
+      hostInputPassthrough === effectivePassThrough
+    ) {
+      return true;
+    }
+
     try {
-      native().setNativeOverlayHostOpacity(opaque);
-      hostOpaque = opaque;
-      frameCaptureReady = false;
+      native().setNativeOverlayHostInputPassthrough(effectivePassThrough);
+      hostInputPassthrough = effectivePassThrough;
+      if (usesStandaloneLinuxHost && effectivePassThrough) {
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+      }
+      return true;
     } catch (error) {
       lastError = error;
+      return false;
+    }
+  }
+
+  function setHostOpaque(opaque: boolean, force = false): boolean {
+    const kWinOwnershipUncertain =
+      usesStandaloneLinuxHost &&
+      getKWinWaylandOverlayHostSyncStatus().ownershipUncertain === true;
+    const effectiveOpaque =
+      kWinWaylandPresentationHold ||
+      standaloneLinuxHostDegradedRemapBarrier ||
+      kWinOwnershipUncertain
+        ? false
+        : opaque;
+    if (
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      !usesNativeHostView ||
+      nativeHostUnavailableReason !== undefined
+    ) {
+      return false;
+    }
+    if (!force && hostOpaque === effectiveOpaque) {
+      return true;
+    }
+
+    try {
+      native().setNativeOverlayHostOpacity(effectiveOpaque);
+      hostOpaque = effectiveOpaque;
+      frameCaptureReady = false;
+      return true;
+    } catch (error) {
+      lastError = error;
+      return false;
     }
   }
 
   function requestSourceFrame(): void {
     if (
-      process.platform !== "win32" ||
+      (process.platform !== "win32" && !usesAttachedLinuxHost) ||
       closed ||
       !usesNativeHostView ||
       frameCaptureInFlight ||
@@ -9938,6 +11860,11 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         }
         const width = normalizeNativeOverlayFrameDimension(frame.width, "captured frame width");
         const height = normalizeNativeOverlayFrameDimension(frame.height, "captured frame height");
+        // Valve's browser-host guidance requires the native swap surface to
+        // contain the captured Chromium frame. Windows does this in D3D11;
+        // an attached X11 host uploads the same BGRA frame into its GLX
+        // drawable so Steam composites against a complete game frame instead
+        // of a transparent sibling surface.
         native().updateNativeOverlayHostFrame(frame.data, width, height);
         frameCaptureReady = true;
         if (lastError === frameCaptureError) {
@@ -9977,6 +11904,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (!options.restoreFocus) {
       return;
     }
+    if (usesStandaloneLinuxHost) {
+      const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+      if (syncStatus.active === true && syncStatus.ownershipUncertain !== true) {
+        return;
+      }
+    }
 
     if (restoreFocusTimer) {
       clearTimeout(restoreFocusTimer);
@@ -9984,7 +11917,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     const restoreFocus = (): void => {
       restoreFocusTimer = undefined;
-      if (closed) {
+      if (closed || overlayActive) {
         return;
       }
       try {
@@ -10014,6 +11947,186 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     } catch (error) {
       lastError = error;
     }
+  }
+
+  function armStandaloneLinuxHostRemapBarrier(): void {
+    if (!usesStandaloneLinuxHost) {
+      return;
+    }
+    const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    standaloneLinuxHostDegradedRemapSample = undefined;
+    standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+    if (
+      syncStatus.active === true &&
+      syncStatus.presentationProtocolReady === true &&
+      syncStatus.ownershipUncertain !== true
+    ) {
+      standaloneLinuxHostDegradedRemapBarrier = false;
+      if (kWinWaylandPresentationHold?.requireNewPair) {
+        kWinWaylandPresentationHold.fullScreen = fullScreen;
+        return;
+      }
+      const previousHold = kWinWaylandPresentationHold;
+      kWinWaylandPresentationHold = lastAcceptedKWinWaylandPresentation
+        ? createKWinWaylandReplacementPresentationHold(
+            fullScreen,
+            lastAcceptedKWinWaylandPresentation,
+            previousHold?.blockedWindowedSeedSize,
+            previousHold?.minimumWindowedSeedBoundsRevision,
+            previousHold?.requiredEpoch ?? lastAcceptedKWinWaylandPresentation.epoch
+          )
+        : createKWinWaylandAttachPresentationHold(
+            fullScreen,
+            lastAcceptedKWinWaylandPresentation
+          );
+      return;
+    }
+    standaloneLinuxHostDegradedRemapBarrier = syncStatus.active === true;
+    if (standaloneLinuxHostDegradedRemapBarrier) {
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence =
+        nativePumpSequence + 1;
+    }
+  }
+
+  function advanceStandaloneLinuxHostDegradedRemapBarrier(): boolean {
+    if (!standaloneLinuxHostDegradedRemapBarrier) {
+      return true;
+    }
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (syncStatus.ownershipUncertain === true) {
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      return false;
+    }
+    if (
+      syncStatus.active === true &&
+      syncStatus.presentationProtocolReady === true
+    ) {
+      standaloneLinuxHostDegradedRemapBarrier = false;
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      armStandaloneLinuxHostRemapBarrier();
+      return false;
+    }
+    if (
+      nativePumpSequence <
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence
+    ) {
+      return false;
+    }
+    const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+    const sample = readNativeOverlayHostPresentationState();
+    const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (standaloneLinuxHostDegradedFullScreenReversalPending) {
+      const transitionOrigin =
+        standaloneLinuxHostDegradedFullScreenTransitionOrigin;
+      const sampleMatchesFinalElectronSize = Boolean(
+        sample &&
+          electronBounds &&
+          nativeOverlayBoundsSizeWithinTolerance(electronBounds, sample.bounds)
+      );
+      const returnedToExactOrigin = Boolean(
+        sample &&
+          transitionOrigin &&
+          sampleMatchesFinalElectronSize &&
+          sameNativeOverlayHostDrawableGeometry(sample, transitionOrigin)
+      );
+      const reachedLaterFinalConfigure = Boolean(
+        sample &&
+          transitionOrigin &&
+          sample.configureCount > transitionOrigin.configureCount &&
+          sample.mapped === true &&
+          nativeOverlayHostDrawableMatchesBounds(sample) &&
+          sample.fullScreen === fullScreen &&
+          sampleMatchesFinalElectronSize
+      );
+      if (!returnedToExactOrigin && !reachedLaterFinalConfigure) {
+        // A queued Configure from the abandoned half of a rapid reversal is
+        // not final geometry. Stay inert until either the exact origin comes
+        // back or a later Configure matches the current Electron request.
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        return false;
+      }
+      if (reachedLaterFinalConfigure) {
+        // A resize or resolution change can make the old origin impossible.
+        // This is the first valid final sample; ordinary two-sample stability
+        // below still has to confirm it before exposure is restored.
+        standaloneLinuxHostDegradedFullScreenReversalPending = false;
+        standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+        standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      }
+    }
+    if (standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure) {
+      if (!sample || sample.configureCount === 0) {
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        return false;
+      }
+      standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure = false;
+    }
+    if (standaloneLinuxHostDegradedFullScreenConfigureRequired) {
+      if (
+        !sample ||
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline === undefined ||
+        sample.configureCount ===
+          standaloneLinuxHostDegradedFullScreenConfigureBaseline
+      ) {
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        return false;
+      }
+      standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+      standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+      standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+      standaloneLinuxHostDegradedFullScreenReversalPending = false;
+    }
+    if (
+      sample?.mapped !== true ||
+      !nativeOverlayHostDrawableMatchesBounds(sample) ||
+      sample.fullScreen !== fullScreen ||
+      (
+        !fullScreen &&
+        (
+          !electronBounds ||
+          !nativeOverlayBoundsSizeWithinTolerance(electronBounds, sample.bounds)
+        )
+      )
+    ) {
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence = 0;
+      return false;
+    }
+    if (
+      standaloneLinuxHostDegradedRemapSample &&
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision === electronBoundsRevision &&
+      sameNativeOverlayHostPresentationState(
+        standaloneLinuxHostDegradedRemapSample,
+        sample
+      )
+    ) {
+      standaloneLinuxHostDegradedRemapBarrier = false;
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+      standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence = 0;
+      standaloneLinuxHostDegradedFullScreenReversalPending = false;
+      standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+      if (standaloneLinuxHostRemapTimer) {
+        clearTimeout(standaloneLinuxHostRemapTimer);
+        standaloneLinuxHostRemapTimer = undefined;
+      }
+      return true;
+    }
+    standaloneLinuxHostDegradedRemapSample = sample;
+    standaloneLinuxHostDegradedRemapSampleBoundsRevision = electronBoundsRevision;
+    return false;
   }
 
   function subscribeStateChange(listener: () => void): CallbackHandle {
@@ -10047,8 +12160,15 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   }
 
   function syncNativeHostBounds(force = false): void {
+    const kWinWaylandSyncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (usesStandaloneLinuxHost && kWinWaylandSyncStatus.active) {
+      if (kWinWaylandSyncStatus.presentationProtocolReady === true) {
+        ensureKWinWaylandPresentationHoldForCurrentState();
+      }
+      return;
+    }
     if (
-      (process.platform !== "win32" && !usesStandaloneLinuxHost) ||
+      (process.platform !== "win32" && !usesStandaloneLinuxHost && !usesAttachedLinuxHost) ||
       !usesNativeHostView ||
       !ownsNativeOverlaySurface(surfaceLease) ||
       !safeBoolean(() => native().isNativeOverlayHostViewOpen())
@@ -10062,12 +12182,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (!nextBounds) {
       return;
     }
-    const normalizedBounds: NativeOverlayBounds = {
-      x: Math.round(nextBounds.x),
-      y: Math.round(nextBounds.y),
-      width: Math.max(1, Math.round(nextBounds.width)),
-      height: Math.max(1, Math.round(nextBounds.height))
-    };
+    const normalizedBounds = roundedNativeOverlayBounds(nextBounds);
     if (
       !force &&
       lastNativeHostBounds?.x === normalizedBounds.x &&
@@ -10093,6 +12208,276 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     lastNativeHostBounds = normalizedBounds;
   }
 
+  function acceptKWinWaylandPresentation(
+    receipt: KWinWaylandOverlayPresentationConvergedState
+  ): void {
+    if (kWinWaylandContentSeedMarkerActive) {
+      setKWinWaylandOverlayPresentationEpoch(native(), receipt.epoch);
+      kWinWaylandContentSeedMarkerActive = false;
+    }
+    lastAcceptedKWinWaylandPresentation = receipt;
+    lastAcceptedKWinWaylandElectronBoundsRevision = electronBoundsRevision;
+    standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+    standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+    standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+    standaloneLinuxHostDegradedFullScreenReversalPending = false;
+  }
+
+  function armKWinWaylandPresentationHold(
+    fullScreen: boolean,
+    attach = false,
+    requiredEpoch?: number
+  ): void {
+    if (attach) {
+      kWinWaylandPresentationHold = createKWinWaylandAttachPresentationHold(
+        fullScreen,
+        lastAcceptedKWinWaylandPresentation
+      );
+      return;
+    }
+    if (kWinWaylandPresentationHold?.requireNewPair) {
+      kWinWaylandPresentationHold.fullScreen = fullScreen;
+      if (requiredEpoch !== undefined) {
+        kWinWaylandPresentationHold.requiredEpoch = requiredEpoch;
+      }
+      if (!fullScreen && lastKWinWaylandFullScreenElectronSize) {
+        kWinWaylandPresentationHold.blockedWindowedSeedSize =
+          lastKWinWaylandFullScreenElectronSize;
+        if (lastKWinWaylandFullScreenElectronRevision !== undefined) {
+          kWinWaylandPresentationHold.minimumWindowedSeedBoundsRevision =
+            lastKWinWaylandFullScreenElectronRevision;
+        }
+      } else {
+        delete kWinWaylandPresentationHold.blockedWindowedSeedSize;
+        delete kWinWaylandPresentationHold.minimumWindowedSeedBoundsRevision;
+      }
+    } else if (
+      !kWinWaylandPresentationHold ||
+      kWinWaylandPresentationHold.fullScreen !== fullScreen
+    ) {
+      kWinWaylandPresentationHold = createKWinWaylandTransitionPresentationHold(
+        fullScreen,
+        lastAcceptedKWinWaylandPresentation,
+        lastKWinWaylandFullScreenElectronSize,
+        lastKWinWaylandFullScreenElectronRevision,
+        requiredEpoch
+      );
+    }
+    applyFailClosedHostPolicy();
+  }
+
+  function ensureKWinWaylandPresentationHoldForCurrentState(): void {
+    if (!isKWinWaylandOverlayPresentationSyncActive()) {
+      return;
+    }
+    if (kWinWaylandPresentationHold) {
+      return;
+    }
+    const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+    const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (!electronBounds && !fullScreen) {
+      armKWinWaylandPresentationHold(fullScreen);
+      return;
+    }
+    const normalizedElectronBounds = electronBounds
+      ? roundedNativeOverlayBounds(electronBounds)
+      : undefined;
+    const latest = getKWinWaylandOverlayPresentationState();
+    if (
+      lastAcceptedKWinWaylandPresentation &&
+      kWinWaylandPresentationPairNeedsReplacement(lastAcceptedKWinWaylandPresentation)
+    ) {
+      if (
+        latest?.kind === "converged" &&
+        latest.pairGeneration > lastAcceptedKWinWaylandPresentation.pairGeneration &&
+        latest.epoch === lastAcceptedKWinWaylandPresentation.epoch &&
+        lastNativeHostFullScreen === fullScreen &&
+        latest.fullScreen === fullScreen &&
+        kWinWaylandReceiptMatchesCurrentPresentation(
+          latest,
+          fullScreen,
+          normalizedElectronBounds
+        )
+      ) {
+        acceptKWinWaylandPresentation(latest);
+        return;
+      }
+      kWinWaylandPresentationHold = createKWinWaylandReplacementPresentationHold(
+        fullScreen,
+        lastAcceptedKWinWaylandPresentation
+      );
+      applyFailClosedHostPolicy();
+      return;
+    }
+    if (lastNativeHostFullScreen !== fullScreen) {
+      return;
+    }
+    if (
+      latest?.kind === "converged" &&
+      lastAcceptedKWinWaylandPresentation &&
+      latest.pairId === lastAcceptedKWinWaylandPresentation.pairId &&
+      latest.generation > lastAcceptedKWinWaylandPresentation.generation &&
+      latest.epoch === lastAcceptedKWinWaylandPresentation.epoch &&
+      latest.fullScreen === fullScreen &&
+      kWinWaylandReceiptMatchesCurrentPresentation(
+        latest,
+        fullScreen,
+        normalizedElectronBounds
+      )
+    ) {
+      acceptKWinWaylandPresentation(latest);
+      return;
+    }
+    if (
+      !fullScreen &&
+      normalizedElectronBounds &&
+      lastAcceptedKWinWaylandPresentation?.fullScreen === false &&
+      electronBoundsRevision > lastAcceptedKWinWaylandElectronBoundsRevision &&
+      !isKWinWaylandOverlaySourceInteractiveResizeActive()
+    ) {
+      if (
+        kWinWaylandReceiptMatchesCurrentPresentation(
+          lastAcceptedKWinWaylandPresentation,
+          false,
+          normalizedElectronBounds
+        )
+      ) {
+        lastAcceptedKWinWaylandElectronBoundsRevision = electronBoundsRevision;
+        return;
+      }
+      if (kWinWaylandPresentationEpoch >= MAX_KWIN_WAYLAND_PRESENTATION_EPOCH) {
+        throw new Error("KWin presentation epoch exhausted.");
+      }
+      kWinWaylandPresentationEpoch += 1;
+      kWinWaylandPresentationHold = createKWinWaylandTransitionPresentationHold(
+        false,
+        lastAcceptedKWinWaylandPresentation,
+        undefined,
+        undefined,
+        kWinWaylandPresentationEpoch
+      );
+      kWinWaylandPresentationHold.passive = true;
+      setKWinWaylandOverlayPresentationEpoch(native(), kWinWaylandPresentationEpoch);
+      kWinWaylandContentSeedMarkerActive = false;
+      return;
+    }
+    // Same-state receipts are passively adopted after native pumping. A
+    // transient diagnostics lag during live resize must never toggle opacity.
+  }
+
+  function completeKWinWaylandPresentationHold(): void {
+    let syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    let degradedMarkerRecovered = false;
+    if (
+      syncStatus.ownershipUncertain === true &&
+      syncStatus.reason === "kwin-degraded-marker-unconfirmed"
+    ) {
+      degradedMarkerRecovered =
+        setKWinWaylandOverlayPresentationEpoch(native(), kWinWaylandPresentationEpoch) ===
+        "degraded";
+      if (degradedMarkerRecovered) {
+        // The degraded marker operation parks and verifies the native host
+        // before publishing the marker. Reconcile the controller-side cache
+        // so a cancelled pending activation can start a fresh recovery epoch.
+        hostInputPassthrough = true;
+        hostOpaque = false;
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+        standaloneLinuxHostActivationFailedForInputEpoch = false;
+      }
+      syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    }
+    if (syncStatus.ownershipUncertain === true) {
+      applyFailClosedHostPolicy(true);
+      return;
+    }
+    if (!(syncStatus.active && syncStatus.presentationProtocolReady === true)) {
+      let shouldRestorePolicy = degradedMarkerRecovered;
+      if (kWinWaylandPresentationHold) {
+        const passive = kWinWaylandPresentationHold.passive === true;
+        kWinWaylandPresentationHold = undefined;
+        shouldRestorePolicy ||= !passive;
+      }
+      if (shouldRestorePolicy) {
+        if (usesStandaloneLinuxHost && syncStatus.active === true) {
+          if (!standaloneLinuxHostDegradedRemapBarrier) {
+            armStandaloneLinuxHostRemapBarrier();
+            applyFailClosedHostPolicy(true);
+          }
+          if (!standaloneLinuxHostMapped) {
+            mapStandaloneLinuxHostInert();
+          }
+          scheduleStandaloneLinuxHostPassiveRemap();
+          return;
+        }
+        const policyConfirmed = syncHostInputMode(degradedMarkerRecovered);
+        if (!policyConfirmed) {
+          hideHostAfterPolicyFailure();
+        }
+        if (!policyConfirmed || !standaloneLinuxHostMapped) {
+          scheduleStandaloneLinuxHostPassiveRemap();
+        }
+      }
+      return;
+    }
+    if (!kWinWaylandPresentationHold) {
+      ensureKWinWaylandPresentationHoldForCurrentState();
+      return;
+    }
+    if (
+      !kWinWaylandPresentationHold.requireNewPair &&
+      lastAcceptedKWinWaylandPresentation &&
+      kWinWaylandPresentationPairNeedsReplacement(lastAcceptedKWinWaylandPresentation)
+    ) {
+      const passive = kWinWaylandPresentationHold.passive === true;
+      kWinWaylandPresentationHold = createKWinWaylandReplacementPresentationHold(
+        kWinWaylandPresentationHold.fullScreen,
+        lastAcceptedKWinWaylandPresentation,
+        kWinWaylandPresentationHold.blockedWindowedSeedSize,
+        kWinWaylandPresentationHold.minimumWindowedSeedBoundsRevision,
+        kWinWaylandPresentationHold.requiredEpoch
+      );
+      if (passive) {
+        applyFailClosedHostPolicy();
+      }
+    }
+    const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+      lastError = error;
+    });
+    if (!electronBounds && !kWinWaylandPresentationHold.fullScreen) {
+      return;
+    }
+    const progress = advanceKWinWaylandPresentationHold(
+      kWinWaylandPresentationHold,
+      electronBounds ? roundedNativeOverlayBounds(electronBounds) : undefined,
+      electronBoundsRevision
+    );
+    if (progress.kind === "seed") {
+      const binding = native();
+      const markerResult = setKWinWaylandOverlayContentSeed(
+        binding,
+        kWinWaylandPresentationHold.requiredEpoch ?? progress.receipt.epoch,
+        progress.receipt,
+        progress.bounds
+      );
+      kWinWaylandContentSeedMarkerActive = markerResult === "strict";
+      return;
+    }
+    if (progress.kind !== "accepted") {
+      return;
+    }
+    const passive = kWinWaylandPresentationHold.passive === true;
+    acceptKWinWaylandPresentation(progress.receipt);
+    kWinWaylandPresentationHold = undefined;
+    if (!passive) {
+      if (!syncHostInputMode()) {
+        hideHostAfterPolicyFailure();
+      }
+    }
+  }
+
   function syncNativeHostFullScreen(force = false): void {
     if (
       !usesStandaloneLinuxHost ||
@@ -10104,39 +12489,242 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+    if (lastNativeHostFullScreen !== fullScreen) {
+      standaloneLinuxHostDegradedRemapSample = undefined;
+      standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+    }
+    const kWinWaylandPresentationSyncActive = isKWinWaylandOverlayPresentationSyncActive();
+    if (kWinWaylandPresentationSyncActive && fullScreen) {
+      const electronBounds = readNativeOverlayBounds(options.getBounds, (error) => {
+        lastError = error;
+      });
+      if (electronBounds) {
+        const normalizedBounds = roundedNativeOverlayBounds(electronBounds);
+        lastKWinWaylandFullScreenElectronSize = {
+          width: normalizedBounds.width,
+          height: normalizedBounds.height
+        };
+        lastKWinWaylandFullScreenElectronRevision = electronBoundsRevision;
+      }
+    }
     if (!force && lastNativeHostFullScreen === fullScreen) {
+      if (kWinWaylandPresentationSyncActive) {
+        ensureKWinWaylandPresentationHoldForCurrentState();
+      }
       return;
+    }
+    const kWinSyncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (
+      lastNativeHostFullScreen !== undefined &&
+      lastNativeHostFullScreen !== fullScreen &&
+      kWinSyncStatus.active === true
+    ) {
+      const presentationState = readNativeOverlayHostPresentationState();
+      const transitionReversesToOrigin = Boolean(
+        presentationState &&
+          standaloneLinuxHostDegradedFullScreenTransitionOrigin &&
+          fullScreen ===
+            standaloneLinuxHostDegradedFullScreenTransitionOrigin.fullScreen &&
+          presentationState.fullScreen === lastNativeHostFullScreen &&
+          sameNativeOverlayHostPresentationGeometry(
+            presentationState,
+            standaloneLinuxHostDegradedFullScreenTransitionOrigin
+          )
+      );
+      if (transitionReversesToOrigin) {
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+        standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+        standaloneLinuxHostDegradedFullScreenReversalPending = true;
+      } else {
+        standaloneLinuxHostDegradedFullScreenReversalPending = false;
+        if (
+          !standaloneLinuxHostDegradedFullScreenTransitionOrigin ||
+          !presentationState ||
+          presentationState.configureCount !==
+            standaloneLinuxHostDegradedFullScreenTransitionOrigin.configureCount
+        ) {
+          standaloneLinuxHostDegradedFullScreenTransitionOrigin =
+            presentationState?.fullScreen === lastNativeHostFullScreen
+              ? presentationState
+              : undefined;
+        }
+        standaloneLinuxHostDegradedFullScreenConfigureBaseline =
+          presentationState?.configureCount;
+        standaloneLinuxHostDegradedFullScreenConfigureRequired = true;
+      }
+    }
+    if (
+      lastNativeHostFullScreen !== fullScreen &&
+      kWinSyncStatus.active === true &&
+      kWinSyncStatus.presentationProtocolReady !== true
+    ) {
+      armStandaloneLinuxHostRemapBarrier();
+      applyFailClosedHostPolicy(true);
+      scheduleStandaloneLinuxHostPassiveRemap();
     }
     const binding = native();
     const setter = binding.setNativeOverlayHostFullScreen;
     if (typeof setter !== "function") {
       return;
     }
+    const kWinWaylandPresentationMarkersSupported =
+      isKWinWaylandOverlayHostIdentityMarkerActive();
+    if (kWinWaylandPresentationMarkersSupported) {
+      if (kWinWaylandPresentationEpoch >= MAX_KWIN_WAYLAND_PRESENTATION_EPOCH) {
+        throw new Error("KWin presentation epoch exhausted.");
+      }
+      kWinWaylandPresentationEpoch += 1;
+    }
+    if (kWinWaylandPresentationSyncActive) {
+      armKWinWaylandPresentationHold(
+        fullScreen,
+        false,
+        kWinWaylandPresentationEpoch
+      );
+    }
     setter.call(binding, fullScreen);
+    // Keep JS aligned with the already-mutated native fullscreen state before
+    // writing the independently fallible strict presentation marker. Any
+    // marker error then bubbles to the presenter fail() path and detaches this
+    // lifetime instead of leaving a divergent live controller.
     lastNativeHostFullScreen = fullScreen;
+    if (kWinWaylandPresentationMarkersSupported) {
+      const markerResult = setKWinWaylandOverlayPresentationEpoch(
+        binding,
+        kWinWaylandPresentationEpoch
+      );
+      kWinWaylandContentSeedMarkerActive = false;
+      if (markerResult !== "strict" && markerResult !== "degraded") {
+        applyFailClosedHostPolicy(true);
+        scheduleStandaloneLinuxHostPassiveRemap();
+      }
+    }
   }
 
-  function showStandaloneLinuxHostForActivation(): void {
+  function showStandaloneLinuxHostForActivation(): boolean {
     if (standaloneLinuxHostRemapTimer) {
       clearTimeout(standaloneLinuxHostRemapTimer);
       standaloneLinuxHostRemapTimer = undefined;
     }
-    if (
-      !usesStandaloneLinuxHost ||
-      standaloneLinuxHostMapped ||
-      !ownsNativeOverlaySurface(surfaceLease) ||
-      !safeBoolean(() => native().isNativeOverlayHostViewOpen())
-    ) {
-      return;
+    if (!usesStandaloneLinuxHost) {
+      return true;
     }
-    syncNativeHostFullScreen();
-    syncNativeHostBounds();
-    native().showNativeOverlayHostView();
-    standaloneLinuxHostMapped = true;
+    if (!ownsNativeOverlaySurface(surfaceLease)) {
+      return false;
+    }
+    let nativeHostOpen: boolean;
+    try {
+      const queriedNativeHostOpen = native().isNativeOverlayHostViewOpen();
+      if (typeof queriedNativeHostOpen !== "boolean") {
+        throw new Error(
+          "Steam Bridge could not determine whether its native overlay host is open."
+        );
+      }
+      nativeHostOpen = queriedNativeHostOpen;
+    } catch (error) {
+      lastError = error;
+      scheduleStandaloneLinuxHostPassiveRemap();
+      return false;
+    }
+    if (!nativeHostOpen) {
+      schedule(0);
+      return false;
+    }
+    if (standaloneLinuxHostMapped) {
+      if (!confirmKWinWaylandPresentationMarkerBeforeMap()) {
+        applyFailClosedHostPolicy(true);
+        scheduleStandaloneLinuxHostPassiveRemap();
+        return false;
+      }
+      if (standaloneLinuxHostDegradedRemapBarrier) {
+        scheduleStandaloneLinuxHostPassiveRemap();
+        return false;
+      }
+      return syncHostInputMode(true);
+    }
+    if (!mapStandaloneLinuxHostInert()) {
+      scheduleStandaloneLinuxHostPassiveRemap();
+      return false;
+    }
+    return !standaloneLinuxHostDegradedRemapBarrier;
+  }
+
+  function mapStandaloneLinuxHostInert(): boolean {
+    if (!usesStandaloneLinuxHost || standaloneLinuxHostMapped) {
+      return true;
+    }
+    const syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (
+      syncStatus.active === true &&
+      !kWinWaylandPresentationHold?.requireNewPair &&
+      !standaloneLinuxHostDegradedRemapBarrier
+    ) {
+      armStandaloneLinuxHostRemapBarrier();
+    }
+    try {
+      syncNativeHostFullScreen();
+      syncNativeHostBounds();
+      if (
+        !applyHostPolicy(true, false, true) ||
+        !confirmKWinWaylandPresentationMarkerBeforeMap()
+      ) {
+        scheduleStandaloneLinuxHostPassiveRemap();
+        return false;
+      }
+      native().showNativeOverlayHostView();
+      standaloneLinuxHostMapped = true;
+      if (standaloneLinuxHostDegradedRemapBarrier) {
+        standaloneLinuxHostDegradedRemapSample = undefined;
+        standaloneLinuxHostDegradedRemapSampleBoundsRevision = undefined;
+        standaloneLinuxHostDegradedRemapMinimumSamplePumpSequence =
+          nativePumpSequence + 1;
+        scheduleStandaloneLinuxHostPassiveRemap();
+      }
+      return true;
+    } catch (error) {
+      lastError = error;
+      standaloneLinuxHostMapped = false;
+      scheduleStandaloneLinuxHostPassiveRemap();
+      return false;
+    }
+  }
+
+  function confirmKWinWaylandPresentationMarkerBeforeMap(): boolean {
+    if (!usesStandaloneLinuxHost) {
+      return true;
+    }
+    let syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    if (
+      syncStatus.ownershipUncertain === true &&
+      syncStatus.reason === "kwin-degraded-marker-unconfirmed"
+    ) {
+      const markerResult = setKWinWaylandOverlayPresentationEpoch(
+        native(),
+        kWinWaylandPresentationEpoch
+      );
+      if (markerResult === "strict" || markerResult === "degraded") {
+        // Marker confirmation is an atomic native park+readback barrier.
+        // Reconcile the JS cache only after that operation succeeds.
+        hostInputPassthrough = true;
+        hostOpaque = false;
+        standaloneLinuxHostActivationCommitPending = false;
+        standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+        standaloneLinuxHostActivationFailedForInputEpoch = false;
+      }
+      syncStatus = getKWinWaylandOverlayHostSyncStatus();
+    }
+    return syncStatus.ownershipUncertain !== true;
   }
 
   function scheduleStandaloneLinuxHostPassiveRemap(): void {
-    if (!usesStandaloneLinuxHost || closed || standaloneLinuxHostMapped) {
+    if (!usesStandaloneLinuxHost || closed) {
+      return;
+    }
+    if (
+      standaloneLinuxHostMapped &&
+      getKWinWaylandOverlayHostSyncStatus().reason !==
+        "kwin-degraded-marker-unconfirmed"
+    ) {
       return;
     }
     if (standaloneLinuxHostRemapTimer) {
@@ -10144,26 +12732,85 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
     standaloneLinuxHostRemapTimer = setTimeout(() => {
       standaloneLinuxHostRemapTimer = undefined;
+      if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+        return;
+      }
+      if (standaloneLinuxHostMapped) {
+        if (standaloneLinuxHostDegradedRemapBarrier) {
+          try {
+            pump();
+          } catch {
+            // pump() has already recorded the error and closed the presenter.
+            return;
+          }
+          if (standaloneLinuxHostDegradedRemapBarrier) {
+            scheduleStandaloneLinuxHostPassiveRemap();
+          }
+          return;
+        }
+        if (!confirmKWinWaylandPresentationMarkerBeforeMap()) {
+          scheduleStandaloneLinuxHostPassiveRemap();
+          return;
+        }
+        if (!syncHostInputMode(true)) {
+          armStandaloneLinuxHostRemapBarrier();
+          standaloneLinuxHostMapped = false;
+          try {
+            native().hideNativeOverlayHostView();
+          } catch (error) {
+            lastError = error;
+          }
+          scheduleStandaloneLinuxHostPassiveRemap();
+          return;
+        }
+        emitStateChange();
+        return;
+      }
+      if (
+        visible &&
+        (overlayActive || activationHoldCount > 0 || hostActivationMode !== "passive")
+      ) {
+        showStandaloneLinuxHostForActivation();
+        return;
+      }
       if (
         closed ||
-        !visible ||
-        overlayActive ||
-        activationHoldCount > 0 ||
-        hostActivationMode !== "passive" ||
-        standaloneLinuxHostMapped ||
-        !ownsNativeOverlaySurface(surfaceLease) ||
-        !safeBoolean(() => native().isNativeOverlayHostViewOpen())
+        !ownsNativeOverlaySurface(surfaceLease)
       ) {
         return;
       }
+      let nativeHostOpen: boolean;
       try {
-        syncNativeHostFullScreen();
-        syncNativeHostBounds();
-        native().showNativeOverlayHostView();
-        standaloneLinuxHostMapped = true;
+        const queriedNativeHostOpen = native().isNativeOverlayHostViewOpen();
+        if (typeof queriedNativeHostOpen !== "boolean") {
+          throw new Error(
+            "Steam Bridge could not determine whether its native overlay host is open."
+          );
+        }
+        nativeHostOpen = queriedNativeHostOpen;
+      } catch (error) {
+        lastError = error;
+        scheduleStandaloneLinuxHostPassiveRemap();
+        return;
+      }
+      if (!nativeHostOpen) {
+        return;
+      }
+      try {
+        if (!mapStandaloneLinuxHostInert()) {
+          return;
+        }
+        if (
+          !standaloneLinuxHostDegradedRemapBarrier &&
+          !syncHostInputMode(true)
+        ) {
+          hideHostAfterPolicyFailure();
+          return;
+        }
         emitStateChange();
       } catch (error) {
         lastError = error;
+        scheduleStandaloneLinuxHostPassiveRemap();
       }
     }, 50);
     standaloneLinuxHostRemapTimer.unref?.();
@@ -10175,8 +12822,27 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     if (usesNativeHostView) {
-      if (!safeBoolean(() => native().isNativeOverlayHostViewOpen())) {
+      let nativeHostOpen: boolean;
+      try {
+        const queriedNativeHostOpen = native().isNativeOverlayHostViewOpen();
+        if (typeof queriedNativeHostOpen !== "boolean") {
+          throw new Error("Steam Bridge could not determine whether its native overlay host is open.");
+        }
+        nativeHostOpen = queriedNativeHostOpen;
+      } catch (error) {
+        lastError = error;
+        return false;
+      }
+      if (!nativeHostOpen) {
+        let presentationMarkerConfirmed = true;
         if (usesStandaloneLinuxHost) {
+          const lease = ensureFreshKWinWaylandOverlayHostSyncLease();
+          if (lease.ownershipUncertain === true) {
+            lastError = new Error(
+              "Steam Bridge could not prove exclusive KWin geometry ownership before attaching its Linux overlay host."
+            );
+            return false;
+          }
           const bounds = readNativeOverlayBounds(options.getBounds);
           if (!bounds) {
             throw new Error(
@@ -10191,20 +12857,102 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
             );
           }
           const fullScreen = safeBoolean(() => options.getFullScreen?.() === true);
+          const attachedKWinStatus = getKWinWaylandOverlayHostSyncStatus();
+          const attachedKWinGeometrySyncActive = attachedKWinStatus.active;
+          const attachedKWinStrictPresentationScript =
+            isKWinWaylandOverlayStrictPresentationScriptLoaded();
+          if (attachedKWinStrictPresentationScript) {
+            // Arm against the pre-attach transport generation so no receipt
+            // from the previous native lifetime can expose this host.
+            armKWinWaylandPresentationHold(fullScreen, true);
+          }
           attachWindow.call(binding, bounds.x, bounds.y, bounds.width, bounds.height, fullScreen);
+          standaloneLinuxHostRequiresInitialDegradedFullScreenConfigure = fullScreen;
+          standaloneLinuxHostDegradedFullScreenConfigureBaseline = undefined;
+          standaloneLinuxHostDegradedFullScreenConfigureRequired = false;
+          standaloneLinuxHostDegradedFullScreenTransitionOrigin = undefined;
+          standaloneLinuxHostDegradedFullScreenReversalPending = false;
+          if (attachedKWinStrictPresentationScript) {
+            const markerResult = setKWinWaylandOverlayPresentationEpoch(
+              binding,
+              kWinWaylandPresentationEpoch
+            );
+            presentationMarkerConfirmed =
+              markerResult === "strict" || markerResult === "degraded";
+            kWinWaylandContentSeedMarkerActive = false;
+          }
           lastNativeHostBounds = bounds;
-          lastNativeHostFullScreen = fullScreen;
-          standaloneLinuxHostMapped = true;
+          // Leave this undefined until syncNativeHostFullScreen() so that an
+          // initial fullscreen attach gets a lifetime-configure hold instead
+          // of looking like an ordinary already-applied transition.
+          lastNativeHostFullScreen = attachedKWinGeometrySyncActive
+            ? fullScreen
+            : undefined;
+          standaloneLinuxHostMapped = false;
+          // A recreated native lifetime starts in these fail-closed defaults.
+          // Reset the JS cache too, or an active old host's cached true/false
+          // values could suppress the eventual release writes on the new one.
+          hostInputPassthrough = true;
+          hostOpaque = false;
+          overlayActiveApplied = undefined;
+          standaloneLinuxHostActivationCommitPending = false;
+          standaloneLinuxHostActivationCommitFailureBaseline = undefined;
+          standaloneLinuxHostActivationFailedForInputEpoch = false;
+          armStandaloneLinuxHostRemapBarrier();
+          // Apply the fail-closed state to the new native lifetime before it
+          // can ever be mapped. The old lifetime may have been interactive,
+          // so its JS cache is not evidence about this replacement surface.
+          presentationMarkerConfirmed =
+            presentationMarkerConfirmed &&
+            setNativeOverlayInputIntentActive(shouldHostAcceptInput(Date.now())) &&
+            applyHostPolicy(true, false, true);
         } else {
-          native().attachNativeOverlayHostView(options.nativeWindowHandle!);
+          const binding = native();
+          const initialBounds = usesAttachedLinuxHost
+            ? readNativeOverlayBounds(options.getBounds, (error) => {
+                lastError = error;
+              })
+            : undefined;
+          const roundedInitialBounds = initialBounds
+            ? roundedNativeOverlayBounds(initialBounds)
+            : undefined;
+          if (roundedInitialBounds) {
+            binding.attachNativeOverlayHostView(
+              options.nativeWindowHandle!,
+              roundedInitialBounds.x,
+              roundedInitialBounds.y,
+              roundedInitialBounds.width,
+              roundedInitialBounds.height
+            );
+          } else {
+            binding.attachNativeOverlayHostView(options.nativeWindowHandle!);
+          }
         }
         nativeSurfaceAttachCount += 1;
         frameCaptureReady = false;
         lastNativeHostBounds = undefined;
-        syncNativeHostFullScreen(true);
+        syncNativeHostFullScreen(
+          usesStandaloneLinuxHost && isKWinWaylandOverlayGeometrySyncActive()
+            ? false
+            : true
+        );
         syncNativeHostBounds(true);
-        if (visible) {
+        if (visible && !usesStandaloneLinuxHost) {
           native().showNativeOverlayHostView();
+        } else if (
+          visible &&
+          presentationMarkerConfirmed &&
+          mapStandaloneLinuxHostInert()
+        ) {
+          if (
+            !kWinWaylandPresentationHold &&
+            !standaloneLinuxHostDegradedRemapBarrier &&
+            !syncHostInputMode(true)
+          ) {
+            hideHostAfterPolicyFailure();
+          }
+        } else if (visible && usesStandaloneLinuxHost) {
+          scheduleStandaloneLinuxHostPassiveRemap();
         }
       }
       return true;
@@ -10254,6 +13002,17 @@ function shouldUseStandaloneLinuxNativeHost(options: {
   );
 }
 
+function shouldUseLinuxNativeApplicationHost(options: {
+  nativeWindowHandle?: Buffer;
+  useLinuxApplicationHost?: boolean;
+}): boolean {
+  return (
+    process.platform === "linux" &&
+    options.useLinuxApplicationHost === true &&
+    !options.nativeWindowHandle
+  );
+}
+
 function resolveWindowsNativeOverlayBackend(): NativeOverlayBackend {
   const requested = String(process.env.STEAM_BRIDGE_WINDOWS_NATIVE_HOST_BACKEND || "")
     .trim()
@@ -10291,6 +13050,522 @@ function normalizeNativeOverlayBounds(bounds: NativeOverlayBounds | undefined): 
   }
 
   return { x, y, width, height };
+}
+
+function roundedNativeOverlayBounds(bounds: NativeOverlayBounds): NativeOverlayBounds {
+  return {
+    x: Math.round(bounds.x),
+    y: Math.round(bounds.y),
+    width: Math.max(1, Math.round(bounds.width)),
+    height: Math.max(1, Math.round(bounds.height))
+  };
+}
+
+function nativeOverlayBoundsEqual(left: NativeOverlayBounds, right: NativeOverlayBounds): boolean {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
+function nativeOverlayBoundsSizeEqual(left: NativeOverlayBounds, right: NativeOverlayBounds): boolean {
+  return left.width === right.width && left.height === right.height;
+}
+
+const KWIN_WAYLAND_PRESENTATION_TOLERANCE = 1;
+const MAX_KWIN_WAYLAND_PRESENTATION_EPOCH = 0xffff_ffff;
+
+function isKWinWaylandOverlayGeometrySyncActive(): boolean {
+  return getKWinWaylandOverlayHostSyncStatus().active;
+}
+
+function isKWinWaylandOverlayPresentationSyncActive(): boolean {
+  const status = getKWinWaylandOverlayHostSyncStatus();
+  return status.active && status.presentationProtocolReady === true;
+}
+
+function isKWinWaylandOverlayHostIdentityMarkerActive(): boolean {
+  const status = getKWinWaylandOverlayHostSyncStatus();
+  return status.active &&
+    status.ownershipUncertain !== true &&
+    status.hostIdentityMarkerReady === true;
+}
+
+function setKWinWaylandOverlayPresentationEpoch(
+  binding: NativeBinding,
+  epoch: number
+): KWinWaylandPresentationMarkerWriteResult {
+  const setter = binding.setNativeOverlayHostPresentationEpoch;
+  if (typeof setter !== "function") {
+    throw new Error(
+      "The loaded Steam Bridge native payload does not support KWin presentation epochs."
+    );
+  }
+  return writeKWinWaylandOverlayHostPresentationMarker(
+    binding,
+    (instanceId) => setter.call(binding, instanceId, epoch)
+  );
+}
+
+function setKWinWaylandOverlayContentSeed(
+  binding: NativeBinding,
+  epoch: number,
+  receipt: KWinWaylandOverlayPresentationConvergedState,
+  bounds: NativeOverlayBounds
+): KWinWaylandPresentationMarkerWriteResult {
+  const setter = binding.setNativeOverlayHostContentSeed;
+  if (typeof setter !== "function") {
+    throw new Error(
+      "The loaded Steam Bridge native payload does not support KWin content-seed markers."
+    );
+  }
+  if (
+    receipt.pairGeneration > 0xffff_ffff ||
+    receipt.sequence > 0xffff_ffff
+  ) {
+    throw new Error("KWin presentation receipt counter exceeds the native marker range.");
+  }
+  return writeKWinWaylandOverlayHostPresentationMarker(
+    binding,
+    (instanceId) => setter.call(
+      binding,
+      instanceId,
+      epoch,
+      receipt.pairGeneration,
+      receipt.sequence,
+      receipt.sourceBounds.x,
+      receipt.sourceBounds.y,
+      receipt.sourceBounds.width,
+      receipt.sourceBounds.height,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height
+    )
+  );
+}
+
+function nativeOverlayBoundsWithinTolerance(
+  left: NativeOverlayBounds,
+  right: NativeOverlayBounds,
+  tolerance = KWIN_WAYLAND_PRESENTATION_TOLERANCE
+): boolean {
+  return (
+    Math.abs(left.x - right.x) <= tolerance &&
+    Math.abs(left.y - right.y) <= tolerance &&
+    Math.abs((left.x + left.width) - (right.x + right.width)) <= tolerance &&
+    Math.abs((left.y + left.height) - (right.y + right.height)) <= tolerance
+  );
+}
+
+function nativeOverlayBoundsSizeWithinTolerance(
+  left: NativeOverlayBounds,
+  right: NativeOverlayBounds,
+  tolerance = KWIN_WAYLAND_PRESENTATION_TOLERANCE
+): boolean {
+  return (
+    Math.abs(left.width - right.width) <= tolerance &&
+    Math.abs(left.height - right.height) <= tolerance
+  );
+}
+
+function kWinWaylandContentSizeCompatible(
+  sourceBounds: NativeOverlayBounds,
+  electronContentBounds: NativeOverlayBounds
+): boolean {
+  const sourceWidth = Math.max(
+    1,
+    Math.round(sourceBounds.x + sourceBounds.width) - Math.round(sourceBounds.x)
+  );
+  const sourceHeight = Math.max(
+    1,
+    Math.round(sourceBounds.y + sourceBounds.height) - Math.round(sourceBounds.y)
+  );
+  const right = sourceWidth - electronContentBounds.width;
+  const top = sourceHeight - electronContentBounds.height;
+  return (
+    right >= -KWIN_WAYLAND_PRESENTATION_TOLERANCE &&
+    top >= -KWIN_WAYLAND_PRESENTATION_TOLERANCE &&
+    right <= 256 &&
+    top <= 256 &&
+    electronContentBounds.width > 0 &&
+    electronContentBounds.height > 0
+  );
+}
+
+function kWinWaylandNativeContentSeedBounds(
+  sourceBounds: NativeOverlayBounds,
+  electronContentBounds: NativeOverlayBounds
+): NativeOverlayBounds | undefined {
+  if (!kWinWaylandContentSizeCompatible(sourceBounds, electronContentBounds)) {
+    return undefined;
+  }
+  const sourceLeft = Math.round(sourceBounds.x);
+  const sourceRight = Math.round(sourceBounds.x + sourceBounds.width);
+  const sourceBottom = Math.round(sourceBounds.y + sourceBounds.height);
+  const sourceWidth = Math.max(1, sourceRight - sourceLeft);
+  const sourceHeight = Math.max(1, sourceBottom - Math.round(sourceBounds.y));
+  const width = Math.max(1, Math.min(sourceWidth, electronContentBounds.width));
+  const height = Math.max(1, Math.min(sourceHeight, electronContentBounds.height));
+  // Electron's Wayland content origin and KWin's X11 root coordinates are not
+  // interchangeable. Anchor to the compositor-authoritative source client's
+  // left and bottom edges, then use only Electron's current content size. A
+  // one-pixel overshoot from independent fractional-scale rounding is clamped
+  // to the source instead of making a safe restore impossible.
+  return {
+    x: sourceLeft,
+    y: sourceBottom - height,
+    width,
+    height
+  };
+}
+
+interface KWinWaylandPresentationHold {
+  minimumGeneration: number;
+  minimumPairGeneration: number;
+  requiredPairId: string | undefined;
+  requireNewPair: boolean;
+  fullScreen: boolean;
+  passive?: boolean;
+  requiredEpoch?: number;
+  blockedWindowedSeedSize?: Readonly<{ width: number; height: number }>;
+  minimumWindowedSeedBoundsRevision?: number;
+}
+
+function createKWinWaylandAttachPresentationHold(
+  fullScreen: boolean,
+  lastAccepted?: KWinWaylandOverlayPresentationConvergedState
+): KWinWaylandPresentationHold {
+  const state = getKWinWaylandOverlayPresentationState();
+  const baselineGeneration = state?.generation ?? 0;
+  return {
+    minimumGeneration: baselineGeneration,
+    minimumPairGeneration: Math.max(
+      state?.pairGeneration ?? 0,
+      lastAccepted?.pairGeneration ?? 0
+    ),
+    requiredPairId: undefined,
+    requireNewPair: true,
+    fullScreen
+  };
+}
+
+function createKWinWaylandTransitionPresentationHold(
+  fullScreen: boolean,
+  lastAccepted?: KWinWaylandOverlayPresentationConvergedState,
+  blockedWindowedSeedSize?: Readonly<{ width: number; height: number }>,
+  minimumWindowedSeedBoundsRevision?: number,
+  requiredEpoch?: number
+): KWinWaylandPresentationHold {
+  if (!lastAccepted) {
+    return createKWinWaylandAttachPresentationHold(fullScreen);
+  }
+  return {
+    // Baseline from the last receipt this state machine accepted, not from the
+    // newest transport event. This deliberately admits KWin-before-bridge
+    // convergence that arrived between pumps.
+    minimumGeneration: lastAccepted.generation,
+    minimumPairGeneration: lastAccepted.pairGeneration,
+    requiredPairId: lastAccepted.pairId,
+    requireNewPair: false,
+    fullScreen,
+    ...(requiredEpoch !== undefined ? { requiredEpoch } : {}),
+    ...(!fullScreen && blockedWindowedSeedSize ? { blockedWindowedSeedSize } : {}),
+    ...(!fullScreen && minimumWindowedSeedBoundsRevision !== undefined
+      ? { minimumWindowedSeedBoundsRevision }
+      : {})
+  };
+}
+
+function createKWinWaylandReplacementPresentationHold(
+  fullScreen: boolean,
+  lastAccepted: KWinWaylandOverlayPresentationConvergedState,
+  blockedWindowedSeedSize?: Readonly<{ width: number; height: number }>,
+  minimumWindowedSeedBoundsRevision?: number,
+  requiredEpoch = lastAccepted.epoch
+): KWinWaylandPresentationHold {
+  return {
+    // A replacement may already have converged by the time the JS pump sees
+    // the invalidation. Baseline the accepted old pair, never the latest
+    // transport snapshot, so that coalesced pair n+1 remains admissible.
+    minimumGeneration: lastAccepted.generation,
+    minimumPairGeneration: lastAccepted.pairGeneration,
+    requiredPairId: undefined,
+    requireNewPair: true,
+    fullScreen,
+    requiredEpoch,
+    ...(!fullScreen && blockedWindowedSeedSize ? { blockedWindowedSeedSize } : {}),
+    ...(!fullScreen && minimumWindowedSeedBoundsRevision !== undefined
+      ? { minimumWindowedSeedBoundsRevision }
+      : {})
+  };
+}
+
+function kWinWaylandPresentationPairNeedsReplacement(
+  lastAccepted: KWinWaylandOverlayPresentationConvergedState
+): boolean {
+  const latest = getKWinWaylandOverlayPresentationState();
+  return Boolean(
+    latest &&
+      (
+        latest.pairGeneration > lastAccepted.pairGeneration ||
+        (
+          latest.kind === "invalidated" &&
+          latest.pairGeneration === lastAccepted.pairGeneration &&
+          latest.pairId === lastAccepted.pairId
+        )
+      )
+  );
+}
+
+interface NativeOverlayHostPresentationState {
+  configureCount: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  bounds: NativeOverlayBounds;
+  fullScreen: boolean;
+  mapped: boolean;
+}
+
+interface NativeOverlayHostActivationState {
+  inputPassthrough: boolean;
+  opaque: boolean;
+  inputActivationPrepared: boolean;
+  inputActivationCommitPending: boolean;
+  activationCommitFailed: boolean;
+  activationCommitFailureCount: number;
+}
+
+function readNativeOverlayHostActivationState(): NativeOverlayHostActivationState | undefined {
+  const diagnostics = getNativeOverlayHostDiagnostics();
+  if (
+    typeof diagnostics?.inputPassthrough !== "boolean" ||
+    typeof diagnostics?.opaque !== "boolean" ||
+    typeof diagnostics?.inputActivationPrepared !== "boolean" ||
+    typeof diagnostics?.inputActivationCommitPending !== "boolean" ||
+    typeof diagnostics?.activationCommitFailed !== "boolean" ||
+    typeof diagnostics?.activationCommitFailureCount !== "number" ||
+    !Number.isSafeInteger(diagnostics.activationCommitFailureCount) ||
+    diagnostics.activationCommitFailureCount < 0
+  ) {
+    return undefined;
+  }
+  return {
+    inputPassthrough: diagnostics.inputPassthrough,
+    opaque: diagnostics.opaque,
+    inputActivationPrepared: diagnostics.inputActivationPrepared,
+    inputActivationCommitPending: diagnostics.inputActivationCommitPending,
+    activationCommitFailed: diagnostics.activationCommitFailed,
+    activationCommitFailureCount: diagnostics.activationCommitFailureCount
+  };
+}
+
+function readNativeOverlayHostPresentationState(): NativeOverlayHostPresentationState | undefined {
+  const diagnostics = getNativeOverlayHostDiagnostics();
+  const viewportSize = diagnostics?.viewportSize;
+  const bounds = normalizeNativeOverlayBounds(
+    diagnostics?.bounds && typeof diagnostics.bounds === "object"
+      ? (diagnostics.bounds as NativeOverlayBounds)
+      : undefined
+  );
+  if (
+    !viewportSize ||
+    typeof viewportSize !== "object" ||
+    !bounds ||
+    typeof diagnostics?.fullScreen !== "boolean" ||
+    typeof diagnostics?.mapped !== "boolean" ||
+    typeof diagnostics?.configureCount !== "number" ||
+    !Number.isSafeInteger(diagnostics.configureCount) ||
+    diagnostics.configureCount < 0
+  ) {
+    return undefined;
+  }
+  const viewport = viewportSize as Record<string, unknown>;
+  if (
+    typeof viewport.width !== "number" ||
+    !Number.isFinite(viewport.width) ||
+    typeof viewport.height !== "number" ||
+    !Number.isFinite(viewport.height)
+  ) {
+    return undefined;
+  }
+  return {
+    configureCount: diagnostics.configureCount,
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
+    bounds: roundedNativeOverlayBounds(bounds),
+    fullScreen: diagnostics.fullScreen,
+    mapped: diagnostics.mapped
+  };
+}
+
+function sameNativeOverlayHostPresentationState(
+  left: NativeOverlayHostPresentationState,
+  right: NativeOverlayHostPresentationState
+): boolean {
+  return (
+    left.mapped === right.mapped &&
+    left.configureCount === right.configureCount &&
+    left.fullScreen === right.fullScreen &&
+    left.viewportWidth === right.viewportWidth &&
+    left.viewportHeight === right.viewportHeight &&
+    left.bounds.x === right.bounds.x &&
+    left.bounds.y === right.bounds.y &&
+    left.bounds.width === right.bounds.width &&
+    left.bounds.height === right.bounds.height
+  );
+}
+
+function sameNativeOverlayHostPresentationGeometry(
+  left: NativeOverlayHostPresentationState,
+  right: NativeOverlayHostPresentationState
+): boolean {
+  return (
+    left.mapped === right.mapped &&
+    left.configureCount === right.configureCount &&
+    left.viewportWidth === right.viewportWidth &&
+    left.viewportHeight === right.viewportHeight &&
+    left.bounds.x === right.bounds.x &&
+    left.bounds.y === right.bounds.y &&
+    left.bounds.width === right.bounds.width &&
+    left.bounds.height === right.bounds.height
+  );
+}
+
+function sameNativeOverlayHostDrawableGeometry(
+  left: NativeOverlayHostPresentationState,
+  right: NativeOverlayHostPresentationState
+): boolean {
+  return (
+    left.mapped === right.mapped &&
+    left.viewportWidth === right.viewportWidth &&
+    left.viewportHeight === right.viewportHeight &&
+    left.bounds.x === right.bounds.x &&
+    left.bounds.y === right.bounds.y &&
+    left.bounds.width === right.bounds.width &&
+    left.bounds.height === right.bounds.height
+  );
+}
+
+function nativeOverlayHostDrawableMatchesBounds(
+  state: NativeOverlayHostPresentationState | undefined
+): state is NativeOverlayHostPresentationState {
+  return Boolean(
+    state &&
+      state.viewportWidth === state.bounds.width &&
+      state.viewportHeight === state.bounds.height
+  );
+}
+
+function kWinWaylandReceiptMatchesCurrentPresentation(
+  receipt: KWinWaylandOverlayPresentationConvergedState,
+  fullScreen: boolean,
+  electronBounds?: NativeOverlayBounds
+): NativeOverlayHostPresentationState | undefined {
+  const state = readNativeOverlayHostPresentationState();
+  if (
+    !nativeOverlayHostDrawableMatchesBounds(state) ||
+    state.fullScreen !== fullScreen ||
+    receipt.fullScreen !== fullScreen ||
+    !nativeOverlayBoundsWithinTolerance(state.bounds, receipt.target)
+  ) {
+    return undefined;
+  }
+  if (fullScreen) {
+    // Electron's Wayland getContentBounds() can remain at the pre-fullscreen
+    // 1280x768 sample while KWin and the Xwayland drawable are authoritatively
+    // converged at 1280x800. Fullscreen has no independent content seed, so
+    // trust only a source==target compositor receipt plus the native triple.
+    if (!nativeOverlayBoundsWithinTolerance(receipt.sourceBounds, receipt.target)) {
+      return undefined;
+    }
+  } else if (
+    !electronBounds ||
+    !nativeOverlayBoundsSizeWithinTolerance(electronBounds, receipt.target)
+  ) {
+    return undefined;
+  }
+  return state;
+}
+
+function kWinWaylandNewReceiptForHold(
+  hold: KWinWaylandPresentationHold
+): KWinWaylandOverlayPresentationConvergedState | undefined {
+  const state = getKWinWaylandOverlayPresentationState();
+  if (
+    !state ||
+    state.kind !== "converged" ||
+    state.generation <= hold.minimumGeneration ||
+    state.fullScreen !== hold.fullScreen ||
+    (hold.requiredEpoch !== undefined && state.epoch !== hold.requiredEpoch)
+  ) {
+    return undefined;
+  }
+  if (hold.requireNewPair) {
+    return state.pairGeneration > hold.minimumPairGeneration ? state : undefined;
+  }
+  return state.pairId === hold.requiredPairId ? state : undefined;
+}
+
+type KWinWaylandPresentationProgress =
+  | { kind: "waiting" }
+  | { kind: "accepted"; receipt: KWinWaylandOverlayPresentationConvergedState }
+  | {
+      kind: "seed";
+      bounds: NativeOverlayBounds;
+      receipt: KWinWaylandOverlayPresentationConvergedState;
+    };
+
+function advanceKWinWaylandPresentationHold(
+  hold: KWinWaylandPresentationHold,
+  electronBounds?: NativeOverlayBounds,
+  electronBoundsRevision?: number
+): KWinWaylandPresentationProgress {
+  const receipt = kWinWaylandNewReceiptForHold(hold);
+  if (receipt) {
+    const blockedUnchangedWindowedSample = Boolean(
+      !hold.fullScreen &&
+      electronBounds &&
+      hold.blockedWindowedSeedSize?.width === electronBounds.width &&
+      hold.blockedWindowedSeedSize.height === electronBounds.height &&
+      (
+        hold.minimumWindowedSeedBoundsRevision === undefined ||
+        electronBoundsRevision === undefined ||
+        electronBoundsRevision <= hold.minimumWindowedSeedBoundsRevision
+      )
+    );
+    if (blockedUnchangedWindowedSample) {
+      // getContentBounds() can retain the last fullscreen sample while KWin
+      // has already restored at a different resolution or with a different
+      // menu/DPI inset. Neither a matching zero-inset receipt nor a prior
+      // inset prediction proves this sample is current. Only a later
+      // content-size-authoritative Electron event may re-authorize it.
+      return { kind: "waiting" };
+    }
+    if (kWinWaylandReceiptMatchesCurrentPresentation(receipt, hold.fullScreen, electronBounds)) {
+      return { kind: "accepted", receipt };
+    }
+    if (
+      !hold.fullScreen &&
+      electronBounds !== undefined &&
+      !nativeOverlayBoundsSizeWithinTolerance(electronBounds, receipt.target)
+    ) {
+      const seedBounds = kWinWaylandNativeContentSeedBounds(
+        receipt.sourceBounds,
+        electronBounds
+      );
+      if (seedBounds) {
+        // A seed changes KWin's computed target. Require the receipt emitted
+        // after that write; the receipt that motivated it cannot release us.
+        hold.minimumGeneration = receipt.generation;
+        return { kind: "seed", bounds: seedBounds, receipt };
+      }
+    }
+    return { kind: "waiting" };
+  }
+  return { kind: "waiting" };
 }
 
 function readMacOverlayEnvironment(onError?: (error: unknown) => void): MacOverlayEnvironment | undefined {
@@ -10844,19 +14119,28 @@ function createElectronSteamOverlayWithLease(
   const restoreFocusDelayMs = Math.max(0, finiteNumber(presenterOptions.restoreFocusDelayMs, 0));
   const activationBoostMs = Math.max(0, finiteNumber(presenterOptions.activationBoostMs, 0));
   const activeGraceMs = Math.max(0, finiteNumber(presenterOptions.activeGraceMs, 0));
+  const tracksDisplayFrameRate =
+    presenterOptions.activeOverlayFps === undefined &&
+    presenterOptions.needsPresentFps === undefined;
   const managedPresenterOptions = {
     ...presenterOptions,
     restoreFocusDelayMs,
     activationBoostMs,
     activeGraceMs
   };
-  const shouldUseDirectPresenter = process.platform === "win32" && presenterMode === "session";
+  const usesStandaloneLinuxOverlayHost = electronUsesStandaloneLinuxOverlayHost();
+  const shouldUseDirectPresenter =
+    (process.platform === "win32" && presenterMode === "session") ||
+    (
+      process.platform === "linux" &&
+      !usesStandaloneLinuxOverlayHost &&
+      parseBooleanEnvironment(process.env.STEAM_BRIDGE_EXPERIMENTAL_LINUX_DIRECT_PRESENTER) === true
+    );
   // Steam's Linux overlay hooks require the native Xwayland surface to exist
   // before activation. Creating that GLX surface on demand from an injected
   // native-Wayland Electron process can crash inside Steam's hook. Keep the
   // requested session lifecycle at the controller boundary, but back it with
   // the already-proven persistent presenter on this one platform path.
-  const usesStandaloneLinuxOverlayHost = electronUsesStandaloneLinuxOverlayHost();
   const shouldPromoteWaylandSessionPresenter = presenterMode === "session" && usesStandaloneLinuxOverlayHost;
   const effectivePresenterMode: ElectronSteamOverlayPresenterMode =
     shouldPromoteWaylandSessionPresenter ? "persistent" : presenterMode;
@@ -10876,6 +14160,9 @@ function createElectronSteamOverlayWithLease(
               restoreFocusDelayMs: managedPresenterOptions.restoreFocusDelayMs
             }))
           : attachOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions));
+  if (tracksDisplayFrameRate) {
+    syncElectronSteamOverlayDisplayFrameRate(window, presenter);
+  }
   let removeShortcutListener: (() => void) | undefined;
   let removeWindowSyncListeners: (() => void) | undefined;
   let removeWindowClosedListener: (() => void) | undefined;
@@ -11675,7 +14962,12 @@ function createElectronSteamOverlayWithLease(
       }
     });
 
-    removeWindowSyncListeners = installElectronSteamOverlayWindowSync(window, controller, effectivePresenterMode);
+    removeWindowSyncListeners = installElectronSteamOverlayWindowSync(
+      window,
+      controller,
+      effectivePresenterMode,
+      tracksDisplayFrameRate
+    );
     removeShortcutListener = installElectronSteamOverlayShortcut(window, controller, shortcut, shortcutOpenState);
     if (autoPrepareForNotifications) {
       notificationPresenterHandle = registerElectronNotificationPresenter(presenter);
@@ -11996,6 +15288,10 @@ function createDirectSteamOverlayPresenter(options: NativeOverlayPresenterOption
       refreshDiagnostics();
       emitStateChange();
     },
+    notifyBoundsChanged(): void {},
+    setFrameRate(frameRate: number): void {
+      normalizeNativeOverlayFrameRate(frameRate);
+    },
     prepareForOverlay(): void {
       prepareForActivation("interactive");
     },
@@ -12169,6 +15465,7 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
   let lastSessionSnapshot: NativeOverlaySessionSnapshot | undefined;
   let lastError: unknown;
   let closeReason: NativeOverlaySurfaceCloseReason | undefined;
+  let frameRateOverride: number | undefined;
   const stateListeners = new Set<() => void>();
 
   const ensureSession = (): NativeOverlaySessionInternal => {
@@ -12181,7 +15478,9 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const nextSession = startNativeOverlaySession({
         ...options,
         title,
-        pumpIntervalMs
+        ...(frameRateOverride === undefined
+          ? { pumpIntervalMs }
+          : { frameRate: frameRateOverride, pumpIntervalMs: undefined })
       }) as NativeOverlaySessionInternal;
       session = nextSession;
       try {
@@ -12238,6 +15537,14 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
         lastSessionSnapshot = activeSession.snapshot();
       }
     },
+    setFrameRate(nextFrameRate: number): void {
+      frameRateOverride = normalizeNativeOverlayFrameRate(nextFrameRate);
+      session?.setFrameRate(frameRateOverride);
+      if (session) {
+        lastSessionSnapshot = session.snapshot();
+      }
+      emitStateChange();
+    },
     prepareForOverlay: prepare,
     prepareForPassiveOverlay: prepare,
     beginOverlayActivation(): CallbackHandle {
@@ -12273,8 +15580,12 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
       const overlayNeedsPresentPollingEnabled =
         diagnostics?.overlayNeedsPresentPollingEnabled ?? safeBoolean(() => isOverlayNeedsPresentPollingEnabled());
       const active = attached && (overlayActive || overlayNeedsPresent);
-      const fps = snapshot?.frameRate ?? resolveNativeOverlayFrameRate(options);
-      const activePumpIntervalMs = snapshot?.pumpIntervalMs ?? pumpIntervalMs;
+      const fps = snapshot?.frameRate ?? frameRateOverride ?? resolveNativeOverlayFrameRate(options);
+      const activePumpIntervalMs = snapshot?.pumpIntervalMs ?? (
+        frameRateOverride === undefined
+          ? pumpIntervalMs
+          : nativeOverlayPumpIntervalForFrameRate(frameRateOverride)
+      );
       const bounds = closed ? undefined : snapshot?.bounds;
       return {
         title,
@@ -12312,7 +15623,10 @@ function createNativeOverlaySessionPresenter(options: NativeOverlaySessionOption
         diagnostics
       };
     },
-    onStateChange: subscribeStateChange
+    onStateChange: subscribeStateChange,
+    notifyBoundsChanged(): void {
+      session?.notifyBoundsChanged();
+    }
   };
 
   return presenter;
@@ -12365,6 +15679,9 @@ const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEv
   // Electron emits `move` and `resize` continuously inside Windows' modal
   // move/size loop. Pumping D3D and repositioning an owned presenter from
   // those callbacks can re-enter that loop and hang the browser process.
+  // Linux also leaves `move` to KWin's compositor-paired path; the managed
+  // RandR cadence poll handles output changes without adding a hot JS pump
+  // during interactive dragging.
   "moved",
   "resized",
   "maximize",
@@ -12381,10 +15698,21 @@ const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEv
   "leave-html-full-screen"
 ];
 
+const ELECTRON_STEAM_OVERLAY_BOUNDS_AUTHORITATIVE_EVENTS = new Set<
+  ElectronOverlayWindowGeometryEvent
+>([
+  // Electron's `resized` event is the post-resize boundary on macOS/Windows.
+  // Fullscreen, restore, focus, visibility, and position events deliberately
+  // do not authorize an unchanged fullscreen-sized getContentBounds() sample:
+  // on Wayland that sample can still be stale until a later resize commit.
+  "resized"
+]);
+
 function installElectronSteamOverlayWindowSync(
   window: ElectronOverlayWindow,
   controller: ElectronSteamOverlay,
-  presenterMode: ElectronSteamOverlayPresenterMode
+  presenterMode: ElectronSteamOverlayPresenterMode,
+  tracksDisplayFrameRate: boolean
 ): (() => void) | undefined {
   if (presenterMode !== "persistent" || typeof window.on !== "function") {
     return undefined;
@@ -12395,6 +15723,9 @@ function installElectronSteamOverlayWindowSync(
       return;
     }
     try {
+      if (tracksDisplayFrameRate) {
+        syncElectronSteamOverlayDisplayFrameRate(window, controller.presenter);
+      }
       controller.pump();
     } catch (error) {
       process.emitWarning(error instanceof Error ? error : String(error), {
@@ -12455,13 +15786,25 @@ function installElectronSteamOverlayWindowSync(
   };
   const registeredHandlers = new Map<ElectronOverlayWindowGeometryEvent, () => void>();
   try {
-    for (const event of ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS) {
-      const handler =
+    const syncEvents = process.platform === "linux"
+      ? [...ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS, "resize" as const]
+      : ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS;
+    for (const event of syncEvents) {
+      const action =
         standaloneLinuxHost && (event === "minimize" || event === "hide")
           ? hideStandaloneLinuxHost
           : standaloneLinuxHost && (event === "restore" || event === "show")
             ? showStandaloneLinuxHost
             : sync;
+      const handler = (): void => {
+        if (
+          ELECTRON_STEAM_OVERLAY_BOUNDS_AUTHORITATIVE_EVENTS.has(event) ||
+          (process.platform === "linux" && event === "resize")
+        ) {
+          controller.presenter.notifyBoundsChanged();
+        }
+        action();
+      };
       registeredHandlers.set(event, handler);
       window.on(event, handler);
     }
@@ -12482,16 +15825,47 @@ function installElectronSteamOverlayWindowSync(
       ? setInterval(reconcileStandaloneLinuxWindowState, 100)
       : undefined;
   standaloneLinuxStatePoll?.unref?.();
+  const displayFrameRatePoll = tracksDisplayFrameRate
+    ? setInterval(() => {
+        if (controller.isOpen()) {
+          syncElectronSteamOverlayDisplayFrameRate(window, controller.presenter);
+        }
+      }, 1000)
+    : undefined;
+  displayFrameRatePoll?.unref?.();
   reconcileStandaloneLinuxWindowState();
 
   return () => {
     if (standaloneLinuxStatePoll !== undefined) {
       clearInterval(standaloneLinuxStatePoll);
     }
+    if (displayFrameRatePoll !== undefined) {
+      clearInterval(displayFrameRatePoll);
+    }
     for (const [event, handler] of registeredHandlers) {
       removeElectronSteamOverlayWindowListener(window, event, handler);
     }
   };
+}
+
+function syncElectronSteamOverlayDisplayFrameRate(
+  window: ElectronOverlayWindow,
+  presenter: NativeOverlayPresenter
+): void {
+  const nativeDisplayRefreshRate = (): number | undefined => {
+    const value = presenter.snapshot().nativeHostDiagnostics?.displayRefreshRate;
+    return typeof value === "number" && Number.isFinite(value) && value > 0
+      ? value
+      : undefined;
+  };
+  const frameRate = resolveManagedOverlayDisplayFrameRate(
+    electronUsesStandaloneLinuxOverlayHost(),
+    electronWindowDisplayFrameRate(window),
+    nativeDisplayRefreshRate()
+  );
+  if (frameRate !== undefined) {
+    presenter.setFrameRate(frameRate);
+  }
 }
 
 function removeElectronSteamOverlayWindowListener(

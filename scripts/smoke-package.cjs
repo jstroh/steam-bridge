@@ -642,6 +642,20 @@ function runWindowsSmokeHelperStaticChecks() {
       releaseWorkflow.includes("--bundle-archive"),
     "Release workflow must gate the fully assembled publish tarball in a Windows electron-builder ASAR package"
   );
+  const releaseInstallIndex = releaseWorkflow.indexOf("- run: npm ci");
+  const releaseTestIndex = releaseWorkflow.indexOf("run: npm test", releaseInstallIndex);
+  const releaseNativeBuildIndex = releaseWorkflow.indexOf("npx napi build", releaseTestIndex);
+  assert.ok(
+    releaseInstallIndex >= 0 &&
+      releaseTestIndex > releaseInstallIndex &&
+      releaseNativeBuildIndex > releaseTestIndex,
+    "Every Release prebuild matrix leg must pass npm test before native packaging"
+  );
+  assert.match(
+    releaseWorkflow,
+    /permissions:\s*\n\s+contents: read/,
+    "Release workflow must keep its token at contents-read permission"
+  );
   for (const expected of [
     "Restore proved runtime payload for documentation-only v0.1.6",
     "documentation-only-previous",
@@ -663,9 +677,21 @@ function runWindowsSmokeHelperStaticChecks() {
     "Release workflow must not fabricate a live-proof receipt before Windows live testing"
   );
   for (const expected of [
+    "actions: read",
+    "contents: read",
     "id-token: write",
     "environment: npm-production",
     'test "$GITHUB_REF_TYPE" = "tag"',
+    'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+    "Verify exact tag commit passed CI",
+    "actions/workflows/ci.yml/runs",
+    '-f branch="$RELEASE_TAG"',
+    '-f head_sha="$GITHUB_SHA"',
+    "run.head_branch === process.env.RELEASE_TAG",
+    "run.head_sha === process.env.GITHUB_SHA",
+    'run.event === "push"',
+    'run.status === "completed"',
+    'run.conclusion === "success"',
     "npm run release:publish-candidate",
     "--live-proof-receipt windows-live-proof-receipt.json",
     "previous_release_tag",
@@ -676,6 +702,15 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(publishWorkflow.includes(expected), `Publish workflow missing ${expected}`);
   }
+  const matchingCiGateIndex = publishWorkflow.indexOf("- name: Verify exact tag commit passed CI");
+  const candidateDownloadIndex = publishWorkflow.indexOf("- name: Download exact audited candidate");
+  const npmPublishIndex = publishWorkflow.indexOf("- name: Publish exact verified bytes");
+  assert.ok(
+    matchingCiGateIndex >= 0 &&
+      candidateDownloadIndex > matchingCiGateIndex &&
+      npmPublishIndex > candidateDownloadIndex,
+    "Publish workflow must prove matching tag CI before downloading or publishing the candidate"
+  );
   assert.doesNotMatch(
     publishWorkflow,
     /NPM_TOKEN|NODE_AUTH_TOKEN/,

@@ -56,6 +56,33 @@ jobs:
           test "$(gh run view "$RELEASE_RUN_ID" --json conclusion --jq .conclusion)" = "success"
           test "$(gh run view "$RELEASE_RUN_ID" --json headBranch --jq .headBranch)" = "$RELEASE_TAG"
           test "$(gh run view "$RELEASE_RUN_ID" --json headSha --jq .headSha)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Verify exact tag commit passed CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          successful_ci_runs="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f branch="$RELEASE_TAG" \
+              -f event=push \
+              -f head_sha="$GITHUB_SHA" \
+              -f status=success \
+              -F per_page=100 \
+            | node -e '
+                const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+                const count = payload.workflow_runs.filter((run) =>
+                  run.head_branch === process.env.RELEASE_TAG &&
+                  run.head_sha === process.env.GITHUB_SHA &&
+                  run.event === "push" &&
+                  run.status === "completed" &&
+                  run.conclusion === "success"
+                ).length;
+                process.stdout.write(String(count));
+              '
+          )"
+          test "$successful_ci_runs" -ge 1
       - name: Download exact audited candidate
         env:
           GH_TOKEN: ${{ github.token }}

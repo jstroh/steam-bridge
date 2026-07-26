@@ -10,6 +10,47 @@ export interface NativeCallbackHandle {
   disconnect(): void;
 }
 
+export interface NativeKWinWaylandOverlayGeometry {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface NativeKWinWaylandOverlayResizeStateEvent {
+  readonly kind: "resizeState";
+  readonly sourceId: string;
+  readonly sequence: number;
+  readonly paired: boolean;
+  readonly active: boolean;
+}
+
+export interface NativeKWinWaylandOverlayPresentationStateEvent {
+  readonly kind: "presentationState";
+  readonly pairId: string;
+  readonly sequence: number;
+  readonly epoch: number;
+  readonly fullScreen: boolean;
+  readonly sourceBounds: NativeKWinWaylandOverlayGeometry;
+  readonly target: NativeKWinWaylandOverlayGeometry;
+}
+
+export interface NativeKWinWaylandOverlayPresentationInvalidationEvent {
+  readonly kind: "presentationStateInvalidated";
+  readonly pairId: string;
+  readonly sequence: number;
+}
+
+export interface NativeKWinWaylandOverlayTransportClosedEvent {
+  readonly kind: "transportClosed";
+}
+
+export type NativeKWinWaylandOverlayHostSyncEvent =
+  | NativeKWinWaylandOverlayResizeStateEvent
+  | NativeKWinWaylandOverlayPresentationStateEvent
+  | NativeKWinWaylandOverlayPresentationInvalidationEvent
+  | NativeKWinWaylandOverlayTransportClosedEvent;
+
 export interface NativeSteamId {
   steamId64: bigint;
   steamId32: string;
@@ -1663,6 +1704,13 @@ export interface NativeBinding {
   isOverlayNeedsPresentPollingEnabled(): boolean;
   getOverlayDiagnostics(): NativeOverlayDiagnostics;
   getNativeOverlayHostDiagnosticsJson(): string | null | undefined;
+  getKWinWaylandOverlayPresentationProtocolVersion(): number;
+  startKWinWaylandOverlayHostSyncEvents(
+    token: string,
+    handler: (event: NativeKWinWaylandOverlayHostSyncEvent) => void
+  ): string | undefined;
+  stopKWinWaylandOverlayHostSyncEvents(): void;
+  isKWinWaylandOverlayHostSyncEventsRunning(): boolean;
   utilsGetServerRealTime(): number;
   utilsGetSecondsSinceAppActive(): number;
   utilsGetSecondsSinceComputerActive(): number;
@@ -1715,7 +1763,20 @@ export interface NativeBinding {
     minClientWidth?: number,
     minClientHeight?: number
   ): void;
-  attachNativeOverlayHostView(nativeWindowHandle: Buffer): void;
+  openNativeApplicationHostWindow(
+    title?: string,
+    clientWidth?: number,
+    clientHeight?: number,
+    minClientWidth?: number,
+    minClientHeight?: number
+  ): void;
+  attachNativeOverlayHostView(
+    nativeWindowHandle: Buffer,
+    initialX?: number,
+    initialY?: number,
+    initialWidth?: number,
+    initialHeight?: number
+  ): void;
   attachNativeOverlayHostViewForOverlay(nativeWindowHandle: Buffer): void;
   attachNativeOverlayHostWindow(
     x: number,
@@ -1728,12 +1789,30 @@ export interface NativeBinding {
   pumpNativeOverlayHostView(): void;
   showNativeOverlayHostView(): void;
   hideNativeOverlayHostView(): void;
+  prepareNativeOverlayHostActivation(): void;
+  commitNativeOverlayHostActivation(requestWmActivation: boolean): void;
   setNativeOverlayHostInputPassthrough(passThrough: boolean): void;
   setNativeOverlayHostOpacity(opaque: boolean): void;
   setNativeOverlayHostOverlayActive(active: boolean): void;
   setNativeOverlayHostCursorHidden(hidden: boolean): void;
   setNativeOverlayHostContinuousPresent(continuous: boolean): void;
   setNativeOverlayHostFullScreen(fullScreen: boolean): void;
+  setNativeOverlayHostPresentationEpoch(instanceId: string, epoch: number): boolean | void;
+  setNativeOverlayHostPresentationTransportClosed(instanceId: string): void;
+  setNativeOverlayHostContentSeed(
+    instanceId: string,
+    epoch: number,
+    pairGeneration: number,
+    receiptSequence: number,
+    sourceX: number,
+    sourceY: number,
+    sourceWidth: number,
+    sourceHeight: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): boolean | void;
   setNativeOverlayHostMenuJson(menuJson: string): void;
   setNativeOverlayHostBounds(x: number, y: number, width: number, height: number): void;
   updateNativeOverlayHostFrame(frame: Buffer, width: number, height: number): void;
@@ -1745,6 +1824,20 @@ export interface NativeBinding {
     contentY?: number,
     contentWidth?: number,
     contentHeight?: number,
+    presentationX?: number,
+    presentationY?: number,
+    presentationWidth?: number,
+    presentationHeight?: number
+  ): void;
+  updateNativeOverlayHostLinuxDmaBufSharedTexture(
+    fd: number,
+    stride: number,
+    offset: string,
+    size: string,
+    modifier: string,
+    pixelFormat: string,
+    width: number,
+    height: number,
     presentationX?: number,
     presentationY?: number,
     presentationWidth?: number,

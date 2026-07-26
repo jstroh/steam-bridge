@@ -1,7 +1,7 @@
 {
   "name": "steam-bridge-monorepo",
   "private": true,
-  "version": "0.3.8",
+  "version": "0.3.9",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -54,6 +54,7 @@
     "@napi-rs/cli": "3.7.2",
     "electron-builder": "26.15.3",
     "tar": "7.5.19",
+    "terser": "^5.48.0",
     "typescript": "6.0.3"
   },
   "engines": {

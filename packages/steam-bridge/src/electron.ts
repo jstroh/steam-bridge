@@ -1,6 +1,12 @@
 import { ensureKWinWaylandOverlayHostSync } from "./kwin";
-export { getKWinWaylandOverlayHostSyncStatus } from "./kwin";
-export type { KWinWaylandOverlayHostSyncStatus } from "./kwin";
+export {
+  getKWinWaylandOverlayHostSyncStatus,
+  onKWinWaylandOverlaySourceInteractiveResize
+} from "./kwin";
+export type {
+  KWinWaylandOverlayHostSyncStatus,
+  KWinWaylandOverlaySourceInteractiveResizeEvent
+} from "./kwin";
 
 export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "repaint" | "compatibility";
 
@@ -117,6 +123,10 @@ interface ElectronApi {
   };
   screen?: {
     dipToScreenRect?(window: ElectronWindow, bounds: ElectronOverlayBounds): ElectronOverlayBounds;
+    dipToScreenPoint?(point: { x: number; y: number }): { x: number; y: number };
+    getDisplayMatching?(bounds: ElectronOverlayBounds): {
+      displayFrequency?: number;
+    };
   };
 }
 
@@ -285,6 +295,35 @@ export function electronOverlayPresenterOptions(
   return electronWindowNativeOverlayOptions(window, options);
 }
 
+/** Read the refresh rate of the display that most closely intersects a BrowserWindow. */
+export function electronWindowDisplayFrameRate(window: ElectronWindow): number | undefined {
+  if (window.isDestroyed()) {
+    return undefined;
+  }
+
+  const bounds = normalizeElectronOverlayBounds(
+    typeof window.getBounds === "function"
+      ? window.getBounds()
+      : window.getContentBounds?.()
+  );
+  if (!bounds) {
+    return undefined;
+  }
+
+  try {
+    const electron = require("electron") as ElectronApi;
+    const displayFrequency = electron.screen?.getDisplayMatching?.(bounds)?.displayFrequency;
+    if (!Number.isFinite(displayFrequency) || Number(displayFrequency) <= 0) {
+      return undefined;
+    }
+    return Number(displayFrequency);
+  } catch {
+    // Unit consumers can load the helper outside Electron. Preserve the raw
+    // presenter default when no live Electron screen service is available.
+    return undefined;
+  }
+}
+
 function electronWindowNativeOverlayOptions<
   T extends {
     nativeWindowHandle?: Buffer;
@@ -412,18 +451,40 @@ function readElectronWindowBounds(window: ElectronWindow): ElectronOverlayBounds
 
   if (typeof window.getContentBounds === "function") {
     const contentBounds = normalizeElectronOverlayBounds(window.getContentBounds());
-    if (!contentBounds || process.platform !== "win32") {
+    if (!contentBounds) {
       return contentBounds;
     }
 
-    const electron = require("electron") as ElectronApi;
-    if (typeof electron.screen?.dipToScreenRect === "function") {
-      return normalizeElectronOverlayBounds(electron.screen.dipToScreenRect(window, contentBounds));
+    if (process.platform === "win32") {
+      const electron = require("electron") as ElectronApi;
+      if (typeof electron.screen?.dipToScreenRect === "function") {
+        return normalizeElectronOverlayBounds(electron.screen.dipToScreenRect(window, contentBounds));
+      }
+
+      // Win32 HWND and D3D coordinates are physical pixels. Falling back to
+      // native client bounds is safer than treating Electron DIP as pixels.
+      return undefined;
     }
 
-    // Win32 HWND and D3D coordinates are physical pixels. Falling back to
-    // native client bounds is safer than treating Electron DIP as pixels.
-    return undefined;
+    if (process.platform === "linux" && !electronUsesStandaloneLinuxOverlayHost()) {
+      const electron = require("electron") as ElectronApi;
+      const convertPoint = electron.screen?.dipToScreenPoint;
+      if (typeof convertPoint === "function") {
+        const topLeft = convertPoint({ x: contentBounds.x, y: contentBounds.y });
+        const bottomRight = convertPoint({
+          x: contentBounds.x + contentBounds.width,
+          y: contentBounds.y + contentBounds.height
+        });
+        return normalizeElectronOverlayBounds({
+          x: topLeft.x,
+          y: topLeft.y,
+          width: bottomRight.x - topLeft.x,
+          height: bottomRight.y - topLeft.y
+        });
+      }
+    }
+
+    return contentBounds;
   }
   if (typeof window.getBounds === "function") {
     return normalizeElectronOverlayBounds(window.getBounds());

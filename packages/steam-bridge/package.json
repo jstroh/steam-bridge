@@ -1,6 +1,6 @@
 {
   "name": "steam-bridge",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Native-backed Steamworks bridge for Electron and Node.",
   "license": "MIT",
   "homepage": "https://github.com/jstroh/steam-bridge#readme",
@@ -71,13 +71,9 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/minify-dist.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "native:link": "node scripts/link-native.cjs"
-  },
-  "devDependencies": {
-    "@types/node": "26.0.1",
-    "typescript": "6.0.3"
   },
   "peerDependencies": {
     "electron": ">=24"

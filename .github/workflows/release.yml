@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   prebuild:
     name: Prebuild ${{ matrix.target }}
@@ -36,6 +39,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y patchelf
       - run: node scripts/assert-supported-targets.cjs
       - run: npm ci
+      - name: Run full test gate
+        run: npm test
       - run: npm run build
       - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
       - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ matrix.target }}

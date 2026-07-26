@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-25
 
 Review anchor: `45a43686b465e8fa6c84184f946fbc372705c496`
 (`Bound Windows restore pacing proof`). npm `latest` is `0.3.8`. Exact
@@ -16,6 +16,72 @@ actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8` is the
 published successor and current stable release. Never move, reuse, or publish
 any rejected tag.
+
+## Active Goal: Deck Desktop Application Host
+
+The current Linux/Steam Deck product path is one visible X11/GLX
+**application-host window** plus one hidden Electron offscreen renderer. It is
+the application window, not a popup, companion, overlay layer, or second
+visible surface. Window chrome, minimum size, move, resize, maximize,
+fullscreen, minimize, focus, cursor, and Steam's injected overlay all belong to
+that one host. Keep this single-host architecture after compaction.
+
+Electron 43 supplies each offscreen frame as a one-plane BGRA native pixmap.
+Steam Bridge duplicates the dma-buf descriptor, imports it through XCB DRI3,
+binds the resulting GLX pixmap with `GLX_EXT_texture_from_pixmap`, draws it into
+a retained GL texture, finishes the copy before Electron can recycle the
+producer, and destroys the temporary GLX/X11 objects. While Steam is active,
+Electron paint intentionally stops and the same host continuously presents the
+retained texture. Diagnostics name this backend
+`x11-dri3-glx-texture-from-pixmap` and count imports and failures.
+
+Closed Linux paths must not be retried as fallbacks: top-level popup/companion
+hosts; `keepAbove`; resize-time recreate or unmap/remap; nested child GLX;
+hidden-root bootstrap/reparent; direct Electron desktop GL or Vulkan;
+unmapped-proxy dual drawables; and EGLImage imported into a GLX context. The
+last path created the EGL image but crashed Mesa during GL binding/error
+inspection. Direct `glCopyImageSubData` from a texture-from-pixmap also returned
+`GL_INVALID_OPERATION`; the sampled shader/FBO copy is the proven path. A
+direct service launch is not Steam-overlay proof: launch through Steam's game
+URI so its injection environment is present.
+
+The exhaustive actual-game pass on 2026-07-25 is green for one visible host,
+1280x718 windowed content, exact 1280x800 fullscreen content and restore,
+exact 640x480 minimum, interactive direction-reversing move/resize, maximize
+and restore, minimize at 1 FPS and restore at 90 FPS, Alt+Tab/focus return,
+native keyboard/Escape routing, cursor hide/show, ordinary Steam web-overlay
+open/duplicate suppression/close, and retained-overlay presentation while
+moving, resizing, maximizing, entering fullscreen, switching focus, and
+minimizing. The same process and host survived every transition, and dma-buf
+imports reported zero failures. The Deck's X11/XRandR refresh is 89.869 Hz;
+game RAF, shared-texture import, and native presentation hold about 90 FPS. An
+absolute-deadline scheduler replaced the old fractional timeout loop that
+over-presented at 94-95 FPS. A transient post-world-entry sample measured about
+48 FPS while content was still loading; the focused steady-state rerun reached
+exactly 90 FPS. Pixel screenshots remain unavailable to remote automation in
+this session (compositor capture was denied and the remote Windows capture was
+protected), so geometry, lifecycle, callbacks, input, cadence, and import
+telemetry are proved, but no claim of screenshot-based pixel comparison is
+made.
+
+The final application-menu edit received a focused packaged-candidate
+requalification on the same date. The preserved three-group menu remained
+directly clickable after the live-game handoff, and opening File exposed its
+item without depending on React's removed root. The 1280x718 client reserved
+exactly 26 DIPs for the menu and presented an undistorted 1280x692 game canvas
+at `[0,26,1280,692]`, with the cursor hidden. Steady baseline RAF measured
+89.667 FPS; retained presentation while Steam was active measured 90.000 FPS;
+native EIS Escape closed Steam; and post-overlay RAF measured 90.003 FPS with
+unchanged menu/canvas geometry. One immediate post-menu sample contained a
+single 333 ms transition stall and was rejected; the settled focused rerun is
+the applicable result.
+
+Retest only a scenario affected by a new edit. Run the complete Deck pass once
+all individual cases are green and immediately before a release candidate.
+The temporary CDP runner must then be restored from
+`/home/deck/fov4-qa/run-fov4-qa.sh.normal-20260723-012815`, and the final
+Steam-launched sanity check must prove port 9233 is unreachable. Keep Steam
+closed on every other platform while collecting overlay evidence.
 
 ## Read First After Compaction: Windows Architecture
 
@@ -269,6 +335,22 @@ first snapshots still at `1280x800`. A bounded synthetic Shift+Tab retry with
 explicit key-up cleanup again opened KWin's switcher and emitted no Steam
 activation callback. That remains rejected automation evidence; use the app IPC
 route or a physical/user hotkey for release QA instead of tuning XTest.
+
+The following 2026-07-23 paired-host record is historical and superseded by the
+single application-host architecture at the top of this checkpoint. It must
+not be used as an active implementation or QA plan. That focused check opened
+`DECK-WAYLAND-ACTIVE-RESIZE-001` after KWin raised the Electron source above a
+paired Xwayland/GLX host during interactive resize. Read-only X11 sampling
+showed that the host remained mapped, opaque, and continuously drawing changing
+Steam frames; the visible black area was source WebGL occlusion rather than a
+stopped Steam presenter.
+
+That paired-host repair was retired before release and has no authority over the
+current product. KWin pairing, source restacking, transparent/opaque companion
+edges, and source-WebGL recovery are no longer product requirements. Do not
+convert the application host to a popup, set `keepAbove`, recreate or remap it
+during resize, use fixed compositor coordinates, or use synthetic Shift+Tab as
+product evidence; those are closed paths, not fallbacks.
 
 Local validation after the Deck pass: the consumer app passed `npm run lint`,
 `npm run typecheck`, `npm test`, `node --check main/main.js`, and two Linux dir
