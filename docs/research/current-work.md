@@ -111,11 +111,22 @@ complete affected path on unchanged RC85: physical move/resize, zoom and exact
 restore, minimize/restore, focus transitions, simple-fullscreen transitions,
 continuous active-overlay visual coverage, exact child alignment, cleanup,
 desktop restoration, Steam survival, and zero app/overlay/Steam/graphics
-crashes. Its controller also corrected a proof-integrity defect by hashing the
+crashes. Final consolidation attempt 02 then exposed the complementary native
+shape at 2x Retina: AppKit's zoomed standard frame remained inset and rounded
+(`roundedCornerScore=0.100`, `bottomEdgeOpaqueRatio=0.994`) rather than becoming
+the square work-area boundary seen at scale 1. Apple defines zoom in terms of a
+screen-dependent standard frame, so neither shape alone is universal. The
+maximized contract now requires one coherent native boundary—rounded or
+square—and rejects mixed corner/seam states. Restored windows remain strictly
+rounded. Focused-retest the same overlay-state case at max-Hz Retina and scale
+1 next; do not treat consolidation attempt 02 as release evidence or start a
+new full pass before both shapes are green.
+
+The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
-unused hash-named copy. Every known individual failure is now green. Run one
-complete 25-case/five-profile actual-game pass next, then the pinned 55-route
-matrix on the same exact candidate. Do not rerun the focused cases.
+unused hash-named copy. After the two affected focused cases are green, run one
+complete 25-case/five-profile actual-game pass and then the pinned 55-route
+matrix on the same exact candidate. Do not rerun unrelated focused cases.
 
 Mac pacing has three deliberately separate signals. CoreGraphics supplies the
 nominal selected display rate. Renderer-PID-pinned Chromium `PipelineReporter`
