@@ -624,6 +624,22 @@ removed from the maintained driver. Next, prefer a supported compositor
 invalidation or upstream lifecycle repair and prove it with this focused prefix;
 do not ship synthetic input by default or disturb the healthy attached child.
 
+Signed, notarized, and stapled RC81 is the first app-owned recovery candidate,
+bundle SHA-256
+`d26cec5e945f7aca2400da8a614b382bd7b1ac3c8d975b56522c980d71a12734`.
+Focused receipt `/private/tmp/fov4-macos-qa-rc81-pacing-recovery-focused-01`
+passed exact-candidate preflight, startup, actual-game identity, and warm
+relaunch, but again measured exact 30 FPS after the 120 -> 60 restore. Its
+transition trace recorded four interval-decider results and preferred factors
+`[1,1,1,1,1,2,1,2]`, then 91 of 92 post-restore display-link callbacks were
+skipped. This proves the app's zero-distance Electron `mouseMove` reached the
+decision path and briefly selected factor one, but did not sustain the causal
+InputBoost behavior of the successful moved-coordinate CDP control. Preserve
+this as a failed candidate. The next focused candidate must use one real
+one-DIP renderer-local move followed immediately by restoration of the page
+pointer; it must never move the OS cursor, click, focus the app, recreate the
+child, or broaden the retest beyond warm-relaunch/pacing/baseline.
+
 The retained failed display-sleep receipt is
 `/private/tmp/fov4-macos-qa-rc80-display-sleep-01`. It records
 `window_state_mismatch` with no accepted sleep/wake/restore proof; cleanup,
