@@ -137,14 +137,25 @@ callbacks during the transition, 91/91 skipped post-restore callbacks, and
 exact 30 FPS through the independent baseline while Metal remained healthy at
 60. Synthetic renderer input is now a closed product path.
 
-Chromium's `UseFrameIntervalDecider` is an enabled-by-default optional Viz
-feature. On this every-vsync game it creates a recursive failure: a transient
-30 FPS sample selects factor two, then `ExternalBeginFrameSourceMac` skips every
-other callback and makes 30 FPS self-sustaining. FOV4 now owns the explicit
-full-display-rate policy by disabling that feature before Electron readiness.
-Steam Bridge continues to own the separate, safe browser-only CADisplayLink
-selection and does not impose the game-specific policy on other consumers.
-Build a new exact candidate and focused-retest only the same reduced prefix.
+RC87 tested an app-owned startup disable for `UseFrameIntervalDecider` while
+retaining the browser-only CADisplayLink. Focused attempt 01 passed at exact 60
+FPS, but the identical attempt 02 failed at exact 30 FPS with preference
+factors `[1,1,1,2]`, 103 skipped callbacks during the transition, and 90/91
+callbacks skipped after restore. Live process inspection proved the switch was
+present in the renderer, so attempt 01 was a nondeterministic false green.
+Chromium 150.0.7871.129 source supplies the decisive explanation: its
+`FrameIntervalDecider` is unconditional and that release no longer declares a
+controllable `UseFrameIntervalDecider` feature. The switch is therefore a
+closed path, not a repair.
+
+The narrow optional desktop matcher that can request this exact lower cadence
+is `SingleVideoFrameRateThrottling`; upstream describes it as selecting a
+slower interval when a single video-like surface has a lower perfect cadence.
+FOV4 owns the next explicit every-vsync policy by disabling only that matcher
+before Electron readiness. Steam Bridge continues to own the separate, safe
+browser-only CADisplayLink selection and does not impose game-specific cadence
+policy on other consumers. Build a new exact candidate and focused-retest only
+the same reduced prefix twice before broader QA.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
