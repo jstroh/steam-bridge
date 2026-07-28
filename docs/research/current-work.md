@@ -191,6 +191,10 @@ on that exact release candidate. A registry check on 2026-07-28 found 43.2.0 as
 the latest stable, 44.0.0-alpha.7 as the only Electron 44 prerelease, and no
 44.0.0-beta.1 package yet; the official schedule targets Electron 44 stable for
 [2026-08-25](https://releases.electronjs.org/schedule).
+The same-day Chromium M150 branch head
+`4c63958ce6b907e866b393485a34ee97e3f479f1` still makes the stale hardware
+query in `SetPreferredInterval` and `GetSupportedFrameIntervals`, so no current
+Electron 43-compatible Chromium backport exists.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
