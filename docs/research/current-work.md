@@ -206,6 +206,14 @@ both controller and isolated profile processes. The historical RC80 controller
 is explicitly non-reusable; HID inactivity is no longer authorization and
 lock-capable sleep remains permanently outside QA and release.
 
+Live gate receipt `/private/tmp/fov4-macos-qa-rc89-promotion-gate-02` passed on
+the already-qualified test-only RC89 bundle and self-identifies as
+`run.mode=promotion`. It recorded 60.006/59.994/59.962 FPS renderer samples and
+59.669 FPS PID-pinned presentation feedback after restore, approximately 60 FPS
+through the following independent baseline, exact display restoration, Steam
+survival, and zero crashes. This qualifies the gate implementation only; it does
+not promote Electron 44 alpha to a release dependency.
+
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
 unused hash-named copy. After the fixed-60 pacing prefix and the two affected
