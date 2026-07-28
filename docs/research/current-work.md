@@ -130,14 +130,22 @@ Low-Retina mode is separately blocked in the automation layer. Receipt
 zoom/restore, but the synthetic pointer reached the calculated attached-child
 rectangle while Chromium received zero trusted pointer/mouse events; baseline
 therefore reported `cursor_visible` and base input reported
-`gesture_mismatch`. Its ScreenCaptureKit Swift interpreter also held inherited
-pipes after the configured timeout. The runner now launches Darwin helpers in
-their own process group and terminates the full group on timeout; receipt
-`macos-focused-low-retina-input-stable-08` proved bounded cleanup and exact
-display restoration, while reproducing the same zero-event input result. A
-login-session event source did not change that result and was removed. Because
-the otherwise distinct scale-1 profile passes the same semantic input/cursor
-contract, do not reinterpret this as evidence for changing the product child.
+`gesture_mismatch`. Receipt `macos-focused-low-retina-input-stable-08`
+reproduced the same zero-event input result with exact cleanup and display
+restoration. The long-lived ScreenCaptureKit `session` process observed during
+both runs was the harness's intentional persistent capture helper, not an
+orphan or timeout; the speculative process-group change based on that mistaken
+diagnosis was reverted. A login-session pointer event source did not change the
+input result and was also removed. A subsequent `NSWindow.windowNumber(at:)`
+probe was invalid by construction: ordinary game input keeps the Metal child
+in passthrough with `ignoresMouseEvents = YES`, so AppKit correctly resolves
+the mouse-down target below the child. It failed identically in low-Retina
+receipt `macos-focused-low-retina-hit-test-12` and normal-scale control
+`macos-focused-max-hit-test-13`; the probe and its assertions were removed.
+Only overlay-active click cases may require the child itself to win AppKit hit
+testing. Because the otherwise distinct scale-1 profile passes the same
+semantic input/cursor contract, do not reinterpret this as evidence for
+changing the product child.
 
 ### 2026-07-28 RC85 actual-game checkpoint
 
