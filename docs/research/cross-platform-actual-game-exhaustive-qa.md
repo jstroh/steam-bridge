@@ -415,6 +415,12 @@ The receipt binds one exact ordered five-case CDP stream to the same platform
 ID and loopback-forward transport, and rejects missing/duplicate/reordered
 cases or a Deck/non-Deck attestation mismatch.
 
+The ordered IDs and fixed assertion-key map exist only in the consumer's
+`scripts/cross-platform-core-qa-contract.mjs`. Every platform adapter and
+receipt verifier imports that immutable object; no adapter may redefine a
+platform-local copy. Unit coverage requires referential identity as well as
+the exact 37-row order, uniqueness, assertion coverage, and frozen state.
+
 Desktop Mode accepts no `not-applicable` CORE behavior. Game Mode is audited as
 a separate `1280x800` gamescope lane: only the explicitly absent desktop menu,
 move/resize, minimize/maximize, and corresponding active window-management

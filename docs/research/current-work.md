@@ -1014,6 +1014,12 @@ desktop-window capabilities to be `not-applicable`; it cannot misreport them as
 passes or omit supported Game Mode behaviors. This closes the prior prose-only
 receipt gap but does not substitute for running the exact final candidate.
 
+The consumer's `scripts/cross-platform-core-qa-contract.mjs` is the sole source
+of truth for the ordered 37 CORE IDs and their fixed required assertion keys.
+macOS, Windows, Linux, and both Deck adapters import and re-export that same
+immutable module object; platform-local copies are forbidden and unit coverage
+locks identity, order, uniqueness, assertion coverage, and frozen state.
+
 Retest only a scenario affected by a new edit. Run the complete Deck pass once
 all individual cases are green and immediately before a release candidate.
 The temporary CDP runner must then be restored from
