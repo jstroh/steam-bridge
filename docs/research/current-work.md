@@ -333,9 +333,14 @@ Checkpoint CI run `30352751958` later cancelled tests 262-347 on macOS,
 Windows, and Linux after the checkout-reservation test became the only owner of
 an intentionally unreferenced production poll timer. Parallel local tests had
 accidentally kept Node alive and hidden the test-harness dependency. The test
-now retains one bounded referenced delay across the readiness flip; production
-timer ownership and shutdown behavior are unchanged. The isolated serial test
-and complete local `npm test` gate pass, including 347/347 unit tests.
+first retained one fixed 30 ms delay across the readiness flip, but follow-up CI
+run `30355442301` proved that duration was still shorter than the next poll on
+all three runners. The test now races the pending reservation against its own
+referenced 600 ms failure deadline and clears that deadline when readiness is
+observed. This ties process lifetime to the promise under test instead of a
+timing guess; production timer ownership and shutdown behavior are unchanged.
+The isolated serial test and complete local `npm test` gate pass, including
+347/347 unit tests.
 
 The subsequent route-lane audit proves `--suite full` expands to exactly 55
 unique cases and contains zero unavailable, locked, display-asleep, or sleep
@@ -566,6 +571,27 @@ Chromium half-rate state. Diagnose and retest only the affected pacing
 transition/baseline path until it is repeatably green; do not weaken the 95%
 fixed-rate gate, retime or recreate the healthy child, or run another complete
 final matrix before the focused defect is closed.
+
+Focused prefix reduction proved that `warm-relaunch` plus the pacing transition
+is sufficient; menu, input, display-live, and overlay cases are not required.
+The receipt-hardened driver now traces the complete transition and retains only
+bounded causal counters. Receipt
+`/private/tmp/fov4-macos-qa-rc80-half-rate-causal-02` reproduced exact 30 FPS
+with 1,287 browser display-link callbacks, 106 skipped-vsync events, and the
+preferred subsampling sequence `[1,1,1,2]`; its post-restore and following
+baseline traces skipped essentially every other callback. No new
+`FrameIntervalDeciderResult` occurred during that failing transition, proving
+the final factor-two call reused a stale stored preferred interval rather than
+responding to a new content matcher. Temporary diagnostic receipt
+`/private/tmp/fov4-macos-qa-rc80-half-rate-input-nudge-03` then dispatched one
+non-clicking CDP mouse move after restore. That forced two fresh interval-decider
+results, produced six factor-one preferences, zero skipped callbacks, and exact
+60 FPS renderer and Chromium presentation feedback through both the transition
+and independent baseline. Cleanup, exact display restoration, Steam survival,
+and all crash checks passed. The probe is not product behavior and has been
+removed from the maintained driver. Next, prefer a supported compositor
+invalidation or upstream lifecycle repair and prove it with this focused prefix;
+do not ship synthetic input by default or disturb the healthy attached child.
 
 The retained failed display-sleep receipt is
 `/private/tmp/fov4-macos-qa-rc80-display-sleep-01`. It records
