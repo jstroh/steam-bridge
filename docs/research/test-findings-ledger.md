@@ -22,6 +22,10 @@ history remains in the linked platform documents.
 - Never record private app/product/account names or IDs, item IDs,
   order/transaction/Steam IDs, keys, prices, checkout URLs, private fixture
   paths, or raw private payloads.
+- Electron QA and release candidates must use an exact stable Electron version.
+  Alpha, beta, nightly, and every other prerelease are closed paths. When a fix
+  exists only upstream, record its exact commit/TODO and wait for a supported
+  stable Electron release instead of testing another prerelease.
 
 ## Windows x64
 

@@ -183,11 +183,15 @@ exact mode 54/120 Hz, kept Steam alive, and recorded zero crashes. This
 repeatable A/B result validates the M152 repair while preserving Steam Bridge's
 browser-only CADisplayLink ownership.
 
-Electron 44 alpha was an isolation dependency only and must not ship. FOV4 has
-returned to stable Electron 43.2.0. Promote to an acceptable Electron 44 channel
-or a supported backport, rebuild and re-fingerprint, run this reduced prefix once
-as the promotion gate, and only then run the complete Mac matrix and route gate
-on that exact release candidate. A registry check on 2026-07-28 found 43.2.0 as
+Electron 44 alpha was a historical isolation dependency only. Do not run or
+ship alpha, beta, nightly, or any other prerelease Electron again. FOV4 has
+returned to stable Electron 43.2.0. Chromium commit
+`b43494c23fc0af79df367767396e3e216bd91e97` is now an upstream dependency:
+record its availability and move on until a stable Electron release contains it
+or a supported stable backport. Then rebuild and re-fingerprint, run this
+reduced prefix once as the promotion gate, and only then run the complete Mac
+matrix and route gate on that exact release candidate. A registry check on
+2026-07-28 found 43.2.0 as
 the latest stable, 44.0.0-alpha.7 as the only Electron 44 prerelease, and no
 44.0.0-beta.1 package yet; the official schedule targets Electron 44 stable for
 [2026-08-25](https://releases.electronjs.org/schedule).
@@ -203,12 +207,12 @@ same-resolution fixed-60 profile, requires the shipped App ID and 95% cadence
 floor, rejects ad-hoc cases/profiles, and applies final-mode Developer ID,
 hardened-runtime, Gatekeeper, notarization, and stapled-ticket verification in
 both controller and isolated profile processes. The executable gate now reads
-`CFBundleVersion` from the signed Electron Framework and accepts only stable or
-beta Electron channels. Alpha, nightly, missing, and malformed versions fail
-before display mutation or Steam/game launch. A separate
-`--qualification-gate` runs the same exact signed cadence prefix for test-only
-isolation builds, labels its receipt `qualification`, and cannot authorize a
-release. The historical RC80 controller
+`CFBundleVersion` from the signed Electron Framework and accepts only stable
+Electron. Alpha, beta, nightly, every other prerelease, missing, and malformed
+versions fail before display mutation or Steam/game launch in every live QA
+mode. `--qualification-gate` remains only so historical receipts can be
+interpreted; it now uses the same unconditional stable-Electron preflight and
+cannot authorize another prerelease run or a release. The historical RC80 controller
 is explicitly non-reusable; HID inactivity is no longer authorization and
 lock-capable sleep remains permanently outside QA and release.
 
@@ -239,7 +243,8 @@ PID-pinned Chromium presentation measured 58.343 FPS (97.2% of fixed 60 Hz).
 The following baseline remained approximately 60 FPS with the same 58.343 FPS
 presentation result. All crash categories stayed zero, the exact candidate
 closed, Steam survived, and the original 120 Hz display configuration restored
-exactly. This proves the separated isolation lane, not release eligibility.
+exactly. This is historical causal evidence only, not release eligibility, and
+cannot authorize another prerelease run.
 The retained owner-executable wrapper SHA-256 is
 `acff87ed2bf1ff9224f1b5db12fe92e7a421ed4887252ccf350fdd70c5b0c7cf`;
 it pins driver SHA-256

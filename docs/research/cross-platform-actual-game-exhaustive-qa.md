@@ -266,13 +266,15 @@ Required Mac additions:
 - Search current macOS DiagnosticReports plus Steam crash evidence from the
   exact run interval. Zero new app, native host, Steam, or injected renderer
   crashes are allowed.
-- The signed cadence promotion gate must read Electron Framework's
-  `CFBundleVersion` and accept only stable or beta release channels before any
-  display mutation or Steam/game launch. Alpha and nightly isolation builds use
-  the separately labelled `qualification` lane; a qualification receipt can
-  prove a fix but can never authorize release. Missing, malformed, or
-  prerelease-disallowed dependency metadata fails closed and remains visible in
-  the sanitized candidate fingerprint.
+- Every live QA lane must read Electron Framework's `CFBundleVersion` and
+  accept only a stable Electron version before any display mutation or
+  Steam/game launch. Alpha, beta, nightly, and every other prerelease are
+  forbidden for both testing and release. Historical `qualification` receipts
+  remain causal evidence only; the retained lane now uses the same stable-only
+  preflight. Missing, malformed, or prerelease dependency metadata fails closed
+  and remains visible in the sanitized candidate fingerprint. If the required
+  repair exists only upstream, record the exact upstream commit/TODO and move
+  on until it ships in a supported stable Electron release.
 
 The complete Steam route matrix remains a separate final-candidate gate. Do not
 rerun its 55 cases during window/display development; run focused affected
@@ -400,6 +402,11 @@ and cleanup behavior. This auditor qualifies a retained root; it never creates
 manual observations or turns operator answers into a pass.
 
 ## Current coverage status
+
+In this table, an "acceptable Electron" means an exact stable release only.
+Historical alpha evidence is not authorization to run alpha, beta, nightly, or
+another prerelease. The M152 cadence repair is an upstream dependency until it
+ships in a supported stable Electron release.
 
 | Platform | Durable evidence | Remaining before next release |
 | --- | --- | --- |
