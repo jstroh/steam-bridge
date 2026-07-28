@@ -366,6 +366,31 @@ identity, raw private identifiers, missing hashes, mutated files, dirty cleanup,
 display mismatch after restore, crash evidence, or a passing top-level result
 with any required non-pass case.
 
+The consumer repository now owns the executable Deck auditor at
+`scripts/deck-final-qa-receipt.mjs`. It recomputes every artifact hash and
+requires both consumer and Steam Bridge commit/version identity, package
+archive/tree and executable/native-addon hashes, the exact ordered 37-row CORE
+contract, hashed per-case evidence, run-local process continuity, closed
+pre/post state, fixed case-specific assertion sets, one distinct evidence
+directory per CORE row, the prescribed logs/display/crash files, exact desktop restore,
+empty application stderr, zero crash counts, and three settled renderer/native
+presentation samples for baseline, overlay-active, and post-close phases on
+every display profile. Its CDP stream is resanitized during verification, so a
+new unknown/raw target field invalidates the receipt even if the manifest was
+recomputed afterward. Bounded text evidence is also rejected when it contains
+URLs, local home paths, Steam-ID-shaped values, email addresses, or known
+private Steam/commerce identity fields. Fixed-rate Deck samples must target the
+measured display rate; a lower self-declared target is not accepted.
+
+Desktop Mode accepts no `not-applicable` CORE behavior. Game Mode is audited as
+a separate `1280x800` gamescope lane: only the explicitly absent desktop menu,
+move/resize, minimize/maximize, and corresponding active window-management
+rows may be `not-applicable`. The auditor rejects those compositor-absent rows
+as fake passes and rejects `not-applicable` for every supported Game Mode
+launch, renderer, input, fullscreen, SteamUI overlay, focus, pacing, display,
+and cleanup behavior. This auditor qualifies a retained root; it never creates
+manual observations or turns operator answers into a pass.
+
 ## Current coverage status
 
 | Platform | Durable evidence | Remaining before next release |

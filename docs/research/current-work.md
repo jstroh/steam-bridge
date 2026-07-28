@@ -960,6 +960,19 @@ unchanged menu/canvas geometry. One immediate post-menu sample contained a
 single 333 ms transition stall and was rejected; the settled focused rerun is
 the applicable result.
 
+The consumer now has a fail-closed final Deck receipt auditor at
+`scripts/deck-final-qa-receipt.mjs`. It binds Desktop and Game Mode receipts to
+both repositories and the exact package/native binaries, recomputes the raw
+artifact manifest, enforces all 37 shared CORE rows, resanitizes the CDP JSONL,
+requires fixed per-case assertion sets and distinct state/process/evidence
+continuity, rejects private text even after rehashing, scores three settled
+baseline/active/post-close pacing samples per display profile, and rejects
+lower self-declared fixed-rate targets, dirty cleanup, stderr, crashes, or display drift. Desktop permits no omitted
+CORE rows. The separate `1280x800` gamescope receipt permits only the enumerated
+desktop-window capabilities to be `not-applicable`; it cannot misreport them as
+passes or omit supported Game Mode behaviors. This closes the prior prose-only
+receipt gap but does not substitute for running the exact final candidate.
+
 Retest only a scenario affected by a new edit. Run the complete Deck pass once
 all individual cases are green and immediately before a release candidate.
 The temporary CDP runner must then be restored from
