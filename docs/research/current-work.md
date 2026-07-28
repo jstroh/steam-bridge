@@ -1048,6 +1048,16 @@ exact restoration, empty stderr, and zero crashes. Windows accepts no
 Steam Bridge Windows live-proof receipt are required; the package publication
 contract remains unchanged.
 
+Live execution checkpoint: the new Windows adapter's focused launch was not
+run because the Windows Steam client opened at an authentication screen. The
+automation did not interact with authentication and requested no operator
+input; Windows Steam was shut down cleanly and sole Steam ownership was
+restored to the already-authenticated Mac. The Deck host was also unreachable,
+and no qualifying physical non-Deck Linux host is configured. Do not claim a
+live pass from the unit-qualified adapters. Resume Windows only with an already
+authenticated client, Deck only when its host is reachable, and non-Deck Linux
+only on a real supported x64 desktop.
+
 ## Read First After Compaction: Windows Architecture
 
 This checkpoint overrides any shortened-context inference that Windows attached
