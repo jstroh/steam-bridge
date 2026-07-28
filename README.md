@@ -71,6 +71,12 @@ requires its `qa-menu` marker plus real Steam active/inactive callbacks. A human
 Shift+Tab is a one-time qualification only when shortcut routing changes, not a
 recurring candidate or publication requirement.
 
+Every actual-game QA and release candidate must use an exact stable Electron
+version. Alpha, beta, nightly, and every other prerelease are forbidden. If a
+required fix exists only in upstream Electron/Chromium source, record the exact
+commit or TODO and wait for a supported stable Electron release instead of
+testing a prerelease.
+
 ## Quick start
 
 ```ts

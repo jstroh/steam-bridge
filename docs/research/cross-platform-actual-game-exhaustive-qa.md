@@ -324,6 +324,16 @@ nested child GLX, proxy dual-drawables, and direct Electron GPU paths are closed
 - Remote Deck pixel capture may be unavailable. Record that limitation and do
   not claim screenshot comparison; geometry, lifecycle, input, import, cadence,
   and crash evidence remain mandatory.
+- Non-Deck Linux Desktop is a separate physical x64 lane. Exercise each
+  supported X11 and Wayland session across native/max-Hz, fixed 60 Hz when
+  exposed, lower resolution, 100% scale, and supported fractional/high-DPI
+  profiles. It accepts no `not-applicable` CORE behavior and requires the same
+  actual-game, native-window, overlay-active transition, cadence, restoration,
+  crash, and cleanup evidence as Desktop Mode.
+- The consumer's neutral `scripts/linux-actual-game-qa.mjs` entrypoint requires
+  an explicit `linux-desktop`, `steam-deck-desktop`, or
+  `steam-deck-game-mode` target. Its closed CDP attestation requires Linux and
+  exact Deck/non-Deck identity; evidence cannot cross platform lanes.
 
 ## Receipt schema
 
@@ -375,8 +385,9 @@ identity, raw private identifiers, missing hashes, mutated files, dirty cleanup,
 display mismatch after restore, crash evidence, or a passing top-level result
 with any required non-pass case.
 
-The consumer repository now owns the executable Deck auditor at
-`scripts/deck-final-qa-receipt.mjs`. It recomputes every artifact hash and
+The consumer repository now owns the executable Linux/Deck auditor at
+`scripts/linux-final-qa-receipt.mjs` (with the prior Deck-named path retained as
+a compatibility entrypoint). It recomputes every artifact hash and
 requires both consumer and Steam Bridge commit/version identity, package
 archive/tree and executable/native-addon hashes, the exact ordered 37-row CORE
 contract, hashed per-case evidence, run-local process continuity, closed
@@ -389,8 +400,11 @@ every display profile. Its CDP stream is resanitized during verification, so a
 new unknown/raw target field invalidates the receipt even if the manifest was
 recomputed afterward. Bounded text evidence is also rejected when it contains
 URLs, local home paths, Steam-ID-shaped values, email addresses, or known
-private Steam/commerce identity fields. Fixed-rate Deck samples must target the
-measured display rate; a lower self-declared target is not accepted.
+private Steam/commerce identity fields. Fixed-rate Linux/Deck samples must
+target the measured display rate; a lower self-declared target is not accepted.
+The receipt binds one exact ordered five-case CDP stream to the same platform
+ID and loopback-forward transport, and rejects missing/duplicate/reordered
+cases or a Deck/non-Deck attestation mismatch.
 
 Desktop Mode accepts no `not-applicable` CORE behavior. Game Mode is audited as
 a separate `1280x800` gamescope lane: only the explicitly absent desktop menu,
@@ -414,4 +428,4 @@ ships in a supported stable Electron release.
 | macOS Apple Silicon | Exact `338f203` signed smoke package passed 55/55 Steam route cases on Retina/Metal. RC80/RC85 focused actual-game receipts close the attached-child geometry, gesture, minimum-size, native-state, overlay lifecycle, GPU-recovery, Retina/1x visual-shape, and display-supervisor defects. Exact signed/notarized/stapled test-only RC89 fingerprint `cb1d53b7631ba74444b0d06eaac6d905351e5be91acdbb5894620d4b3a4c5b98` ran Electron 44.0.0-alpha.7 / Chromium 152 twice and repeatably removed the Chromium 150 post-restore half-rate failure: factors stayed `[1,1]`, skipped callbacks stayed zero, restored cadence remained approximately 60 FPS, the display restored exactly, Steam survived, and all crash categories stayed zero. | Do not ship the isolation alpha. Promote an acceptable Electron 44 build or supported backport through the exact signed cadence gate; focused-retest the affected Retina/1x zoom shapes; then run one final complete 25-case/five-profile actual-game pass and the 55-route gate on that exact signed/notarized/stapled candidate. Lock-capable sleep is permanently excluded. |
 | Steam Deck Desktop | Actual-game one-host geometry/input/overlay/90 Hz pass | Bind to the final candidate and canonical receipt |
 | Steam Deck Game Mode | Focused `1280x800` compositor-native checks | Complete canonical Game Mode receipt on the final candidate |
-| Other Linux desktop | Architecture/package gates only | Physical desktop matrix when a supported runner is available |
+| Other Linux desktop | Closed explicit-platform CDP harness, stable-only candidate gate, canonical 37-CORE receipt auditor, and exhaustive X11/Wayland physical matrix are implemented | Execute and retain the physical desktop matrix when a supported runner is available |

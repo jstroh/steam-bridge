@@ -998,15 +998,18 @@ unchanged menu/canvas geometry. One immediate post-menu sample contained a
 single 333 ms transition stall and was rejected; the settled focused rerun is
 the applicable result.
 
-The consumer now has a fail-closed final Deck receipt auditor at
-`scripts/deck-final-qa-receipt.mjs`. It binds Desktop and Game Mode receipts to
-both repositories and the exact package/native binaries, recomputes the raw
-artifact manifest, enforces all 37 shared CORE rows, resanitizes the CDP JSONL,
+The consumer now has a fail-closed final Linux/Deck receipt auditor at
+`scripts/linux-final-qa-receipt.mjs`, with the prior Deck-named path retained as
+a compatibility entrypoint. It binds Linux Desktop, Deck Desktop, and Deck Game
+Mode receipts to both repositories and the exact package/native binaries,
+recomputes the raw artifact manifest, enforces all 37 shared CORE rows,
+resanitizes the CDP JSONL,
 requires fixed per-case assertion sets and distinct state/process/evidence
 continuity, rejects private text even after rehashing, scores three settled
 baseline/active/post-close pacing samples per display profile, and rejects
-lower self-declared fixed-rate targets, dirty cleanup, stderr, crashes, or display drift. Desktop permits no omitted
-CORE rows. The separate `1280x800` gamescope receipt permits only the enumerated
+lower self-declared fixed-rate targets, dirty cleanup, stderr, crashes, or
+display drift. Desktop permits no omitted CORE rows. The separate `1280x800`
+gamescope receipt permits only the enumerated
 desktop-window capabilities to be `not-applicable`; it cannot misreport them as
 passes or omit supported Game Mode behaviors. This closes the prior prose-only
 receipt gap but does not substitute for running the exact final candidate.
@@ -1017,6 +1020,19 @@ The temporary CDP runner must then be restored from
 `/home/deck/fov4-qa/run-fov4-qa.sh.normal-20260723-012815`, and the final
 Steam-launched sanity check must prove port 9233 is unreachable. Keep Steam
 closed on every other platform while collecting overlay evidence.
+
+The shared closed CDP runner now has a neutral
+`scripts/linux-actual-game-qa.mjs` entrypoint and requires one explicit target:
+`linux-desktop`, `steam-deck-desktop`, or `steam-deck-game-mode`. It accepts
+only a Linux renderer and requires `isSteamDeck()` to be false for non-Deck
+Linux and true for both Deck lanes. The canonical auditor correlates that
+attestation with the receipt platform, so a real Deck cannot manufacture Linux
+Desktop evidence and a general Linux host cannot manufacture Deck evidence.
+Non-Deck Linux owns a documented physical X11/Wayland matrix across
+resolution, refresh, scale, move/resize/minimum, state/focus/fullscreen,
+overlay-active transitions, actual-game integration, renderer/native pacing,
+crashes, cleanup, and exact restoration. Automation is implemented and unit
+qualified; no physical non-Deck Linux receipt exists yet.
 
 ## Read First After Compaction: Windows Architecture
 
