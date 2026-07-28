@@ -160,13 +160,19 @@ Steam survived, and all crash categories remained zero. The matcher override
 is a closed path and has been removed from FOV4.
 
 Chromium 150 source matches the trace: `ExternalBeginFrameSourceMac` stores and
-applies `vsync_subsampling_factor_` on every callback, while its
-same-display refresh-change handler is an empty TODO. Factor two had already
-been selected before the restored 60 Hz callbacks arrived, so another renderer
-cadence feature flag is not a justified next candidate. Keep Steam Bridge's
-browser-only CADisplayLink ownership unchanged. Isolate a supported source
-refresh/recreation path or a later stable Chromium repair before building a
-new exact candidate, then focused-retest only the same reduced prefix twice.
+applies `vsync_subsampling_factor_` on every callback, while its same-display
+handler recreates the source only if the existing display link reports itself
+invalid. This link remained valid. M150 resolves a zero preference by querying
+the new hardware interval while its cached minimum can still represent the
+prior mode, allowing factor two to be calculated and retained. Another renderer
+cadence feature flag is therefore not a justified next candidate.
+
+Chromium commit `b43494c23fc0af79df367767396e3e216bd91e97`, present in M152,
+changes this exact browser-display-link path to use the last known cached
+minimum for a zero preference instead of an ahead-of-callback hardware query.
+Keep Steam Bridge's browser-only CADisplayLink ownership unchanged. Test that
+upstream semantic change under Electron 44, then focused-retest only the same
+reduced prefix twice before any broader QA.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
