@@ -52,6 +52,93 @@ than assuming a historical resolution or stable numeric mode ID. Use
 CoreGraphics application-scoped display transactions with an independent
 restore guarantee; never depend on a permanent display-setting mutation.
 
+### 2026-07-28 stable-43.2.0 final-candidate checkpoint
+
+The current releasable macOS app is the signed, notarized, and stapled stable
+Electron 43.2.0 bundle at
+`/Users/jeromystroh/fov4-steam/dist/mac/mac-arm64/Fantasy Online 2.app`. Its
+product source is FOV4 `2372f1e` with Steam Bridge `5885d35`; subsequent FOV4
+commits through `d52f994` are documentation/client-contract work and do not
+mutate that packaged candidate. The focused actual-game and baseline receipt at
+`/Users/jeromystroh/.codex-qa/receipts/macos-focused-actual-game-b88fbce-08`
+is green. The known Chromium post-restore half-rate signature remains the one
+explicit product-owner exception described below; every other release gate
+remains strict.
+
+The first final-pass root at
+`/Users/jeromystroh/.codex-qa/receipts/macos-final-b88fbce-02` retained a clean,
+aligned, full-coverage child/parent composite while exposing a macOS synthetic
+input limitation: in two consecutive, separately synthesized opposing title
+drags, AppKit intermittently accepted either the first or second mouse-down but
+not both. The same instability reproduced while the target app, frontmost app,
+focused window, attached child, and pointer cleanup remained healthy. Retrying
+after `NSEvent.doubleClickInterval`, reactivating/raising the same window, and a
+combined `drag-reversal` command merely changed which leg was ignored. Those
+unproven retry/reversal experiments and their temporary diagnostics are
+removed. Do not change, retarget, recreate, detach, or promote the child to work
+around a QA event-injection failure.
+
+The independently proven slow-title-drag repair remains: use one login-session
+`CGEventSource`, allow the existing bounded mouse-down latch interval, and make
+the first timed title movement cross an eight-point AppKit/WindowServer drag
+hysteresis before continuing at the requested cadence. Exact focused receipt
+`/Users/jeromystroh/.codex-qa/receipts/macos-focused-title-drag-slow-working-14`
+observed the requested `140x70` movement across 73 healthy pair samples with
+pointer restoration and clean shutdown. Steam Bridge unit tests and macOS
+Swift typechecking cover the retained minimal helper delta.
+
+Treat consecutive synthetic reversal as an instrumentation limitation, not a
+green product result and not a reason to rerun already-settled product cases.
+Continue the still-unproven exact-candidate cases first. Before release, satisfy
+the unchanged direction-reversal product gate with a reliable one-held-drag
+input source or other independent evidence; never silently skip it, turn zero
+movement into a pass, or ask the product owner for recurring manual input.
+
+Focused exact-candidate receipt
+`macos-focused-geometry-stable-01` passed right, bottom, and corner resize plus
+the exact `640x480` content minimum. Its fast title drag was the only red case:
+the helper's conditional primer allowed that 80 ms gesture to begin with a
+roughly 14-point movement instead of the proven eight-point latch. The final
+helper now gives every nonzero title drag the same exact eight-point first
+movement while retaining total duration, steps, and final delta. Focused receipt
+`macos-focused-title-fast-stable-02` then passed exact `100x55` movement, nine
+healthy pair samples, exact restoration, visual health, pointer cleanup, and
+zero crashes. The slow path's emitted movement is unchanged and retains its
+earlier exact `140x70` proof.
+
+Focused receipt `macos-focused-px-interaction-stable-03` passed menu input,
+semantic game-surface input, focus round trip, minimize/restore, hide/restore,
+simple-fullscreen, ordinary Steam overlay open/close, and overlay FPS. Its
+overlay-state stress completed healthy overlay/child/visual work but failed
+only when the second of two separately synthesized opposing title drags was
+ignored, matching `MAC-QA-SYNTHETIC-TITLE-REVERSAL-001`; do not rerun the eight
+green cases. Fixed-60 receipt `macos-focused-display60-stable-04` passed
+baseline, FPS, and zoom/restore, while `display-live-transition` failed at the
+input-helper boundary. The isolated `macos-focused-display-live60-stable-05`
+repeat failed at the same boundary with green cleanup. This remains part of the
+synthetic input blocker rather than a product-child repair lane.
+
+The independent display/recovery receipts are green: fixed-48 baseline/FPS at
+`macos-focused-display48-stable-06`; scale-1 baseline, semantic input, and
+zoom/restore at `macos-focused-scale1-stable-09`; and warm relaunch plus forced
+GPU-process recovery at `macos-focused-recovery-stable-10`. Every run restored
+the original display configuration, closed the candidate, retained Steam, and
+reported zero app/overlay/Steam/graphics crashes.
+
+Low-Retina mode is separately blocked in the automation layer. Receipt
+`macos-focused-low-retina-stable-07` reached the actual game and passed
+zoom/restore, but the synthetic pointer reached the calculated attached-child
+rectangle while Chromium received zero trusted pointer/mouse events; baseline
+therefore reported `cursor_visible` and base input reported
+`gesture_mismatch`. Its ScreenCaptureKit Swift interpreter also held inherited
+pipes after the configured timeout. The runner now launches Darwin helpers in
+their own process group and terminates the full group on timeout; receipt
+`macos-focused-low-retina-input-stable-08` proved bounded cleanup and exact
+display restoration, while reproducing the same zero-event input result. A
+login-session event source did not change that result and was removed. Because
+the otherwise distinct scale-1 profile passes the same semantic input/cursor
+contract, do not reinterpret this as evidence for changing the product child.
+
 ### 2026-07-28 RC85 actual-game checkpoint
 
 The current exact signed, notarized, stapled, and Gatekeeper-accepted app is

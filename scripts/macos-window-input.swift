@@ -43,6 +43,10 @@ private struct Options {
 // leave an otherwise valid 80-120 ms QA gesture unlatched.  Keep the measured
 // motion duration unchanged and give only title drags one bounded latch window.
 private let titleDragMouseDownLatchSeconds = 0.08
+// Window Server does not reliably enter AppKit's title-bar tracking loop when
+// a synthetic slow drag begins with sub-hysteresis motion.  Cross the latch
+// distance once, then preserve the requested duration and remaining cadence.
+private let titleDragMinimumLatchDistance = 8.0
 
 private func usage() -> String {
     """
@@ -710,8 +714,20 @@ private func activate(pid: pid_t, titleContains: String? = nil) throws -> [Strin
     ]
 }
 
-private func postMouse(_ type: CGEventType, point: CGPoint) throws {
-    guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left) else {
+private func loginSessionEventSource() throws -> CGEventSource {
+    guard let source = CGEventSource(stateID: .combinedSessionState) else {
+        throw InputError.failure("failed to create login-session mouse event source")
+    }
+    source.localEventsSuppressionInterval = 0
+    return source
+}
+
+private func postMouse(
+    _ type: CGEventType,
+    point: CGPoint,
+    source: CGEventSource? = nil
+) throws {
+    guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: .left) else {
         throw InputError.failure("failed to create mouse event \(type.rawValue)")
     }
     event.post(tap: .cghidEventTap)
@@ -748,50 +764,103 @@ private func gestureStart(kind: String, frame: CGRect, edgeOffset: Double) throw
     }
 }
 
+private func postTimedDragLeg(
+    pid: pid_t,
+    tracker: WindowPairTracker?,
+    source: CGEventSource,
+    kind: String,
+    start: CGPoint,
+    finish: CGPoint,
+    durationMs: Double,
+    steps: Int
+) throws -> WindowPairResult {
+    var pairResult = WindowPairResult()
+    let stepDelay = durationMs / 1000 / Double(steps)
+    let distance = hypot(finish.x - start.x, finish.y - start.y)
+    let titleLatchProgress = kind == "title" && distance > 0
+        ? min(1, titleDragMinimumLatchDistance / distance)
+        : 0
+    let useTitleLatch = kind == "title"
+        && distance > titleDragMinimumLatchDistance
+        && steps > 1
+    for step in 1...steps {
+        let linearProgress = Double(step) / Double(steps)
+        let progress = useTitleLatch
+            ? titleLatchProgress
+                + (1 - titleLatchProgress) * Double(step - 1) / Double(steps - 1)
+            : linearProgress
+        let point = CGPoint(
+            x: start.x + (finish.x - start.x) * progress,
+            y: start.y + (finish.y - start.y) * progress
+        )
+        try postMouse(
+            .leftMouseDragged,
+            point: point,
+            source: source
+        )
+        Thread.sleep(forTimeInterval: stepDelay)
+        sampleWindowPair(pid: pid, tracker: tracker, result: &pairResult)
+    }
+    return pairResult
+}
+
 private func runDrag(pid: pid_t, options: Options) throws -> [String: Any] {
     try activate(pid: pid, titleContains: options.titleContains)
     let (window, _) = try selectWindow(pid: pid, titleContains: options.titleContains)
     let before = try frameOf(window)
     let pairTracker = createWindowPairTracker(pid: pid, parentAxFrame: before)
-    var pairResult = WindowPairResult()
     let start = try gestureStart(kind: options.kind ?? "", frame: before, edgeOffset: options.edgeOffset)
     let finish = CGPoint(x: start.x + options.dx, y: start.y + options.dy)
+    let eventSource = try loginSessionEventSource()
     let originalPointer = CGEvent(source: nil)?.location
     var mouseDown = false
     var pointerRestoreCompleted = false
     defer {
-        if mouseDown { try? postMouse(.leftMouseUp, point: finish) }
+        if mouseDown {
+            try? postMouse(
+                .leftMouseUp,
+                point: finish,
+                source: eventSource
+            )
+        }
         if options.restorePointer, !pointerRestoreCompleted, let originalPointer {
-            try? postMouse(.mouseMoved, point: originalPointer)
+            try? postMouse(.mouseMoved, point: originalPointer, source: eventSource)
         }
     }
 
-    try postMouse(.mouseMoved, point: start)
+    try postMouse(.mouseMoved, point: start, source: eventSource)
     Thread.sleep(forTimeInterval: 0.08)
-    try postMouse(.leftMouseDown, point: start)
+    try postMouse(
+        .leftMouseDown,
+        point: start,
+        source: eventSource
+    )
     mouseDown = true
     if options.kind == "title" {
         Thread.sleep(forTimeInterval: titleDragMouseDownLatchSeconds)
     }
-    let stepDelay = options.durationMs / 1000 / Double(options.steps)
-    for step in 1...options.steps {
-        let progress = Double(step) / Double(options.steps)
-        let point = CGPoint(
-            x: start.x + (finish.x - start.x) * progress,
-            y: start.y + (finish.y - start.y) * progress
-        )
-        try postMouse(.leftMouseDragged, point: point)
-        Thread.sleep(forTimeInterval: stepDelay)
-        sampleWindowPair(pid: pid, tracker: pairTracker, result: &pairResult)
-    }
-    try postMouse(.leftMouseUp, point: finish)
+    var pairResult = try postTimedDragLeg(
+        pid: pid,
+        tracker: pairTracker,
+        source: eventSource,
+        kind: options.kind ?? "",
+        start: start,
+        finish: finish,
+        durationMs: options.durationMs,
+        steps: options.steps
+    )
+    try postMouse(
+        .leftMouseUp,
+        point: finish,
+        source: eventSource
+    )
     mouseDown = false
     Thread.sleep(forTimeInterval: 0.3)
     sampleWindowPair(pid: pid, tracker: pairTracker, result: &pairResult)
     let after = try frameOf(window)
     var pointerRestored = !options.restorePointer
     if options.restorePointer, let originalPointer {
-        try postMouse(.mouseMoved, point: originalPointer)
+        try postMouse(.mouseMoved, point: originalPointer, source: eventSource)
         pointerRestoreCompleted = true
         Thread.sleep(forTimeInterval: 0.08)
         if let observedPointer = CGEvent(source: nil)?.location {

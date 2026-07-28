@@ -12392,21 +12392,35 @@ test("macOS input QA observes pointer restoration and can safely target the atta
 test("macOS rapid title drags let AppKit latch mouse-down before timed motion", () => {
   const source = readSourceFile("scripts", "macos-window-input.swift");
   assert.match(source, /private let titleDragMouseDownLatchSeconds = 0\.08/);
+  assert.match(source, /private let titleDragMinimumLatchDistance = 8\.0/);
+  assert.match(source, /CGEventSource\(stateID: \.combinedSessionState\)/);
+  assert.match(source, /source\.localEventsSuppressionInterval = 0/);
+  const timedLegStart = source.indexOf("private func postTimedDragLeg(");
   const dragStart = source.indexOf("private func runDrag(");
   const dragEnd = source.indexOf("\n}\n\nprivate func runChildClick", dragStart);
+  assert.notEqual(timedLegStart, -1);
   assert.notEqual(dragStart, -1);
   assert.notEqual(dragEnd, -1);
+  const timedLeg = source.slice(timedLegStart, dragStart);
   const drag = source.slice(dragStart, dragEnd);
-  const mouseDown = drag.indexOf("try postMouse(.leftMouseDown, point: start)");
+  const eventSource = drag.indexOf("let eventSource = try loginSessionEventSource()");
+  const mouseDown = drag.indexOf(".leftMouseDown,");
   const titleOnlyLatch = drag.indexOf('if options.kind == "title"');
   const latchSleep = drag.indexOf(
     "Thread.sleep(forTimeInterval: titleDragMouseDownLatchSeconds)",
     titleOnlyLatch
   );
-  const timedMotion = drag.indexOf("let stepDelay = options.durationMs / 1000 / Double(options.steps)");
+  const timedMotion = drag.indexOf("postTimedDragLeg(", latchSleep);
+  assert.ok(eventSource >= 0 && eventSource < mouseDown);
   assert.ok(mouseDown >= 0 && mouseDown < titleOnlyLatch);
   assert.ok(titleOnlyLatch < latchSleep && latchSleep < timedMotion);
   assert.equal((drag.match(/titleDragMouseDownLatchSeconds/g) || []).length, 1);
+  assert.match(timedLeg, /let titleLatchProgress = kind == "title" && distance > 0/);
+  assert.match(timedLeg, /titleDragMinimumLatchDistance \/ distance/);
+  assert.match(timedLeg, /let useTitleLatch = kind == "title"/);
+  assert.match(timedLeg, /distance > titleDragMinimumLatchDistance/);
+  assert.match(timedLeg, /let progress = useTitleLatch/);
+  assert.equal((drag.match(/source: eventSource/g) || []).length, 7);
 });
 
 test("macOS input QA has one real HID shortcut for nonblocking duplicate-overlay proof", () => {
