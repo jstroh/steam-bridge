@@ -202,7 +202,13 @@ ignored RC-number-specific focused wrapper. It hard-selects the exact
 same-resolution fixed-60 profile, requires the shipped App ID and 95% cadence
 floor, rejects ad-hoc cases/profiles, and applies final-mode Developer ID,
 hardened-runtime, Gatekeeper, notarization, and stapled-ticket verification in
-both controller and isolated profile processes. The historical RC80 controller
+both controller and isolated profile processes. The executable gate now reads
+`CFBundleVersion` from the signed Electron Framework and accepts only stable or
+beta Electron channels. Alpha, nightly, missing, and malformed versions fail
+before display mutation or Steam/game launch. A separate
+`--qualification-gate` runs the same exact signed cadence prefix for test-only
+isolation builds, labels its receipt `qualification`, and cannot authorize a
+release. The historical RC80 controller
 is explicitly non-reusable; HID inactivity is no longer authorization and
 lock-capable sleep remains permanently outside QA and release.
 
@@ -211,8 +217,18 @@ the already-qualified test-only RC89 bundle and self-identifies as
 `run.mode=promotion`. It recorded 60.006/59.994/59.962 FPS renderer samples and
 59.669 FPS PID-pinned presentation feedback after restore, approximately 60 FPS
 through the following independent baseline, exact display restoration, Steam
-survival, and zero crashes. This qualifies the gate implementation only; it does
-not promote Electron 44 alpha to a release dependency.
+survival, and zero crashes. This qualifies the cadence implementation only; it
+does not promote Electron 44 alpha to a release dependency. That receipt
+predates the executable channel split and retains its historical mode label.
+
+Focused preflight receipt
+`/private/tmp/fov4-macos-qa-rc89-promotion-dependency-reject-03` proves the
+hardened release boundary against unchanged RC89. It binds bundle SHA-256
+`cb1d53b7631ba74444b0d06eaac6d905351e5be91acdbb5894620d4b3a4c5b98`
+to Electron `44.0.0-alpha.7`, records channel `alpha` and
+`electronAcceptableForRelease=false`, then fails
+`candidate_dependency_prerelease`. Steam remained healthy and the driver never
+reached display mutation or game launch.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an

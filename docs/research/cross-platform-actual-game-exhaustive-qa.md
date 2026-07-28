@@ -266,6 +266,13 @@ Required Mac additions:
 - Search current macOS DiagnosticReports plus Steam crash evidence from the
   exact run interval. Zero new app, native host, Steam, or injected renderer
   crashes are allowed.
+- The signed cadence promotion gate must read Electron Framework's
+  `CFBundleVersion` and accept only stable or beta release channels before any
+  display mutation or Steam/game launch. Alpha and nightly isolation builds use
+  the separately labelled `qualification` lane; a qualification receipt can
+  prove a fix but can never authorize release. Missing, malformed, or
+  prerelease-disallowed dependency metadata fails closed and remains visible in
+  the sanitized candidate fingerprint.
 
 The complete Steam route matrix remains a separate final-candidate gate. Do not
 rerun its 55 cases during window/display development; run focused affected
@@ -372,7 +379,8 @@ requires both consumer and Steam Bridge commit/version identity, package
 archive/tree and executable/native-addon hashes, the exact ordered 37-row CORE
 contract, hashed per-case evidence, run-local process continuity, closed
 pre/post state, fixed case-specific assertion sets, one distinct evidence
-directory per CORE row, the prescribed logs/display/crash files, exact desktop restore,
+directory per CORE row, the prescribed logs/display/crash files, exact desktop
+restore,
 empty application stderr, zero crash counts, and three settled renderer/native
 presentation samples for baseline, overlay-active, and post-close phases on
 every display profile. Its CDP stream is resanitized during verification, so a
