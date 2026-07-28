@@ -16,6 +16,12 @@ function distFile(fileName) {
   return path.join(distRoot, fileName);
 }
 
+function readSourceFile(...pathSegments) {
+  return fs
+    .readFileSync(path.join(repoRoot, ...pathSegments), "utf8")
+    .replace(/\r\n?/g, "\n");
+}
+
 function clearSteamBridgeCache() {
   for (const fileName of ["index.js", "native.js", "electron.js", "electron-builder.js", "kwin.js"]) {
     try {
@@ -12330,10 +12336,7 @@ test("macOS continuous resize pumps geometry without serializing display diagnos
 });
 
 test("macOS input QA observes pointer restoration and can safely target the attached child", () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "scripts", "macos-window-input.swift"),
-    "utf8"
-  );
+  const source = readSourceFile("scripts", "macos-window-input.swift");
   const clickStart = source.indexOf("private func runChildClick(");
   const clickEnd = source.indexOf("\n}\n\nprivate func runChildMove", clickStart);
   assert.notEqual(clickStart, -1);
@@ -12379,10 +12382,7 @@ test("macOS input QA observes pointer restoration and can safely target the atta
 });
 
 test("macOS rapid title drags let AppKit latch mouse-down before timed motion", () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "scripts", "macos-window-input.swift"),
-    "utf8"
-  );
+  const source = readSourceFile("scripts", "macos-window-input.swift");
   assert.match(source, /private let titleDragMouseDownLatchSeconds = 0\.08/);
   const dragStart = source.indexOf("private func runDrag(");
   const dragEnd = source.indexOf("\n}\n\nprivate func runChildClick", dragStart);
@@ -12402,10 +12402,7 @@ test("macOS rapid title drags let AppKit latch mouse-down before timed motion", 
 });
 
 test("macOS input QA has one real HID shortcut for nonblocking duplicate-overlay proof", () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "scripts", "macos-window-input.swift"),
-    "utf8"
-  );
+  const source = readSourceFile("scripts", "macos-window-input.swift");
   assert.match(source, /--shortcut cmd-m\|cmd-h\|cmd-tab\|cmd-shift-o\|escape\|ctrl-cmd-f/);
   const sequenceStart = source.indexOf("private func keySequence(");
   const sequenceEnd = source.indexOf("\n}\n\nprivate func postShortcut", sequenceStart);
@@ -12418,10 +12415,7 @@ test("macOS input QA has one real HID shortcut for nonblocking duplicate-overlay
 });
 
 test("macOS input QA moves the real pointer only within the exact owned child/window pair", () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "scripts", "macos-window-input.swift"),
-    "utf8"
-  );
+  const source = readSourceFile("scripts", "macos-window-input.swift");
   assert.match(source, /case "move-child":/);
   assert.match(source, /case "move-title":/);
   assert.match(source, /private func requireOwnedWindowPair\(pid: pid_t, tracker: WindowPairTracker\)/);
@@ -12450,10 +12444,7 @@ test("macOS input QA moves the real pointer only within the exact owned child/wi
 });
 
 test("macOS input QA proves focus at the application and focused-window levels", () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "scripts", "macos-window-input.swift"),
-    "utf8"
-  );
+  const source = readSourceFile("scripts", "macos-window-input.swift");
   assert.match(source, /kAXFocusedApplicationAttribute/);
   assert.match(source, /kAXFocusedWindowAttribute/);
   assert.match(source, /NSRunningApplication\(processIdentifier: pid\)\?\.isActive/);

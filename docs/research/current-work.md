@@ -364,6 +364,15 @@ the tests searched for literal LF method boundaries. Those two test-only reads
 now normalize CRLF to LF before slicing. The native source and product behavior
 are unchanged.
 
+CI run `30356746271` confirmed the timer-owned checkout fixes across all three
+platform jobs and passed the complete macOS and Linux jobs plus package smoke.
+Windows progressed past the Objective-C++ assertions and exposed the same
+checkout-newline artifact in two Swift helper boundary assertions. Source-shape
+tests now read Swift helper text through one CRLF/CR-to-LF normalization helper,
+including adjacent assertions whose slices could otherwise silently terminate
+at `-1`. The complete local `npm test` gate passes 347/347; this remains a
+test-portability repair with no production or native behavior change.
+
 The subsequent route-lane audit proves `--suite full` expands to exactly 55
 unique cases and contains zero unavailable, locked, display-asleep, or sleep
 actions; the separate `unavailable` suite is not a release requirement. The
