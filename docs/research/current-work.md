@@ -1034,6 +1034,20 @@ overlay-active transitions, actual-game integration, renderer/native pacing,
 crashes, cleanup, and exact restoration. Automation is implemented and unit
 qualified; no physical non-Deck Linux receipt exists yet.
 
+The Windows audit found a different proof-layer gap: Steam Bridge's schema-v4
+`windows-live-proof-receipt.cjs` strongly binds the package, installed runtime,
+standalone D3D11 telemetry, manual checklist, and npm publication candidate,
+but its four coarse cases are not the consumer's canonical cross-platform
+37-CORE actual-game matrix. FOV4 now owns a separate explicit
+`windows-desktop` CDP lane and `scripts/windows-final-qa-receipt.mjs` auditor.
+It requires a Windows renderer, non-Deck attestation, local loopback, stable
+Electron, the exact ordered five-case CDP stream, all 37 ordered CORE rows with
+distinct evidence and fixed assertions, pacing against measured display Hz,
+exact restoration, empty stderr, and zero crashes. Windows accepts no
+`not-applicable` CORE row. Both the new application receipt and the existing
+Steam Bridge Windows live-proof receipt are required; the package publication
+contract remains unchanged.
+
 ## Read First After Compaction: Windows Architecture
 
 This checkpoint overrides any shortened-context inference that Windows attached

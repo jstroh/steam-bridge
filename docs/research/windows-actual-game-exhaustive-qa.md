@@ -128,6 +128,18 @@ loops. Transition exclusions must be called out in the receipt.
 
 ## Receipt Template
 
+The current consumer owns the executable canonical adapter at
+`scripts/windows-final-qa-receipt.mjs` and the closed CDP lane at
+`scripts/windows-actual-game-qa.mjs`. The canonical root must bind platform
+`windows-desktop`, session `windows-desktop`, a Windows renderer,
+`steamDeck: false`, local-loopback transport, stable Electron, the exact ordered
+37 shared CORE rows, distinct hashed per-case evidence, three settled samples
+per baseline/overlay/post-close phase and display profile, exact display/focus/
+pointer restoration, empty unexpected stderr, and zero crashes. Windows accepts
+no `not-applicable` CORE row. Run this application receipt in addition to the
+Steam Bridge `windows-live-proof-receipt.cjs` package/publication receipt;
+neither replaces the other.
+
 Create an artifact directory named like:
 
 `C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-YYYYMMDD-HHMMSS`

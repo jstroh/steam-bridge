@@ -305,6 +305,15 @@ routes, then the full route matrix once beside the final actual-game receipt.
   at least two exposed scale settings.
 - Record DXGI waitable-swapchain cadence, source copies, native presents,
   frame-latency timeouts, slow copies, device loss/recovery, and adapter identity.
+- The consumer-owned `scripts/windows-actual-game-qa.mjs` lane requires an
+  explicit `windows-desktop` target, Windows renderer attestation,
+  `isSteamDeck() === false`, and local-loopback transport. Its canonical
+  `scripts/windows-final-qa-receipt.mjs` root uses the same exact ordered
+  37-CORE contract as macOS/Linux/Deck and accepts no `not-applicable` row.
+- The consumer canonical receipt complements the package-owned
+  `windows-live-proof-receipt.cjs`; neither substitutes for the other. The
+  former binds actual-game/manual cross-platform behavior, while the latter
+  binds the package/runtime/native telemetry and npm publication candidate.
 - The detailed specialization remains in
   [Windows Actual-Game Exhaustive QA](windows-actual-game-exhaustive-qa.md).
 
