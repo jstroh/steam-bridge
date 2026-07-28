@@ -135,13 +135,13 @@ private func parseOptions(_ arguments: [String]) throws -> Options {
         case "--minimized": options.minimized = try parseBool(try takeValue(arguments, index: &index, option: option), option: option)
         case "--restore-pointer": options.restorePointer = try parseBool(try takeValue(arguments, index: &index, option: option), option: option)
         case "--x-from-right":
-            guard let value = Double(try takeValue(arguments, index: &index, option: option)), value >= 1, value <= 256 else {
-                throw InputError.usage("--x-from-right must be in [1, 256]")
+            guard let value = Double(try takeValue(arguments, index: &index, option: option)), value >= 1, value <= 32_768 else {
+                throw InputError.usage("--x-from-right must be in [1, 32768]")
             }
             options.xFromRight = value
         case "--y-from-top":
-            guard let value = Double(try takeValue(arguments, index: &index, option: option)), value >= 1, value <= 256 else {
-                throw InputError.usage("--y-from-top must be in [1, 256]")
+            guard let value = Double(try takeValue(arguments, index: &index, option: option)), value >= 1, value <= 32_768 else {
+                throw InputError.usage("--y-from-top must be in [1, 32768]")
             }
             options.yFromTop = value
         default: throw InputError.usage("unknown option: \(option)")
@@ -717,6 +717,27 @@ private func postMouse(_ type: CGEventType, point: CGPoint) throws {
     event.post(tap: .cghidEventTap)
 }
 
+private func postDistinctMouseMove(to target: CGPoint, inside bounds: CGRect) throws {
+    let interior = bounds.insetBy(dx: 1, dy: 1)
+    let candidates = [
+        CGPoint(x: target.x - 32, y: target.y),
+        CGPoint(x: target.x + 32, y: target.y),
+        CGPoint(x: target.x, y: target.y - 32),
+        CGPoint(x: target.x, y: target.y + 32),
+    ]
+    guard interior.contains(target),
+          let staging = candidates.first(where: { interior.contains($0) }) else {
+        throw InputError.failure("could not derive a distinct in-window pointer move")
+    }
+    try postMouse(.mouseMoved, point: staging)
+    Thread.sleep(forTimeInterval: 0.12)
+    guard let stagedPointer = CGEvent(source: nil)?.location,
+          hypot(stagedPointer.x - staging.x, stagedPointer.y - staging.y) <= 1.5 else {
+        throw InputError.failure("pointer did not settle at the distinct in-window staging point")
+    }
+    try postMouse(.mouseMoved, point: target)
+}
+
 private func gestureStart(kind: String, frame: CGRect, edgeOffset: Double) throws -> CGPoint {
     switch kind {
     case "title": return CGPoint(x: frame.midX, y: frame.minY + min(14, max(6, frame.height * 0.03)))
@@ -917,7 +938,7 @@ private func runChildMove(pid: pid_t, options: Options) throws -> [String: Any] 
     guard pairResult.mismatchCount == 0 else {
         throw InputError.failure("attached Steam overlay child/parent pair was unstable before pointer move")
     }
-    try postMouse(.mouseMoved, point: target)
+    try postDistinctMouseMove(to: target, inside: pair.child.bounds)
     Thread.sleep(forTimeInterval: 0.12)
 
     let currentPair = try requireOwnedWindowPair(pid: pid, tracker: pair.tracker)
@@ -971,7 +992,7 @@ private func runTitleMove(pid: pid_t, options: Options) throws -> [String: Any] 
     guard pairResult.mismatchCount == 0 else {
         throw InputError.failure("attached Steam overlay child/parent pair was unstable before pointer move")
     }
-    try postMouse(.mouseMoved, point: target)
+    try postDistinctMouseMove(to: target, inside: pair.parent.bounds)
     Thread.sleep(forTimeInterval: 0.12)
 
     let currentPair = try requireOwnedWindowPair(pid: pid, tracker: pair.tracker)

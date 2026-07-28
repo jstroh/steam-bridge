@@ -12379,6 +12379,14 @@ test("macOS input QA observes pointer restoration and can safely target the atta
   assert.match(source, /--edge-offset must be in \[-8, 8\]/);
   assert.match(source, /frame\.maxX \+ edgeOffset/);
   assert.match(source, /frame\.maxY \+ edgeOffset/);
+  assert.match(source, /private func postDistinctMouseMove\(to target: CGPoint, inside bounds: CGRect\)/);
+  assert.match(source, /CGPoint\(x: target\.x - 32, y: target\.y\)/);
+  assert.match(source, /Thread\.sleep\(forTimeInterval: 0\.12\)/);
+  assert.match(source, /pointer did not settle at the distinct in-window staging point/);
+  assert.match(source, /--x-from-right must be in \[1, 32768\]/);
+  assert.match(source, /--y-from-top must be in \[1, 32768\]/);
+  assert.match(source, /try postDistinctMouseMove\(to: target, inside: pair\.child\.bounds\)/);
+  assert.match(source, /try postDistinctMouseMove\(to: target, inside: pair\.parent\.bounds\)/);
 });
 
 test("macOS rapid title drags let AppKit latch mouse-down before timed motion", () => {
