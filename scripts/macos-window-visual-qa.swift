@@ -61,6 +61,11 @@ private struct CapturedFrame {
     let boundary: BoundarySignature
 }
 
+private struct CapturedSample {
+    let frame: CapturedFrame
+    let source: [String: Any]
+}
+
 private struct FrameMetrics {
     let aspectRatio: Double
     let opaqueRatio: Double
@@ -1225,7 +1230,7 @@ private final class CaptureSession {
         return selected
     }
 
-    private func capture() async throws -> CapturedFrame {
+    private func capture() async throws -> CapturedSample {
         let window = try await targetWindow()
         let aspectRatio = max(0.25, min(4, window.frame.width / max(1, window.frame.height)))
         let filter = SCContentFilter(desktopIndependentWindow: window)
@@ -1256,35 +1261,46 @@ private final class CaptureSession {
             configuration.includeChildWindows = true
         }
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
-        return CapturedFrame(
-            plane: try makePlane(image: image, aspectRatio: aspectRatio),
-            boundary: try makeBoundarySignature(image: image)
+        return CapturedSample(
+            frame: CapturedFrame(
+                plane: try makePlane(image: image, aspectRatio: aspectRatio),
+                boundary: try makeBoundarySignature(image: image)
+            ),
+            source: [
+                "frameWidth": window.frame.width,
+                "frameHeight": window.frame.height,
+                "filterWidth": filter.contentRect.width,
+                "filterHeight": filter.contentRect.height,
+                "pointPixelScale": pointPixelScale,
+            ]
         )
     }
 
     func capture(slot: String?) async throws -> [String: Any] {
-        let plane = try await capture()
-        if let slot { references[slot] = plane }
+        let sample = try await capture()
+        if let slot { references[slot] = sample.frame }
         return [
             "schema": schemaVersion,
             "type": "capture",
             "status": "pass",
             "code": ClosedCode.ok.rawValue,
-            "frame": analyze(plane.plane).json(),
+            "frame": analyze(sample.frame.plane).json(),
+            "source": sample.source,
         ]
     }
 
     func compare(slot: String?, against: String) async throws -> [String: Any] {
         guard let reference = references[against] else { throw ClosedCode.referenceMissing }
-        let plane = try await capture()
-        if let slot { references[slot] = plane }
+        let sample = try await capture()
+        if let slot { references[slot] = sample.frame }
         return [
             "schema": schemaVersion,
             "type": "comparison",
             "status": "pass",
             "code": ClosedCode.ok.rawValue,
-            "frame": analyze(plane.plane).json(),
-            "difference": differenceBetween(plane, reference).json(),
+            "frame": analyze(sample.frame.plane).json(),
+            "difference": differenceBetween(sample.frame, reference).json(),
+            "source": sample.source,
         ]
     }
 

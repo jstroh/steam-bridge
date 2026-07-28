@@ -91,10 +91,31 @@ restoration, Steam survival, and all crash categories passed. RC85 itself was
 unchanged. Do not add an AppKit resize workaround, retarget the child, or retry
 more edge offsets for this settled harness error.
 
-Only the scale-1 `overlay-state-stress` visual failure from the RC82 attempt
-remains open. Retest that case next. After it is individually green, run one
-complete 25-case/five-profile actual-game pass and then the pinned 55-route
-matrix on the same exact candidate. Do not rerun already-green focused cases.
+The final scale-1 `overlay-state-stress` failure is individually closed. A
+privacy-bounded capture-source extension proved that the long-lived
+ScreenCaptureKit session kept the same parent: it measured `1280x752` before
+the case and the expected `1920x1170` AppKit work-area frame after the exact
+zoom action. The app telemetry independently recorded the native animated
+zoom, `maximized=true`, exact child/content alignment, and subsequent exact
+restore. The red result was a QA ownership error: the harness required restored
+window corners while the parent intentionally occupied the square screen work
+area. The visual contract now gives maximized windows a distinct gate requiring
+healthy native chrome, square bottom corners, and an opaque screen boundary;
+restored windows still require rounded-corner proof. The helper publishes only
+bounded frame/filter dimensions and point-pixel scale, never a window ID,
+title, pixels, or account data.
+
+Focused receipt
+`/private/tmp/fov4-macos-qa-rc85-scale1-overlay-max-contract-05` passed the
+complete affected path on unchanged RC85: physical move/resize, zoom and exact
+restore, minimize/restore, focus transitions, simple-fullscreen transitions,
+continuous active-overlay visual coverage, exact child alignment, cleanup,
+desktop restoration, Steam survival, and zero app/overlay/Steam/graphics
+crashes. Its controller also corrected a proof-integrity defect by hashing the
+exact fixed-name visual-contract module imported by the driver, rather than an
+unused hash-named copy. Every known individual failure is now green. Run one
+complete 25-case/five-profile actual-game pass next, then the pinned 55-route
+matrix on the same exact candidate. Do not rerun the focused cases.
 
 Mac pacing has three deliberately separate signals. CoreGraphics supplies the
 nominal selected display rate. Renderer-PID-pinned Chromium `PipelineReporter`
