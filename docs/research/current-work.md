@@ -128,14 +128,23 @@ post-restore half-rate defect in the fixed-60 profile. After the exact
 feedback were both exactly 30 FPS while the unchanged attached Metal child
 remained healthy at 60 FPS. The transition trace recorded 110 skipped browser
 display-link callbacks and preference factors ending in factor two. This
-proves the newly added immediate one-DIP move-and-restore pair was not yet a
-valid repair: its compensating event allowed Chromium to return to the stale
-factor-two preference. The prior causal receipt proved one non-clicking
-one-DIP renderer-local move. FOV4 now sends exactly that single focused-window
-event after the display settles, never moves or clicks the OS pointer, and lets
-the next real pointer event replace the one-DIP page-local position. Build a
-new exact candidate and focused-retest only the reduced warm-relaunch/display-
-pacing/baseline prefix before broader QA.
+proves the newly added immediate one-DIP move-and-restore pair was not a valid
+repair: its compensating event allowed Chromium to return to the stale
+factor-two preference. Exact signed/notarized/stapled RC86 then tested the
+remaining single one-DIP move on only the reduced warm-relaunch/pacing/baseline
+prefix. It failed identically: factors `[1,1,1,1,1,2,1,2]`, 102 skipped
+callbacks during the transition, 91/91 skipped post-restore callbacks, and
+exact 30 FPS through the independent baseline while Metal remained healthy at
+60. Synthetic renderer input is now a closed product path.
+
+Chromium's `UseFrameIntervalDecider` is an enabled-by-default optional Viz
+feature. On this every-vsync game it creates a recursive failure: a transient
+30 FPS sample selects factor two, then `ExternalBeginFrameSourceMac` skips every
+other callback and makes 30 FPS self-sustaining. FOV4 now owns the explicit
+full-display-rate policy by disabling that feature before Electron readiness.
+Steam Bridge continues to own the separate, safe browser-only CADisplayLink
+selection and does not impose the game-specific policy on other consumers.
+Build a new exact candidate and focused-retest only the same reduced prefix.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
