@@ -1,9 +1,13 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-25
+Last reviewed: 2026-07-28
 
-Review anchor: `45a43686b465e8fa6c84184f946fbc372705c496`
-(`Bound Windows restore pacing proof`). npm `latest` is `0.3.8`. Exact
+Review anchor: `338f2038bc1a5d563d1031ab960faedf488ef879`
+(`Preserve Node 22 named exports after minification`). npm `latest` is `0.3.8`;
+the unpublished working version is `0.3.9`. The current working tree contains
+the unreleased macOS actual-game repair described below **beyond** that review
+anchor; neither `338f203` nor an intermediate ad-hoc bundle is the final
+candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
 rejected candidates. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
@@ -17,7 +21,637 @@ minimize/restore target transition as steady-state pacing. `v0.3.8` is the
 published successor and current stable release. Never move, reuse, or publish
 any rejected tag.
 
-## Active Goal: Deck Desktop Application Host
+## Active Goal: Cross-platform exhaustive actual-game QA
+
+Build and retain one auditable, platform-neutral actual-game QA contract with
+strict Windows, macOS Apple Silicon, Linux Desktop, Steam Deck Desktop, and
+Steam Deck Game Mode adapters. The shared contract covers exact candidate and
+process identity, cold/warm launch, geometry and aspect, menu/chrome and input,
+slow/fast/reversing move and resize, exact minimum size, maximize/restore,
+minimize/throttle/restore, fullscreen/restore, focus switching, ordinary Steam
+overlay open/duplicate suppression/close, every platform-supported transition
+or proven native modal constraint while Steam is active, baseline/active/post-
+close FPS against the authoritative display rate, crash/orphan cleanup, and
+exact display-setting restoration.
+Platform adapters add the platform-specific compositor, DPI/backing-scale,
+refresh-rate, input, fullscreen, host, and presentation evidence.
+
+The immediate lane is macOS on the physical Apple Silicon Retina host. Continue
+from the unreleased working tree beyond `338f203`; preserve the already-green
+55/55 route matrix at
+`/tmp/steam-bridge-macos-overlay-matrix-full3-338f203-20260725` and do not rerun
+that expensive route suite during implementation. The missing qualification is
+actual FOV4 plus automated physical title drag and edge/corner resize, exact
+`640x480` minimum, Cmd+Tab/focus recovery, maximize/minimize/restore,
+application-owned simple-fullscreen and separate native-Spaces diagnostic,
+capability-selected Retina and 1x scale modes, scale-factor transitions, the
+same logical/pixel mode at fixed 48 Hz and 60 Hz plus maximum/adaptive 120 Hz,
+overlay-active state stress, pixel/geometry alignment, and renderer/Metal
+presentation cadence. Resolve public CoreGraphics modes on each run rather
+than assuming a historical resolution or stable numeric mode ID. Use
+CoreGraphics application-scoped display transactions with an independent
+restore guarantee; never depend on a permanent display-setting mutation.
+
+Mac pacing has three deliberately separate signals. CoreGraphics supplies the
+nominal selected display rate. Renderer-PID-pinned Chromium `PipelineReporter`
+presentation feedback is the primary actual-game surface gate, bracketed by
+untraced rAF samples so trace perturbation above 5% fails closed. Metal
+drawable-presented callbacks are authoritative for the attached child.
+ScreenCaptureKit is visual-only and cannot prove cadence. Its persistent
+fixed-output stream must preserve source aspect ratio, crop analysis to each
+frame's reported `contentRect`, and measure unhealthy/dropout runs from
+WindowServer's `displayTime`; helper callback wall time includes analysis or
+scheduling latency and is not visible-duration evidence. MTKView's timed loop
+is the attached child's sole presentation clock while the parent can present;
+JavaScript pumps only lifecycle, geometry, callbacks, and bounded diagnostics.
+The same view pauses while its child or parent is hidden, the parent is
+miniaturized, or the application is hidden, then resumes without surface
+recreation. The child's configured active/passive policy must be checked at
+every display phase, but changing, repainting, pausing, or recreating that
+child is not a remedy for Chromium renderer cadence. Fixed-rate release samples
+must remain between 95% and 108% of nominal so duplicate clocks or silent timer
+starvation cannot pass.
+
+RC40 receipt `/private/tmp/fov4-macos-qa-rc40-focused-44` first exposed the
+120 -> 60 -> 120 defect. Its restored Chromium surface initially presented at
+60.995 FPS with 177 of 362 attempted frames dropped and later recovered only
+to 95.139 FPS, below the 114 FPS release floor. RC40 also showed an unhealthy
+child rate and therefore motivated AppKit display-notification handling, but
+the later isolated sequence below supersedes the original inference that the
+child caused the Chromium slowdown. Keep the notification handling needed to
+reapply the existing MTKView policy, but do not use child-clock changes as a
+renderer workaround.
+
+### 2026-07-26 macOS refresh-transition causal checkpoint
+
+The refresh-transition investigation is now causally isolated, but the exact
+actual-game release candidate is not yet qualified. Receipt 59 kept the
+passive child synchronized with the selected display and still restored the
+renderer at roughly 96-99 FPS. Receipt 61 issued every requested Electron
+repaint and still restored at roughly 94-96 scheduler FPS. Receipt 64 stopped
+the child completely throughout the transition, preserving the same attached
+surface with zero child draws, presents, or errors, and the renderer still
+restored at 89-93 scheduler FPS. These controls exonerate the attached child;
+repaint and child pause/reconfiguration are closed workaround paths.
+
+A minimal Electron 43.2.0 application with no Steam, Steam Bridge, native
+child, or game reproduced the defect in receipt 68: scheduler cadence moved
+from 120 to 60 and restored around 90 FPS. Receipt 69 added Chromium
+`gpu`/`viz` tracing and pinned the loss to the same persistent
+`ExternalBeginFrameSourceMac` begin-frame display link: callbacks changed from
+120.003 to 59.997 to 94.325 FPS after restore, with the restored stream missing
+roughly every fourth callback. Receipt 70 reproduced the same behavior with
+Electron 44.0.0-alpha.6 / Chromium 152, so an Electron upgrade is not a fix.
+Receipt 71 reproduced it when the CoreGraphics mode change used session scope,
+so application-scoped display transactions are not the cause. Receipt 72 is an
+invalid infrastructure artifact: the runner loaded the wrong analysis module
+and failed before any display change; it carries no product evidence.
+
+The applicable Chromium 150 experiment is its exact browser-only field-trial
+arm:
+
+```text
+--enable-features=CADisplayLinkInBrowser
+--disable-features=CADisplayLinkInGpuThenBrowser
+```
+
+With that arm, receipt 73 held a stable, visible, exactly focused Electron 43
+renderer at 120 -> 60 -> 120 scheduler cadence, while the persistent external
+begin-frame callback held 119.999 -> 60.002 -> 120.001 FPS. Receipt 75 fully
+covered the control window behind another window and deliberately kept both
+window and renderer unfocused; it still held roughly 120 -> 60 -> 120 for both
+scheduler and external begin-frame callbacks, with one renderer identity and
+exact display restoration. Backgrounding was therefore not the original cause.
+Both controls are causally green even though their generic summaries say
+`fail`: a light CSS animation is not expected to submit a physical frame every
+vsync, so the actual-game 95% `PipelineReporter` gate is inapplicable to these
+minimal controls and remains unchanged for release QA.
+
+Chromium hard-gates browser-side `CADisplayLink` support to macOS 14 or newer.
+The working candidate must merge the two startup feature lists before Electron
+readiness only on that supported OS range and must preserve explicit
+`CADisplayLinkInGpuThenBrowser` disablement. Do not try the GPU-then-browser arm:
+upstream abandoned it after random post-power-resume hangs and a sleep/wake
+unresponsive-UI regression. A hidden Electron offscreen renderer feeding an
+IOSurface-backed attached child remains a contingency only, not the selected
+repair. Before any release claim, complete focused actual-game mode-transition,
+cold/warm startup, and GPU-process failure/recovery cases, then the full Mac
+actual-game and 55-route gates on one exact signed, notarized, stapled
+candidate. Lock-capable display/full-system sleep tests are excluded below.
+
+### 2026-07-27 RC77 actual-game checkpoint
+
+RC77 is the first exact actual-game candidate containing the selected policy.
+Its immutable app root is
+`/private/tmp/fov4-macos-rc-browser-display-link-77/output/mac-arm64/Fantasy Online 2.app`
+and its sorted-tree fingerprint is
+`74566f3c33cbe87d85a8069a5c65cc212a1b5f1c03ca9b56a3ab2ba5695f9bd4`
+(607 entries, 352274998 bytes). Deep strict code-signing, Developer-ID team and
+timestamp checks, Gatekeeper, notarization, and stapler validation all passed.
+The retained Bridge and FOV source-archive hashes are respectively
+`f759acf7368b055ded45a98ca1ffb9bf7c938216826b182182c8efd92ecf5a91`
+and `3e538c4d08838f576bc5162aa9de556f7c500a171e27a5079dd52bc9d57ea397`;
+the packed Bridge tarball hash is
+`395a4b314579fb170a90dcd00e7684a38266e160712d2a4ffcdf673fc0ba8e8e`.
+
+Steam Bridge now exposes an explicit `enableMacosBrowserDisplayLink` Electron
+startup option. It defaults off, is eligible only on Darwin with macOS 14+ and
+Chromium 150+, merges the browser-only enable and GPU-then-browser disable
+before readiness, makes identical repeated configuration idempotent, and
+rejects a conflicting locked decision. FOV4 alone opts in on Darwin before
+readiness. Live exact-process inspection proved the expected enable/disable on
+the candidate's GPU, utility, and renderer children and proved neither feature
+was embedded in the Steam shortcut. Do not move this app-specific rollout into
+a global Steam launcher or silently enable it for every Bridge consumer.
+
+The first focused receipt,
+`/private/tmp/fov4-macos-qa-rc77-app-optin-pacing-01`, proved warm relaunch,
+120 -> 60 -> 120 transition recovery, and canonical overlay pacing. Restored
+scheduler samples were 119.501/119.667/119.663 FPS with 119.670 FPS Chromium
+presentation feedback; overlay-active presentation feedback was 120.001 FPS.
+Its one red row was a verifier ownership defect: the lifecycle duplicate check
+reapplied a 95% fixed-rate gate to a static ProMotion overlay that continued to
+advance on the exact same healthy child at roughly 76-80 presents per second.
+The `fps-overlay` case exclusively owns cadence against display Hz. Overlay
+lifecycle owns attachment, geometry, policy, forward presentation progress,
+callbacks, visual continuity, and error counters, but not a second fixed-rate
+threshold.
+
+The corrected driver is retained independently of the immutable app with hash
+`c47901f5581cb77fad7fe0b9b7649455277daeb881db616a30f8481c8db7be61`.
+Its focused rerun at
+`/private/tmp/fov4-macos-qa-rc77-overlay-lifecycle-harness-c479-02` passed open,
+duplicate suppression, Escape close, exact active/inactive callbacks, the same
+attached child, 187 continuous visual frames, passive restoration, cleanup,
+Steam survival, exact display restoration, and zero crashes. Focused preflight
+now always actually runs stapler validation instead of recording an unchecked
+ticket as false.
+
+The first transactional shortcut bind encountered a real Steam self-update
+handoff after Steam had been stopped and the VDF had been changed. That attempt
+is intentionally retained as failed; it was not relabeled. Steam's updater
+descendants later completed and left the live shortcut exactly bound to RC77.
+The verified recovery receipt is
+`/private/tmp/fov4-macos-rc-browser-display-link-77/shortcut-binding-02-post-update-recovery/summary.json`;
+the timestamped rollback backup still exactly names RC76. Future binders must
+treat the updater's process handoff as a distinct recovery state and verify the
+post-update live VDF plus a healthy Steam instance rather than assuming the
+first relaunch PID remains Steam. Repeated blind restarts or claiming the
+interrupted transaction passed are closed operational paths.
+
+The unchanged RC77 native-Spaces diagnostic subsequently passed at
+`/private/tmp/fov4-macos-qa-rc77-native-spaces-harness-c479-03`: both
+transitions retained the same attached child, exact restored `1280x720`
+content geometry and corners, 340 transition frames contained no unavailable,
+blank, purple, chrome-covering, or full-window flash, and cleanup found no
+crash. Do not rerun this unchanged case during repair.
+
+Two focused RC77 recovery cases found real defects. Killing only Chromium's GPU
+child reinitialized Chromium in 118 ms, but PX correctly treated
+`graphics_context_lost` as terminal because its WebGL resources were invalid.
+The owner is FOV4's shell: perform one cooldown-bounded page reload and obtain a
+fresh Steam auth ticket automatically; never attempt to reuse the lost PX
+context. The recovery marker may retain only bounded character-slot and server
+routing integers needed to return to the same game; it must never retain a
+name, character ID, Steam/account/user ID, auth ticket, or native response. The
+replacement GPU case must prove the automatic reload and production canvas
+without clicking Play. Display sleep woke and recovered the exact app and child
+at approximately 120 Hz, but RC77 kept drawing while the target display was
+asleep and accumulated unpresented drawables. Steam Bridge now checks the
+target CoreGraphics display's asleep state and pauses the existing MTKView; it
+does not detach, recreate, or replace the child.
+
+The first full-power sleep attempt was interrupted because an operator was
+actively using the Mac. It is invalid infrastructure evidence and says nothing
+about product correctness. A later RC80 display-sleep attempt invoked macOS's
+security lock screen and required the operator to unlock the computer manually.
+That case also failed without sleep/wake/restore evidence. `display-sleep-wake`
+and `power-sleep-wake` are therefore permanently retired from executable QA and
+the release gate; full-system sleep was not attempted. The CLI rejects both
+names, the old acknowledgement flag is gone, and the external power controller
+is a refusal-only tombstone. Never sleep or lock a computer for this QA.
+
+RC80 below is the new exact candidate containing the shell GPU recovery and
+native display-asleep pause fixes. Retest only the affected safe focused cases, but
+do not bind Steam, launch/focus the app, or run any live desktop case while an
+operator is using the Mac. Do not schedule either retired sleep case.
+After all individual cases are green, run the one complete actual-game suite
+and one final 55-route suite on the same exact candidate; do not publish from
+the current checkpoint.
+
+### 2026-07-27 RC78/RC79/RC80 recovery-candidate checkpoint
+
+RC78 was signed and notarized but rejected before any launch. Review found that
+a plain renderer reload returns the React shell to its character list, so its
+first automatic GPU-recovery implementation could not reach the game by
+itself. Do not bind, launch, qualify, or publish RC78; its only value is a
+pre-live review finding.
+
+RC79 corrected that basic flow. Only after the exact `graphics_context_lost` fatal does
+the session marker retain the selected character slot (0-3) and server (0-5).
+After reload the shell consumes that one-shot route, resolves the character
+again from freshly loaded user data, obtains a fresh Steam Web API auth ticket,
+and launches without QA clicking Play. It never persists the character name or
+ID, Steam/account/user ID, ticket, native response, or arbitrary state. A
+second context loss inside 60 seconds stays on the manual recovery UI. Missing
+characters, changed TOS requirements, unavailable WebGL2, storage errors, and
+auth failures all fail closed without a reload loop. However, final pre-live
+review found that its consumed auto-resume intent was not cleared when the
+resolved character later entered an incomplete, customization-required, or
+TOS-invalid route. A subsequent manual setup in the same renderer could
+therefore inherit stale intent. RC79 was rejected before bind or launch and must
+not be qualified or published.
+
+RC80 clears the one-shot recovery context immediately on every pre-launch route
+that cannot auto-launch, including incomplete character, customization, TOS,
+missing character, Back, unavailable WebGL2, and storage failure. A fresh-ticket
+failure makes exactly one automatic attempt, presents the ordinary manual error,
+and cannot reload or retry in a loop. Its source gate passes 253/253 tests,
+typecheck, and lint. The exact signed, notarized, stapled, and
+Gatekeeper-accepted RC80 bundle is
+`/private/tmp/fov4-macos-rc-browser-display-link-80/output/mac-arm64/Fantasy Online 2.app`.
+Its sorted-tree fingerprint is
+`13a2e73695b656c9ea1b0f1cb1595bf5de9af20411ac2fae38eb2c9756fcfb71`
+(607 entries, 352293464 bytes). The app ASAR is
+`2c4eb886c882de0edc2249ca8714d0e5852246d7c433d84aaf7e2bfc4bfffea5`;
+the signed in-bundle addon is
+`2f176fd985337ddd4e1307da4ed811e652f724b80365ec388228cfa742dd3460a`.
+The exact Bridge and FOV source archives are respectively
+`c832f2f1b1bf3e2715eb6c85bb5dc0b3bf3abe402634d50c398a79c789b3e555`
+and `db58f642fe612fdbe1e60c813e605e7f77d75ae745e233f7f9ca10e8014ebe0f`.
+RC80 reuses exact Bridge package
+`f84f37f329be767c6576aa86d18bfa858287be7faa765c4839265e06946add5c`
+only after byte-comparing the package and native source trees with RC79. Its
+source manifest is
+`0568d4a43cc9bcfd87d77705a20674021bb5c1f4f144602fce226d78b1f60735`;
+its source-archive QA driver hash is
+`395d368efa9eb6e06b7445284b6ebcc73f4f2a9165643396a885e8d327bb14d7`
+and its platform-neutral self-test passes 9/9. A post-freeze, external-only QA
+harness revision is installed separately at hash
+`4e2d9c2abba49872e219f82a84b87205fd696326e6a3a0ff368aae65825885b9`;
+it does not alter the signed app fingerprint. It makes canonical receipts reject
+duplicate, missing, reordered, cross-profile, and unselected-case streams, and
+prevents adapter-only failures from being hidden by a contradictory green
+controller result. Its Windows static suite passes 254/254, typecheck and lint
+pass, and its Mac-local self-test passes 9/9. The exact display helper is
+`703b8e18838a2135ee799c3ac8ddf457ca9f86ae9d2e54d46de8fa93b41fe96a`.
+
+RC80 is now transactionally bound and its affected focused
+`gpu-process-recovery` case is green. The computer-wide display/power cases are
+retired and excluded from the final matrix. The installed RC80 safe runner
+explicitly rejects both names; no RC80 process or builder agent remains after
+focused cleanup. Both owner-executable-only controllers additionally
+fail before any Steam, app, or desktop action unless the invocation supplies an
+exact unattended-session acknowledgement and real HID input has already been
+idle for at least five minutes. Both recheck immediately before Steam shutdown
+or QA-driver start, so activity returning during preflight also aborts. Refusal
+without acknowledgement is verified for both scripts. The binder and
+safe-runner hashes are respectively
+`c64cec7d28929b0879122c9b294b6d192f599f8f2e8eb12e9c9b5c7bd8f66dbf`
+and `f9e4e6e8ddc249a299b0a30506268947d5816eb63acfdd6157c5552a1be86edd`.
+The refusal-only sleep-controller tombstone is installed at hash
+`db9ea0b0768d737a902ba221f09434a136533d0bb1ca357847e9692ace6cd3bb`.
+A separate owner-executable-only final controller is installed at
+`/private/tmp/fov4-macos-rc-browser-display-link-80/run-final-safe.sh`, hash
+`c6f86e0149ae486a8bab6431aa56d73cded2f07fcc241496e9a4d3e5ee5a231e`.
+It pins the exact driver, all three live helpers, the fingerprint helper, and
+RC80 bundle fingerprint before any Steam or desktop action; it then invokes
+only the 25-case/five-profile final lane. Its explicit no-acknowledgement test
+created no artifact or log. The controller contains no sleep or lock action.
+
+The post-retirement static release audit is green. FOV4 passes 254/254 tests,
+typecheck, and lint. Steam Bridge passes its complete `npm test` gate with
+347/347 unit tests, Electron/version and binary-VDF checks, Windows release
+self-tests, build, and typecheck; API coverage, supported-target policy,
+`cargo fmt --check`, and native `cargo check` also pass. The packed-package
+smoke passes after supplying the desktop workspace's bundled Python through its
+existing `STEAM_BRIDGE_PYTHON` hook, including Linux, Steam Deck, macOS, and
+Windows fixture self-tests. The macOS locked/asleep records in that smoke are
+synthetic verifier fixtures only; no live lock or sleep action was performed.
+
+The subsequent route-lane audit proves `--suite full` expands to exactly 55
+unique cases and contains zero unavailable, locked, display-asleep, or sleep
+actions; the separate `unavailable` suite is not a release requirement. The
+example packager now accepts an exact `--package-tarball` only together with a
+lowercase `--expected-package-sha256`, rejects symlinks/missing/non-tarball/hash
+mismatches, cannot mix the tarball with artifact assembly, and skips workspace
+repacking so final route proof cannot drift from the candidate package. Its
+adversarial unit coverage and the complete packed-package smoke are green.
+
+An isolated route workspace packaged exact RC80 tarball
+`f84f37f329be767c6576aa86d18bfa858287be7faa765c4839265e06946add5c`.
+The installed native contract is 1141/1141 methods with hash
+`2cf79231048a9b529c901b3099fd024793bbb1dcc0bb228f67cf21c76cbafd0f`;
+the prepared/signed smoke app tree fingerprint is
+`d8511aa790db74f5b5b2835892c2534ff920bf7695373efb1d5d35d9f29c35f9`
+(640 entries, 300123628 bytes), and the existing signing verifier passes. Its
+owner-executable-only full-route controller is
+`/private/tmp/steam-bridge-macos-rc80-route/run-routes-safe.sh`, hash
+`1cfbc9252ec6a615bed78c017f9f3eb5e784cca458ee12f098be8684ce83b627`.
+It pins the tarball, app, matrix, helper, summarizer, signing verifier, shortcut
+writer, and fingerprint inputs; invokes only `--suite full --skip-package`;
+requires 55 unique full-suite rows; fingerprints the app before and after; and
+contains no lock/sleep action. Syntax and no-acknowledgement refusal pass, with
+no artifact or log created by the refusal.
+
+No launcher environment file remains after the focused/failed-case cleanup.
+If a future hard controller death leaves one behind, the unattended/HID gate
+must pass before a controller may remove it, and only when it is a regular
+non-symlink owned by the current user with mode 0600 and no QA driver, exact
+candidate, or open file handle can still own it. Every other shape fails closed.
+The binder now uses the same bounded complete Steam-stop routine for both the
+forward write and rollback. If post-restart verification fails it stops Steam
+again before restoring the backup, and it never starts another instance while
+any targeted Steam process survives. It creates and verifies the backup and
+arms rollback before calling the updater, closing the updater-write/parent-exit
+window as well. Its transaction-order audit passes.
+The backup is byte-compared before mutation and the restored VDF is
+byte-compared again before Steam can restart.
+Restart success no longer means the first healthy PID. The binder allows a
+bounded three-minute updater window and requires exactly one healthy primary
+Steam PID plus helpers to remain unchanged for twenty half-second samples
+before post-restart VDF verification, covering the RC77 updater handoff.
+
+The former computer-wide recovery controller is now a refusal-only tombstone.
+It cannot launch the driver or perform Steam, app, display, input, sleep, or
+wake actions. The driver has no selectable sleep cases and no disruptive-power
+acknowledgement option. Historical receipts remain readable only for audit.
+The first authorized binder attempt made no mutation and produced no receipt:
+its early-exit HID `awk` caused upstream `ioreg` to receive SIGPIPE under
+`pipefail` (exit 141). All three controllers now consume the complete `ioreg`
+stream while retaining only its first HID value; syntax and exact hashes were
+reverified before retry.
+The subsequent transaction reached the RC80 VDF write and pre-restart
+verification, then returned non-green during the LaunchAgent request/handoff;
+its incomplete `shortcut-binding-01` evidence is retained. A separate read-only
+updater verification proves the live VDF currently matches RC80 exactly and
+Steam is healthy, but that is not accepted as the final bind receipt. Binder
+revision `shortcut-binding-02` treats the `kickstart`/`bootstrap` request status
+as advisory and retains the bounded single-primary/helper stability window as
+the authoritative restart result.
+The second receipt isolated one more `pipefail` edge: during normal startup,
+`pgrep` returns 1 before the first primary PID exists, which made the
+`primary_count` command substitution abort instead of recording zero. Receipt
+`shortcut-binding-03` explicitly converts only that no-primary transient to
+zero; the exact-one-primary and helper stability gate itself remains unchanged.
+The corrected binder then refused before mutation because HID idle reset to
+zero. A bounded 15-minute observer never saw five continuous idle minutes.
+Per-event CoreGraphics samples confirmed real repeated key-down, key-up, and
+flags-changed events plus a cursor-position change while `parsecd` and an
+Apple Remote Desktop agent were active; this was not a harmless stationary
+heartbeat. Do not classify that session as unattended or weaken the gate. The
+temporary read-only probes were removed after recording this result.
+After the operator explicitly authorized disconnection, Parsec was terminated;
+the post-disconnect HID clock then advanced continuously. The corrected
+`shortcut-binding-03` receipt is green at
+`/private/tmp/fov4-macos-rc-browser-display-link-80/shortcut-binding-03` for
+candidate `13a2e73695b656c9ea1b0f1cb1595bf5de9af20411ac2fae38eb2c9756fcfb71`,
+Steam PID 14026, internal shortcut app ID 3632367583, and shortcut game ID
+15600899976069120000.
+
+The exact focused receipt
+`/private/tmp/fov4-macos-qa-rc80-gpu-recovery-01` is green. It proves the same
+app process and attached child survived a real GPU-child replacement, automatic
+shell reload occurred without driving Play, the actual production game surface
+returned, and the window restored exactly. At a 120 Hz display, renderer probes
+were 120.004/120/120 FPS and Chromium presentation feedback was 119.003 FPS
+(ratio 0.992). The visual transition covered 2306 frames with zero unavailable,
+unhealthy, blank, purple-cover, chrome-cover, or full-frame-flash frames. Exact
+candidate cleanup, Steam survival, display restoration, and app/overlay/Steam/
+graphics crash counts are all green/zero. Manifest SHA-256 is
+`24353923c706384eef29ebcbd4d465dac17e1506a2b6b6f093761eac1a7fd706`;
+summary SHA-256 is
+`3983eb317936ab7d4c06c4d21572dfbdd29b333cac3a4f913acf233ae3e6178d`.
+
+The first 25-case/five-profile final attempt is retained as failed at
+`/private/tmp/fov4-macos-qa-rc80-final-actual-game-01`. Its complete 120 Hz
+profile passed 25/25, then `display-live-transition` failed on the 60 Hz
+profile because the QA harness created a second application-scoped
+CoreGraphics owner. The inner owner observed its requested 120 Hz and restored
+60 Hz before exit, but process exit exposed the session's 120 Hz mode instead
+of the outer helper's 60 Hz application scope. This is a QA-supervisor nesting
+defect, not a Steam Bridge child-window or Chromium pacing regression. Do not
+restore the nested helper/hold-file path.
+
+The display helper now keeps one application-scoped owner for each profile and
+accepts atomic, sequence- and token-checked mode requests from its supervised
+child. The app driver uses that channel for both temporary transitions and
+restoration. Focused receipt
+`/private/tmp/fov4-macos-qa-rc80-display-control-60-01` is green for the exact
+unchanged RC80 bundle: all four acknowledgements proved 60 -> 120 -> 60 both
+passively and with Steam active, the same attached child remained aligned,
+overlay presentation reached 118.3 FPS at 120 Hz and 58.9 FPS after restoring
+60 Hz, final desktop restoration returned exact mode 54/120 Hz, every crash
+count was zero, and Steam survived. Its manifest and summary SHA-256 values are
+respectively `7f0b500c6ce480b11d48765a2e156cad18b48a97729579d37bfb7227fde3ae43`
+and `a6a9c84311613219a741a08b79fca92389199e0889f62bac388ca9940d78df41`.
+The new driver and helper hashes are respectively
+`c0da58e2c7d3dae04d7673849b75833dcca7496e313ec3967ac59e9d5ffee680`
+and `0b42359e71b719533d2354b6fb49e7852f275355f37e37ba7cc56b9bc02aa5af`.
+The only other affected case, `display-pacing-transition` at 60 Hz, is green at
+`/private/tmp/fov4-macos-qa-rc80-display-control-pacing-60-01`: renderer
+cadence was 60.000 FPS before transition and 60.001/60.000 FPS after restore,
+Chromium presentation feedback after restore was 60.000 FPS, cleanup and exact
+display restore passed, every crash category was zero, and Steam survived. Its
+manifest and summary hashes are respectively
+`50571fd2b3c15070f7a429817513ab2be847e7f8a0777d18fa7ef95253bae835`
+and `5c4f1913ee9c0665ecbae789f2cbdca2e96f168de9b0bcbcae0a03e05d5726e1`.
+Every case affected by the supervisor change is now individually green.
+
+The next clean final attempt is retained as failed at
+`/private/tmp/fov4-macos-qa-rc80-final-actual-game-02`. It completed the 120,
+60, and 48 Hz profiles with 75/75 passes, then exposed a separate harness-only
+boundary error in low-Retina mode 7 (`1168x730`): gesture staging used a
+`900x650` window at `y=60`, so AppKit correctly clamped the requested 70-point
+downward move to the remaining 20-41 points while the assertion required an
+impossible exact delta. The reversal also used the requested rather than
+actual first-leg displacement. An interim `900x540` staging frame left the
+full move physically achievable. Exact focused receipt
+`/private/tmp/fov4-macos-qa-rc80-low-retina-gesture-01` passed only the two
+affected cases: slow drag observed exact `140,70`, reversal observed exact
+`120,60` then `-120,-60` and returned `0,0`; both retained continuous child
+pairing, healthy pixels, exact baseline restore, and roughly 60 Hz attached
+presentation. Exact candidate cleanup, mode 54/120 Hz restoration, Steam
+survival, and all crash categories passed. Its manifest and summary SHA-256
+values are respectively
+`3a47798aa9770aa1040f4b77859dfc33dc995cb4873c2e33dd6d41d2b9f2c04a`
+and `0964e1c9bc78641d72b40885269ef8bf71e2d4e6c353c7db195a7bee178ab9c3`.
+
+Final attempt 03 is separately retained as failed at
+`/private/tmp/fov4-macos-qa-rc80-final-actual-game-03`. Its 120 Hz
+`display-live-transition` temporarily entered the same-resolution 60 Hz mode
+and proved exact `80,40/-80,-40` title motion, but the interim 540-point frame
+could shrink only 28 of the requested 60 points because the app's exact
+640x480 content minimum produces a 512-point outer-frame minimum. The single
+staging size satisfying both real boundaries is `900x600`: from `y=60` it has
+exactly 70 points of downward travel on the 730-point desktop and 88 points of
+shrink room above the 512-point minimum. The current immutable driver hash is
+`210673c04e0f662bb0fbf9516e358ce666b681772a3516e7e2dd9ea47f8d8eb4`;
+the focused and final controller hashes are respectively
+`38e899fbfff781d98779bb24f93d25f451c374aedfe9cd103735009591a11171`
+and `b2e1f330584956a1242995b6c1b0d2df7eec8fee16d68a31f55ee657149797d0`.
+Focused-retest every case sharing that staging helper, then run one new
+complete final receipt; do not continue any failed partial pass.
+
+The interrupted focused caller sweep is retained at
+`/private/tmp/fov4-macos-qa-rc80-staging-callers-01`. Low-Retina slow/fast/
+reversal title movement plus right, bottom, and corner resize all emitted
+green case results with the 600-point staging frame. `resize-reversal` then
+failed only its post-gesture aspect endpoint: `1128x520` minus the exact
+32-point application menu yields `1128x488` (2.311), which is not actually
+wider than 21:9 (2.333). The reversal input itself was not the failure. The
+wide endpoint now uses the exact 512-point minimum outer height, producing an
+`1128x480` game area (2.350) and a genuine wide branch. Focused unchanged-RC80
+receipt `/private/tmp/fov4-macos-qa-rc80-aspect-resize-reversal-01` passed
+exact reversal, both wide/tall branches, exact cleanup/display restoration,
+Steam survival, and zero crashes. Its manifest and summary SHA-256 values are
+respectively
+`d43997bb530ed3128b3d6fe6ef402014edb32c5103fd66b73704423565f0277f`
+and `199564414c145883014de44c2b79c3797664805ed7d4bd3a3e2e9c41438a5a38`.
+The current immutable driver, focused controller, and final controller hashes
+are respectively
+`0b7f9cb085b50d0381c23e1e3a2850def893db9a6e6ac3fbb3ad7fd59fd8c4ba`,
+`32a540db95b3dd810f1fde771a7c568dc12b2d215890de0a83945f919feee21b`,
+and `a65388bf7daa481f52bd7c2b03dba873a9d936ecfe3a5b58a8efc76be5c786a7`.
+Complete focused receipts for the remaining zoom and overlay-state callers,
+then run the one clean final receipt.
+
+The last interrupted focused pair is retained at
+`/private/tmp/fov4-macos-qa-rc80-staging-zoom-overlay-01`. `zoom-restore`
+emitted a green low-Retina case result. Initial `overlay-state-stress` then
+failed before gesture execution only because the three-decimal native visual
+helper reported `bottomEdgeOpaqueRatio=0.998` with a strong
+`roundedCornerScore=0.1`, while the visual contract used strict `<0.998`.
+The contract now accepts the highest quantized value that still proves a
+non-rectangular edge (`<=0.998`) and continues to reject 0.999/1.000. Focused
+unchanged-RC80 receipt
+`/private/tmp/fov4-macos-qa-rc80-overlay-rounding-01` passed the complete
+active-overlay move, resize, maximize, minimize, focus, and fullscreen stress,
+exact cleanup/display restoration, Steam survival, and zero crashes. Its
+manifest and summary SHA-256 values are respectively
+`e9200f1c0d55742c8a989e18ebe2e50fce72e775a0f2abbba28f6fd51c125f37`
+and `f64bf8001bd27647541e18c8b38b5879eadf820c81d0a47fd4f62cc45bd90cf6`.
+The imported visual contract is now independently controller-pinned at
+`2de1e14224f4cda8c4940aac3563f710f059439b0cbf0500e3c2fccb4897b535`;
+the focused and final controller hashes are respectively
+`09514812032eb9cc8c36d24dd9047e9de755a1c224f263b62ad285723ea32e46`
+and `aac491db6be9183b95dfdbfc651a2e4927769b4644d2018a6a1bb9a67648855e`.
+Every affected case is individually green. Run one clean final receipt now;
+do not rerun focused cases already proved by these retained results.
+
+That clean final receipt is retained as failed at
+`/private/tmp/fov4-macos-qa-rc80-final-actual-game-04`. The complete 120 Hz
+profile passed 25/25. On the 60 Hz profile, baseline/menu/input and the live
+60 -> 120 -> 60 display transition passed, but the isolated
+`display-pacing-transition` restored Chromium renderer and presentation
+cadence at exactly 30 FPS instead of 60 FPS. The immediately following
+`fps-baseline` independently remained at exactly 30 FPS. Focus and production
+canvas identity were exact before and after both samples. The unchanged
+attached Metal child remained paired, aligned, error-free, configured for
+60 Hz, and presented at 60 FPS, so child geometry, MTKView timing, and Steam
+Bridge surface continuity are not the failing signals. Cleanup restored exact
+desktop mode 54/120 Hz, Steam survived, and the app was stopped without
+continuing unrelated cases. The earlier focused
+`fov4-macos-qa-rc80-display-control-pacing-60-01` pass therefore proves the
+supervisor repair but does not close this newly observed nondeterministic
+Chromium half-rate state. Diagnose and retest only the affected pacing
+transition/baseline path until it is repeatably green; do not weaken the 95%
+fixed-rate gate, retime or recreate the healthy child, or run another complete
+final matrix before the focused defect is closed.
+
+The retained failed display-sleep receipt is
+`/private/tmp/fov4-macos-qa-rc80-display-sleep-01`. It records
+`window_state_mismatch` with no accepted sleep/wake/restore proof; cleanup,
+display restoration, candidate re-fingerprint, Steam survival, and zero crashes
+all passed. The attempt nevertheless invoked the macOS security lock screen and
+required a manual operator unlock. No full-system sleep case was run. This is
+the evidence for permanently excluding both lock-capable cases from the
+25-case/five-profile (125-execution) final contract.
+
+HID inactivity is rejection evidence only, never authority: set the safe
+desktop-controller acknowledgement only after the operator explicitly states
+that the Mac is unattended for the applicable live QA. Do not infer consent
+from an idle clock, `continue`, or a previously unattended run.
+
+During repair, run only the scenario affected by the current edit. Once every
+individual Mac case is green, run one complete clean actual-game candidate pass
+and then the existing complete route matrix once on that exact candidate.
+Record receipts before moving to the next platform. Keep Steam closed on every
+other platform while collecting live overlay evidence, require no recurring
+human input, never authorize a purchase or subscription, and sanitize private
+Steam/app/account identifiers from retained artifacts.
+
+### 2026-07-26 macOS focused closure checkpoint
+
+Keep the macOS overlay as one `NSWindow` attached with AppKit's parent/child
+relationship to the Electron parent. A popup, companion, separately managed
+top-level surface, or fallback recreation is a closed path. Keep
+`BOverlayNeedsPresent()` disabled; it previously crashed Steam's injected
+renderer. Application-owned simple fullscreen remains FOV4 policy, while child
+attachment, geometry, presentation lifecycle, and generic Electron focus
+restoration belong in Steam Bridge.
+
+The focused receipt sequence closed four distinct issues without rerunning the
+already-green route matrix:
+
+- Receipt 31 proved renderer focus both inside and after application-owned
+  simple fullscreen, exact `1280x720` child/content geometry after exit,
+  rounded corners, exact restoration, and zero crashes. Its fixes defer FOV4's
+  renderer focus until native menu dispatch returns and give Steam Bridge one
+  coalesced next-turn geometry reconciliation after terminal macOS `resized`.
+- Receipt 32 exposed two separate defects during active minimize: the hidden
+  MTKView continued drawing at display cadence and accumulated dropped
+  drawables, while one later transition-adjacent dropped callback was
+  misclassified as a presentation stall. Steam Bridge now pauses the existing
+  view whenever its attached parent cannot present. The QA gate now rejects a
+  dirty interval but permits it to become the next baseline, still requiring a
+  later consecutive clean interval before passing.
+- Receipt 34 retained closed proof that passive minimize and application hide
+  pause the same Metal child with stable draw, present, drawable-failure, and
+  render-failure counters. Its active stress failure was not a product failure:
+  Steam legitimately emitted its inactive callback after the prolonged
+  minimize, and the harness incorrectly required the overlay to remain active.
+- Receipt 35 then proved the public Friends route did reactivate the overlay,
+  but the harness looked for an incidental window event instead of Steam's
+  activation callback. Receipt 36 is the applicable focused result after the
+  verifier repair: clean deactivation was accepted, the public menu route
+  reopened the overlay, the exact-app active callback and healthy active
+  telemetry were required, the same attached child continued, hidden draw and
+  present counters remained stable, every active move/resize/maximize/minimize/
+  focus/simple-fullscreen transition passed, the display restored to its exact
+  120 Hz mode, and app, overlay, Steam, and graphics crash counts were all zero.
+
+The post-receipt verifier hardening is deliberately fail-closed. Visible
+steady-state pacing now passes only on two adjacent same-phase healthy samples:
+a phase mismatch, invalid geometry/policy sample, or stalled presentation
+resets the baseline, while a bounded late transition callback may seed but
+never satisfy the next clean interval. Active minimize proves fresh active
+same-child telemetry and checkpoints callbacks before the action. Its hidden
+pair resolves either activation state but may not cross a visibility or state
+boundary, and every hidden sample is checked against the established surface
+identity. Retention requires no exact inactive callback plus active hidden and
+restored telemetry; deactivation requires an exact inactive callback and a
+later exact active callback in causal order, either automatically or through
+the public Friends reopen route. Unit tests cover phase/stall crossings,
+active-to-inactive hidden transitions, temporary surface replacement, stale
+and wrong-app callbacks, and every minimize classification branch.
+Focused passive minimize/hide cases now seed the visible child identity before
+the transition, and that identity survives every same-process state change.
+Warm relaunch is the sole reset boundary: the old exact process must be closed
+without escalation and a different immutable process identity must exist before
+the new child can establish its identity. Failure receipts preserve `pending`
+or `invalid`; the sanitizer never invents a retained overlay lifecycle.
+
+The receipt-36 bundle fingerprint begins `27de4aee8d20`, but that bundle is an
+ad-hoc iteration only: it is not Developer-ID signed, notarized, or stapled.
+It also predates the final fail-closed weak-parent refinement in the current
+native source. That refinement affects only a vanished-parent teardown path;
+do not rerun unrelated focused cases for it. Rebuild the exact current tree for
+the release candidate, complete only still-unproven Mac cases, then run one
+complete Mac actual-game pass and the retained route matrix once on the exact
+signed/notarized candidate. Do not promote or publish an ad-hoc receipt.
+
+## Settled Linux/Deck Application Host
 
 The current Linux/Steam Deck product path is one visible X11/GLX
 **application-host window** plus one hidden Electron offscreen renderer. It is
@@ -118,6 +752,22 @@ presentation should be repaired with another popup or child-window experiment.
   uses `client.overlay.startNativeOverlaySession()` in `main/main.js` and creates
   its renderer `BrowserWindow` with `show: false`, `frame: false`, and offscreen
   shared-texture presentation.
+- A 2026-07-26 actual-game checkout probe proved that Steam captures the exact
+  standalone host HWND while its Windows overlay is active. `GetCapture()`
+  returned that host; title-bar, resize-border, maximize/minimize, system-menu,
+  and fullscreen input did not enter the host as `WM_NCLBUTTONDOWN/UP`,
+  `WM_SYSCOMMAND`, or `WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE`. The host and overlay
+  stayed aligned, stable, focused, and near the 165 Hz display rate. Escape
+  closed the overlay, cleared capture, and the same title drag moved the window
+  immediately afterward. Classify active window management on this lane as a
+  Steam-owned modal constraint, not as an attached-surface defect. Active focus
+  round trips and externally forced display, refresh, resolution, and DPI
+  transitions remain valid stress cases.
+- Never call `ReleaseCapture()` on Steam's behalf or synthesize
+  `WM_NCLBUTTONDOWN`/`DefWindowProc` move-size loops to bypass this constraint.
+  Steam may consume the corresponding button-up event, leaving a nested native
+  loop or corrupt input state. The popup and `WS_CHILD` alternatives remain
+  closed and are not fallbacks for modal behavior.
 - Therefore test the actual FOV4 game-host path. Windows attached mode should
   fail clearly rather than create any popup. During iteration, run only tests
   and live transitions affected by the current edit. Run the full cross-
@@ -868,6 +1518,13 @@ Consumer gates on registry `0.2.14` passed:
   retained-frame resize stretching, and the no-Steam-pixels `WS_CHILD`
   experiment are closed paths. Attached Windows mode must fail clearly and must
   not fall back between these models.
+- Windows active-overlay input invariant: Steam owns mouse capture on the exact
+  standalone host HWND. Active title drag, edge resize, maximize/minimize,
+  system-menu commands, and application fullscreen shortcuts are therefore
+  expected no-ops while that capture is held. Prove stable aligned presentation,
+  external focus/display/DPI handling, capture release on close, and immediate
+  post-close window-management recovery. Never use `ReleaseCapture`, synthetic
+  non-client messages, or a popup/child host to defeat Steam's modal boundary.
 - The JavaScript boundary now rejects every Windows `nativeWindowHandle`
   attachment before it claims a surface lease or invokes the native addon. The
   unreachable deferred-attach presenter branch and its Windows popup-era tests
@@ -967,3 +1624,26 @@ display-synchronized immediate pump scheduling and FOV4's renderer display /
 Going forward, if a QA item fails, fix and focused-retest only that item until
 it is green. Run the full exhaustive Windows actual-game pass only after every
 known individual failure is green and immediately before a release decision.
+
+## 2026-07-26 Windows Steam-modal capture finding
+
+A source-linked actual FOV4 checkout probe at the active 165 Hz display rate
+resolved the ambiguity around window management while Steam's Windows overlay
+is visible. Native diagnostics reported `GetCapture()` as the exact standalone
+game-host HWND. During attempted title drag, right-edge resize, maximize,
+minimize, system-menu, and fullscreen input, the outer rectangle did not change
+and the host received no `WM_NCLBUTTONDOWN`, `WM_NCLBUTTONUP`, `WM_SYSCOMMAND`,
+`WM_ENTERSIZEMOVE`, or `WM_EXITSIZEMOVE`. This was not a child/popup alignment
+failure: the single D3D host remained focused, the overlay remained exactly
+bounded and visually stable, and retained presentation held about 165 FPS with
+no wait timeout, device loss, or slow copy.
+
+Escape emitted the inactive transition, `GetCapture()` returned null, and a
+title-bar drag immediately moved the same host. The Windows QA contract now
+records active move/resize/maximize/minimize/fullscreen as
+`STEAM-MODAL-CONSTRAINT`: attempts must prove Steam owns the capture, the host
+does not mutate or flicker, and ordinary window management resumes after close.
+Focus away/back and externally initiated display-mode, refresh, resolution, or
+DPI changes remain required active-overlay stress where applicable. Do not
+release Steam's capture, inject non-client messages, enter a synthetic
+`DefWindowProc` move loop, or revisit popup/`WS_CHILD` architectures.

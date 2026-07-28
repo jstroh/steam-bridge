@@ -6859,11 +6859,12 @@ pub async fn inventory_request_eligible_promo_item_definition_ids(
 ) -> Result<InventoryEligiblePromoItemDefIds, Error> {
     let call = unsafe {
         sys::SteamAPI_ISteamInventory_RequestEligiblePromoItemDefinitionsIDs(
-            steam_inventory()?,
+            steam_client_inventory()?,
             bigint_to_u64(steam_id64, "steamId64")?,
         )
     };
-    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_game_server_api_call(
+    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_inventory_api_call(
+        InventoryInterfaceContext::Client,
         call,
         sys::SteamInventoryEligiblePromoItemDefIDs_t_k_iCallback as i32,
         timeout_seconds
@@ -6917,13 +6918,14 @@ pub async fn inventory_start_purchase(
     let (defs, quantities) = inventory_definition_quantities(items);
     let call = unsafe {
         sys::SteamAPI_ISteamInventory_StartPurchase(
-            steam_inventory()?,
+            steam_client_inventory()?,
             defs.as_ptr(),
             quantities.as_ptr(),
             len_to_u32(defs.len(), "inventory purchase items")?,
         )
     };
-    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_game_server_api_call(
+    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_inventory_api_call(
+        InventoryInterfaceContext::Client,
         call,
         sys::SteamInventoryStartPurchaseResult_t_k_iCallback as i32,
         timeout_seconds
@@ -6939,8 +6941,9 @@ pub async fn inventory_start_purchase(
 pub async fn inventory_request_prices(
     timeout_seconds: Option<u32>,
 ) -> Result<InventoryRequestPricesResult, Error> {
-    let call = unsafe { sys::SteamAPI_ISteamInventory_RequestPrices(steam_inventory()?) };
-    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_game_server_api_call(
+    let call = unsafe { sys::SteamAPI_ISteamInventory_RequestPrices(steam_client_inventory()?) };
+    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_inventory_api_call(
+        InventoryInterfaceContext::Client,
         call,
         sys::SteamInventoryRequestPricesResult_t_k_iCallback as i32,
         timeout_seconds
@@ -7297,7 +7300,8 @@ pub async fn game_server_inventory_request_eligible_promo_item_definition_ids(
             bigint_to_u64(steam_id64, "steamId64")?,
         )
     };
-    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_api_call(
+    let result: sys::SteamInventoryEligiblePromoItemDefIDs_t = wait_for_inventory_api_call(
+        InventoryInterfaceContext::GameServer,
         call,
         sys::SteamInventoryEligiblePromoItemDefIDs_t_k_iCallback as i32,
         timeout_seconds
@@ -7329,7 +7333,8 @@ pub async fn game_server_inventory_start_purchase(
             len_to_u32(defs.len(), "inventory purchase items")?,
         )
     };
-    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_api_call(
+    let result: sys::SteamInventoryStartPurchaseResult_t = wait_for_inventory_api_call(
+        InventoryInterfaceContext::GameServer,
         call,
         sys::SteamInventoryStartPurchaseResult_t_k_iCallback as i32,
         timeout_seconds
@@ -7347,7 +7352,8 @@ pub async fn game_server_inventory_request_prices(
 ) -> Result<InventoryRequestPricesResult, Error> {
     let call =
         unsafe { sys::SteamAPI_ISteamInventory_RequestPrices(steam_game_server_inventory()?) };
-    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_api_call(
+    let result: sys::SteamInventoryRequestPricesResult_t = wait_for_inventory_api_call(
+        InventoryInterfaceContext::GameServer,
         call,
         sys::SteamInventoryRequestPricesResult_t_k_iCallback as i32,
         timeout_seconds
@@ -20997,6 +21003,22 @@ async fn wait_for_game_server_api_call<T>(
 ) -> Result<T, Error> {
     wait_for_game_server_api_call_with_progress(call, expected_callback, timeout_seconds, || {})
         .await
+}
+
+async fn wait_for_inventory_api_call<T>(
+    context: InventoryInterfaceContext,
+    call: sys::SteamAPICall_t,
+    expected_callback: i32,
+    timeout_seconds: u64,
+) -> Result<T, Error> {
+    match context {
+        InventoryInterfaceContext::Client => {
+            wait_for_api_call(call, expected_callback, timeout_seconds).await
+        }
+        InventoryInterfaceContext::GameServer => {
+            wait_for_game_server_api_call(call, expected_callback, timeout_seconds).await
+        }
+    }
 }
 
 async fn wait_for_game_server_api_call_with_progress<T, F>(

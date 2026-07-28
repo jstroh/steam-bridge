@@ -1654,6 +1654,13 @@ export interface NativeOverlaySessionOptions {
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
+  /**
+   * Cold-start floor applied before checkout reservations report the Steam
+   * overlay ready. Linux application hosts default to 3000 ms because Steam
+   * can report its overlay enabled shortly before the injected helper is safe
+   * to call. The positive IsOverlayEnabled handshake is still required.
+   */
+  activationWarmupMs?: number;
 }
 
 export interface NativeOverlayMenuItem {
@@ -1779,11 +1786,61 @@ export interface NativeOverlaySessionSnapshot {
   frameRate: number;
   /** Current native session timer interval. */
   pumpIntervalMs: number;
+  /** Number of synchronous native shared-texture update attempts. */
+  sharedTextureUpdateCount: number;
+  /** Duration of the latest synchronous native shared-texture update attempt. */
+  lastSharedTextureUpdateDurationMs?: number;
+  /** Longest synchronous native shared-texture update attempt in this session. */
+  maxSharedTextureUpdateDurationMs?: number;
   lastError?: unknown;
   nativeSurfaceLeaseGeneration?: number;
   nativeSurfaceOwner?: boolean;
   closeReason?: NativeOverlaySurfaceCloseReason;
   diagnostics?: OverlayDiagnostics;
+}
+
+export interface NativeOverlayCheckoutReservationOptions {
+  /** Maximum time to wait for Steam's overlay hook to become ready. */
+  timeoutMs?: number;
+  /**
+   * Hard lifetime of the acquired reservation after readiness is confirmed.
+   * Defaults to 60000 ms and is limited to 300000 ms.
+   */
+  leaseTimeoutMs?: number;
+  /**
+   * Aborts a pending readiness wait and releases an acquired reservation.
+   */
+  signal?: AbortSignal;
+}
+
+export type NativeOverlayCheckoutReservationStatusReason =
+  | "closed"
+  | "steam-unavailable"
+  | "overlay-not-ready"
+  | "overlay-active"
+  | "reserved";
+
+export interface NativeOverlayCheckoutReservationStatus {
+  canAcquire: boolean;
+  canWait: boolean;
+  reservationActive: boolean;
+  reservationReady: boolean;
+  warmupRemainingMs: number;
+  targetSnapshot: SteamOverlayCheckoutTargetSnapshot;
+  snapshot: NativeOverlaySessionSnapshot;
+  reason?: NativeOverlayCheckoutReservationStatusReason;
+  message?: string;
+  reservedAt?: number;
+  readyAt?: number;
+  expiresAt?: number;
+}
+
+export interface NativeOverlayCheckoutReservation extends CallbackHandle {
+  readonly reservedAt: number;
+  readonly readyAt: number;
+  readonly expiresAt: number;
+  release(): void;
+  isActive(): boolean;
 }
 
 export interface NativeOverlaySession extends CallbackHandle {
@@ -1801,6 +1858,14 @@ export interface NativeOverlaySession extends CallbackHandle {
   setFrameRate(frameRate: number): void;
   setFullScreen(fullScreen: boolean): void;
   isFullScreen(): boolean;
+  getCheckoutReservationStatus(): NativeOverlayCheckoutReservationStatus;
+  acquireCheckoutReservation(
+    options?: NativeOverlayCheckoutReservationOptions
+  ): Promise<NativeOverlayCheckoutReservation>;
+  withCheckoutPrepared<T>(
+    operation: () => T | Promise<T>,
+    options?: NativeOverlayCheckoutReservationOptions
+  ): Promise<T>;
   isOpen(): boolean;
   snapshot(): NativeOverlaySessionSnapshot;
 }
@@ -2158,6 +2223,8 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
   };
 }
 
+export type SteamOverlayWaitSnapshot = ElectronSteamOverlaySnapshot | NativeOverlaySessionSnapshot;
+
 export interface ElectronSteamOverlayNativeHostAvailability {
   available: boolean;
   snapshot: ElectronSteamOverlaySnapshot;
@@ -2311,14 +2378,14 @@ export class SteamOverlayWaitTimeoutError extends Error {
   readonly code = "STEAM_OVERLAY_WAIT_TIMEOUT";
   readonly state: string;
   readonly timeoutMs: number;
-  readonly snapshot?: ElectronSteamOverlaySnapshot;
+  readonly snapshot?: SteamOverlayWaitSnapshot;
   readonly diagnostics?: OverlayDiagnostics;
   readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
   readonly targetSnapshot?: SteamOverlayTargetSnapshot;
   readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
-  constructor(state: string, timeoutMs: number, snapshot?: ElectronSteamOverlaySnapshot) {
+  constructor(state: string, timeoutMs: number, snapshot?: SteamOverlayWaitSnapshot) {
     super(formatSteamOverlayWaitTimeoutMessage(state, timeoutMs, snapshot));
     this.name = "SteamOverlayWaitTimeoutError";
     Object.setPrototypeOf(this, new.target.prototype);
@@ -2351,14 +2418,14 @@ export function isSteamOverlayWaitTimeoutError(error: unknown): error is SteamOv
 export class SteamOverlayWaitAbortedError extends Error {
   readonly code = "STEAM_OVERLAY_WAIT_ABORTED";
   readonly state: string;
-  readonly snapshot?: ElectronSteamOverlaySnapshot;
+  readonly snapshot?: SteamOverlayWaitSnapshot;
   readonly diagnostics?: OverlayDiagnostics;
   readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
   readonly targetSnapshot?: SteamOverlayTargetSnapshot;
   readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
-  constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
+  constructor(state: string, snapshot?: SteamOverlayWaitSnapshot) {
     super(formatSteamOverlayWaitAbortedMessage(state, snapshot));
     this.name = "SteamOverlayWaitAbortedError";
     Object.setPrototypeOf(this, new.target.prototype);
@@ -2386,14 +2453,14 @@ export function isSteamOverlayWaitAbortedError(error: unknown): error is SteamOv
 export class SteamOverlayWaitClosedError extends Error {
   readonly code = "STEAM_OVERLAY_WAIT_CLOSED";
   readonly state: string;
-  readonly snapshot?: ElectronSteamOverlaySnapshot;
+  readonly snapshot?: SteamOverlayWaitSnapshot;
   readonly diagnostics?: OverlayDiagnostics;
   readonly nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   readonly macOverlayEnvironment?: MacOverlayEnvironment;
   readonly targetSnapshot?: SteamOverlayTargetSnapshot;
   readonly checkoutTargetSnapshot?: SteamOverlayCheckoutTargetSnapshot;
 
-  constructor(state: string, snapshot?: ElectronSteamOverlaySnapshot) {
+  constructor(state: string, snapshot?: SteamOverlayWaitSnapshot) {
     super(formatSteamOverlayWaitClosedMessage(state, snapshot));
     this.name = "SteamOverlayWaitClosedError";
     Object.setPrototypeOf(this, new.target.prototype);
@@ -2766,6 +2833,35 @@ type NativeOverlayPresenterActivationMode = "interactive" | "passive" | "transpa
 type NativeOverlaySessionInternal = NativeOverlaySession & {
   onStateChange?: (listener: () => void) => CallbackHandle;
 };
+
+type NativeOverlayCheckoutReservationPhase = "waiting" | "ready";
+
+type NativeOverlayCheckoutReservationReleaseReason =
+  | "released"
+  | "aborted"
+  | "expired"
+  | "session-closed";
+
+interface NativeOverlayCheckoutReservationState {
+  readonly generation: number;
+  readonly reservedAt: number;
+  readonly leaseTimeoutMs: number;
+  readonly signal?: AbortSignal;
+  readonly released: Promise<NativeOverlayCheckoutReservationReleaseReason>;
+  readonly resolveReleased: (reason: NativeOverlayCheckoutReservationReleaseReason) => void;
+  phase: NativeOverlayCheckoutReservationPhase;
+  readyAt?: number;
+  expiresAt?: number;
+  abortHandler?: () => void;
+  expiryTimer?: NodeJS.Timeout;
+  releaseReason?: NativeOverlayCheckoutReservationReleaseReason;
+}
+
+const NATIVE_OVERLAY_CHECKOUT_READINESS_TIMEOUT_MS = 15_000;
+const NATIVE_OVERLAY_CHECKOUT_LEASE_TIMEOUT_MS = 60_000;
+const NATIVE_OVERLAY_CHECKOUT_MAX_TIMEOUT_MS = 300_000;
+const NATIVE_OVERLAY_CHECKOUT_READINESS_POLL_MS = 50;
+const LINUX_APPLICATION_HOST_OVERLAY_ACTIVATION_WARMUP_MS = 3_000;
 
 type NativeOverlayPresenterInternal = NativeOverlayPresenter & {
   prepareForTransparentInputOverlay?: (durationMs?: number) => void;
@@ -8328,11 +8424,20 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const continuousPresentRequested = options.continuousPresent === true;
   const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
+  const startedAt = Date.now();
+  const activationWarmupMs = normalizeNativeOverlayActivationWarmupMs(
+    options.activationWarmupMs,
+    usesLinuxApplicationHost
+  );
+  const activationReadyAt = startedAt + activationWarmupMs;
 
   let closed = false;
   let pumpCount = 0;
   let lastPumpAt: number | undefined;
   let lastFrameDrivenPumpAt: number | undefined;
+  let sharedTextureUpdateCount = 0;
+  let lastSharedTextureUpdateDurationMs: number | undefined;
+  let maxSharedTextureUpdateDurationMs: number | undefined;
   let lastError: unknown;
   let overlayActive = false;
   let overlayWasActive = false;
@@ -8340,6 +8445,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let cursorHiddenRequested = false;
   let cursorHiddenApplied: boolean | undefined;
   let continuousPresentApplied: boolean | undefined;
+  let continuousPresentFrameRateApplied: number | undefined;
   let fullScreenRequested = safeBoolean(() => options.getFullScreen?.() === true);
   let fullScreenApplied: boolean | undefined;
   let menuApplied = false;
@@ -8351,6 +8457,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpTimer: NodeJS.Timeout | undefined;
   let pumpTimerDueAt: number | undefined;
   let pumpImmediate: NodeJS.Immediate | undefined;
+  let frameDrivenPumpImmediate: NodeJS.Immediate | undefined;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let hideNativeHostTimer: NodeJS.Timeout | undefined;
   let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
@@ -8386,6 +8493,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let lastAcceptedKWinWaylandElectronBoundsRevision = 0;
   let kWinWaylandPresentationEpoch = 0;
   let kWinWaylandContentSeedMarkerActive = false;
+  let nextCheckoutReservationGeneration = 0;
+  let activeCheckoutReservation: NativeOverlayCheckoutReservationState | undefined;
   const stateListeners = new Set<() => void>();
 
   const pump = (): void => {
@@ -8453,6 +8562,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       lastOverlayEvent,
       frameRate,
       pumpIntervalMs,
+      sharedTextureUpdateCount,
+      lastSharedTextureUpdateDurationMs,
+      maxSharedTextureUpdateDurationMs,
       nativeProbeOpen,
       nativeHostOpen,
       fullScreen: fullScreenRequested,
@@ -8478,6 +8590,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
 
+    if (activeCheckoutReservation) {
+      releaseNativeOverlayCheckoutReservation(
+        activeCheckoutReservation,
+        "session-closed",
+        false,
+        false
+      );
+    }
     setNativeOverlayActive(false);
     if (usesNativeHostView && !usesLinuxApplicationHost) {
       applyFailClosedHostPolicy(true);
@@ -8505,6 +8625,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (pumpImmediate) {
       clearImmediate(pumpImmediate);
       pumpImmediate = undefined;
+    }
+
+    if (frameDrivenPumpImmediate) {
+      clearImmediate(frameDrivenPumpImmediate);
+      frameDrivenPumpImmediate = undefined;
     }
 
     if (restoreFocusTimer) {
@@ -8561,13 +8686,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const width = normalizeNativeOverlayFrameDimension(frame.width, "frame width");
     const height = normalizeNativeOverlayFrameDimension(frame.height, "frame height");
     native().updateNativeOverlayHostFrame(frame.data, width, height);
-    // A newly captured game frame is the lowest-latency presentation trigger.
-    // Keep the scheduled pump as a retained-frame/Steam-overlay fallback, but
-    // re-arm it after this presentation so active rendering does not compete
-    // with an independent display-rate timer and double the GLX swap rate.
-    pump();
-    lastFrameDrivenPumpAt = performance.now();
-    schedulePumpTimer();
+    presentFrameDrivenUpload();
   };
 
   const updateSharedTexture = (texture: NativeOverlaySharedTexture): void => {
@@ -8592,20 +8711,25 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (typeof update !== "function") {
         throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
       }
-      update.call(
-        binding,
-        texture.handle,
-        width,
-        height,
-        contentRect.x,
-        contentRect.y,
-        contentRect.width,
-        contentRect.height,
-        presentationRect.x,
-        presentationRect.y,
-        presentationRect.width,
-        presentationRect.height
-      );
+      const updateStartedAt = performance.now();
+      try {
+        update.call(
+          binding,
+          texture.handle,
+          width,
+          height,
+          contentRect.x,
+          contentRect.y,
+          contentRect.width,
+          contentRect.height,
+          presentationRect.x,
+          presentationRect.y,
+          presentationRect.width,
+          presentationRect.height
+        );
+      } finally {
+        recordSharedTextureUpdateDuration(updateStartedAt);
+      }
     } else {
       const nativePixmap = texture.nativePixmap;
       if (!nativePixmap || !Array.isArray(nativePixmap.planes) || nativePixmap.planes.length !== 1) {
@@ -8636,25 +8760,28 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           "The loaded Steam Bridge native payload does not support Linux dma-buf shared textures."
         );
       }
-      update.call(
-        binding,
-        plane.fd,
-        plane.stride,
-        String(plane.offset),
-        String(plane.size),
-        nativePixmap.modifier,
-        texture.pixelFormat ?? "",
-        width,
-        height,
-        presentationRect.x,
-        presentationRect.y,
-        presentationRect.width,
-        presentationRect.height
-      );
+      const updateStartedAt = performance.now();
+      try {
+        update.call(
+          binding,
+          plane.fd,
+          plane.stride,
+          String(plane.offset),
+          String(plane.size),
+          nativePixmap.modifier,
+          texture.pixelFormat ?? "",
+          width,
+          height,
+          presentationRect.x,
+          presentationRect.y,
+          presentationRect.width,
+          presentationRect.height
+        );
+      } finally {
+        recordSharedTextureUpdateDuration(updateStartedAt);
+      }
     }
-    pump();
-    lastFrameDrivenPumpAt = performance.now();
-    schedulePumpTimer();
+    presentFrameDrivenUpload();
   };
 
   const setCursorHidden = (hidden: boolean): void => {
@@ -8670,6 +8797,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     frameRate = normalizedFrameRate;
     pumpIntervalMs = nextPumpIntervalMs;
+    syncContinuousPresent();
     schedulePumpTimer();
     emitStateChange();
   };
@@ -8707,8 +8835,6 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     lastError = error;
     closeWithReason("error");
   };
-
-  const startedAt = Date.now();
 
   surfaceLease = claimNativeOverlaySurface("session");
   try {
@@ -8797,6 +8923,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     setFrameRate,
     setFullScreen,
     isFullScreen: () => fullScreenRequested,
+    getCheckoutReservationStatus,
+    acquireCheckoutReservation,
+    withCheckoutPrepared,
     isOpen: () => {
       if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
         return false;
@@ -8821,6 +8950,492 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
   return session;
 
+  function getCheckoutReservationStatus(): NativeOverlayCheckoutReservationStatus {
+    expireNativeOverlayCheckoutReservationIfNeeded();
+    const readiness = readNativeOverlayCheckoutReadinessSnapshot();
+    const reservation = activeCheckoutReservation;
+    const warmupRemainingMs = Math.max(0, activationReadyAt - Date.now());
+    const base: NativeOverlayCheckoutReservationStatus = {
+      canAcquire: false,
+      canWait: false,
+      reservationActive: reservation !== undefined,
+      reservationReady: reservation?.phase === "ready",
+      warmupRemainingMs,
+      targetSnapshot: nativeOverlayCheckoutTargetSnapshot(),
+      snapshot: readiness.snapshot,
+      ...(reservation
+        ? {
+            reservedAt: reservation.reservedAt,
+            ...(reservation.readyAt === undefined ? {} : { readyAt: reservation.readyAt }),
+            ...(reservation.expiresAt === undefined ? {} : { expiresAt: reservation.expiresAt })
+          }
+        : {})
+    };
+
+    if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+      return {
+        ...base,
+        reason: "closed",
+        message: "Native Steam overlay session is closed."
+      };
+    }
+
+    if (reservation) {
+      return {
+        ...base,
+        reason: "reserved",
+        message: "A native Steam overlay checkout reservation is already active."
+      };
+    }
+
+    if (!readiness.steamRunning) {
+      return {
+        ...base,
+        reason: "steam-unavailable",
+        message: "Steam is not running."
+      };
+    }
+
+    if (readiness.snapshot.overlayActive) {
+      return {
+        ...base,
+        reason: "overlay-active",
+        message: "Steam overlay is already active."
+      };
+    }
+
+    if (
+      !readiness.overlayEnabled ||
+      warmupRemainingMs > 0 ||
+      readiness.snapshot.nativeHostUnavailableReason !== undefined ||
+      !nativeOverlayCheckoutSurfaceIsOpen(readiness.snapshot)
+    ) {
+      return {
+        ...base,
+        canWait: true,
+        reason: "overlay-not-ready",
+        message: nativeOverlayCheckoutReadinessMessage(
+          readiness.overlayEnabled,
+          warmupRemainingMs,
+          readiness.snapshot
+        )
+      };
+    }
+
+    return {
+      ...base,
+      canAcquire: true,
+      canWait: true
+    };
+  }
+
+  async function acquireCheckoutReservation(
+    checkoutOptions: NativeOverlayCheckoutReservationOptions = {}
+  ): Promise<NativeOverlayCheckoutReservation> {
+    const targetSnapshot = nativeOverlayCheckoutTargetSnapshot();
+    try {
+      return (await acquireNativeOverlayCheckoutReservation(checkoutOptions)).reservation;
+    } catch (error) {
+      throw annotateSteamOverlayTargetSnapshotError(error, targetSnapshot);
+    }
+  }
+
+  async function withCheckoutPrepared<T>(
+    operation: () => T | Promise<T>,
+    checkoutOptions: NativeOverlayCheckoutReservationOptions = {}
+  ): Promise<T> {
+    const targetSnapshot = nativeOverlayCheckoutTargetSnapshot();
+    if (typeof operation !== "function") {
+      throw annotateSteamOverlayTargetSnapshotError(
+        new TypeError("Steam Bridge native overlay checkout operation must be a function."),
+        targetSnapshot
+      );
+    }
+
+    let acquired:
+      | {
+          reservation: NativeOverlayCheckoutReservation;
+          state: NativeOverlayCheckoutReservationState;
+        }
+      | undefined;
+    try {
+      acquired = await acquireNativeOverlayCheckoutReservation(checkoutOptions);
+      const operationResult = Promise.resolve().then(operation);
+      const reservationFailure = acquired.state.released.then((reason) => {
+        throw nativeOverlayCheckoutReservationReleaseError(
+          "finish checkout preparation operation",
+          acquired!.state,
+          reason
+        );
+      });
+      const result = await Promise.race([operationResult, reservationFailure]);
+      if (!acquired.reservation.isActive()) {
+        throw nativeOverlayCheckoutReservationReleaseError(
+          "finish checkout preparation operation",
+          acquired.state,
+          acquired.state.releaseReason ?? "expired"
+        );
+      }
+      return result;
+    } catch (error) {
+      throw annotateSteamOverlayTargetSnapshotError(error, targetSnapshot);
+    } finally {
+      acquired?.reservation.release();
+    }
+  }
+
+  async function acquireNativeOverlayCheckoutReservation(
+    checkoutOptions: NativeOverlayCheckoutReservationOptions
+  ): Promise<{
+    reservation: NativeOverlayCheckoutReservation;
+    state: NativeOverlayCheckoutReservationState;
+  }> {
+    const timeoutMs = normalizeNativeOverlayCheckoutReadinessTimeout(checkoutOptions.timeoutMs);
+    const leaseTimeoutMs = normalizeNativeOverlayCheckoutLeaseTimeout(checkoutOptions.leaseTimeoutMs);
+    if (
+      checkoutOptions.signal !== undefined &&
+      (typeof checkoutOptions.signal.addEventListener !== "function" ||
+        typeof checkoutOptions.signal.removeEventListener !== "function")
+    ) {
+      throw new TypeError("Steam Bridge native overlay checkout signal must be an AbortSignal.");
+    }
+    const status = getCheckoutReservationStatus();
+    if (!status.canAcquire && !status.canWait) {
+      throw nativeOverlayCheckoutReservationStatusError(status);
+    }
+
+    if (nextCheckoutReservationGeneration >= Number.MAX_SAFE_INTEGER) {
+      throw new Error("Steam Bridge native overlay checkout reservation generation exhausted.");
+    }
+    nextCheckoutReservationGeneration += 1;
+
+    let resolveReleased!: (reason: NativeOverlayCheckoutReservationReleaseReason) => void;
+    const released = new Promise<NativeOverlayCheckoutReservationReleaseReason>((resolve) => {
+      resolveReleased = resolve;
+    });
+    const state: NativeOverlayCheckoutReservationState = {
+      generation: nextCheckoutReservationGeneration,
+      phase: "waiting",
+      reservedAt: Date.now(),
+      leaseTimeoutMs,
+      signal: checkoutOptions.signal,
+      released,
+      resolveReleased
+    };
+
+    // Install the reservation before the first await. Concurrent callers on
+    // the same JS thread therefore observe a reserved session, never two
+    // overlapping readiness waits against one native presentation surface.
+    activeCheckoutReservation = state;
+    try {
+      if (state.signal) {
+        state.abortHandler = () => {
+          releaseNativeOverlayCheckoutReservation(state, "aborted");
+        };
+        state.signal.addEventListener("abort", state.abortHandler, { once: true });
+      }
+      if (state.signal?.aborted) {
+        releaseNativeOverlayCheckoutReservation(state, "aborted");
+        throw new SteamOverlayWaitAbortedError(
+          nativeOverlayCheckoutReadinessState(),
+          readNativeOverlayCheckoutReadinessSnapshot().snapshot
+        );
+      }
+
+      syncContinuousPresent();
+      if (continuousPresentApplied !== true) {
+        throw new Error(
+          "Steam Bridge could not keep the existing native overlay surface presenting for checkout."
+        );
+      }
+      pump();
+      schedulePumpTimer();
+      await waitForNativeOverlayCheckoutReservationReady(state, timeoutMs);
+
+      const readyAt = state.readyAt;
+      const expiresAt = state.expiresAt;
+      if (readyAt === undefined || expiresAt === undefined) {
+        throw new Error("Steam Bridge native overlay checkout reservation did not record its ready lease.");
+      }
+
+      const reservation: NativeOverlayCheckoutReservation = {
+        reservedAt: state.reservedAt,
+        readyAt,
+        expiresAt,
+        disconnect(): void {
+          releaseNativeOverlayCheckoutReservation(state, "released");
+        },
+        release(): void {
+          releaseNativeOverlayCheckoutReservation(state, "released");
+        },
+        isActive(): boolean {
+          expireNativeOverlayCheckoutReservationIfNeeded(state);
+          return activeCheckoutReservation === state && state.releaseReason === undefined;
+        }
+      };
+      return { reservation, state };
+    } catch (error) {
+      if (state.releaseReason === undefined) {
+        releaseNativeOverlayCheckoutReservation(state, "released");
+      }
+      throw error;
+    }
+  }
+
+  function waitForNativeOverlayCheckoutReservationReady(
+    state: NativeOverlayCheckoutReservationState,
+    timeoutMs: number
+  ): Promise<void> {
+    const stateLabel = nativeOverlayCheckoutReadinessState();
+    const deadline = Date.now() + timeoutMs;
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let pollTimer: NodeJS.Timeout | undefined;
+
+      const cleanup = (): void => {
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = undefined;
+        }
+      };
+      const settleResolve = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const settleReject = (error: unknown): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      void state.released.then((reason) => {
+        if (!settled) {
+          settleReject(nativeOverlayCheckoutReservationReleaseError(stateLabel, state, reason));
+        }
+      });
+
+      const check = (): void => {
+        if (settled) {
+          return;
+        }
+        if (activeCheckoutReservation !== state || state.releaseReason !== undefined) {
+          settleReject(
+            nativeOverlayCheckoutReservationReleaseError(
+              stateLabel,
+              state,
+              state.releaseReason ?? "released"
+            )
+          );
+          return;
+        }
+
+        const readiness = readNativeOverlayCheckoutReadinessSnapshot();
+        if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+          releaseNativeOverlayCheckoutReservation(state, "session-closed", false, false);
+          return;
+        }
+        if (state.signal?.aborted) {
+          releaseNativeOverlayCheckoutReservation(state, "aborted");
+          return;
+        }
+        if (!readiness.steamRunning) {
+          settleReject(new Error("Steam is not running."));
+          releaseNativeOverlayCheckoutReservation(state, "released");
+          return;
+        }
+        if (readiness.snapshot.overlayActive) {
+          settleReject(new Error("Steam overlay became active before checkout preparation completed."));
+          releaseNativeOverlayCheckoutReservation(state, "released");
+          return;
+        }
+
+        const now = Date.now();
+        const warmupReady = now >= activationReadyAt;
+        if (
+          readiness.overlayEnabled &&
+          warmupReady &&
+          readiness.snapshot.nativeHostUnavailableReason === undefined &&
+          nativeOverlayCheckoutSurfaceIsOpen(readiness.snapshot)
+        ) {
+          state.phase = "ready";
+          state.readyAt = now;
+          state.expiresAt = now + state.leaseTimeoutMs;
+          state.expiryTimer = setTimeout(() => {
+            if (
+              activeCheckoutReservation === state &&
+              state.generation === nextCheckoutReservationGeneration
+            ) {
+              releaseNativeOverlayCheckoutReservation(state, "expired");
+            }
+          }, state.leaseTimeoutMs);
+          state.expiryTimer.unref?.();
+          emitStateChange();
+          settleResolve();
+          return;
+        }
+
+        if (now >= deadline) {
+          settleReject(new SteamOverlayWaitTimeoutError(stateLabel, timeoutMs, readiness.snapshot));
+          releaseNativeOverlayCheckoutReservation(state, "released");
+          return;
+        }
+
+        pollTimer = setTimeout(check, Math.min(NATIVE_OVERLAY_CHECKOUT_READINESS_POLL_MS, deadline - now));
+        pollTimer.unref?.();
+      };
+
+      check();
+    });
+  }
+
+  function releaseNativeOverlayCheckoutReservation(
+    state: NativeOverlayCheckoutReservationState,
+    reason: NativeOverlayCheckoutReservationReleaseReason,
+    synchronizePresentation = true,
+    emit = true
+  ): void {
+    if (state.releaseReason !== undefined) {
+      return;
+    }
+
+    state.releaseReason = reason;
+    if (state.expiryTimer) {
+      clearTimeout(state.expiryTimer);
+      state.expiryTimer = undefined;
+    }
+    if (state.abortHandler) {
+      state.signal?.removeEventListener("abort", state.abortHandler);
+      state.abortHandler = undefined;
+    }
+
+    const releasedCurrentReservation = activeCheckoutReservation === state;
+    if (releasedCurrentReservation) {
+      activeCheckoutReservation = undefined;
+    }
+    state.resolveReleased(reason);
+
+    if (releasedCurrentReservation && synchronizePresentation && !closed) {
+      syncContinuousPresent();
+      schedulePumpTimer();
+    }
+    if (releasedCurrentReservation && emit) {
+      emitStateChange();
+    }
+  }
+
+  function expireNativeOverlayCheckoutReservationIfNeeded(
+    state: NativeOverlayCheckoutReservationState | undefined = activeCheckoutReservation
+  ): void {
+    if (
+      state &&
+      state.phase === "ready" &&
+      state.expiresAt !== undefined &&
+      Date.now() >= state.expiresAt &&
+      activeCheckoutReservation === state
+    ) {
+      releaseNativeOverlayCheckoutReservation(state, "expired");
+    }
+  }
+
+  function readNativeOverlayCheckoutReadinessSnapshot(): {
+    snapshot: NativeOverlaySessionSnapshot;
+    steamRunning: boolean;
+    overlayEnabled: boolean;
+  } {
+    const current = snapshot();
+    // This is intentionally a fresh SteamUtils::IsOverlayEnabled read. Cached
+    // diagnostics and OverlayNeedsPresent are presentation signals, not the
+    // positive checkout-readiness handshake.
+    const steamRunning = safeBoolean(() => isSteamRunning());
+    const overlayEnabled = safeBoolean(() => isOverlayEnabled());
+    const refreshedSnapshot = current.diagnostics
+      ? {
+          ...current,
+          diagnostics: {
+            ...current.diagnostics,
+            steamRunning,
+            overlayEnabled
+          }
+        }
+      : current;
+    return { snapshot: refreshedSnapshot, steamRunning, overlayEnabled };
+  }
+
+  function nativeOverlayCheckoutSurfaceIsOpen(current: NativeOverlaySessionSnapshot): boolean {
+    return usesNativeHostView ? current.nativeHostOpen : current.nativeProbeOpen;
+  }
+
+  function nativeOverlayCheckoutReadinessState(): string {
+    return process.platform === "win32"
+      ? "hook its Windows native presentation surface"
+      : "be ready";
+  }
+
+  function nativeOverlayCheckoutReadinessMessage(
+    overlayEnabled: boolean,
+    warmupRemainingMs: number,
+    current: NativeOverlaySessionSnapshot
+  ): string {
+    if (current.nativeHostUnavailableReason) {
+      return `Native Steam overlay host is unavailable: ${formatNativeOverlayHostUnavailableReason(
+        current.nativeHostUnavailableReason
+      )}.`;
+    }
+    if (!nativeOverlayCheckoutSurfaceIsOpen(current)) {
+      return "The existing native Steam overlay presentation surface is not open yet.";
+    }
+    if (!overlayEnabled) {
+      return "Waiting for Steam's direct IsOverlayEnabled checkout-readiness handshake.";
+    }
+    return `Waiting ${warmupRemainingMs}ms for the native Steam overlay activation warmup.`;
+  }
+
+  function nativeOverlayCheckoutReservationStatusError(
+    status: NativeOverlayCheckoutReservationStatus
+  ): Error {
+    switch (status.reason) {
+      case "closed":
+        return new SteamOverlayWaitClosedError(nativeOverlayCheckoutReadinessState(), status.snapshot);
+      case "steam-unavailable":
+      case "overlay-active":
+      case "reserved":
+      case "overlay-not-ready":
+        return new Error(status.message ?? "Native Steam overlay checkout reservation is unavailable.");
+      default:
+        return new Error("Native Steam overlay checkout reservation is unavailable.");
+    }
+  }
+
+  function nativeOverlayCheckoutReservationReleaseError(
+    stateLabel: string,
+    state: NativeOverlayCheckoutReservationState,
+    reason: NativeOverlayCheckoutReservationReleaseReason
+  ): Error {
+    const current = snapshot();
+    switch (reason) {
+      case "aborted":
+        return new SteamOverlayWaitAbortedError(stateLabel, current);
+      case "expired":
+        return new SteamOverlayWaitTimeoutError(stateLabel, state.leaseTimeoutMs, current);
+      case "session-closed":
+        return new SteamOverlayWaitClosedError(stateLabel, current);
+      case "released":
+      default:
+        return new SteamOverlayWaitClosedError(stateLabel, current);
+    }
+  }
+
+  function nativeOverlayCheckoutTargetSnapshot(): SteamOverlayCheckoutTargetSnapshot {
+    return snapshotSteamOverlayTarget({ type: "checkout" });
+  }
+
   function subscribeStateChange(listener: () => void): CallbackHandle {
     stateListeners.add(listener);
     return {
@@ -8842,6 +9457,67 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
   }
 
+  function recordSharedTextureUpdateDuration(startedAt: number): void {
+    const durationMs = Math.max(0, performance.now() - startedAt);
+    sharedTextureUpdateCount += 1;
+    lastSharedTextureUpdateDurationMs = durationMs;
+    maxSharedTextureUpdateDurationMs = Math.max(
+      maxSharedTextureUpdateDurationMs ?? 0,
+      durationMs
+    );
+  }
+
+  function presentFrameDrivenUpload(): void {
+    const windowsStandaloneHost = process.platform === "win32" && !usesNativeHostView;
+    if (!windowsStandaloneHost) {
+      // Linux GLX imports and CPU uploads must finish and present before the
+      // producer recycles its frame. Keep their established synchronous pump.
+      pump();
+      lastFrameDrivenPumpAt = performance.now();
+      schedulePumpTimer();
+      return;
+    }
+
+    if (overlayActive === true || continuousPresentApplied === true) {
+      // The display-synchronized continuous scheduler is the sole Present
+      // owner while Steam is active (or continuous presentation was requested).
+      return;
+    }
+
+    if (frameDrivenPumpImmediate) {
+      schedulePumpTimer();
+      return;
+    }
+
+    frameDrivenPumpImmediate = setImmediate(() => {
+      frameDrivenPumpImmediate = undefined;
+      if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+        return;
+      }
+      if (overlayActive === true || continuousPresentApplied === true) {
+        schedulePumpTimer();
+        return;
+      }
+
+      const previousPumpCount = pumpCount;
+      try {
+        pump();
+      } catch {
+        // The thrown error is stored in the session snapshot and the session closes itself.
+        return;
+      }
+      if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+        return;
+      }
+      if (pumpCount !== previousPumpCount) {
+        lastFrameDrivenPumpAt = performance.now();
+      }
+      schedulePumpTimer();
+    });
+    frameDrivenPumpImmediate.unref?.();
+    schedulePumpTimer();
+  }
+
   function schedulePumpTimer(): void {
     if (closed) {
       return;
@@ -8854,6 +9530,17 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (pumpImmediate) {
       clearImmediate(pumpImmediate);
       pumpImmediate = undefined;
+    }
+    if (
+      frameDrivenPumpImmediate
+      && process.platform === "win32"
+      && !usesNativeHostView
+      && overlayActive !== true
+      && continuousPresentApplied !== true
+    ) {
+      // The deferred frame pump owns this inactive Windows cadence. Leave no
+      // regular timer that could race it into a duplicate DXGI Present.
+      return;
     }
     const armPumpTimer = (dueAt: number): void => {
       pumpTimerDueAt = dueAt;
@@ -8911,13 +9598,19 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         pumpImmediate.unref?.();
       } else {
         const completedAt = performance.now();
-        const cadenceDeadline = (scheduledDueAt ?? pumpStartedAt) + pumpIntervalMs;
+        const cadenceIntervalMs = backend === "macos-metal" && continuousPresentApplied === true
+          ? Math.max(pumpIntervalMs, 1000 / 30)
+          : pumpIntervalMs;
+        const cadenceDeadline = (scheduledDueAt ?? pumpStartedAt) + cadenceIntervalMs;
         armPumpTimer(cadenceDeadline > completedAt
           ? cadenceDeadline
-          : completedAt + pumpIntervalMs);
+          : completedAt + cadenceIntervalMs);
       }
     };
-    armPumpTimer(performance.now() + pumpIntervalMs);
+    const initialIntervalMs = backend === "macos-metal" && continuousPresentApplied === true
+      ? Math.max(pumpIntervalMs, 1000 / 30)
+      : pumpIntervalMs;
+    armPumpTimer(performance.now() + initialIntervalMs);
   }
 
   function updateNativeOverlayHostAvailability(): boolean {
@@ -9063,6 +9756,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         overlayActiveApplied = undefined;
         cursorHiddenApplied = undefined;
         continuousPresentApplied = undefined;
+        continuousPresentFrameRateApplied = undefined;
         fullScreenApplied = attachedKWinGeometrySyncActive
           ? fullScreenRequested
           : undefined;
@@ -9126,6 +9820,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       overlayActiveApplied = undefined;
       cursorHiddenApplied = undefined;
       continuousPresentApplied = undefined;
+      continuousPresentFrameRateApplied = undefined;
       fullScreenApplied = undefined;
       menuApplied = false;
     }
@@ -9560,16 +10255,21 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
   function syncContinuousPresent(): void {
     setNativeContinuousPresent(
-      continuousPresentRequested || overlayActive || safeBoolean(() => overlayNeedsPresent())
+      continuousPresentRequested ||
+        activeCheckoutReservation !== undefined ||
+        overlayActive ||
+        safeBoolean(() => overlayNeedsPresent())
     );
   }
 
   function setNativeContinuousPresent(continuous: boolean): void {
+    const appliedFrameRate = continuous && backend === "macos-metal" ? frameRate : 0;
     if (
       closed ||
       !ownsNativeOverlaySurface(surfaceLease) ||
       nativeHostUnavailableReason !== undefined ||
-      continuousPresentApplied === continuous
+      (continuousPresentApplied === continuous &&
+        continuousPresentFrameRateApplied === appliedFrameRate)
     ) {
       return;
     }
@@ -9579,8 +10279,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
     try {
-      setter.call(binding, continuous);
+      setter.call(binding, continuous, appliedFrameRate);
       continuousPresentApplied = continuous;
+      continuousPresentFrameRateApplied = appliedFrameRate;
     } catch (error) {
       lastError = error;
     }
@@ -10476,6 +11177,45 @@ function normalizeNativeOverlayMinimumMenuScale(value: number | undefined): numb
   return value;
 }
 
+function normalizeNativeOverlayActivationWarmupMs(
+  value: number | undefined,
+  usesLinuxApplicationHost: boolean
+): number {
+  if (value === undefined) {
+    return usesLinuxApplicationHost ? LINUX_APPLICATION_HOST_OVERLAY_ACTIVATION_WARMUP_MS : 0;
+  }
+  if (!Number.isFinite(value) || value < 0 || value > NATIVE_OVERLAY_CHECKOUT_MAX_TIMEOUT_MS) {
+    throw new RangeError(
+      "Steam Bridge native overlay activationWarmupMs must be a finite number from 0 through 300000."
+    );
+  }
+  return Math.round(value);
+}
+
+function normalizeNativeOverlayCheckoutReadinessTimeout(value: number | undefined): number {
+  if (value === undefined) {
+    return NATIVE_OVERLAY_CHECKOUT_READINESS_TIMEOUT_MS;
+  }
+  if (!Number.isFinite(value) || value < 0 || value > NATIVE_OVERLAY_CHECKOUT_MAX_TIMEOUT_MS) {
+    throw new RangeError(
+      "Steam Bridge native overlay checkout timeoutMs must be a finite number from 0 through 300000."
+    );
+  }
+  return Math.round(value);
+}
+
+function normalizeNativeOverlayCheckoutLeaseTimeout(value: number | undefined): number {
+  if (value === undefined) {
+    return NATIVE_OVERLAY_CHECKOUT_LEASE_TIMEOUT_MS;
+  }
+  if (!Number.isFinite(value) || value <= 0 || value > NATIVE_OVERLAY_CHECKOUT_MAX_TIMEOUT_MS) {
+    throw new RangeError(
+      "Steam Bridge native overlay checkout leaseTimeoutMs must be a finite number greater than 0 and at most 300000."
+    );
+  }
+  return Math.max(1, Math.round(value));
+}
+
 function normalizeNativeOverlayFrameRate(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new TypeError("Steam Bridge native overlay frame rate must be a positive finite number.");
@@ -10702,6 +11442,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   let lightweightPollCount = 0;
   let fullDiagnosticsPollCount = 0;
   let currentFps = idleFps;
+  let managedContinuousPresentApplied: boolean | undefined;
+  let managedContinuousPresentFpsApplied: number | undefined;
   let lastPumpAt: number | undefined;
   let lastPollAt: number | undefined;
   let lastLightweightPollAt: number | undefined;
@@ -10780,6 +11522,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       }
       syncNativeHostFullScreen();
       syncNativeHostBounds();
+      syncManagedContinuousPresent();
       native().pumpNativeOverlayProbeWindow();
       nativePumpSequence += 1;
       advanceStandaloneLinuxHostActivationCommit();
@@ -10868,6 +11611,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         native().openNativeOverlayProbeWindow(title);
       }
       currentFps = selectCurrentFps();
+      syncManagedContinuousPresent();
       emitStateChange();
     } catch (error) {
       fail(error);
@@ -10881,6 +11625,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     }
 
     visible = false;
+    setManagedContinuousPresent(false);
     try {
       if (usesNativeHostView) {
         setNativeOverlayInputIntentActive(false);
@@ -10942,6 +11687,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       hostActivationMode = activationMode;
       suppressNeedsPresentOpacity = false;
       currentFps = selectCurrentFps();
+      syncManagedContinuousPresent();
       if (standaloneHostReady) {
         if (!syncHostInputMode()) {
           hideHostAfterPolicyFailure();
@@ -10974,6 +11720,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
           suppressNeedsPresentOpacity = true;
         }
         currentFps = selectCurrentFps();
+        syncManagedContinuousPresent();
         if (!syncHostInputMode()) {
           hideHostAfterPolicyFailure();
         }
@@ -11007,6 +11754,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       suppressNeedsPresentOpacity = false;
       boostUntil = Math.max(boostUntil, Date.now() + Math.max(0, durationMs));
       currentFps = selectCurrentFps();
+      syncManagedContinuousPresent();
       if (standaloneHostReady) {
         if (!syncHostInputMode()) {
           hideHostAfterPolicyFailure();
@@ -11044,6 +11792,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       suppressNeedsPresentOpacity = false;
       poll(true);
       currentFps = selectCurrentFps();
+      syncManagedContinuousPresent();
       if (standaloneHostReady) {
         if (!syncHostInputMode()) {
           hideHostAfterPolicyFailure();
@@ -11138,6 +11887,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
     if (usesNativeHostView) {
       applyFailClosedHostPolicy(true);
     }
+    setManagedContinuousPresent(false);
     closed = true;
     closeReason = reason;
     frameCaptureGeneration += 1;
@@ -11247,6 +11997,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         suppressNeedsPresentOpacity = false;
         boostUntil = Math.max(boostUntil, Date.now() + activationBoostMs);
         currentFps = selectCurrentFps();
+        syncManagedContinuousPresent();
         if (!syncHostInputMode()) {
           hideHostAfterPolicyFailure();
         }
@@ -11258,6 +12009,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         suppressNeedsPresentOpacity = true;
         boostUntil = Date.now() + activeGraceMs;
         currentFps = selectCurrentFps();
+        syncManagedContinuousPresent();
         if (!syncHostInputMode()) {
           hideHostAfterPolicyFailure();
         }
@@ -11330,6 +12082,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       activeOverlayFps = normalizedFrameRate;
       resetOverlayFrameDeadline(frameDeadline);
       currentFps = selectCurrentFps();
+      syncManagedContinuousPresent();
       schedule(0);
       emitStateChange();
     }
@@ -11421,6 +12174,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       ensureNativeOverlaySurfaceReady();
       const pollChanged = poll();
       currentFps = selectCurrentFps();
+      syncManagedContinuousPresent();
       if (!syncHostInputMode()) {
         hideHostAfterPolicyFailure();
       }
@@ -11434,9 +12188,9 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
         emitStateChange();
       }
       schedule(
-        currentFps > 0
+        currentFps > 0 && !(backend === "macos-metal" && managedContinuousPresentApplied)
           ? nextOverlayFrameDelayMs(frameDeadline, currentFps, Date.now())
-          : effectiveIdlePollIntervalMs()
+          : managedPresenterMaintenanceDelayMs()
       );
       if (currentFps <= 0) {
         resetOverlayFrameDeadline(frameDeadline);
@@ -11460,6 +12214,20 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       : pollIntervalMs;
   }
 
+  function managedPresenterMaintenanceDelayMs(now = Date.now()): number {
+    const idleDelayMs = effectiveIdlePollIntervalMs();
+    if (
+      backend !== "macos-metal" ||
+      managedContinuousPresentApplied !== true ||
+      overlayActive ||
+      activationHoldCount > 0 ||
+      boostUntil <= now
+    ) {
+      return idleDelayMs;
+    }
+    return Math.min(idleDelayMs, Math.max(0, boostUntil - now));
+  }
+
   function selectCurrentFps(): number {
     if (nativeHostUnavailableReason !== undefined) {
       return 0;
@@ -11475,6 +12243,47 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
       return needsPresentFps;
     }
     return idleFps;
+  }
+
+  function syncManagedContinuousPresent(now = Date.now()): void {
+    setManagedContinuousPresent(
+      visible &&
+        nativeHostUnavailableReason === undefined &&
+        currentFps > 0 &&
+        (
+          overlayActive ||
+          activationHoldCount > 0 ||
+          now < boostUntil ||
+          (needsPresent && !suppressNeedsPresentOpacity)
+        )
+    );
+  }
+
+  function setManagedContinuousPresent(continuous: boolean): void {
+    const frameRate = continuous ? currentFps : 0;
+    if (
+      backend !== "macos-metal" ||
+      closed ||
+      !ownsNativeOverlaySurface(surfaceLease) ||
+      (managedContinuousPresentApplied === continuous &&
+        managedContinuousPresentFpsApplied === frameRate)
+    ) {
+      return;
+    }
+
+    const binding = native();
+    const setter = binding.setNativeOverlayHostContinuousPresent;
+    if (typeof setter !== "function") {
+      return;
+    }
+
+    try {
+      setter.call(binding, continuous, frameRate);
+      managedContinuousPresentApplied = continuous;
+      managedContinuousPresentFpsApplied = frameRate;
+    } catch (error) {
+      lastError = error;
+    }
   }
 
   function syncHostInputMode(force = false): boolean {
@@ -12911,6 +13720,12 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
             applyHostPolicy(true, false, true);
         } else {
           const binding = native();
+          if (backend === "macos-metal") {
+            // A replacement child starts in MTKView's autonomous mode. Never
+            // reuse presentation state cached for a destroyed native lifetime.
+            managedContinuousPresentApplied = undefined;
+            managedContinuousPresentFpsApplied = undefined;
+          }
           const initialBounds = usesAttachedLinuxHost
             ? readNativeOverlayBounds(options.getBounds, (error) => {
                 lastError = error;
@@ -15684,7 +16499,9 @@ const ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS: ElectronOverlayWindowGeometryEv
   // those callbacks can re-enter that loop and hang the browser process.
   // Linux also leaves `move` to KWin's compositor-paired path; the managed
   // RandR cadence poll handles output changes without adding a hot JS pump
-  // during interactive dragging.
+  // during interactive dragging. macOS programmatic size changes can emit
+  // `resize` without the post-interaction `resized` event, so its attached
+  // child must also consume the authoritative continuous resize event below.
   "moved",
   "resized",
   "maximize",
@@ -15721,12 +16538,12 @@ function installElectronSteamOverlayWindowSync(
     return undefined;
   }
 
-  const sync = (): void => {
+  const sync = (includeDisplayFrameRate = true): void => {
     if (!controller.isOpen()) {
       return;
     }
     try {
-      if (tracksDisplayFrameRate) {
+      if (tracksDisplayFrameRate && includeDisplayFrameRate) {
         syncElectronSteamOverlayDisplayFrameRate(window, controller.presenter);
       }
       controller.pump();
@@ -15735,6 +16552,33 @@ function installElectronSteamOverlayWindowSync(
         type: "SteamBridgeOverlayWindowSyncWarning"
       });
     }
+  };
+  const syncGeometryOnly = (): void => sync(false);
+  let deferredMacosPostResizeSync: ReturnType<typeof setImmediate> | undefined;
+  const scheduleMacosPostResizeSync = (): void => {
+    if (process.platform !== "darwin" || deferredMacosPostResizeSync !== undefined) {
+      return;
+    }
+    deferredMacosPostResizeSync = setImmediate(() => {
+      deferredMacosPostResizeSync = undefined;
+      if (!controller.isOpen()) {
+        return;
+      }
+      try {
+        // AppKit can publish its final contentLayoutRect one run-loop turn
+        // after Electron's terminal `resized` event (notably when leaving
+        // simple fullscreen). Re-read the native parent once that commit is
+        // visible so the persistent child cannot retain the transient
+        // titlebar-inclusive frame.
+        controller.presenter.notifyBoundsChanged();
+        syncGeometryOnly();
+      } catch (error) {
+        process.emitWarning(error instanceof Error ? error : String(error), {
+          type: "SteamBridgeOverlayWindowSyncWarning"
+        });
+      }
+    });
+    deferredMacosPostResizeSync.unref?.();
   };
 
   let standaloneLinuxHostHiddenForWindowState = false;
@@ -15769,6 +16613,8 @@ function installElectronSteamOverlayWindowSync(
   };
 
   const standaloneLinuxHost = electronUsesStandaloneLinuxOverlayHost();
+  const usesAuthoritativeResizeEvent =
+    process.platform === "linux" || process.platform === "darwin";
   const reconcileStandaloneLinuxWindowState = (): void => {
     if (!standaloneLinuxHost || !controller.isOpen()) {
       return;
@@ -15789,7 +16635,7 @@ function installElectronSteamOverlayWindowSync(
   };
   const registeredHandlers = new Map<ElectronOverlayWindowGeometryEvent, () => void>();
   try {
-    const syncEvents = process.platform === "linux"
+    const syncEvents = usesAuthoritativeResizeEvent
       ? [...ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS, "resize" as const]
       : ELECTRON_STEAM_OVERLAY_WINDOW_SYNC_EVENTS;
     for (const event of syncEvents) {
@@ -15798,15 +16644,20 @@ function installElectronSteamOverlayWindowSync(
           ? hideStandaloneLinuxHost
           : standaloneLinuxHost && (event === "restore" || event === "show")
             ? showStandaloneLinuxHost
-            : sync;
+            : usesAuthoritativeResizeEvent && event === "resize"
+              ? syncGeometryOnly
+              : sync;
       const handler = (): void => {
         if (
           ELECTRON_STEAM_OVERLAY_BOUNDS_AUTHORITATIVE_EVENTS.has(event) ||
-          (process.platform === "linux" && event === "resize")
+          (usesAuthoritativeResizeEvent && event === "resize")
         ) {
           controller.presenter.notifyBoundsChanged();
         }
         action();
+        if (process.platform === "darwin" && event === "resized") {
+          scheduleMacosPostResizeSync();
+        }
       };
       registeredHandlers.set(event, handler);
       window.on(event, handler);
@@ -15839,6 +16690,10 @@ function installElectronSteamOverlayWindowSync(
   reconcileStandaloneLinuxWindowState();
 
   return () => {
+    if (deferredMacosPostResizeSync !== undefined) {
+      clearImmediate(deferredMacosPostResizeSync);
+      deferredMacosPostResizeSync = undefined;
+    }
     if (standaloneLinuxStatePoll !== undefined) {
       clearInterval(standaloneLinuxStatePoll);
     }
@@ -16613,7 +17468,9 @@ function electronSteamOverlayOpenStatus(
   target: SteamOverlayTarget,
   managedOpenPending = false
 ): ElectronSteamOverlayOpenStatus {
-  const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
+  const snapshot = refreshElectronSteamOverlaySnapshotOverlayEnabled(
+    refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot())
+  );
   const targetSnapshot = snapshotSteamOverlayTarget(target);
   const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
   const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
@@ -16775,7 +17632,9 @@ function electronSteamOverlayCheckoutOperationStatus(
   controller: ElectronSteamOverlay,
   managedOpenPending = false
 ): ElectronSteamOverlayCheckoutOperationStatus {
-  const snapshot = refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot());
+  const snapshot = refreshElectronSteamOverlaySnapshotOverlayEnabled(
+    refreshElectronSteamOverlaySnapshotDiagnostics(controller.snapshot())
+  );
   const targetSnapshot = snapshotSteamOverlayTarget({ type: "checkout" });
   const nativeHostAvailability = electronSteamOverlayNativeHostAvailability(snapshot);
   const unavailableError = electronSteamOverlayNativeHostUnavailableError(snapshot);
@@ -16966,7 +17825,7 @@ function formatNativeOverlayHostUnavailableReason(reason: NativeOverlayHostUnava
 function formatSteamOverlayWaitTimeoutMessage(
   state: string,
   timeoutMs: number,
-  snapshot?: ElectronSteamOverlaySnapshot
+  snapshot?: SteamOverlayWaitSnapshot
 ): string {
   return appendSteamOverlayWaitSnapshotState(
     `Timed out waiting for Steam overlay to ${state} after ${timeoutMs}ms.`,
@@ -16976,32 +17835,45 @@ function formatSteamOverlayWaitTimeoutMessage(
 
 function formatSteamOverlayWaitAbortedMessage(
   state: string,
-  snapshot?: ElectronSteamOverlaySnapshot
+  snapshot?: SteamOverlayWaitSnapshot
 ): string {
   return appendSteamOverlayWaitSnapshotState(`Aborted waiting for Steam overlay to ${state}.`, snapshot);
 }
 
 function formatSteamOverlayWaitClosedMessage(
   state: string,
-  snapshot?: ElectronSteamOverlaySnapshot
+  snapshot?: SteamOverlayWaitSnapshot
 ): string {
+  const subject = snapshot && !("mode" in snapshot)
+    ? "Native Steam overlay session"
+    : "Electron Steam overlay";
   return appendSteamOverlayWaitSnapshotState(
-    `Electron Steam overlay closed while waiting for Steam overlay to ${state}.`,
+    `${subject} closed while waiting for Steam overlay to ${state}.`,
     snapshot
   );
 }
 
-function appendSteamOverlayWaitSnapshotState(message: string, snapshot?: ElectronSteamOverlaySnapshot): string {
+function appendSteamOverlayWaitSnapshotState(message: string, snapshot?: SteamOverlayWaitSnapshot): string {
   if (!snapshot) {
     return message;
   }
 
-  let details =
-    `${message} Last presenter state: mode=${snapshot.mode}, backend=${snapshot.backend ?? "unknown"}, ` +
-    `attached=${snapshot.attached}, nativeHostOpen=${snapshot.nativeHostOpen ?? "unknown"}, ` +
-    `overlayActive=${snapshot.overlayActive}, overlayWasActive=${snapshot.overlayWasActive}, ` +
-    `overlayNeedsPresent=${snapshot.overlayNeedsPresent}, currentFps=${snapshot.currentFps}, ` +
-    `nativeHostUnavailable=${snapshot.nativeHostUnavailableReason ?? "none"}.`;
+  let details: string;
+  if ("mode" in snapshot) {
+    details =
+      `${message} Last presenter state: mode=${snapshot.mode}, backend=${snapshot.backend ?? "unknown"}, ` +
+      `attached=${snapshot.attached}, nativeHostOpen=${snapshot.nativeHostOpen ?? "unknown"}, ` +
+      `overlayActive=${snapshot.overlayActive}, overlayWasActive=${snapshot.overlayWasActive}, ` +
+      `overlayNeedsPresent=${snapshot.overlayNeedsPresent}, currentFps=${snapshot.currentFps}, ` +
+      `nativeHostUnavailable=${snapshot.nativeHostUnavailableReason ?? "none"}.`;
+  } else {
+    details =
+      `${message} Last native session state: backend=${snapshot.backend}, closed=${snapshot.closed}, ` +
+      `nativeHostOpen=${snapshot.nativeHostOpen}, nativeProbeOpen=${snapshot.nativeProbeOpen}, ` +
+      `overlayActive=${snapshot.overlayActive}, overlayWasActive=${snapshot.overlayWasActive}, ` +
+      `frameRate=${snapshot.frameRate}, pumpCount=${snapshot.pumpCount}, ` +
+      `nativeHostUnavailable=${snapshot.nativeHostUnavailableReason ?? "none"}.`;
+  }
 
   if (snapshot.diagnostics) {
     const diagnostics = snapshot.diagnostics;
@@ -27960,6 +28832,11 @@ function resolveSteamCallbackId(steamCallback: SteamCallbackName | SteamCallback
 }
 
 function normalizeCallbackEvent(callbackId: number, event: unknown): unknown {
+  // napi-rs delivers JsCallback arguments through a single positional envelope
+  // (`{ 0: payload }`) in a real native binding. Tests and alternate bindings
+  // may call the handler with the payload directly, so normalize both forms at
+  // the shared callback boundary before any callback-specific field handling.
+  event = unwrapNativeCallbackArgument(event);
   if (
     callbackId === SteamCallback.MicroTxnAuthorizationResponse ||
     callbackId === SteamCallback.MicroTxnAuthorizationResponseSteamworks

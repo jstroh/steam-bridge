@@ -1,6 +1,6 @@
 # Windows Actual-Game Exhaustive QA
 
-Last updated: 2026-07-22
+Last updated: 2026-07-26
 
 This is the required Windows actual-game QA pass for the standalone native D3D
 host path used by FOV4. It exists so future compactions and release passes do
@@ -11,7 +11,9 @@ not shrink "manual QA" back into a single overlay open.
 This pass validates the shipped/registry-backed FOV4 integration with
 `steam-bridge@0.3.8` or later. It does not validate retired attached presenters.
 Windows `WS_CHILD`, owned-popup, and unparented popup approaches are closed
-paths and must not be revived during this QA.
+paths and must not be revived during this QA. Steam-owned host capture is also
+not permission to call `ReleaseCapture()` or synthesize non-client move/size
+messages.
 
 Use the actual game consumer, not the smoke app, for this pass:
 
@@ -83,7 +85,19 @@ For each applicable display state:
 - While the overlay is visible, confirm there is no right/bottom seam, tiny
   top-left Steam surface, black/purple startup surface, flicker during steady
   state, retained stale pixels, hang, or crash.
+- While the overlay is visible, attempt title drag, edge resize, maximize,
+  minimize, system-menu, and `F11` fullscreen input. On the standalone Windows
+  lane these are expected no-ops under `STEAM-MODAL-CONSTRAINT`: diagnostics
+  must prove `GetCapture()` is the exact game-host HWND, host bounds and identity
+  remain unchanged, and no non-client/system/move-size messages enter the host.
+- While the overlay is visible, switch focus away and back. When display/DPI
+  handling is affected or the release profile calls for it, apply an external
+  display-mode, refresh, resolution, or scale transition and confirm alignment,
+  pacing, and recovery. These externally driven cases remain required.
 - Close the overlay with Escape and confirm focus returns to the game.
+- Confirm capture cleared, then immediately exercise title drag, edge resize,
+  maximize/restore, minimize/restore, and fullscreen/restore as applicable.
+  Window management must recover without restarting or recreating the host.
 - Cleanly close the app and confirm there are no leftover `gameoverlayui`
   targets for the app process.
 
@@ -102,6 +116,9 @@ state, record:
 - Frame-latency wait timeout count.
 - Slow shared-texture copy count.
 - Device loss and recovery counts.
+- Active `GetCapture()` HWND versus the exact native host HWND, pre/active/post-
+  close host bounds, and counts for `WM_NCLBUTTONDOWN/UP`, `WM_SYSCOMMAND`,
+  `WM_ENTERSIZEMOVE`, `WM_EXITSIZEMOVE`, and capture changes.
 - Any stderr, crash, or Steam client instability.
 
 Passing pacing means ordinary game and overlay native-present medians are at
@@ -125,6 +142,32 @@ Include:
 
 Append a dated result summary to this file and to `current-work.md` before a
 release decision.
+
+## Steam-modal capture contract
+
+The 2026-07-26 actual-game checkout probe settled the Windows active-window-
+management expectation. While Steam was visible, `GetCapture()` returned the
+exact standalone D3D host HWND. Attempts to title-drag, resize, maximize,
+minimize, open the system path, or toggle application fullscreen did not change
+the host rectangle and did not produce `WM_NCLBUTTONDOWN`, `WM_NCLBUTTONUP`,
+`WM_SYSCOMMAND`, `WM_ENTERSIZEMOVE`, or `WM_EXITSIZEMOVE`. Steam owns the
+capture and consumes that interaction before normal non-client dispatch.
+
+The expected active result is therefore stable modality: one unchanged host,
+overlay pixels aligned to the client, no flicker or stale frame, focus round
+trips that preserve the surface, and presentation cadence at the display
+target. Escape must close the overlay and clear capture; ordinary window
+management must then resume immediately. The measured probe stayed aligned and
+stable at about 165 Hz, and the same title drag moved the window immediately
+after Escape.
+
+Do not call `ReleaseCapture()` on Steam's behalf. Do not synthesize
+`WM_NCLBUTTONDOWN`, hand a fabricated hit-test to `DefWindowProc`, or enter a
+manual move/size loop: Steam may retain the corresponding button-up event and
+leave native input or a nested loop wedged. Do not substitute a popup,
+owned-popup, or `WS_CHILD`; those paths remain permanently closed. External
+focus changes and externally initiated display-mode, refresh, resolution, and
+DPI transitions remain independent active-overlay tests.
 
 ## 2026-07-22 actual FOV4 Windows pass
 

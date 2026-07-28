@@ -183,6 +183,47 @@ snapshots report `activationWarmupMs`, `activationWarmupRemainingMs`, and
 prefer the wait helpers for Store, browser, and checkout UI. Override
 `activationWarmupMs` only when platform evidence supports another value.
 
+For an application-owned checkout operation, reserve readiness on the existing
+native session before starting application or backend work:
+
+```ts
+const checkoutLease = await session.acquireCheckoutReservation({
+  timeoutMs: 15_000,
+  leaseTimeoutMs: 35_000
+});
+
+try {
+  await startApplicationCheckout();
+} finally {
+  checkoutLease.release();
+}
+```
+
+The readiness wait keeps that same native session surface presenting until
+Steam passes a fresh positive `IsOverlayEnabled` check and the session's
+activation warmup. The 35-second hard lease starts when readiness is confirmed,
+not when acquisition begins. Acquiring a reservation does not create or replace
+a popup, presenter, or window, and does not open checkout UI. Only one pending
+or ready reservation can exist on that native session;
+`getCheckoutReservationStatus()` is diagnostic, not a race-free substitute for
+acquisition. A stale, released, or expired handle cannot release a later
+reservation.
+
+Keep the returned handle in Electron's main process; expose only an opaque owner
+token over IPC when a renderer initiates checkout. `release()` and
+`disconnect()` are idempotent aliases. An abort signal releases either a pending
+or acquired reservation, `leaseTimeoutMs` releases an acquired reservation at
+expiry, and `session.close()` clears both states. Before readiness, abort,
+timeout, and session close reject with `SteamOverlayWaitAbortedError`,
+`SteamOverlayWaitTimeoutError`, and `SteamOverlayWaitClosedError`, respectively,
+without running application work. For a single-scope operation,
+`session.withCheckoutPrepared(operation, options)` performs the same acquisition
+and releases on synchronous return or throw and asynchronous resolve or reject.
+Pass the signal to the application operation too when that work must itself be
+cancelled. The main-process owner must also release its lease on backend response
+or send failure, request timeout, renderer navigation or crash, and application
+quit; shutting down the host should close the session.
+
 Game Mode is a different contract: Gamescope/SteamUI can present compositor-native surfaces
 such as Store, but the current managed web control does not activate there.
 Qualification proves presenter readiness plus native Store activation, close,
@@ -338,7 +379,9 @@ does not complete; release Electron's texture in a `finally` block after it
 returns. Steam Bridge then uses the matching high-performance DXGI adapter,
 crops the explicit presentation region, preserves that region's aspect ratio,
 and presents through a two-buffer flip-sequential swap chain.
-`updateFrame()` remains available as a BGRA CPU fallback.
+`updateFrame()` remains available as a BGRA CPU fallback. Session snapshots
+report `sharedTextureUpdateCount`, `lastSharedTextureUpdateDurationMs`, and
+`maxSharedTextureUpdateDurationMs` for this synchronous native copy boundary.
 
 Set `frameRate` to the active display's refresh rate and update it with
 `session.setFrameRate(...)` when the native host moves to another monitor. The
@@ -346,9 +389,16 @@ Windows standalone host uses a DXGI frame-latency waitable swap chain as its
 presentation boundary and submits tear-free frames with `Present(1)`. Waiting
 on DXGI before each frame avoids relying on JavaScript timer precision while
 still following the active display's refresh cadence.
-New CPU frames and shared textures are marked dirty and pump at least once
-immediately, including when `continuousPresent` is `false`; the session timer
-remains the retained-frame and Steam-overlay fallback. Set
+New CPU frames and shared textures are marked dirty and, when
+`continuousPresent` is `false`, coalesce into one Windows pump on the next main-
+loop turn. The native upload/copy still completes synchronously, so Electron's
+paint callback can safely release its texture immediately after the update
+returns; only the DXGI wait and `Present` move out of that callback. The session
+timer remains the retained-frame and Steam-overlay fallback. While continuous
+presentation or Steam's active overlay owns presentation, frame uploads do not
+start a second pump. This removes phase-sensitive paint/Present backpressure;
+do not compensate for that backpressure by padding the texture or changing the
+window by one pixel. Set
 `continuousPresent: true` for game-streaming or desktop-capture hosts that must
 keep exposing a retained frame while the Electron source is static. It is
 `false` by default. DXGI gates continuous Windows presentation to the display

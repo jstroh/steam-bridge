@@ -185,6 +185,47 @@ with the game window, reuse it, and prefer the wait helpers for user-triggered
 Store, browser, and checkout flows. `activationWarmupMs` is configurable when
 platform evidence requires a different value.
 
+For an application-owned checkout operation, reserve readiness on the existing
+native session before starting application or backend work:
+
+```ts
+const checkoutLease = await session.acquireCheckoutReservation({
+  timeoutMs: 15_000,
+  leaseTimeoutMs: 35_000
+});
+
+try {
+  await startApplicationCheckout();
+} finally {
+  checkoutLease.release();
+}
+```
+
+The readiness wait keeps that same native session surface presenting until
+Steam passes a fresh positive `IsOverlayEnabled` check and the session's
+activation warmup. The 35-second hard lease starts when readiness is confirmed,
+not when acquisition begins. Acquiring a reservation does not create or replace
+a popup, presenter, or window, and does not open checkout UI. Only one pending
+or ready reservation can exist on that native session;
+`getCheckoutReservationStatus()` is diagnostic, not a race-free substitute for
+acquisition. A stale, released, or expired handle cannot release a later
+reservation.
+
+Keep the returned handle in Electron's main process; expose only an opaque owner
+token over IPC when a renderer initiates checkout. `release()` and
+`disconnect()` are idempotent aliases. An abort signal releases either a pending
+or acquired reservation, `leaseTimeoutMs` releases an acquired reservation at
+expiry, and `session.close()` clears both states. Before readiness, abort,
+timeout, and session close reject with `SteamOverlayWaitAbortedError`,
+`SteamOverlayWaitTimeoutError`, and `SteamOverlayWaitClosedError`, respectively,
+without running application work. For a single-scope operation,
+`session.withCheckoutPrepared(operation, options)` performs the same acquisition
+and releases on synchronous return or throw and asynchronous resolve or reject.
+Pass the signal to the application operation too when that work must itself be
+cancelled. The main-process owner must also release its lease on backend response
+or send failure, request timeout, renderer navigation or crash, and application
+quit; shutting down the host should close the session.
+
 The application owns its size and refresh policy. `1280x720` client pixels with
 a `640x480` minimum is a safe desktop default; Steam Bridge applies those
 constraints to the same native application host and follows the current display

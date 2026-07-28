@@ -217,7 +217,6 @@ mod macos {
 
     type Id = *mut Object;
     type CGFloat = f64;
-    type NSInteger = i64;
     type NSUInteger = u64;
 
     const NIL: Id = ptr::null_mut();
@@ -382,6 +381,12 @@ mod macos {
             height: u32,
         );
         fn steam_bridge_metal_surface_pump(surface: *mut c_void);
+        fn steam_bridge_metal_surface_set_continuous_present(
+            surface: *mut c_void,
+            continuous: bool,
+            frame_rate: f64,
+        );
+        fn steam_bridge_metal_surface_diagnostics_json(surface: *mut c_void) -> *mut i8;
         fn steam_bridge_metal_surface_destroy(surface: *mut c_void);
         fn steam_bridge_macos_window_snapshot_json(app_id: u32) -> *mut i8;
         fn steam_bridge_macos_session_screen_is_locked() -> bool;
@@ -563,7 +568,23 @@ mod macos {
         Ok(())
     }
 
-    pub fn set_continuous_present(_continuous: bool) -> Result<(), Error> {
+    pub fn set_continuous_present(continuous: bool, frame_rate: Option<f64>) -> Result<(), Error> {
+        ensure_main_thread()?;
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_mut() else {
+            return Ok(());
+        };
+        unsafe {
+            if !surface.metal_surface.is_null() {
+                steam_bridge_metal_surface_set_continuous_present(
+                    surface.metal_surface,
+                    continuous,
+                    frame_rate.unwrap_or(0.0),
+                );
+            }
+        }
         Ok(())
     }
 
@@ -894,7 +915,28 @@ mod macos {
     }
 
     pub fn host_diagnostics_json() -> Option<String> {
-        None
+        if ensure_main_thread().is_err() {
+            return None;
+        }
+
+        let guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let surface = guard.as_ref()?;
+        if surface.metal_surface.is_null() {
+            return None;
+        }
+
+        unsafe {
+            let value = steam_bridge_metal_surface_diagnostics_json(surface.metal_surface);
+            if value.is_null() {
+                return None;
+            }
+
+            let json = CStr::from_ptr(value).to_string_lossy().into_owned();
+            steam_bridge_macos_free_string(value);
+            Some(json)
+        }
     }
 
     pub fn drain_input_events_json() -> String {
@@ -1021,24 +1063,12 @@ mod macos {
             });
         }
 
-        let attach_as_child = env::var_os("STEAM_BRIDGE_MAC_NATIVE_CHILD_WINDOW").is_some();
-        let titled_transparent_host = !attach_as_child
-            && env::var_os("STEAM_BRIDGE_MAC_NATIVE_TITLED_TRANSPARENT_HOST").is_some();
-        let transparent_host = !attach_as_child
-            && (titled_transparent_host
-                || env::var_os("STEAM_BRIDGE_MAC_NATIVE_TRANSPARENT_HOST").is_some());
-        let transparent_background = attach_as_child || transparent_host;
-        let titled_host = !attach_as_child
-            && (titled_transparent_host
-                || env::var_os("STEAM_BRIDGE_MAC_NATIVE_TITLED_HOST").is_some());
-        let style = if titled_host {
-            NS_WINDOW_STYLE_TITLED
-                | NS_WINDOW_STYLE_CLOSABLE
-                | NS_WINDOW_STYLE_MINIATURIZABLE
-                | NS_WINDOW_STYLE_RESIZABLE
-        } else {
-            0_u64
-        };
+        // The legacy OpenGL diagnostic backend follows the same hard ownership
+        // contract as Metal: it is always an attached borderless child. A
+        // diagnostic environment switch must never resurrect the closed
+        // independent-popup architecture.
+        let transparent_background = true;
+        let style = 0_u64;
         let window: Id = msg_send![class!(NSWindow), alloc];
         let window: Id = msg_send![
             window,
@@ -1068,13 +1098,9 @@ mod macos {
             }
         ];
         let _: () = msg_send![window, setHasShadow: NO];
-        if titled_host {
-            let title = ns_string("Steam Bridge Overlay Host");
-            let _: () = msg_send![window, setTitle: title];
-        }
         let _: () = msg_send![window, setReleasedWhenClosed: NO];
-        let _: () = msg_send![window, setIgnoresMouseEvents: NO];
-        let _: () = msg_send![window, setAcceptsMouseMovedEvents: YES];
+        let _: () = msg_send![window, setIgnoresMouseEvents: YES];
+        let _: () = msg_send![window, setAcceptsMouseMovedEvents: NO];
 
         let content_view: Id = msg_send![window, contentView];
         let (view, context) = match create_open_gl_view(content_view, transparent_background) {
@@ -1089,16 +1115,9 @@ mod macos {
             }
         };
 
-        if attach_as_child {
-            let _: () = msg_send![parent_window, addChildWindow: window ordered: NS_WINDOW_ABOVE];
-            let _: () = msg_send![parent_window, makeKeyAndOrderFront: NIL];
-            let _: () = msg_send![window, orderFront: NIL];
-        } else {
-            let parent_level: NSInteger = msg_send![parent_window, level];
-            let _: () = msg_send![window, setLevel: parent_level + 1];
-            let _: () = msg_send![window, makeKeyAndOrderFront: NIL];
-            let _: () = msg_send![window, orderFrontRegardless];
-        }
+        let _: () = msg_send![parent_window, addChildWindow: window ordered: NS_WINDOW_ABOVE];
+        let _: () = msg_send![parent_window, makeKeyAndOrderFront: NIL];
+        let _: () = msg_send![window, orderFront: NIL];
 
         drain(pool);
 
@@ -1107,7 +1126,7 @@ mod macos {
                 window,
                 parent_window,
                 parent_view,
-                attached_as_child: attach_as_child,
+                attached_as_child: true,
             },
             view,
             context,
@@ -1277,6 +1296,22 @@ mod macos {
     }
 
     unsafe fn screen_rect_for_parent_view(parent_window: Id, parent_view: Id) -> NSRect {
+        if !parent_window.is_null() {
+            let content_layout_rect: NSRect = msg_send![parent_window, contentLayoutRect];
+            if content_layout_rect.origin.x.is_finite()
+                && content_layout_rect.origin.y.is_finite()
+                && content_layout_rect.size.width.is_finite()
+                && content_layout_rect.size.height.is_finite()
+                && content_layout_rect.size.width > 0.0
+                && content_layout_rect.size.height > 0.0
+            {
+                return msg_send![parent_window, convertRectToScreen: content_layout_rect];
+            }
+        }
+
+        // Electron can retain a full-frame content view after leaving simple
+        // fullscreen. Fall back to that view only when AppKit has no usable
+        // non-obscured content layout for the parent window.
         let bounds: NSRect = msg_send![parent_view, bounds];
         let rect_in_window: NSRect = msg_send![parent_view, convertRect: bounds toView: NIL];
         msg_send![parent_window, convertRectToScreen: rect_in_window]
@@ -1329,7 +1364,7 @@ mod macos {
             .unwrap_or(true)
     }
 
-    fn ensure_main_thread() -> Result<(), Error> {
+    pub fn ensure_main_thread() -> Result<(), Error> {
         let is_main_thread: BOOL = unsafe { msg_send![class!(NSThread), isMainThread] };
         if is_main_thread == YES {
             Ok(())
@@ -1360,6 +1395,10 @@ mod macos {
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 mod fallback {
     use super::Error;
+
+    pub fn ensure_main_thread() -> Result<(), Error> {
+        Ok(())
+    }
 
     pub fn open(
         _title: Option<String>,
@@ -1408,7 +1447,10 @@ mod fallback {
         Ok(())
     }
 
-    pub fn set_continuous_present(_continuous: bool) -> Result<(), Error> {
+    pub fn set_continuous_present(
+        _continuous: bool,
+        _frame_rate: Option<f64>,
+    ) -> Result<(), Error> {
         Ok(())
     }
 
@@ -1504,6 +1546,10 @@ mod windows {
     use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    pub fn ensure_main_thread() -> Result<(), Error> {
+        Ok(())
+    }
     use windows_sys::Win32::Foundation::{
         CloseHandle, GetLastError, SetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
     };
@@ -1541,6 +1587,7 @@ mod windows {
     };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, GetCapture, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus,
+        VK_LBUTTON, VK_RBUTTON,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
@@ -1556,15 +1603,16 @@ mod windows {
         MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
         MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MINMAXINFO, MSG,
         NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED, SM_CXMENUCHECK, SM_CXMENUSIZE,
-        SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SPI_GETNONCLIENTMETRICS,
+        SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SM_SWAPBUTTON, SPI_GETNONCLIENTMETRICS,
         SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE,
         SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
         WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR,
         WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND,
         WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN,
         WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
-        WM_MOUSEWHEEL, WM_MOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
-        WM_SIZE, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        WM_MOUSEWHEEL, WM_MOVE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_PAINT,
+        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SIZE, WM_SYSCOMMAND,
+        WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
         WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
         WS_OVERLAPPEDWINDOW,
     };
@@ -1748,6 +1796,13 @@ mod windows {
         activate_app: u64,
         mouse_activate: u64,
         command: u64,
+        nc_hit_test: u64,
+        nc_left_button_down: u64,
+        nc_left_button_up: u64,
+        system_command: u64,
+        enter_size_move: u64,
+        exit_size_move: u64,
+        capture_changed: u64,
     }
 
     #[derive(Clone, Serialize)]
@@ -2007,7 +2062,7 @@ mod windows {
         })
     }
 
-    pub fn set_continuous_present(continuous: bool) -> Result<(), Error> {
+    pub fn set_continuous_present(continuous: bool, _frame_rate: Option<f64>) -> Result<(), Error> {
         with_surface(|surface| {
             if surface.continuous_present_requested != continuous {
                 surface.continuous_present_requested = continuous;
@@ -2501,6 +2556,43 @@ mod windows {
             let foreground = GetForegroundWindow();
             let rect = read_window_rect(surface.hwnd).map(window_rect_json);
             let client_rect = read_client_rect_in_screen(surface.hwnd);
+            let capture = GetCapture();
+            let primary_button = if GetSystemMetrics(SM_SWAPBUTTON) != 0 {
+                VK_RBUTTON
+            } else {
+                VK_LBUTTON
+            };
+            let primary_button_down =
+                GetAsyncKeyState(i32::from(primary_button)) as u16 & 0x8000 != 0;
+            let mut cursor = POINT { x: 0, y: 0 };
+            let pointer = if GetCursorPos(&mut cursor) != 0 {
+                let hit_test = read_window_rect(surface.hwnd)
+                    .filter(|window| {
+                        cursor.x >= window.left
+                            && cursor.y >= window.top
+                            && cursor.x < window.right
+                            && cursor.y < window.bottom
+                    })
+                    .map(|_| {
+                        let packed = (u32::from(cursor.x as i16 as u16)
+                            | (u32::from(cursor.y as i16 as u16) << 16))
+                            as LPARAM;
+                        DefWindowProcW(surface.hwnd, WM_NCHITTEST, 0, packed) as i64
+                    });
+                json!({
+                    "captureHwnd": (!capture.is_null()).then(|| hwnd_hex(capture)),
+                    "primaryButtonDown": primary_button_down,
+                    "cursorScreen": { "x": cursor.x, "y": cursor.y },
+                    "hitTest": hit_test,
+                })
+            } else {
+                json!({
+                    "captureHwnd": (!capture.is_null()).then(|| hwnd_hex(capture)),
+                    "primaryButtonDown": primary_button_down,
+                    "cursorScreen": null,
+                    "hitTest": null,
+                })
+            };
             let window_dpi = GetDpiForWindow(surface.hwnd).max(96);
             let window_per_monitor_v2 = AreDpiAwarenessContextsEqual(
                 GetWindowDpiAwarenessContext(surface.hwnd),
@@ -2591,6 +2683,7 @@ mod windows {
                 "messages": message_diagnostics,
             });
             if let Some(object) = diagnostics.as_object_mut() {
+                object.insert("pointer".to_string(), pointer);
                 object.insert(
                     "dpiAwareness".to_owned(),
                     json!({
@@ -4217,6 +4310,34 @@ mod windows {
             WM_COMMAND => {
                 diagnostics.counters.command = diagnostics.counters.command.saturating_add(1);
             }
+            WM_NCHITTEST => {
+                diagnostics.counters.nc_hit_test =
+                    diagnostics.counters.nc_hit_test.saturating_add(1);
+            }
+            WM_NCLBUTTONDOWN => {
+                diagnostics.counters.nc_left_button_down =
+                    diagnostics.counters.nc_left_button_down.saturating_add(1);
+            }
+            WM_NCLBUTTONUP => {
+                diagnostics.counters.nc_left_button_up =
+                    diagnostics.counters.nc_left_button_up.saturating_add(1);
+            }
+            WM_SYSCOMMAND => {
+                diagnostics.counters.system_command =
+                    diagnostics.counters.system_command.saturating_add(1);
+            }
+            WM_ENTERSIZEMOVE => {
+                diagnostics.counters.enter_size_move =
+                    diagnostics.counters.enter_size_move.saturating_add(1);
+            }
+            WM_EXITSIZEMOVE => {
+                diagnostics.counters.exit_size_move =
+                    diagnostics.counters.exit_size_move.saturating_add(1);
+            }
+            WM_CAPTURECHANGED => {
+                diagnostics.counters.capture_changed =
+                    diagnostics.counters.capture_changed.saturating_add(1);
+            }
             _ => {}
         }
 
@@ -4251,6 +4372,13 @@ mod windows {
                 | WM_ACTIVATEAPP
                 | WM_MOUSEACTIVATE
                 | WM_COMMAND
+                | WM_NCHITTEST
+                | WM_NCLBUTTONDOWN
+                | WM_NCLBUTTONUP
+                | WM_SYSCOMMAND
+                | WM_ENTERSIZEMOVE
+                | WM_EXITSIZEMOVE
+                | WM_CAPTURECHANGED
         )
     }
 
@@ -4270,6 +4398,13 @@ mod windows {
             WM_ACTIVATEAPP => "WM_ACTIVATEAPP",
             WM_MOUSEACTIVATE => "WM_MOUSEACTIVATE",
             WM_COMMAND => "WM_COMMAND",
+            WM_NCHITTEST => "WM_NCHITTEST",
+            WM_NCLBUTTONDOWN => "WM_NCLBUTTONDOWN",
+            WM_NCLBUTTONUP => "WM_NCLBUTTONUP",
+            WM_SYSCOMMAND => "WM_SYSCOMMAND",
+            WM_ENTERSIZEMOVE => "WM_ENTERSIZEMOVE",
+            WM_EXITSIZEMOVE => "WM_EXITSIZEMOVE",
+            WM_CAPTURECHANGED => "WM_CAPTURECHANGED",
             _ => "other",
         }
     }
@@ -4885,6 +5020,10 @@ mod linux {
     use std::sync::Mutex;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
     use x11_dl::{glx, keysym, xfixes, xlib, xrandr};
+
+    pub fn ensure_main_thread() -> Result<(), Error> {
+        Ok(())
+    }
 
     const SHAPE_BOUNDING: c_int = 0;
     const SHAPE_CLIP: c_int = 1;
@@ -5656,7 +5795,10 @@ mod linux {
         Ok(())
     }
 
-    pub fn set_continuous_present(_continuous: bool) -> Result<(), Error> {
+    pub fn set_continuous_present(
+        _continuous: bool,
+        _frame_rate: Option<f64>,
+    ) -> Result<(), Error> {
         Ok(())
     }
 

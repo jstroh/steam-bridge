@@ -1117,6 +1117,131 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   after Steam is fully stopped, alongside orphan `ipcserver` and `steam.pipe`
   cleanup.
 
+## 2026-07-26 FOV4 actual-game focused qualification
+
+These sanitized receipt leaf names preserve the affected-case history. They do
+not authorize rerunning already-green cases during implementation.
+
+| Receipt | Result | Classification |
+| --- | --- | --- |
+| `fov4-macos-qa-simple-fullscreen-31` | PASS | Candidate 10 retained renderer focus inside application-owned simple fullscreen and after exit, restored exact child/content geometry and rounded corners, restored the display, and produced zero crashes. |
+| `fov4-macos-qa-candidate10-regression-32` | FAIL — `presentation_stalled` | `resize-corner` passed. Active stress advanced dozens of presentations while one transition-adjacent dropped drawable caused an immediate verifier failure. The same run exposed the separate product defect: Metal continued drawing at display cadence while minimized and accumulated hundreds of unpresented drawables. |
+| `fov4-macos-qa-overlay-state-stress-33` | PASS — supporting diagnostic | Candidate 11 added the native presentability pause and passed every active transition with one child and zero crashes. That receipt schema did not yet retain bounded hidden-counter proof, so it supports but does not close the hidden-presentation finding. |
+| `fov4-macos-qa-visibility-presentation-34` | FAIL — `fps_unavailable` | Passive minimize and application hide passed with the same child, `viewPaused=true`, and stable draw/present/error counters. Active stress failed only because Steam authoritatively deactivated after prolonged minimize while the verifier still assumed persistence; geometry and presentation policy were healthy. |
+| `fov4-macos-qa-overlay-state-stress-35` | FAIL — `window_state_mismatch` | The verifier accepted clean deactivation and the public route genuinely reopened Steam: the exact-app active callback and four healthy active samples were present. The log reader did not retain that callback marker, so it incorrectly recorded `overlayReactivated=false`; cleanup then emitted the later inactive callback. This is a verifier false negative, not a child, geometry, or Metal failure. |
+| `fov4-macos-qa-overlay-state-stress-36` | PASS | One focused 120 Hz/2x profile mapped to all six active CORE rows. Steam followed `deactivated-reactivated`; public-menu reopen produced fresh exact-app activation evidence. The same child paused while minimized with stable counters (`draw=4359`, `present=4350`, `notPresented=8`), then resumed aligned. Move, resize, maximize, minimize, fullscreen, focus, visual coverage, cleanup, exact display restoration, and zero-crash gates passed. |
+
+Candidate 11's bundle fingerprint begins `27de4aee8d20`, but it is an
+ad-hoc iteration, not Developer-ID signed, notarized, stapled, or
+Gatekeeper-qualified. A fail-closed missing-parent refinement landed in the
+native source after it was built. Receipt 36 remains valid focused evidence for
+the normal live-parent path; a fresh exact-source release candidate and one
+complete actual-game plus 55-route pass are still required before release.
+
+## 2026-07-26 refresh-rate transition causal isolation
+
+The earlier RC40 evidence exposed a real 120 -> 60 -> 120 restore failure, but
+it did not identify which of the Electron compositor and attached Metal child
+caused it. The following preserved roots isolate those clocks. A receipt whose
+generic top-level result is `fail` can still be an applicable negative control;
+the classification below states exactly what that receipt proves and does not
+promote it to release evidence.
+
+| Receipt root | Result | Applicable finding |
+| --- | --- | --- |
+| `/private/tmp/fov4-macos-qa-rc48-passive-display-sync-transition-59` | FAIL — renderer cadence | The child was synchronized to the selected display, yet renderer scheduler cadence restored at roughly 99, 97, and 96 FPS after a 119.959 FPS baseline; physical renderer presentation was 77.686 FPS. Child display synchronization did not repair the Electron surface. |
+| `/private/tmp/fov4-macos-qa-rc50-repaint-transition-61` | FAIL — renderer cadence | Every requested repaint ran, but restored scheduler cadence remained roughly 94-96 FPS and physical presentation roughly 78.6 FPS. Forced Electron repaint is not a refresh-clock repair. |
+| `/private/tmp/fov4-macos-qa-rc52-paused-clock-transition-64` | FAIL — `fps_below_display_rate` | The same attached child stayed aligned and `viewPaused=true` with zero draws, presents, or errors throughout the diagnostic transition. Renderer cadence still restored at 93.308, 91.661, and 89.670 FPS, with 69.282 physical presentation, after an exact 120 FPS baseline and correct 60/120 display configuration. The attached child is not causal. |
+| `/private/tmp/fov4-macos-qa-electron-refresh-control-68` | FAIL — causal control | A plain Electron 43.2.0 BrowserWindow with no Steam, Steam Bridge, native child, or game moved from approximately 120 to 60 and restored at 89.994, 89.667, and 91.333 scheduler FPS. This reproduced the product defect at the Electron boundary. |
+| `/private/tmp/fov4-macos-qa-electron-refresh-control-69` | FAIL — traced causal control | Chromium `gpu`/`viz` tracing showed the same persistent `CVDisplayLinkCallback` and `ExternalBeginFrameSourceMac::OnDisplayLinkCallback` path at 120.003 -> 59.997 -> 94.325 FPS. Restored median intervals were again near 8.4 ms but p95 intervals rose to about 18.16 ms: the persistent begin-frame link missed roughly every fourth callback. Presentation-link callbacks returned near 120, further localizing the failure to the begin-frame source. |
+| `/private/tmp/fov4-macos-qa-electron44-refresh-control-70` | FAIL — upgrade control | Electron 44.0.0-alpha.6 / Chromium 152 also restored below target: scheduler samples were about 90.909, 94.657, and 68.333 FPS and the external begin-frame callback was 94.657 FPS. Upgrading Electron is not a demonstrated fix. |
+| `/private/tmp/fov4-macos-qa-electron-session-refresh-control-71` | FAIL — transaction-scope control | A CoreGraphics session-scoped transition still restored at about 92.352, 92.743, and 69.486 scheduler FPS with a 92.743 FPS external callback. The ordinary application-scoped supervisor is not the cause. |
+| `/private/tmp/fov4-macos-qa-electron-cadisplaylink-feature-72` | INVALID — infrastructure | The runner loaded the wrong QA module and threw `TypeError: assessPresentationTrace is not a function` during the pre phase, before any display change. This root contains no behavioral evidence and must not be cited as a product failure. |
+| `/private/tmp/fov4-macos-qa-electron-cadisplaylink-feature-73` | CAUSAL GATE PASS; generic light-content gate inapplicable | Plain Electron 43 with browser-only `CADisplayLink`, stable renderer PID 21833, a visible exactly focused window, and exact display restoration held scheduler cadence at 120.003/120.000/119.996 -> 59.998/60.000/60.002 -> 120.000/120.004/120.000. The external begin-frame callback held 119.999 -> 60.002 -> 120.001. The generic summary failed only because a light CSS animation submitted physical frames at 102.668/52.667/102.001 FPS; that is not a valid every-vsync workload. |
+| `/private/tmp/fov4-macos-qa-electron-cadisplaylink-occluded-75` | CAUSAL GATE PASS; generic light-content gate inapplicable | The same browser-only arm remained fully covered by another window and intentionally unfocused throughout. One renderer and exact display restore held scheduler cadence at 119.667/120.000/120.004 -> 60/60/60 -> 120.003/120.004/120.004, while the external begin-frame callback held 120.666 -> 59.999 -> 119.999. Backgrounding and focus loss are therefore not the original cause. |
+
+The causal conclusion is narrow and durable: default Chromium 150
+`CVDisplayLink` retains the wrong effective begin-frame cadence after the live
+mode restore. The attached child is exonerated. Child retiming, forced child
+pause, Electron repaint, Electron 44 alpha, and CoreGraphics transaction-scope
+changes are closed repair paths.
+
+Chromium's applicable field-trial configuration is the browser-only
+`EnabledInBrowser` arm, expressed exactly as:
+
+```text
+--enable-features=CADisplayLinkInBrowser
+--disable-features=CADisplayLinkInGpuThenBrowser
+```
+
+The explicit disable is intentional. Chromium's separate GPU-then-browser
+experiment was abandoned after random hangs following power resume and a
+sleep/wake unresponsive-UI regression; do not enable it as fallback. Chromium
+itself hard-gates browser-side `CADisplayLink` to macOS 14 or newer, and the
+Steam Bridge candidate must merge these feature lists before Electron
+readiness only on that OS range. An offscreen Electron renderer feeding an
+IOSurface-backed attached child remains a contingency only if this selected
+arm later fails required recovery or actual-game proof; it is not an excuse to
+replace the one AppKit child with a popup, companion, or second visible window.
+
+Receipts 73 and 75 are minimal compositor controls, not release qualification.
+They do not relax the actual continuously animating game's renderer-pinned
+`PipelineReporter` threshold. Still pending are exact-candidate focused
+actual-game 120 -> 60 -> 120 proof, cold and warm startup, sleep/wake,
+display-sleep recovery, GPU-process failure/recovery, the remaining Mac display
+profiles, one complete actual-game pass, and the final 55-route matrix on the
+same signed, notarized, stapled candidate. No final Mac RC is green yet.
+
+## 2026-07-27 exact RC77 actual-game qualification
+
+The exact candidate at
+`/private/tmp/fov4-macos-rc-browser-display-link-77/output/mac-arm64/Fantasy Online 2.app`
+has sorted-tree fingerprint
+`74566f3c33cbe87d85a8069a5c65cc212a1b5f1c03ca9b56a3ab2ba5695f9bd4`.
+It passed deep strict signing, hardened-runtime and entitlement checks,
+notarization, Gatekeeper, and stapler validation. The Bridge policy defaults
+off; FOV4 explicitly requests the browser-side display-link arm on Darwin
+before Electron readiness. Live process inspection confirmed the exact
+browser enable and GPU-then-browser disable on the candidate's GPU, utility,
+and renderer processes, with neither switch present in the Steam shortcut.
+
+| Receipt | Result | Applicable finding |
+| --- | --- | --- |
+| RC76 foreground/checkpoint receipts 03-04 | FAIL - verifier/input | A fixed child click conflated QA input with the overlay lifecycle and could not prove the intended close state. It is not product evidence. |
+| RC76 native Escape receipt 05 | PASS | Escape closed the exact overlay and produced the authoritative inactive callback without changing the attached-child architecture. |
+| RC76 shared-close-callers receipt 06 | PASS | Shared public close callers retained the same child and lifecycle contract. Fixed child clicking is closed as a lifecycle mechanism. |
+| `/private/tmp/fov4-macos-qa-rc77-app-optin-pacing-01` | PASS for warm relaunch, refresh transition, and canonical cadence; FAIL only in duplicate lifecycle ownership | Warm relaunch restored a different exact process at 1280x720 with no startup blank/purple/chrome-cover frame. The display transition held 120 -> 60 -> 120, with restored scheduler samples 119.501/119.667/119.663 FPS and renderer feedback 119.670 FPS. Overlay feedback was 120.001 FPS. A redundant lifecycle check incorrectly required a static ProMotion overlay to present at 95% of display Hz even though the same child advanced cleanly at roughly 76-80 presents/s. |
+| `/private/tmp/fov4-macos-qa-rc77-overlay-lifecycle-harness-c479-02` | PASS | Corrected driver hash `c47901f5581cb77fad7fe0b9b7649455277daeb881db616a30f8481c8db7be61` proved open, duplicate suppression, Escape close, exact callbacks, same attached child, 187 continuous healthy visual frames, passive restoration, exact cleanup/display restore, Steam survival, and zero crashes. |
+
+Cadence ownership is now explicit. `fps-overlay` alone owns the renderer and
+overlay rate comparison against display Hz. `overlay-open-close` owns exact
+attachment, geometry, input/presentation policy, forward presentation
+progress, callbacks, visual continuity, and failure counters. Static overlay
+content may submit fewer physical frames than an adaptive display while still
+being healthy; do not reintroduce the duplicate fixed-rate lifecycle gate.
+
+Focused preflight always executes `xcrun stapler validate`. A focused run may
+make ticket failure non-fatal, but an unchecked ticket may never be represented
+as an observed invalid ticket. The hardened child-input helper never activates
+or refocuses the application, requires stable focus and the exact owned child,
+proves pointer and AppKit hit-test identity, guarantees mouse-up, and restores
+the pointer. It remains a QA helper only.
+
+The initial RC77 shortcut bind was interrupted by Steam's own updater process
+handoff. That transaction remains failed in the audit trail. After the updater
+completed, the live VDF independently verified as exactly RC77 and Steam was
+healthy; the recovery receipt is
+`/private/tmp/fov4-macos-rc-browser-display-link-77/shortcut-binding-02-post-update-recovery/summary.json`.
+The rollback backup remains an exact RC76 VDF. Future binding automation must
+recognize updater descendants and verify post-update state rather than treating
+the first relaunched PID's exit as either success or a reason for blind restart
+loops.
+
+Native-Spaces, power/sleep wake, display-sleep wake, and deliberate GPU-process
+recovery remain pending focused cases. No complete Mac release claim exists
+until those pass and the unchanged exact candidate completes the one final
+actual-game and 55-route suites.
+
 ## Primary References
 
 - Steam Microtransactions Implementation Guide:
@@ -1129,6 +1254,16 @@ Steam, log out or reboot macOS to clear the user-session IPC state.
   https://partner.steamgames.com/doc/store/application/platforms
 - Steamworks API Example Application (SpaceWar):
   https://partner.steamgames.com/doc/sdk/api/example
+- Chromium 150 `CADisplayLinkInBrowser` feature definition:
+  https://github.com/chromium/chromium/blob/150.0.7871.129/ui/display/display_features.cc#L45
+- Chromium 150 Mac display-link selection and macOS 14 gate:
+  https://github.com/chromium/chromium/blob/150.0.7871.129/ui/display/mac/display_link_mac.mm#L27-L79
+- Chromium 150 same-display refresh handler:
+  https://github.com/chromium/chromium/blob/150.0.7871.129/components/viz/service/frame_sinks/external_begin_frame_source_mac.cc#L257-L268
+- Chromium browser-only and GPU-then-browser field-trial arms:
+  https://chromium.googlesource.com/chromium/src/testing/+/8d0688b4e473d74459011a72d3d4fd7aac2967cc
+- Chromium GPU-then-browser abandonment/revert:
+  https://chromium.googlesource.com/chromium/src/gpu/+/147518cb6e20bc4a00d641ef96e09c0bac3424ff
 
 ## Public Issue Reports
 

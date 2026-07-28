@@ -4801,9 +4801,14 @@ import steam, {
   type ElectronSteamOverlayNativeHostAvailability,
   type ElectronSteamOverlaySnapshot,
   type MacOverlayEnvironment,
+  type NativeOverlayCheckoutReservation,
+  type NativeOverlayCheckoutReservationOptions,
+  type NativeOverlayCheckoutReservationStatus,
   type NativeOverlayHostUnavailableReason,
+  type NativeOverlaySession,
   type OverlayDiagnostics,
   type SteamId,
+  type SteamOverlayWaitSnapshot,
   type SteamOverlayTarget
 } from "steam-bridge";
 import { electronConfigureSteamOverlay } from "steam-bridge/electron";
@@ -4843,6 +4848,23 @@ const friendsOverlayUrl: string = STEAM_FRIENDS_OVERLAY_URL;
 const nativeOwnerErrorCode: string = new SteamOverlayNativeSurfaceOwnershipError("presenter", "session").code;
 const controllerOwnerErrorCode: string = new SteamOverlayElectronControllerOwnershipError().code;
 const mainThreadErrorCode: string = new SteamOverlayMainThreadRequiredError().code;
+const typedNativeSession = null as unknown as NativeOverlaySession;
+const nativeCheckoutReservationOptions: NativeOverlayCheckoutReservationOptions = {
+  timeoutMs: 15_000,
+  leaseTimeoutMs: 35_000
+};
+const nativeCheckoutReservationStatus: NativeOverlayCheckoutReservationStatus =
+  typedNativeSession.getCheckoutReservationStatus();
+const nativeCheckoutReservationPromise: Promise<NativeOverlayCheckoutReservation> =
+  typedNativeSession.acquireCheckoutReservation(nativeCheckoutReservationOptions);
+const nativeCheckoutOperationPromise: Promise<string> =
+  typedNativeSession.withCheckoutPrepared(() => "ready", nativeCheckoutReservationOptions);
+nativeCheckoutReservationPromise.then((reservation) => {
+  const active: boolean = reservation.isActive();
+  reservation.release();
+  reservation.disconnect();
+  void active;
+});
 const legacyElectronOverlayMetadata: ElectronSteamOverlaySnapshot["electronOverlay"] = {
   presenterMode: "persistent",
   closeWithWindow: true,
@@ -4949,6 +4971,14 @@ checkoutAndWaitPromise.then((result) => {
   void targetSnapshotType;
 });
 const waitError = new steam.SteamOverlayWaitTimeoutError("become active", 1);
+const waitSnapshot: SteamOverlayWaitSnapshot | undefined = waitError.snapshot;
+if (waitSnapshot && "mode" in waitSnapshot) {
+  const presenterMode = waitSnapshot.mode;
+  void presenterMode;
+} else if (waitSnapshot) {
+  const nativePumpCount: number = waitSnapshot.pumpCount;
+  void nativePumpCount;
+}
 const waitDiagnostics: OverlayDiagnostics | undefined = waitError.diagnostics;
 const waitNativeHostUnavailable: NativeOverlayHostUnavailableReason | undefined = waitError.nativeHostUnavailableReason;
 const waitMacEnvironment: MacOverlayEnvironment | undefined = waitError.macOverlayEnvironment;
@@ -4989,6 +5019,12 @@ void checkoutPreparePromise;
 void checkoutAndWaitPromise;
 void checkoutAndWaitIfAvailablePromise;
 void checkoutTargetSnapshot;
+void typedNativeSession;
+void nativeCheckoutReservationOptions;
+void nativeCheckoutReservationStatus;
+void nativeCheckoutReservationPromise;
+void nativeCheckoutOperationPromise;
+void waitSnapshot;
 void waitDiagnostics;
 void waitNativeHostUnavailable;
 void waitMacEnvironment;

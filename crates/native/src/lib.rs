@@ -135,7 +135,7 @@ impl CallbackHandle {
 #[napi(js_name = "init")]
 pub fn init(app_id: u32) -> Result<(), Error> {
     if state::is_initialized() {
-        shutdown();
+        shutdown()?;
     }
 
     std::env::set_var("SteamAppId", app_id.to_string());
@@ -156,7 +156,10 @@ pub fn init(app_id: u32) -> Result<(), Error> {
 }
 
 #[napi(js_name = "shutdown")]
-pub fn shutdown() {
+pub fn shutdown() -> Result<(), Error> {
+    // macOS AppKit/MTKView ownership is main-thread-only. Reject worker
+    // teardown before touching Steam callbacks or the attached child.
+    native_surface::ensure_main_thread()?;
     compat::game_server_shutdown();
     if state::is_initialized() {
         native_surface::close();
@@ -172,6 +175,7 @@ pub fn shutdown() {
         }
         state::mark_initialized(false);
     }
+    Ok(())
 }
 
 #[napi(js_name = "restartAppIfNecessary")]
@@ -217,7 +221,9 @@ pub fn run_callbacks() {
 #[napi(js_name = "initAnonymousUser")]
 pub fn init_anonymous_user() -> bool {
     if state::is_initialized() {
-        shutdown();
+        if shutdown().is_err() {
+            return false;
+        }
     }
 
     let initialized = unsafe { SteamAPI_InitAnonymousUser() };
@@ -672,8 +678,11 @@ pub fn set_native_overlay_host_cursor_hidden(hidden: bool) -> Result<(), Error> 
 }
 
 #[napi(js_name = "setNativeOverlayHostContinuousPresent")]
-pub fn set_native_overlay_host_continuous_present(continuous: bool) -> Result<(), Error> {
-    native_surface::set_continuous_present(continuous)
+pub fn set_native_overlay_host_continuous_present(
+    continuous: bool,
+    frame_rate: Option<f64>,
+) -> Result<(), Error> {
+    native_surface::set_continuous_present(continuous, frame_rate)
 }
 
 #[napi(js_name = "setNativeOverlayHostFullScreen")]
@@ -1039,13 +1048,17 @@ pub fn drain_native_overlay_host_input_events_json() -> Result<String, Error> {
 }
 
 #[napi(js_name = "closeNativeOverlayProbeWindow")]
-pub fn close_native_overlay_probe_window() {
+pub fn close_native_overlay_probe_window() -> Result<(), Error> {
+    native_surface::ensure_main_thread()?;
     native_surface::close_probe();
+    Ok(())
 }
 
 #[napi(js_name = "detachNativeOverlayHostView")]
-pub fn detach_native_overlay_host_view() {
+pub fn detach_native_overlay_host_view() -> Result<(), Error> {
+    native_surface::ensure_main_thread()?;
     native_surface::detach_host();
+    Ok(())
 }
 
 #[napi(js_name = "isNativeOverlayProbeWindowOpen")]

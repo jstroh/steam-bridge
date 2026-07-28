@@ -83,6 +83,22 @@ example's current action/matrix protocol and retains the hash-audited
 unpacked for continuity with
 existing Windows evidence; do not treat its layout as the ASAR gate.
 
+To qualify one already-assembled npm candidate without silently repacking the
+current checkout, pass its tarball and exact lowercase SHA-256 together:
+
+```sh
+npm run example:package:mac -- \
+  --package-tarball /absolute/steam-bridge-0.3.9.tgz \
+  --expected-package-sha256 <64-character-sha256>
+```
+
+Pinned-tarball mode rejects missing files, symlinks, non-`.tgz` inputs, and hash
+mismatches. It cannot be combined with `--artifacts-dir`, skips the workspace
+build/repack step, installs the exact tarball into the staged example, and
+validates the installed native binding and target runtime libraries before
+packaging. Use it for final candidate-bound route QA; use the ordinary local
+build path below while developing.
+
 For the current supported host platform, `npm run native:build` is enough for a
 local package check. On macOS, that means Apple Silicon only; the smoke app must
 be built and run as `SteamBridgeSmoke-darwin-arm64`, never as an Intel or

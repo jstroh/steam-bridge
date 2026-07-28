@@ -45,7 +45,7 @@
     "native:fmt": "cargo fmt --all --check",
     "native:link": "npm run native:link -w steam-bridge",
     "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run test:unit",
-    "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs"
+    "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.0",

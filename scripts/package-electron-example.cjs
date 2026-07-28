@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const { packager } = require("@electron/packager");
 const {
@@ -14,6 +15,8 @@ const packageRoot = path.join(repoRoot, "packages", "steam-bridge");
 const outputRoot = path.join(repoRoot, "dist", "electron-smoke");
 const target = readArg("--target") || currentTarget();
 const artifactsDir = readArg("--artifacts-dir");
+const packageTarballArg = readArg("--package-tarball");
+const expectedPackageSha256 = readArg("--expected-package-sha256");
 const keepStage = process.env.STEAM_BRIDGE_KEEP_EXAMPLE_STAGE === "1";
 
 const targetConfig = {
@@ -81,12 +84,23 @@ async function main() {
   let tempRoot;
 
   try {
+    const packageTarball = resolvePinnedPackageTarball(packageTarballArg, expectedPackageSha256, {
+      packageTarballFlagPresent: process.argv.includes("--package-tarball"),
+      expectedHashFlagPresent: process.argv.includes("--expected-package-sha256")
+    });
+    if (packageTarball && artifactsDir) {
+      throw new Error("--package-tarball cannot be combined with --artifacts-dir.");
+    }
     if (artifactsDir) {
       run("npm", ["run", "release:assemble", "--", "--artifacts-dir", artifactsDir], repoRoot);
     }
 
-    const packageArtifactSources = resolvePackageArtifactSources(target, config.requiredFiles);
-    run("npm", ["run", "build", "-w", "steam-bridge"], repoRoot);
+    const packageArtifactSources = packageTarball
+      ? undefined
+      : resolvePackageArtifactSources(target, config.requiredFiles);
+    if (!packageTarball) {
+      run("npm", ["run", "build", "-w", "steam-bridge"], repoRoot);
+    }
 
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-electron-smoke-"));
     const packDir = path.join(tempRoot, "pack");
@@ -94,11 +108,13 @@ async function main() {
     fs.mkdirSync(packDir);
     fs.mkdirSync(stageDir);
 
-    const tarball = packSteamBridge(packDir);
+    const tarball = packageTarball || packSteamBridge(packDir);
     stageExample(stageDir, tarball);
     installStageDependencies(stageDir);
     writeStageNativeBindingManifest(stageDir);
-    copyStagePackageArtifacts(stageDir, packageArtifactSources);
+    if (packageArtifactSources) {
+      copyStagePackageArtifacts(stageDir, packageArtifactSources);
+    }
     pruneStagePackageArtifacts(stageDir, config.requiredFiles);
     validateStagePackageArtifacts(stageDir, config.requiredFiles);
     await packageStage(stageDir);
@@ -113,6 +129,31 @@ async function main() {
       cleanPackageArtifacts();
     }
   }
+}
+
+function resolvePinnedPackageTarball(packageTarball, expectedSha256, options = {}) {
+  const packageTarballFlagPresent = options.packageTarballFlagPresent ?? packageTarball !== undefined;
+  const expectedHashFlagPresent = options.expectedHashFlagPresent ?? expectedSha256 !== undefined;
+  if (!packageTarballFlagPresent && !expectedHashFlagPresent) {
+    return undefined;
+  }
+  if (!packageTarballFlagPresent || !packageTarball || packageTarball.startsWith("--")) {
+    throw new Error("--package-tarball requires a path.");
+  }
+  if (!expectedHashFlagPresent || !/^[a-f0-9]{64}$/.test(expectedSha256 || "")) {
+    throw new Error("--package-tarball requires --expected-package-sha256 with a lowercase SHA-256 digest.");
+  }
+
+  const tarballPath = path.resolve(packageTarball);
+  const stat = fs.lstatSync(tarballPath, { throwIfNoEntry: false });
+  if (!stat || !stat.isFile() || stat.isSymbolicLink() || path.extname(tarballPath) !== ".tgz") {
+    throw new Error("Pinned Steam Bridge package must be a regular, non-symlinked .tgz file.");
+  }
+  const actualSha256 = crypto.createHash("sha256").update(fs.readFileSync(tarballPath)).digest("hex");
+  if (actualSha256 !== expectedSha256) {
+    throw new Error(`Pinned Steam Bridge package SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}.`);
+  }
+  return tarballPath;
 }
 
 function packSteamBridge(packDir) {
@@ -550,5 +591,6 @@ function resolveCommand(command, args) {
 }
 
 module.exports = {
-  resolvePackageArtifactSources
+  resolvePackageArtifactSources,
+  resolvePinnedPackageTarball
 };

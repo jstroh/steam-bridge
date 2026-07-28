@@ -21,8 +21,34 @@ export interface ElectronSteamOverlayProfileOptions extends ElectronOverlayOptio
   forceHighPerformanceGpu?: boolean;
   disableBackgroundThrottling?: boolean;
   ignoreGpuBlocklist?: boolean;
+  /**
+   * Opt in to Chromium's refresh-aware browser-process CADisplayLink.
+   *
+   * This startup-only experiment defaults to off and is eligible only on
+   * macOS 14+ with Chromium 150+. Configure it before `app.isReady()`.
+   */
+  enableMacosBrowserDisplayLink?: boolean;
   scrubSteamOverlayChildProcessEnv?: boolean;
   isolateSteamOverlayChildProcesses?: boolean;
+}
+
+export type ElectronMacosBrowserDisplayLinkReason =
+  | "configured"
+  | "disabled"
+  | "unsupported-platform"
+  | "macos-version-unavailable"
+  | "unsupported-macos-version"
+  | "chromium-version-unavailable"
+  | "unsupported-chromium-version";
+
+export interface ElectronMacosBrowserDisplayLinkStatus {
+  requested: boolean;
+  supported: boolean;
+  configured: boolean;
+  reason: ElectronMacosBrowserDisplayLinkReason;
+  platform: NodeJS.Platform;
+  macosVersion?: string;
+  chromiumVersion?: string;
 }
 
 export interface ElectronSteamOverlayConfigResult {
@@ -30,6 +56,9 @@ export interface ElectronSteamOverlayConfigResult {
   switches: string[];
   disableDirectComposition: boolean;
   repaintIntervalMs: number;
+  /** @deprecated Prefer `macosBrowserDisplayLinkStatus.configured`. */
+  macosBrowserDisplayLink: boolean;
+  macosBrowserDisplayLinkStatus: ElectronMacosBrowserDisplayLinkStatus;
   scrubSteamOverlayChildProcessEnv: boolean;
   isolateSteamOverlayChildProcesses: boolean;
   scrubbedEnvKeys: string[];
@@ -93,7 +122,9 @@ interface ElectronNativeImage {
 interface ElectronApp {
   commandLine: {
     appendSwitch(name: string, value?: string): void;
+    getSwitchValue?(name: string): string;
   };
+  isReady?(): boolean;
   on(event: "browser-window-created", handler: (event: unknown, window: ElectronWindow) => void): void;
 }
 
@@ -110,6 +141,7 @@ interface ElectronWindow {
   getNativeWindowHandle?(): Buffer;
   webContents: {
     once(event: "did-finish-load", handler: () => void): void;
+    focus?(): void;
     invalidate(): void;
     send(channel: string, ...args: unknown[]): void;
     capturePage?(): Promise<ElectronNativeImage>;
@@ -133,6 +165,13 @@ interface ElectronApi {
 let repaintTimer: NodeJS.Timeout | undefined;
 let browserWindowCreatedListenerInstalled = false;
 const appendedSwitches = new Set<string>();
+let macosBrowserDisplayLinkStartupDecision:
+  | ElectronMacosBrowserDisplayLinkStatus
+  | undefined;
+
+const MACOS_BROWSER_DISPLAY_LINK_FEATURE = "CADisplayLinkInBrowser";
+const MACOS_GPU_THEN_BROWSER_DISPLAY_LINK_FEATURE =
+  "CADisplayLinkInGpuThenBrowser";
 
 export function electronEnableSteamOverlay(options: ElectronOverlayOptions = {}): void {
   electronConfigureSteamOverlay({
@@ -147,11 +186,19 @@ export function electronConfigureSteamOverlay(
   const profile = options.profile ?? "diagnostic";
   if (profile === "off") {
     electronDisableSteamOverlayRepaintLoop();
+    const macosBrowserDisplayLinkStatus =
+      macosBrowserDisplayLinkStartupDecision ??
+      inspectMacosBrowserDisplayLinkSupport(false);
     return {
       profile,
       switches: [],
       disableDirectComposition: false,
       repaintIntervalMs: 0,
+      macosBrowserDisplayLink:
+        macosBrowserDisplayLinkStatus.configured,
+      macosBrowserDisplayLinkStatus: {
+        ...macosBrowserDisplayLinkStatus
+      },
       scrubSteamOverlayChildProcessEnv: false,
       isolateSteamOverlayChildProcesses: false,
       scrubbedEnvKeys: []
@@ -166,6 +213,7 @@ export function electronConfigureSteamOverlay(
     forceHighPerformanceGpu = true,
     disableBackgroundThrottling = true,
     ignoreGpuBlocklist = true,
+    enableMacosBrowserDisplayLink = false,
     repaintIntervalMs = repaintMode ? 33 : 0,
     scrubSteamOverlayChildProcessEnv = true,
     isolateSteamOverlayChildProcesses = scrubSteamOverlayChildProcessEnv && process.platform === "linux"
@@ -173,6 +221,12 @@ export function electronConfigureSteamOverlay(
 
   const electron = require("electron") as ElectronApi;
   const switches: string[] = [];
+  const macosBrowserDisplayLinkStatus =
+    configureMacosBrowserDisplayLinkOnce(
+      electron.app,
+      switches,
+      enableMacosBrowserDisplayLink
+    );
   const scrubbedEnvKeys = scrubSteamOverlayChildProcessEnv ? electronScrubSteamOverlayChildProcessEnv() : [];
 
   if (isolateSteamOverlayChildProcesses) {
@@ -231,6 +285,11 @@ export function electronConfigureSteamOverlay(
     switches,
     disableDirectComposition,
     repaintIntervalMs,
+    macosBrowserDisplayLink:
+      macosBrowserDisplayLinkStatus.configured,
+    macosBrowserDisplayLinkStatus: {
+      ...macosBrowserDisplayLinkStatus
+    },
     scrubSteamOverlayChildProcessEnv,
     isolateSteamOverlayChildProcesses,
     scrubbedEnvKeys
@@ -368,6 +427,7 @@ function electronWindowNativeOverlayOptions<
       }
       window.show?.();
       window.focus?.();
+      window.webContents.focus?.();
       window.webContents.invalidate();
     }
   } as T;
@@ -505,6 +565,199 @@ function normalizeElectronOverlayBounds(bounds: ElectronOverlayBounds | undefine
   return { x, y, width, height };
 }
 
+function configureMacosBrowserDisplayLinkOnce(
+  app: ElectronApp,
+  switches: string[],
+  requested: boolean
+): ElectronMacosBrowserDisplayLinkStatus {
+  if (macosBrowserDisplayLinkStartupDecision) {
+    if (macosBrowserDisplayLinkStartupDecision.requested !== requested) {
+      throw new Error(
+        "steam-bridge: enableMacosBrowserDisplayLink is a startup-only decision and cannot be reconfigured after the first overlay configuration."
+      );
+    }
+    return macosBrowserDisplayLinkStartupDecision;
+  }
+
+  const support = inspectMacosBrowserDisplayLinkSupport(requested);
+  if (!requested || !support.supported) {
+    macosBrowserDisplayLinkStartupDecision = support;
+    return support;
+  }
+
+  if (app.isReady?.() === true) {
+    throw new Error(
+      "steam-bridge: enableMacosBrowserDisplayLink must be configured before Electron app.isReady()."
+    );
+  }
+
+  const getSwitchValue = app.commandLine.getSwitchValue;
+  if (typeof getSwitchValue !== "function") {
+    throw new Error(
+      "steam-bridge: Electron app.commandLine.getSwitchValue() is required to configure enableMacosBrowserDisplayLink safely."
+    );
+  }
+
+  const enabledFeatures = readCommaSeparatedSwitchValues(
+    getSwitchValue.call(app.commandLine, "enable-features")
+  );
+  const disabledFeatures = readCommaSeparatedSwitchValues(
+    getSwitchValue.call(app.commandLine, "disable-features")
+  );
+
+  if (disabledFeatures.includes(MACOS_BROWSER_DISPLAY_LINK_FEATURE)) {
+    throw new Error(
+      `steam-bridge: cannot enable ${MACOS_BROWSER_DISPLAY_LINK_FEATURE} because it is already present in --disable-features.`
+    );
+  }
+  if (enabledFeatures.includes(MACOS_GPU_THEN_BROWSER_DISPLAY_LINK_FEATURE)) {
+    throw new Error(
+      `steam-bridge: cannot disable ${MACOS_GPU_THEN_BROWSER_DISPLAY_LINK_FEATURE} because it is already present in --enable-features.`
+    );
+  }
+
+  // Chromium 150's browser-only field-trial arm fixes same-display refresh
+  // transitions without enabling the separate GPU-startup experiment that
+  // previously produced intermittent hangs after power resume.
+  appendCommaSeparatedSwitchValueOnce(
+    app,
+    switches,
+    "enable-features",
+    MACOS_BROWSER_DISPLAY_LINK_FEATURE
+  );
+  appendCommaSeparatedSwitchValueOnce(
+    app,
+    switches,
+    "disable-features",
+    MACOS_GPU_THEN_BROWSER_DISPLAY_LINK_FEATURE
+  );
+
+  const configuredEnabledFeatures = readCommaSeparatedSwitchValues(
+    getSwitchValue.call(app.commandLine, "enable-features")
+  );
+  const configuredDisabledFeatures = readCommaSeparatedSwitchValues(
+    getSwitchValue.call(app.commandLine, "disable-features")
+  );
+  if (
+    !configuredEnabledFeatures.includes(MACOS_BROWSER_DISPLAY_LINK_FEATURE) ||
+    !configuredDisabledFeatures.includes(
+      MACOS_GPU_THEN_BROWSER_DISPLAY_LINK_FEATURE
+    )
+  ) {
+    throw new Error(
+      "steam-bridge: Electron did not retain the requested macOS browser-display-link startup switches."
+    );
+  }
+
+  macosBrowserDisplayLinkStartupDecision = {
+    ...support,
+    configured: true,
+    reason: "configured"
+  };
+  return macosBrowserDisplayLinkStartupDecision;
+}
+
+function inspectMacosBrowserDisplayLinkSupport(
+  requested: boolean
+): ElectronMacosBrowserDisplayLinkStatus {
+  const platform = process.platform;
+  if (platform !== "darwin") {
+    return {
+      requested,
+      supported: false,
+      configured: false,
+      reason: "unsupported-platform",
+      platform
+    };
+  }
+
+  const macosVersion = readMacosSystemVersion();
+  const chromiumVersion = process.versions.chrome?.trim();
+  const macosMajorVersion = parseMajorVersion(macosVersion);
+  if (macosMajorVersion === undefined) {
+    return {
+      requested,
+      supported: false,
+      configured: false,
+      reason: "macos-version-unavailable",
+      platform,
+      ...(macosVersion ? { macosVersion } : {}),
+      ...(chromiumVersion ? { chromiumVersion } : {})
+    };
+  }
+  if (macosMajorVersion < 14) {
+    return {
+      requested,
+      supported: false,
+      configured: false,
+      reason: "unsupported-macos-version",
+      platform,
+      macosVersion,
+      ...(chromiumVersion ? { chromiumVersion } : {})
+    };
+  }
+
+  const chromiumMajorVersion = parseMajorVersion(chromiumVersion);
+  if (chromiumMajorVersion === undefined) {
+    return {
+      requested,
+      supported: false,
+      configured: false,
+      reason: "chromium-version-unavailable",
+      platform,
+      macosVersion
+    };
+  }
+  if (chromiumMajorVersion < 150) {
+    return {
+      requested,
+      supported: false,
+      configured: false,
+      reason: "unsupported-chromium-version",
+      platform,
+      macosVersion,
+      chromiumVersion
+    };
+  }
+
+  return {
+    requested,
+    supported: true,
+    configured: false,
+    reason: "disabled",
+    platform,
+    macosVersion,
+    chromiumVersion
+  };
+}
+
+function readMacosSystemVersion(): string | undefined {
+  const electronProcess = process as NodeJS.Process & {
+    getSystemVersion?: () => string;
+  };
+  try {
+    return electronProcess.getSystemVersion?.().trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseMajorVersion(version: string | undefined): number | undefined {
+  const match = version?.match(/^(\d+)(?:\.|$)/);
+  if (!match) {
+    return undefined;
+  }
+  const majorVersion = Number(match[1]);
+  return Number.isSafeInteger(majorVersion) ? majorVersion : undefined;
+}
+
+function readCommaSeparatedSwitchValues(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function appendSwitchOnce(
   app: ElectronApp,
   switches: string[],
@@ -519,4 +772,25 @@ function appendSwitchOnce(
   app.commandLine.appendSwitch(name, value);
   appendedSwitches.add(key);
   switches.push(key);
+}
+
+function appendCommaSeparatedSwitchValueOnce(
+  app: ElectronApp,
+  switches: string[],
+  name: string,
+  requiredValue: string
+): void {
+  const existingValues = readCommaSeparatedSwitchValues(
+    app.commandLine.getSwitchValue?.(name) ?? ""
+  );
+  if (existingValues.includes(requiredValue)) {
+    return;
+  }
+
+  appendSwitchOnce(
+    app,
+    switches,
+    name,
+    [...existingValues, requiredValue].join(",")
+  );
 }

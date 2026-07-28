@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const Module = require("node:module");
 const os = require("node:os");
@@ -53,6 +54,8 @@ function setProcessPropertyForTest(t, name, value) {
   t.after(() => {
     if (previous) {
       Object.defineProperty(process, name, previous);
+    } else {
+      Reflect.deleteProperty(process, name);
     }
   });
 }
@@ -76,6 +79,70 @@ function mockElectronModule(t, electron) {
   t.after(() => {
     Module._load = previousLoad;
   });
+}
+
+function setElectronRuntimeVersionsForTest(
+  t,
+  { macosVersion = "14.0", chromiumVersion = "150.0.0.0" } = {}
+) {
+  setProcessPropertyForTest(t, "getSystemVersion", () => macosVersion);
+  const previousChrome = Object.getOwnPropertyDescriptor(
+    process.versions,
+    "chrome"
+  );
+  Object.defineProperty(process.versions, "chrome", {
+    value: chromiumVersion,
+    configurable: true,
+    enumerable: previousChrome?.enumerable ?? true
+  });
+  t.after(() => {
+    if (previousChrome) {
+      Object.defineProperty(process.versions, "chrome", previousChrome);
+    } else {
+      Reflect.deleteProperty(process.versions, "chrome");
+    }
+  });
+}
+
+function loadElectronOverlayConfigHarness(
+  t,
+  { initialSwitches = {}, ready = false } = {}
+) {
+  clearSteamBridgeCache();
+  const values = new Map(Object.entries(initialSwitches));
+  const appendedSwitches = [];
+  mockElectronModule(t, {
+    app: {
+      commandLine: {
+        getSwitchValue(name) {
+          return values.get(name) ?? "";
+        },
+        appendSwitch(name, value) {
+          const serialized = value ?? "";
+          values.set(name, serialized);
+          appendedSwitches.push(
+            value === undefined ? name : `${name}=${value}`
+          );
+        }
+      },
+      isReady() {
+        return typeof ready === "function" ? ready() : ready;
+      },
+      on() {}
+    },
+    BrowserWindow: {
+      getAllWindows() {
+        return [];
+      }
+    }
+  });
+
+  const electron = require(distFile("electron.js"));
+  t.after(() => {
+    electron.electronDisableSteamOverlayRepaintLoop();
+    clearSteamBridgeCache();
+  });
+  return { electron, values, appendedSwitches };
 }
 
 function mockSpawnSyncForTest(t, implementation = () => ({ status: 0, stdout: "", stderr: "" })) {
@@ -347,6 +414,337 @@ test("electron overlay Linux isolation pairs no-zygote with no-sandbox", (t) => 
   assert.equal(appendedSwitches.includes("no-sandbox"), true);
 });
 
+test("electron overlay macOS browser display link defaults off", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t);
+
+  const result = electron.electronConfigureSteamOverlay();
+
+  assert.equal(result.macosBrowserDisplayLink, false);
+  assert.deepEqual(result.macosBrowserDisplayLinkStatus, {
+    requested: false,
+    supported: true,
+    configured: false,
+    reason: "disabled",
+    platform: "darwin",
+    macosVersion: "14.0",
+    chromiumVersion: "150.0.0.0"
+  });
+  assert.equal(
+    appendedSwitches.some((value) => value.includes("CADisplayLink")),
+    false
+  );
+});
+
+test("electron overlay enables browser-only display link on macOS 14 and Chromium 150", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t);
+
+  const result = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(result.macosBrowserDisplayLink, true);
+  assert.deepEqual(result.macosBrowserDisplayLinkStatus, {
+    requested: true,
+    supported: true,
+    configured: true,
+    reason: "configured",
+    platform: "darwin",
+    macosVersion: "14.0",
+    chromiumVersion: "150.0.0.0"
+  });
+  assert.equal(
+    appendedSwitches.includes("enable-features=CADisplayLinkInBrowser"),
+    true
+  );
+  assert.equal(
+    appendedSwitches.includes(
+      "disable-features=CADisplayLinkInGpuThenBrowser"
+    ),
+    true
+  );
+});
+
+test("electron overlay rejects macOS browser display link on non-macOS", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t);
+
+  const result = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(result.macosBrowserDisplayLink, false);
+  assert.deepEqual(result.macosBrowserDisplayLinkStatus, {
+    requested: true,
+    supported: false,
+    configured: false,
+    reason: "unsupported-platform",
+    platform: "win32"
+  });
+  assert.equal(
+    appendedSwitches.some((value) => value.includes("CADisplayLink")),
+    false
+  );
+});
+
+test("electron overlay rejects browser display link before macOS 14", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t, {
+    macosVersion: "13.6.9",
+    chromiumVersion: "150.0.0.0"
+  });
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t);
+
+  const result = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(result.macosBrowserDisplayLink, false);
+  assert.equal(
+    result.macosBrowserDisplayLinkStatus.reason,
+    "unsupported-macos-version"
+  );
+  assert.equal(result.macosBrowserDisplayLinkStatus.macosVersion, "13.6.9");
+  assert.equal(
+    appendedSwitches.some((value) => value.includes("CADisplayLink")),
+    false
+  );
+});
+
+test("electron overlay rejects browser display link before Chromium 150", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t, {
+    macosVersion: "14.0",
+    chromiumVersion: "149.0.7999.1"
+  });
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t);
+
+  const result = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(result.macosBrowserDisplayLink, false);
+  assert.equal(
+    result.macosBrowserDisplayLinkStatus.reason,
+    "unsupported-chromium-version"
+  );
+  assert.equal(
+    result.macosBrowserDisplayLinkStatus.chromiumVersion,
+    "149.0.7999.1"
+  );
+  assert.equal(
+    appendedSwitches.some((value) => value.includes("CADisplayLink")),
+    false
+  );
+});
+
+test("electron overlay macOS display-link configuration preserves existing feature switches", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, values } = loadElectronOverlayConfigHarness(t, {
+    initialSwitches: {
+      "enable-features": "ExistingEnabledFeature",
+      "disable-features": "ExistingDisabledFeature"
+    }
+  });
+
+  electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(
+    values.get("enable-features"),
+    "ExistingEnabledFeature,CADisplayLinkInBrowser"
+  );
+  assert.equal(
+    values.get("disable-features"),
+    "ExistingDisabledFeature,CADisplayLinkInGpuThenBrowser"
+  );
+});
+
+test("electron overlay accepts already-configured macOS display-link switches without duplicating them", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, appendedSwitches } = loadElectronOverlayConfigHarness(t, {
+    initialSwitches: {
+      "enable-features": "CADisplayLinkInBrowser",
+      "disable-features": "CADisplayLinkInGpuThenBrowser"
+    }
+  });
+
+  const result = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(result.macosBrowserDisplayLink, true);
+  assert.equal(
+    appendedSwitches.some((value) => value.includes("CADisplayLink")),
+    false
+  );
+});
+
+for (const [switchName, switchValue, messagePattern] of [
+  [
+    "disable-features",
+    "CADisplayLinkInBrowser",
+    /CADisplayLinkInBrowser.*--disable-features/
+  ],
+  [
+    "enable-features",
+    "CADisplayLinkInGpuThenBrowser",
+    /CADisplayLinkInGpuThenBrowser.*--enable-features/
+  ]
+]) {
+  test(`electron overlay rejects opposing ${switchName} display-link state`, (t) => {
+    setProcessPlatformForTest(t, "darwin");
+    setElectronRuntimeVersionsForTest(t);
+    const { electron, appendedSwitches } =
+      loadElectronOverlayConfigHarness(t, {
+        initialSwitches: { [switchName]: switchValue }
+      });
+
+    assert.throws(
+      () => electron.electronConfigureSteamOverlay({
+        enableMacosBrowserDisplayLink: true
+      }),
+      messagePattern
+    );
+    assert.equal(
+      appendedSwitches.some((value) => value.includes("CADisplayLink")),
+      false
+    );
+  });
+}
+
+test("electron overlay repeats identical enabled display-link configuration idempotently", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t);
+
+  const first = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+  const expectedStatus = { ...first.macosBrowserDisplayLinkStatus };
+  first.macosBrowserDisplayLinkStatus.requested = false;
+  first.macosBrowserDisplayLinkStatus.configured = false;
+  const displayLinkAppendCount = appendedSwitches.filter((value) =>
+    value.includes("CADisplayLink")
+  ).length;
+  const second = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.deepEqual(second.macosBrowserDisplayLinkStatus, expectedStatus);
+  assert.equal(
+    appendedSwitches.filter((value) => value.includes("CADisplayLink")).length,
+    displayLinkAppendCount
+  );
+  assert.deepEqual(second.switches, []);
+});
+
+test("electron overlay repeats identical disabled display-link configuration idempotently", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron } = loadElectronOverlayConfigHarness(t);
+
+  const first = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: false
+  });
+  const second = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: false
+  });
+
+  assert.deepEqual(second.macosBrowserDisplayLinkStatus, first.macosBrowserDisplayLinkStatus);
+  assert.equal(second.macosBrowserDisplayLink, false);
+});
+
+for (const [firstValue, secondValue] of [
+  [false, true],
+  [true, false]
+]) {
+  test(`electron overlay rejects display-link reconfiguration from ${firstValue} to ${secondValue}`, (t) => {
+    setProcessPlatformForTest(t, "darwin");
+    setElectronRuntimeVersionsForTest(t);
+    const { electron } = loadElectronOverlayConfigHarness(t);
+
+    electron.electronConfigureSteamOverlay({
+      enableMacosBrowserDisplayLink: firstValue
+    });
+
+    assert.throws(
+      () => electron.electronConfigureSteamOverlay({
+        enableMacosBrowserDisplayLink: secondValue
+      }),
+      /startup-only decision.*cannot be reconfigured/
+    );
+  });
+}
+
+test("electron overlay off profile does not lock the display-link startup decision", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron } = loadElectronOverlayConfigHarness(t);
+
+  const off = electron.electronConfigureSteamOverlay({ profile: "off" });
+  const enabled = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+  const offAgain = electron.electronConfigureSteamOverlay({ profile: "off" });
+
+  assert.equal(off.macosBrowserDisplayLink, false);
+  assert.equal(enabled.macosBrowserDisplayLink, true);
+  assert.equal(offAgain.macosBrowserDisplayLink, true);
+  assert.deepEqual(
+    offAgain.macosBrowserDisplayLinkStatus,
+    enabled.macosBrowserDisplayLinkStatus
+  );
+});
+
+test("electron overlay rejects first enabled display-link request after app readiness", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  const { electron, appendedSwitches } =
+    loadElectronOverlayConfigHarness(t, { ready: true });
+
+  assert.throws(
+    () => electron.electronConfigureSteamOverlay({
+      enableMacosBrowserDisplayLink: true
+    }),
+    /before Electron app\.isReady\(\)/
+  );
+  assert.equal(appendedSwitches.length, 0);
+});
+
+test("electron overlay permits an identical enabled call after app readiness", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  setElectronRuntimeVersionsForTest(t);
+  let ready = false;
+  const { electron } = loadElectronOverlayConfigHarness(t, {
+    ready: () => ready
+  });
+
+  const first = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+  ready = true;
+  const second = electron.electronConfigureSteamOverlay({
+    enableMacosBrowserDisplayLink: true
+  });
+
+  assert.equal(first.macosBrowserDisplayLink, true);
+  assert.deepEqual(second.macosBrowserDisplayLinkStatus, first.macosBrowserDisplayLinkStatus);
+});
+
 test("electron overlay compatibility profile keeps explicit Windows in-process GPU fallback", (t) => {
   setProcessPlatformForTest(t, "win32");
   const appendedSwitches = [];
@@ -601,6 +999,14 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /GetAsyncKeyState\(virtual_key\)/);
   assert.match(source, /tab_state & 0x8001/);
   assert.match(source, /kind: "overlayShortcut"/);
+  assert.match(source, /"captureHwnd": \(!capture\.is_null\(\)\)\.then\(\|\| hwnd_hex\(capture\)\)/);
+  assert.match(source, /"primaryButtonDown": primary_button_down/);
+  assert.match(source, /DefWindowProcW\(surface\.hwnd, WM_NCHITTEST, 0, packed\)/);
+  assert.match(source, /WM_NCLBUTTONDOWN => \{/);
+  assert.match(source, /WM_NCLBUTTONUP => \{/);
+  assert.match(source, /WM_SYSCOMMAND => \{/);
+  assert.match(source, /WM_CAPTURECHANGED => \{/);
+  assert.doesNotMatch(source, /DefWindowProcW\(surface\.hwnd, WM_NCLBUTTONDOWN/);
 });
 
 test("electron smoke sanitizer redacts private overlay proof fields", () => {
@@ -3481,6 +3887,36 @@ test("example packager prefers the current host build over a stale target-native
   assert.equal(currentHostSources.get("steam_bridge_native.darwin-arm64.node"), localNativePath);
   assert.equal(crossTargetSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
   assert.equal(assembledReleaseSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
+});
+
+test("example packager accepts only an exact SHA-pinned package tarball", (t) => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-pinned-package-"));
+  t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+
+  const tarballPath = path.join(fixtureRoot, "steam-bridge-0.3.9.tgz");
+  fs.writeFileSync(tarballPath, "exact-release-package");
+  const digest = crypto.createHash("sha256").update(fs.readFileSync(tarballPath)).digest("hex");
+  const { resolvePinnedPackageTarball } = require(
+    path.join(repoRoot, "scripts", "package-electron-example.cjs")
+  );
+
+  assert.equal(resolvePinnedPackageTarball(tarballPath, digest), path.resolve(tarballPath));
+  assert.equal(resolvePinnedPackageTarball(undefined, undefined), undefined);
+  assert.throws(() => resolvePinnedPackageTarball(tarballPath, undefined), /requires --expected-package-sha256/);
+  assert.throws(() => resolvePinnedPackageTarball(tarballPath, "0".repeat(64)), /SHA-256 mismatch/);
+  assert.throws(
+    () => resolvePinnedPackageTarball(path.join(fixtureRoot, "missing.tgz"), digest),
+    /regular, non-symlinked \.tgz/
+  );
+  const wrongExtension = path.join(fixtureRoot, "steam-bridge-0.3.9.tar");
+  fs.copyFileSync(tarballPath, wrongExtension);
+  assert.throws(() => resolvePinnedPackageTarball(wrongExtension, digest), /regular, non-symlinked \.tgz/);
+
+  if (process.platform !== "win32") {
+    const symlinkPath = path.join(fixtureRoot, "linked.tgz");
+    fs.symlinkSync(tarballPath, symlinkPath, "file");
+    assert.throws(() => resolvePinnedPackageTarball(symlinkPath, digest), /regular, non-symlinked \.tgz/);
+  }
 });
 
 test("native loader prefers the physical ASAR-unpacked addon mirror", (t) => {
@@ -11584,6 +12020,449 @@ test("Linux attached GLX host stays a real persistent child of the Electron X11 
   assert.match(linuxSource, /"hiddenRootBootstrap": surface\.managed_host && surface\.parent_window\.is_some\(\)/);
 });
 
+test("macOS attached child derives its frame from the current non-obscured window content", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const helperStart = source.indexOf("unsafe fn screen_rect_for_parent_view(");
+  const helperEnd = source.indexOf("fn register_transparent_open_gl_view_class()", helperStart);
+  assert.notEqual(helperStart, -1);
+  assert.notEqual(helperEnd, -1);
+
+  const helper = source.slice(helperStart, helperEnd);
+  const layoutRead = helper.indexOf("msg_send![parent_window, contentLayoutRect]");
+  const layoutConversion = helper.indexOf(
+    "msg_send![parent_window, convertRectToScreen: content_layout_rect]"
+  );
+  const retainedViewFallback = helper.indexOf("msg_send![parent_view, bounds]");
+  assert.notEqual(layoutRead, -1);
+  assert.notEqual(layoutConversion, -1);
+  assert.notEqual(retainedViewFallback, -1);
+  assert.ok(layoutRead < layoutConversion);
+  assert.ok(layoutConversion < retainedViewFallback);
+
+  const pumpStart = source.indexOf("pub fn pump() -> Result<(), Error>");
+  const pumpEnd = source.indexOf("pub fn update_frame(", pumpStart);
+  const pump = source.slice(pumpStart, pumpEnd);
+  assert.match(
+    pump,
+    /SurfaceOwner::MetalOverlayWindow[\s\S]*screen_rect_for_parent_view[\s\S]*steam_bridge_metal_surface_set_frame/
+  );
+});
+
+test("macOS attached Metal child clips only the parent's rounded bottom content corners", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
+    "utf8"
+  );
+  const maskStart = source.indexOf("- (void)updateParentCornerMask");
+  const maskEnd = source.indexOf("- (void)updateDrawableSize", maskStart);
+  assert.notEqual(maskStart, -1);
+  assert.notEqual(maskEnd, -1);
+  const mask = source.slice(maskStart, maskEnd);
+  assert.match(mask, /NSWindowStyleMaskTitled/);
+  assert.match(mask, /NSWindowStyleMaskFullScreen/);
+  assert.match(mask, /contentLayoutRect/);
+  assert.match(mask, /kCALayerMinXMinYCorner\s*\|\s*kCALayerMaxXMinYCorner/);
+  assert.match(mask, /layer\.masksToBounds = rounded/);
+  assert.match(mask, /layer\.cornerRadius = radius/);
+  assert.match(mask, /\[_window setOpaque:NO\]/);
+  assert.match(mask, /layer\.opaque = _opaqueBackground && !rounded/);
+  assert.doesNotMatch(mask, /NSThemeFrame|valueForKey|performSelector/);
+  assert.match(source, /@"roundedBottomCorners": @\(_roundedBottomCorners\)/);
+  assert.match(source, /@"windowCornerRadius": @\(_windowCornerRadius\)/);
+  assert.match(source, /- \(void\)sendEvent:\(NSEvent \*\)event/);
+  assert.match(source, /NSEventTypeLeftMouseDown/);
+  assert.match(source, /@"leftMouseDownCount": @\(overlayWindow\.steamBridgeLeftMouseDownCount\)/);
+  const opaqueSetter = source.slice(
+    source.indexOf('extern "C" void steam_bridge_metal_surface_set_opaque'),
+    source.indexOf('extern "C" void steam_bridge_metal_surface_render_frame')
+  );
+  assert.match(opaqueSetter, /\[metalSurface\.window setOpaque:NO\]/);
+  assert.doesNotMatch(opaqueSetter, /\[metalSurface\.window setOpaque:opaque/);
+});
+
+test("macOS legacy OpenGL diagnostic backend cannot reopen the popup architecture", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const start = source.indexOf("unsafe fn create_embedded_view(");
+  const end = source.indexOf("unsafe fn create_open_gl_view(", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const create = source.slice(start, end);
+  assert.match(create, /let transparent_background = true;/);
+  assert.match(create, /addChildWindow: window ordered: NS_WINDOW_ABOVE/);
+  assert.match(create, /attached_as_child: true/);
+  assert.doesNotMatch(create, /setLevel: parent_level \+ 1|orderFrontRegardless/);
+  assert.doesNotMatch(
+    create,
+    /STEAM_BRIDGE_MAC_NATIVE_(?:CHILD_WINDOW|TRANSPARENT_HOST|TITLED_HOST|TITLED_TRANSPARENT_HOST)/
+  );
+});
+
+test("macOS keeps one display-synchronized MTKView clock in passive and active presentation", () => {
+  const metalSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
+    "utf8"
+  );
+  assert.match(metalSource, /_view\.preferredFramesPerSecond = 60;/);
+  assert.match(metalSource, /_view\.enableSetNeedsDisplay = NO;/);
+  assert.match(metalSource, /_view\.autoResizeDrawable = NO;/);
+  assert.match(metalSource, /NSWindowDidEndLiveResizeNotification/);
+  assert.match(metalSource, /_parentWindow\.inLiveResize/);
+  assert.match(metalSource, /\[_view convertSizeToBacking:_view\.bounds\.size\]/);
+  assert.match(metalSource, /@"drawableResizeDeferred"/);
+  assert.match(metalSource, /MIN\(_requestedFramesPerSecond, selectedRefreshRate\)/);
+  assert.match(
+    metalSource,
+    /double preferredRefreshRate = _managedContinuousPresent\s*\? requestedRefreshRate\s*:\s*MIN\(60\.0, selectedRefreshRate\);/
+  );
+  assert.match(metalSource, /SteamBridgePreferredFramesPerSecond\(\s*preferredRefreshRate\)/);
+  assert.match(metalSource, /_view\.preferredFramesPerSecond = preferredFramesPerSecond/);
+  const initDisplayConfiguration = metalSource.indexOf("[self updateDisplayConfiguration]");
+  const initOrderFront = metalSource.indexOf("[_window orderFront:nil]", initDisplayConfiguration);
+  assert.notEqual(initDisplayConfiguration, -1);
+  assert.ok(
+    initOrderFront > initDisplayConfiguration,
+    "the selected display cadence must replace the temporary 60 FPS seed before the child is shown"
+  );
+  assert.doesNotMatch(metalSource, /\[_view draw\]/);
+  assert.match(metalSource, /_view\.paused = NO;/);
+  assert.match(metalSource, /@"mtkview-display-synchronized"/);
+  assert.match(metalSource, /@"mtkview-display-synchronized-passive"/);
+  assert.match(metalSource, /@"presentationDriver": _managedContinuousPresent/);
+  assert.match(metalSource, /steam_bridge_metal_surface_set_continuous_present/);
+  assert.match(metalSource, /presentedDrawable\.presentedTime/);
+  assert.match(metalSource, /presentedTime <= 0\.0/);
+  assert.match(metalSource, /notPresentedCount\.fetch_add/);
+  assert.match(metalSource, /@"notPresentedCount": @\(notPresentedCount\)/);
+  assert.doesNotMatch(metalSource, /presentedTime[\s\S]{0,200}SteamBridgeMonotonicMicroseconds\(\)/);
+  const drawStart = metalSource.indexOf("- (void)drawInMTKView:");
+  const drawEnd = metalSource.indexOf("\n}\n\n@end", drawStart);
+  assert.notEqual(drawStart, -1);
+  assert.notEqual(drawEnd, -1);
+  const draw = metalSource.slice(drawStart, drawEnd);
+  assert.ok(
+    draw.indexOf("view.currentRenderPassDescriptor") < draw.indexOf("view.currentDrawable"),
+    "MetalKit must obtain its drawable through the render-pass descriptor before retaining it"
+  );
+
+  const nativeSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  assert.match(nativeSource, /steam_bridge_metal_surface_set_continuous_present\(/);
+  assert.match(
+    nativeSource,
+    /pub fn set_continuous_present\(\s*continuous: bool,\s*frame_rate: Option<f64>/
+  );
+
+  const electronSource = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"),
+    "utf8"
+  );
+  const syncStart = electronSource.indexOf("function syncElectronSteamOverlayDisplayFrameRate(");
+  const syncEnd = electronSource.indexOf("function removeElectronSteamOverlayWindowListener(", syncStart);
+  assert.notEqual(syncStart, -1);
+  assert.notEqual(syncEnd, -1);
+  const sync = electronSource.slice(syncStart, syncEnd);
+  assert.match(sync, /electronWindowDisplayFrameRate\(window\)/);
+  assert.match(sync, /presenter\.setFrameRate\(frameRate\)/);
+  assert.match(
+    electronSource,
+    /setter\.call\(binding, continuous, frameRate\)/
+  );
+  assert.match(
+    electronSource,
+    /backend === "macos-metal" && managedContinuousPresentApplied/
+  );
+});
+
+test("macOS display notifications rebind the existing MTKView clock without recreating it", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
+    "utf8"
+  );
+  assert.match(
+    source,
+    /NSApplicationDidChangeScreenParametersNotification[\s\S]*updateDisplayConfigurationRebindingViewClock:YES/
+  );
+  assert.match(
+    source,
+    /!\[notificationName\s+isEqualToString:NSWindowDidEndLiveResizeNotification\][\s\S]*updateDisplayConfigurationRebindingViewClock:rebindViewClock/
+  );
+  const start = source.indexOf("- (void)updateDisplayConfigurationRebindingViewClock:");
+  const end = source.indexOf("\n}\n\n- (void)attachToParentWindow:", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const rebind = source.slice(start, end);
+  assert.match(rebind, /BOOL viewWasPaused = _view\.paused/);
+  assert.match(rebind, /if \(rebindViewClock\)[\s\S]*_view\.paused = YES/);
+  assert.match(rebind, /if \(rebindViewClock \|\| _view\.preferredFramesPerSecond != preferredFramesPerSecond\)/);
+  assert.match(rebind, /_view\.preferredFramesPerSecond = preferredFramesPerSecond/);
+  assert.match(rebind, /_view\.paused = viewWasPaused[\s\S]*_displayClockRebindCount \+= 1/);
+  assert.doesNotMatch(rebind, /\[\[MTKView alloc\]|\[_view draw\]/);
+  assert.match(source, /@"displayClockRebindCount": @\(_displayClockRebindCount\)/);
+});
+
+test("macOS pauses the attached MTKView while its parent cannot present", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
+    "utf8"
+  );
+  const policyStart = source.indexOf("- (BOOL)windowCanPresent");
+  const policyEnd = source.indexOf("- (void)setFrameX:", policyStart);
+  assert.notEqual(policyStart, -1);
+  assert.notEqual(policyEnd, -1);
+  const policy = source.slice(policyStart, policyEnd);
+  assert.match(policy, /!_window\.visible/);
+  assert.match(policy, /NSApp\.hidden/);
+  assert.match(policy, /CGDisplayIsAsleep/);
+  assert.match(
+    policy,
+    /_parentWindow != nil\s*&&\s*_parentWindow\.visible\s*&&\s*!_parentWindow\.miniaturized/
+  );
+  assert.match(policy, /_view\.paused = !\[self windowCanPresent\]/);
+
+  const pumpStart = source.indexOf("- (void)pump");
+  const pumpEnd = source.indexOf("- (void)setManagedContinuousPresentEnabled:", pumpStart);
+  assert.match(source.slice(pumpStart, pumpEnd), /\[self updateDrawingPausedState\]/);
+
+  const continuousStart = pumpEnd;
+  const continuousEnd = source.indexOf("- (NSString *)diagnosticsJSON", continuousStart);
+  assert.match(source.slice(continuousStart, continuousEnd), /\[self updateDrawingPausedState\]/);
+
+  const drawStart = source.indexOf("- (void)drawInMTKView:");
+  const drawEnd = source.indexOf("\n}\n\n@end", drawStart);
+  assert.match(source.slice(drawStart, drawEnd), /!\[self windowCanPresent\]/);
+});
+
+test("macOS display helper exposes a read-only main-display sleep probe", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-display-mode.swift"),
+    "utf8"
+  );
+  assert.match(source, /case "environment":/);
+  assert.match(source, /CGMainDisplayID\(\)/);
+  assert.match(source, /displayAsleep: CGDisplayIsAsleep\(displayId\) != 0/);
+  assert.match(source, /environment takes no arguments/);
+});
+
+test("macOS display helper keeps one application-scoped owner across live mode transitions", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-display-mode.swift"),
+    "utf8"
+  );
+  assert.match(source, /--control-directory PATH/);
+  assert.match(source, /control directory must start empty/);
+  assert.match(source, /request\.sequence == sequence/);
+  assert.match(source, /request\.token\.count == 32/);
+  assert.match(source, /resolveMode\(display, modeId: request\.modeId\)/);
+  assert.match(source, /applyMode\(display, controlledMode\)/);
+  assert.match(source, /observedMode\(display, matching: controlledMode\)/);
+  assert.match(source, /writeControlResponse/);
+  assert.match(source, /nextControlSequence \+= 1/);
+  assert.equal(
+    source.match(/CGCompleteDisplayConfiguration\(configuration, \.forAppOnly\)/g)?.length,
+    1
+  );
+  assert.doesNotMatch(source, /CGConfigureForSession|\.forSession/);
+});
+
+test("native macOS teardown rejects worker-thread AppKit access before destroying a surface", () => {
+  const nativeSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  assert.match(nativeSource, /pub fn ensure_main_thread\(\) -> Result<\(\), Error>/);
+
+  const librarySource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "lib.rs"),
+    "utf8"
+  );
+  for (const functionName of [
+    "shutdown",
+    "close_native_overlay_probe_window",
+    "detach_native_overlay_host_view"
+  ]) {
+    const start = librarySource.indexOf(`pub fn ${functionName}`);
+    assert.notEqual(start, -1);
+    const body = librarySource.slice(start, librarySource.indexOf("\n}", start) + 2);
+    assert.match(body, /native_surface::ensure_main_thread\(\)\?/);
+  }
+});
+
+test("macOS continuous resize pumps geometry without serializing display diagnostics on every tick", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "packages", "steam-bridge", "src", "index.ts"),
+    "utf8"
+  );
+  const installStart = source.indexOf("function installElectronSteamOverlayWindowSync(");
+  const installEnd = source.indexOf("function syncElectronSteamOverlayDisplayFrameRate(", installStart);
+  assert.notEqual(installStart, -1);
+  assert.notEqual(installEnd, -1);
+  const install = source.slice(installStart, installEnd);
+  assert.match(install, /const sync = \(includeDisplayFrameRate = true\)/);
+  assert.match(install, /const syncGeometryOnly = \(\): void => sync\(false\)/);
+  assert.match(
+    install,
+    /usesAuthoritativeResizeEvent && event === "resize"[\s\S]*\? syncGeometryOnly/
+  );
+  assert.match(install, /controller\.presenter\.notifyBoundsChanged\(\)[\s\S]*action\(\)/);
+});
+
+test("macOS input QA observes pointer restoration and can safely target the attached child", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-window-input.swift"),
+    "utf8"
+  );
+  const clickStart = source.indexOf("private func runChildClick(");
+  const clickEnd = source.indexOf("\n}\n\nprivate func runChildMove", clickStart);
+  assert.notEqual(clickStart, -1);
+  assert.notEqual(clickEnd, -1);
+  const click = source.slice(clickStart, clickEnd);
+  assert.match(source, /pointerRestored = hypot\([\s\S]*\) <= 1\.5/);
+  assert.doesNotMatch(source, /"pointerRestored": options\.restorePointer/);
+  assert.match(source, /case "click-child":/);
+  assert.doesNotMatch(click, /\bactivate\s*\(/);
+  assert.match(click, /_ = NSApplication\.shared/);
+  assert.match(click, /waitForStableFocus\([\s\S]*guard focused\.passed/);
+  assert.match(click, /requireOwnedWindowPair\(pid: pid, parentAxFrame:/);
+  assert.match(click, /requireOwnedWindowPair\(pid: pid, tracker: pair\.tracker\)/);
+  assert.match(click, /pairResult\.missingSampleCount == 0 && pairResult\.mismatchCount == 0/);
+  assert.match(click, /let pointerAtTarget = hypot\([\s\S]*\) <= 1\.5/);
+  assert.match(click, /currentPair\.child\.bounds\.insetBy\(dx: 1, dy: 1\)\.contains\(observedPointer\)/);
+  assert.match(click, /observedPointerEvent\.unflippedLocation/);
+  assert.match(
+    click,
+    /NSWindow\.windowNumber\([\s\S]*at: appKitPoint,[\s\S]*belowWindowWithWindowNumber: 0[\s\S]*\)/
+  );
+  assert.match(click, /hitWindowNumber == currentPair\.child\.number/);
+  assert.match(click, /"targetedAttachedChild": hitTestWindowNumberMatchesChild/);
+  assert.match(click, /"pairStable": pairStable/);
+  assert.match(click, /"pointerAtTarget": pointerAtTarget/);
+  assert.match(click, /"hitTestWindowNumberMatchesChild": hitTestWindowNumberMatchesChild/);
+  assert.match(click, /leftMouseDownPosted/);
+  assert.match(click, /leftMouseUpPosted/);
+
+  const movePointer = click.indexOf("try postMouse(.mouseMoved, point: point)");
+  const reResolve = click.indexOf("requireOwnedWindowPair(pid: pid, tracker: pair.tracker)");
+  const pointerProof = click.indexOf("let pointerAtTarget = hypot(");
+  const unflip = click.indexOf("observedPointerEvent.unflippedLocation");
+  const hitTest = click.indexOf("NSWindow.windowNumber(");
+  const hitTestGuard = click.indexOf("guard hitTestWindowNumberMatchesChild");
+  const mouseDown = click.indexOf("try postMouse(.leftMouseDown, point: point)");
+  assert.ok(movePointer >= 0 && movePointer < reResolve);
+  assert.ok(reResolve < pointerProof && pointerProof < unflip);
+  assert.ok(unflip < hitTest && hitTest < hitTestGuard && hitTestGuard < mouseDown);
+  assert.match(source, /--edge-offset must be in \[-8, 8\]/);
+  assert.match(source, /frame\.maxX \+ edgeOffset/);
+  assert.match(source, /frame\.maxY \+ edgeOffset/);
+});
+
+test("macOS rapid title drags let AppKit latch mouse-down before timed motion", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-window-input.swift"),
+    "utf8"
+  );
+  assert.match(source, /private let titleDragMouseDownLatchSeconds = 0\.08/);
+  const dragStart = source.indexOf("private func runDrag(");
+  const dragEnd = source.indexOf("\n}\n\nprivate func runChildClick", dragStart);
+  assert.notEqual(dragStart, -1);
+  assert.notEqual(dragEnd, -1);
+  const drag = source.slice(dragStart, dragEnd);
+  const mouseDown = drag.indexOf("try postMouse(.leftMouseDown, point: start)");
+  const titleOnlyLatch = drag.indexOf('if options.kind == "title"');
+  const latchSleep = drag.indexOf(
+    "Thread.sleep(forTimeInterval: titleDragMouseDownLatchSeconds)",
+    titleOnlyLatch
+  );
+  const timedMotion = drag.indexOf("let stepDelay = options.durationMs / 1000 / Double(options.steps)");
+  assert.ok(mouseDown >= 0 && mouseDown < titleOnlyLatch);
+  assert.ok(titleOnlyLatch < latchSleep && latchSleep < timedMotion);
+  assert.equal((drag.match(/titleDragMouseDownLatchSeconds/g) || []).length, 1);
+});
+
+test("macOS input QA has one real HID shortcut for nonblocking duplicate-overlay proof", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-window-input.swift"),
+    "utf8"
+  );
+  assert.match(source, /--shortcut cmd-m\|cmd-h\|cmd-tab\|cmd-shift-o\|escape\|ctrl-cmd-f/);
+  const sequenceStart = source.indexOf("private func keySequence(");
+  const sequenceEnd = source.indexOf("\n}\n\nprivate func postShortcut", sequenceStart);
+  const sequence = source.slice(sequenceStart, sequenceEnd);
+  assert.match(sequence, /let commandShift: CGEventFlags = \[\.maskCommand, \.maskShift\]/);
+  assert.match(
+    sequence,
+    /case "cmd-shift-o":[\s\S]*\(56, true, \.maskShift\)[\s\S]*\(55, true, commandShift\)[\s\S]*\(31, true, commandShift\)[\s\S]*\(31, false, commandShift\)[\s\S]*\(55, false, \.maskShift\)[\s\S]*\(56, false, \[\]\)/
+  );
+});
+
+test("macOS input QA moves the real pointer only within the exact owned child/window pair", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-window-input.swift"),
+    "utf8"
+  );
+  assert.match(source, /case "move-child":/);
+  assert.match(source, /case "move-title":/);
+  assert.match(source, /private func requireOwnedWindowPair\(pid: pid_t, tracker: WindowPairTracker\)/);
+  assert.match(source, /ownedWindowRecords\(pid: pid\)/);
+  assert.match(source, /guard children\.count == 1, let child = children\.first/);
+  assert.match(source, /child\.name == "Steam Bridge Metal Overlay Host"/);
+  assert.match(source, /parent\.onScreen,[\s\S]*child\.onScreen,[\s\S]*parent\.alpha > 0,[\s\S]*child\.alpha > 0/);
+  assert.match(source, /"target": "attached-child"/);
+  assert.match(source, /"targetedAttachedChild": true/);
+  assert.match(source, /"target": "parent-title"/);
+  assert.match(source, /"targetedParentTitle": true/);
+  assert.match(source, /"pointerLeftInTargetRegion": true/);
+  assert.match(source, /"pairMissingSampleCount": pairResult\.missingSampleCount/);
+  assert.match(source, /"pairMismatchCount": pairResult\.mismatchCount/);
+
+  const childMoveStart = source.indexOf("private func runChildMove(");
+  const titleMoveStart = source.indexOf("private func runTitleMove(");
+  const keySequenceStart = source.indexOf("private func keySequence(", titleMoveStart);
+  assert.notEqual(childMoveStart, -1);
+  assert.notEqual(titleMoveStart, -1);
+  assert.notEqual(keySequenceStart, -1);
+  const boundedMoves = source.slice(childMoveStart, keySequenceStart);
+  assert.doesNotMatch(boundedMoves, /"pointer":/);
+  assert.doesNotMatch(boundedMoves, /"x": target\.x/);
+  assert.doesNotMatch(boundedMoves, /"y": target\.y/);
+});
+
+test("macOS input QA proves focus at the application and focused-window levels", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "scripts", "macos-window-input.swift"),
+    "utf8"
+  );
+  assert.match(source, /kAXFocusedApplicationAttribute/);
+  assert.match(source, /kAXFocusedWindowAttribute/);
+  assert.match(source, /NSRunningApplication\(processIdentifier: pid\)\?\.isActive/);
+  assert.match(source, /"focused": applicationActive[\s\S]*frontmostApplicationMatchesPid[\s\S]*focusedApplicationProof[\s\S]*focusedWindowMatchesSelected/);
+  assert.match(source, /NSWorkspace\.shared\.frontmostApplication/);
+  assert.match(source, /focusedApplicationRead\.error == \.noValue \? "no-value"/);
+  assert.match(source, /error == \.cannotComplete \|\| error == \.noValue/);
+  assert.match(source, /systemFocusedApplicationErrorBefore == \.noValue/);
+  assert.match(source, /application\.activate\(options: \[\]\)/);
+  assert.match(source, /explicitly authorized unattended QA driver/);
+  assert.match(source, /AXUIElementIsAttributeSettable\([\s\S]*kAXFrontmostAttribute/);
+  assert.match(source, /AXUIElementSetAttributeValue\([\s\S]*kAXFrontmostAttribute[\s\S]*kCFBooleanTrue/);
+  assert.match(source, /"frontmostSetError": frontmostSetError\.rawValue/);
+  assert.doesNotMatch(source, /activateIgnoringOtherApps/);
+  assert.match(source, /AXUIElementPerformAction\(window, kAXRaiseAction/);
+  assert.match(source, /systemFocusedApplicationPidBefore/);
+  assert.match(source, /systemFocusedApplicationPidAfter/);
+  assert.match(source, /stablePassingSamples >= 3/);
+  assert.match(source, /waitForStableFocus\(pid: pid, application: application, window: window, timeout: 5\)/);
+  assert.match(source, /RunLoop\.current\.run\(until:/);
+  assert.doesNotMatch(source, /activateAllWindows/);
+  assert.doesNotMatch(source, /"focused": axBool\(window, kAXFocusedAttribute/);
+});
+
 test("Linux GLX host uploads a complete BGRA game frame before Steam swaps", () => {
   const nativeSource = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
@@ -15087,6 +15966,48 @@ test("electron overlay options treat macOS simple fullscreen as fullscreen", (t)
   assert.equal(options.getFullScreen(), true);
 });
 
+test("electron overlay options restore both macOS window and renderer focus", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+  const electron = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+
+  const calls = [];
+  const options = electron.electronOverlayPresenterOptions({
+    isDestroyed() {
+      return false;
+    },
+    isMinimized() {
+      return true;
+    },
+    restore() {
+      calls.push("restore");
+    },
+    show() {
+      calls.push("show");
+    },
+    focus() {
+      calls.push("window-focus");
+    },
+    getNativeWindowHandle() {
+      return Buffer.from([1, 2, 3, 4]);
+    },
+    getContentBounds() {
+      return { x: 10, y: 20, width: 1280, height: 720 };
+    },
+    webContents: {
+      focus() {
+        calls.push("renderer-focus");
+      },
+      invalidate() {
+        calls.push("invalidate");
+      }
+    }
+  });
+
+  options.restoreFocus();
+  assert.deepEqual(calls, ["restore", "show", "window-focus", "renderer-focus", "invalidate"]);
+});
+
 test("electron steam overlay manager scrubs Steam overlay preload from child process env by default", (t) => {
   setProcessPlatformForTest(t, "linux");
   setProcessEnvForTest(t, {
@@ -15667,6 +16588,125 @@ test("electron steam overlay manager syncs the presenter on window geometry even
   }
 });
 
+test("electron steam overlay manager reconciles macOS resize and the committed post-resize layout", async (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([6, 7, 8, 9, 0, 0, 0, 0]);
+  let hostOpen = false;
+  let windowBounds = { x: 12, y: 24, width: 640, height: 480 };
+  const pumpedBounds = [];
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      pumpedBounds.push({ ...windowBounds });
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const handlers = new Map();
+  const removedEvents = [];
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    getContentBounds() {
+      return windowBounds;
+    },
+    on(event, handler) {
+      handlers.set(event, handler);
+    },
+    off(event, handler) {
+      if (handlers.get(event) === handler) {
+        handlers.delete(event);
+      }
+      removedEvents.push(event);
+    },
+    webContents: {
+      once() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    title: "Electron macOS Resize Sync Overlay",
+    pollIntervalMs: 10000,
+    activeOverlayFps: 60,
+    needsPresentFps: 60
+  });
+
+  assert.equal(handlers.has("resize"), true);
+  assert.equal(handlers.has("resized"), true);
+  assert.deepEqual(pumpedBounds, [windowBounds]);
+
+  windowBounds = { x: 12, y: 24, width: 1280, height: 720 };
+  handlers.get("resize")();
+  assert.deepEqual(
+    pumpedBounds.at(-1),
+    windowBounds,
+    "the authoritative resize event must synchronize the child without a later resized event"
+  );
+  assert.equal(pumpedBounds.length, 2);
+
+  const resized = handlers.get("resized");
+  windowBounds = { x: 12, y: 24, width: 1280, height: 752 };
+  resized();
+  assert.deepEqual(
+    pumpedBounds.at(-1),
+    windowBounds,
+    "the terminal resize event must synchronize its immediate native layout"
+  );
+  windowBounds = { x: 12, y: 24, width: 1280, height: 720 };
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    pumpedBounds.at(-1),
+    windowBounds,
+    "the next event-loop turn must reconcile AppKit's committed content layout"
+  );
+
+  resized();
+  const pumpCountBeforeClose = pumpedBounds.length;
+
+  overlay.close();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    pumpedBounds.length,
+    pumpCountBeforeClose,
+    "closing the overlay must cancel its deferred geometry reconciliation"
+  );
+  assert.equal(handlers.size, 0);
+  assert.equal(removedEvents.includes("resize"), true);
+  assert.equal(removedEvents.includes("resized"), true);
+});
+
 test("electron steam overlay manager can use direct Steam activation on Windows in session mode", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
@@ -15870,7 +16910,9 @@ test("electron steam overlay openAndWait uses the direct readiness path on Windo
         steamRunning: true,
         steamInstallPath: "C:\\Program Files (x86)\\Steam",
         appId: 480,
-        overlayEnabled,
+        // Deliberately stale: checkout readiness must refresh the direct
+        // IsOverlayEnabled handshake instead of trusting this cached value.
+        overlayEnabled: true,
         overlayNeedsPresent: false,
         overlayNeedsPresentPollingEnabled: true,
         steamDeck: false,
@@ -15909,6 +16951,12 @@ test("electron steam overlay openAndWait uses the direct readiness path on Windo
   assert.equal(notReadyStatus.canWait, true);
   assert.equal(notReadyStatus.reason, "overlay-not-ready");
   assert.equal(notReadyStatus.nativeHostAvailability.available, true);
+  assert.equal(notReadyStatus.snapshot.diagnostics.overlayEnabled, false);
+  const notReadyCheckoutStatus = overlay.getCheckoutOperationStatus();
+  assert.equal(notReadyCheckoutStatus.canStartOperation, false);
+  assert.equal(notReadyCheckoutStatus.canWait, true);
+  assert.equal(notReadyCheckoutStatus.reason, "overlay-not-ready");
+  assert.equal(notReadyCheckoutStatus.snapshot.diagnostics.overlayEnabled, false);
   assert.deepEqual(nativeHostCalls, []);
 
   const openAndWait = overlay.openAndWait(webTarget, { showTimeoutMs: 500, closeTimeoutMs: 500 });
@@ -22051,7 +23099,435 @@ test("native overlay session constructor failure cleans and releases its surface
   session.close();
 });
 
-test("native overlay session presents shared textures and owned CPU fallback frames immediately", (t) => {
+test("native overlay checkout reservation uses one Windows surface and fences stale leases", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let probeOpen = false;
+  let steamRunning = true;
+  let overlayEnabled = false;
+  const fake = createFakeNative({
+    isSteamRunning() {
+      return steamRunning;
+    },
+    isOverlayEnabled() {
+      this.calls.push({ method: "isOverlayEnabled", args: [] });
+      return overlayEnabled;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        steamInstallPath: "C:\\Program Files (x86)\\Steam",
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    },
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({
+    pumpIntervalMs: 10000,
+    activationWarmupMs: 0
+  });
+
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialStatus = session.getCheckoutReservationStatus();
+  assert.equal(initialStatus.canAcquire, false);
+  assert.equal(initialStatus.canWait, true);
+  assert.equal(initialStatus.reason, "overlay-not-ready");
+  assert.equal(initialStatus.snapshot.diagnostics.overlayEnabled, false);
+  assert.deepEqual(initialStatus.targetSnapshot, { type: "checkout" });
+  steamRunning = false;
+  const unavailableStatus = session.getCheckoutReservationStatus();
+  assert.equal(unavailableStatus.reason, "steam-unavailable");
+  assert.equal(unavailableStatus.canAcquire, false);
+  assert.equal(unavailableStatus.canWait, false);
+  steamRunning = true;
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  const activeStatus = session.getCheckoutReservationStatus();
+  assert.equal(activeStatus.reason, "overlay-active");
+  assert.equal(activeStatus.canAcquire, false);
+  assert.equal(activeStatus.canWait, false);
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+
+  const pending = session.acquireCheckoutReservation({ timeoutMs: 500, leaseTimeoutMs: 60 });
+  const reservedStatus = session.getCheckoutReservationStatus();
+  assert.equal(reservedStatus.reservationActive, true);
+  assert.equal(reservedStatus.reservationReady, false);
+  assert.equal(reservedStatus.canAcquire, false);
+  assert.equal(reservedStatus.canWait, false);
+  assert.equal(reservedStatus.reason, "reserved");
+  await assert.rejects(
+    session.acquireCheckoutReservation({ timeoutMs: 50 }),
+    (error) => {
+      assert.match(error.message, /reservation is already active/);
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+      return true;
+    }
+  );
+
+  const enabledReadsBeforeWait = fake.calls.filter((call) => call.method === "isOverlayEnabled").length;
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  assert.ok(
+    fake.calls.filter((call) => call.method === "isOverlayEnabled").length > enabledReadsBeforeWait
+  );
+  overlayEnabled = true;
+  const first = await pending;
+  assert.equal(first.isActive(), true);
+  assert.ok(first.readyAt >= first.reservedAt);
+  assert.equal(first.expiresAt - first.readyAt, 60);
+  const readyStatus = session.getCheckoutReservationStatus();
+  assert.equal(readyStatus.reservationReady, true);
+  assert.equal(readyStatus.reservedAt, first.reservedAt);
+  assert.equal(readyStatus.readyAt, first.readyAt);
+  assert.equal(readyStatus.expiresAt, first.expiresAt);
+
+  assert.equal(await waitForCondition(() => !first.isActive(), 500, 5), true);
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
+
+  const staleSignal = new AbortController();
+  const second = await session.acquireCheckoutReservation({
+    timeoutMs: 100,
+    leaseTimeoutMs: 40,
+    signal: staleSignal.signal
+  });
+  assert.equal(second.isActive(), true);
+  first.release();
+  first.disconnect();
+  assert.equal(second.isActive(), true);
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, true);
+  second.disconnect();
+  second.release();
+  assert.equal(second.isActive(), false);
+  const third = await session.acquireCheckoutReservation({ timeoutMs: 100, leaseTimeoutMs: 1000 });
+  staleSignal.abort();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(third.isActive(), true);
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, true);
+  third.release();
+  const releasedStatus = session.getCheckoutReservationStatus();
+  assert.equal(releasedStatus.reservationActive, false);
+  assert.equal(releasedStatus.canAcquire, true);
+  assert.equal(releasedStatus.canWait, true);
+
+  assert.equal(
+    fake.calls.filter((call) => call.method === "openNativeOverlayProbeWindow").length,
+    1
+  );
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
+      .map((call) => call.args[0]),
+    [false, true, false, true, false, true, false, true, false]
+  );
+  session.close();
+  const closedStatus = session.getCheckoutReservationStatus();
+  assert.equal(closedStatus.reason, "closed");
+  assert.equal(closedStatus.canAcquire, false);
+  assert.equal(closedStatus.canWait, false);
+});
+
+test("Linux application-host checkout reservation waits for warmup on the same host", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let hostOpen = false;
+  const fake = createFakeNative({
+    openNativeApplicationHostWindow(...args) {
+      hostOpen = true;
+      this.calls.push({ method: "openNativeApplicationHostWindow", args });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const defaultWarmupSession = steam.overlay.startNativeOverlaySession({
+    useLinuxApplicationHost: true,
+    pumpIntervalMs: 10000
+  });
+  let session;
+  t.after(() => {
+    session?.close();
+    defaultWarmupSession.close();
+    clearSteamBridgeCache();
+  });
+  const defaultWarmupStatus = defaultWarmupSession.getCheckoutReservationStatus();
+  assert.equal(defaultWarmupStatus.reason, "overlay-not-ready");
+  assert.ok(defaultWarmupStatus.warmupRemainingMs > 2500);
+  assert.ok(defaultWarmupStatus.warmupRemainingMs <= 3000);
+  await assert.rejects(
+    defaultWarmupSession.acquireCheckoutReservation({ timeoutMs: 10 }),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+      assert.equal(error.state, "be ready");
+      return true;
+    }
+  );
+  assert.equal(defaultWarmupSession.getCheckoutReservationStatus().reservationActive, false);
+  defaultWarmupSession.close();
+
+  session = steam.overlay.startNativeOverlaySession({
+    title: "Checkout Application Host",
+    clientWidth: 1280,
+    clientHeight: 720,
+    minClientWidth: 640,
+    minClientHeight: 480,
+    useLinuxApplicationHost: true,
+    pumpIntervalMs: 10000,
+    activationWarmupMs: 80
+  });
+
+  const before = session.getCheckoutReservationStatus();
+  assert.equal(before.reason, "overlay-not-ready");
+  assert.equal(before.canWait, true);
+  assert.ok(before.warmupRemainingMs > 0);
+  const reservation = await session.acquireCheckoutReservation({ timeoutMs: 500, leaseTimeoutMs: 1000 });
+  assert.ok(reservation.readyAt - session.snapshot().startedAt >= 80);
+  assert.equal(reservation.isActive(), true);
+  const applicationHostOpens = fake.calls.filter(
+    (call) => call.method === "openNativeApplicationHostWindow"
+  );
+  assert.equal(applicationHostOpens.length, 2);
+  assert.deepEqual(applicationHostOpens[1].args, [
+    "Checkout Application Host",
+    1280,
+    720,
+    640,
+    480
+  ]);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "openNativeOverlayProbeWindow").length,
+    0
+  );
+  reservation.release();
+  assert.equal(reservation.isActive(), false);
+  assert.deepEqual(
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
+      .map((call) => call.args[0]),
+    [false, true, false, false, true, false]
+  );
+});
+
+test("native checkout preparation rejects typed waits and releases every wrapper path", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let probeOpen = false;
+  let overlayEnabled = false;
+  const fake = createFakeNative({
+    isOverlayEnabled() {
+      return overlayEnabled;
+    },
+    getOverlayDiagnostics() {
+      return {
+        steamRunning: true,
+        appId: 480,
+        overlayEnabled,
+        overlayNeedsPresent: false,
+        overlayNeedsPresentPollingEnabled: true,
+        steamDeck: false,
+        bigPicture: false
+      };
+    },
+    openNativeOverlayProbeWindow() {
+      probeOpen = true;
+    },
+    pumpNativeOverlayProbeWindow() {},
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({
+    pumpIntervalMs: 10000,
+    activationWarmupMs: 0
+  });
+
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  await assert.rejects(
+    session.acquireCheckoutReservation({ timeoutMs: 20, leaseTimeoutMs: 1000 }),
+    (error) => {
+      assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+      assert.equal(error.state, "hook its Windows native presentation surface");
+      assert.equal(error.timeoutMs, 20);
+      assert.match(error.message, /Last native session state/);
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+      return true;
+    }
+  );
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
+
+  const pendingAbort = new AbortController();
+  const abortedAcquisition = session.acquireCheckoutReservation({
+    timeoutMs: 500,
+    leaseTimeoutMs: 1000,
+    signal: pendingAbort.signal
+  });
+  pendingAbort.abort();
+  await assert.rejects(abortedAcquisition, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitAbortedError, true);
+    assert.equal(error.state, "hook its Windows native presentation surface");
+    assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+    return true;
+  });
+
+  overlayEnabled = true;
+  const operationAbort = new AbortController();
+  let markAbortOperationStarted;
+  let resolveAbortedOperation;
+  const abortOperationStarted = new Promise((resolve) => {
+    markAbortOperationStarted = resolve;
+  });
+  const abortedOperation = session.withCheckoutPrepared(
+    () => {
+      markAbortOperationStarted();
+      return new Promise((resolve) => {
+        resolveAbortedOperation = resolve;
+      });
+    },
+    { timeoutMs: 100, leaseTimeoutMs: 1000, signal: operationAbort.signal }
+  );
+  await abortOperationStarted;
+  operationAbort.abort();
+  await assert.rejects(abortedOperation, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitAbortedError, true);
+    assert.equal(error.state, "finish checkout preparation operation");
+    assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+    return true;
+  });
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
+  resolveAbortedOperation("late abort result");
+  await Promise.resolve();
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
+
+  let markExpiringOperationStarted;
+  let resolveExpiringOperation;
+  const expiringOperationStarted = new Promise((resolve) => {
+    markExpiringOperationStarted = resolve;
+  });
+  const expiredOperation = session.withCheckoutPrepared(
+    () => {
+      markExpiringOperationStarted();
+      return new Promise((resolve) => {
+        resolveExpiringOperation = resolve;
+      });
+    },
+    { timeoutMs: 100, leaseTimeoutMs: 25 }
+  );
+  await expiringOperationStarted;
+  await assert.rejects(expiredOperation, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
+    assert.equal(error.state, "finish checkout preparation operation");
+    assert.equal(error.timeoutMs, 25);
+    assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+    return true;
+  });
+  resolveExpiringOperation("late expiry result");
+  await Promise.resolve();
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
+
+  const operationError = new Error("backend checkout failed");
+  await assert.rejects(
+    session.withCheckoutPrepared(() => {
+      throw operationError;
+    }),
+    (error) => {
+      assert.equal(error, operationError);
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+      return true;
+    }
+  );
+  const asyncOperationError = new Error("async backend checkout failed");
+  await assert.rejects(
+    session.withCheckoutPrepared(() => Promise.reject(asyncOperationError)),
+    (error) => {
+      assert.equal(error, asyncOperationError);
+      assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+      return true;
+    }
+  );
+  assert.equal(await session.withCheckoutPrepared(() => "ok"), "ok");
+  assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
+
+  let markClosingOperationStarted;
+  const closingOperationStarted = new Promise((resolve) => {
+    markClosingOperationStarted = resolve;
+  });
+  const closedOperation = session.withCheckoutPrepared(
+    () => {
+      markClosingOperationStarted();
+      return new Promise(() => {});
+    },
+    { leaseTimeoutMs: 1000 }
+  );
+  await closingOperationStarted;
+  session.close();
+  await assert.rejects(closedOperation, (error) => {
+    assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
+    assert.equal(error.state, "finish checkout preparation operation");
+    assert.equal(error.snapshot.closed, true);
+    assert.match(error.message, /Native Steam overlay session closed/);
+    assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
+    return true;
+  });
+});
+
+test("native overlay session uploads Windows frames synchronously and coalesces their deferred pump", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
   let probeOpen = false;
@@ -22356,7 +23832,20 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   );
   assert.equal(
     fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
-    pumpsBeforeFrame + 3
+    pumpsBeforeFrame
+  );
+  const uploadSnapshot = session.snapshot();
+  assert.equal(uploadSnapshot.sharedTextureUpdateCount, 2);
+  assert.equal(typeof uploadSnapshot.lastSharedTextureUpdateDurationMs, "number");
+  assert.equal(uploadSnapshot.lastSharedTextureUpdateDurationMs >= 0, true);
+  assert.equal(
+    uploadSnapshot.maxSharedTextureUpdateDurationMs >= uploadSnapshot.lastSharedTextureUpdateDurationMs,
+    true
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
+    pumpsBeforeFrame + 1
   );
   assert.deepEqual(receivedInputEvents, [
     {
@@ -22436,6 +23925,190 @@ test("native overlay session presents shared textures and owned CPU fallback fra
   );
 });
 
+function createFrameDrivenPumpTestNative() {
+  let probeOpen = false;
+  let retainedSource;
+  const pumpedSources = [];
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      pumpedSources.push(retainedSource);
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      retainedSource = frame[0];
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    updateNativeOverlayHostSharedTexture(handle, ...args) {
+      retainedSource = handle[0];
+      this.calls.push({ method: "updateNativeOverlayHostSharedTexture", args: [handle, ...args] });
+    },
+    updateNativeOverlayHostLinuxDmaBufSharedTexture(fd, ...args) {
+      retainedSource = fd;
+      this.calls.push({
+        method: "updateNativeOverlayHostLinuxDmaBufSharedTexture",
+        args: [fd, ...args]
+      });
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  return { fake, pumpedSources };
+}
+
+test("Windows frame-driven pump coalesces to the newest retained source", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake, pumpedSources } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  pumpedSources.length = 0;
+  session.updateSharedTexture({ handle: Buffer.alloc(8, 1), width: 1, height: 1 });
+  session.updateSharedTexture({ handle: Buffer.alloc(8, 2), width: 1, height: 1 });
+
+  assert.equal(session.snapshot().pumpCount, initialPumpCount);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture").length,
+    2
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
+  assert.deepEqual(pumpedSources, [2]);
+});
+
+test("closing a Windows session cancels its deferred frame-driven pump", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(clearSteamBridgeCache);
+
+  const initialNativePumpCount = fake.calls.filter(
+    (call) => call.method === "pumpNativeOverlayProbeWindow"
+  ).length;
+  session.updateFrame({ data: Buffer.from([9, 0, 0, 0]), width: 1, height: 1 });
+  assert.equal(
+    fake.calls.filter((call) => call.method === "updateNativeOverlayHostFrame").length,
+    1
+  );
+  session.close();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length,
+    initialNativePumpCount
+  );
+});
+
+test("Windows continuous presentation remains the sole pump owner for frame uploads", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({
+    pumpIntervalMs: 10000,
+    continuousPresent: true
+  });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  session.updateFrame({ data: Buffer.from([3, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
+      .map((call) => call.args[0]),
+    [true]
+  );
+});
+
+test("Windows deferred frame pump revalidates overlay state before presenting", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  session.updateFrame({ data: Buffer.from([4, 0, 0, 0]), width: 1, height: 1 });
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount);
+  assert.equal(session.snapshot().overlayActive, true);
+});
+
+test("Linux GLX frame uploads retain their synchronous pump", (t) => {
+  setProcessPlatformForTest(t, "linux");
+  const { fake, pumpedSources } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  pumpedSources.length = 0;
+  session.updateFrame({ data: Buffer.from([5, 0, 0, 0]), width: 1, height: 1 });
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
+  session.updateSharedTexture({
+    nativePixmap: {
+      planes: [{ fd: 6, stride: 4, offset: 0, size: 4 }],
+      modifier: "0"
+    },
+    pixelFormat: "bgra",
+    width: 1,
+    height: 1
+  });
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 2);
+  assert.deepEqual(pumpedSources, [5, 6]);
+});
+
+test("setFrameRate cannot cancel a pending Windows frame-driven pump", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  session.updateFrame({ data: Buffer.from([7, 0, 0, 0]), width: 1, height: 1 });
+  session.setFrameRate(2);
+  assert.equal(session.snapshot().frameRate, 2);
+  assert.equal(session.snapshot().pumpIntervalMs, 500);
+  assert.equal(session.snapshot().pumpCount, initialPumpCount);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
+  assert.equal(session.snapshot().frameRate, 2);
+  assert.equal(session.snapshot().pumpIntervalMs, 500);
+});
+
 test("native overlay session retargets its presentation timer by frame rate", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
@@ -22483,7 +24156,7 @@ test("native overlay session retargets its presentation timer by frame rate", as
   assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
 
   session.updateFrame({ data: Buffer.alloc(4), width: 1, height: 1 });
-  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 2);
+  assert.equal(fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length, 1);
 
   session.setFrameRate(120);
   assert.equal(session.snapshot().frameRate, 120);
@@ -22857,6 +24530,215 @@ test("native overlay presenter defers macOS host attach while locked or display-
   );
 
   presenter.close();
+});
+
+test("native overlay presenter gives the macOS MTKView one requested display-rate clock", async (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([1, 2, 0, 2, 6, 0, 0, 0]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    getMacOverlayEnvironment() {
+      return { screenLocked: false, displayAsleep: false };
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    setNativeOverlayHostContinuousPresent(continuous, frameRate) {
+      this.calls.push({
+        method: "setNativeOverlayHostContinuousPresent",
+        args: [continuous, frameRate]
+      });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  const window = {
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return hostHandle;
+    },
+    getContentBounds() {
+      return { x: 0, y: 24, width: 1280, height: 720 };
+    },
+    isFullScreen() {
+      return false;
+    },
+    once() {},
+    on() {},
+    off() {},
+    webContents: {
+      once() {},
+      on() {},
+      off() {},
+      invalidate() {},
+      send() {}
+    }
+  };
+  const overlay = steam.overlay.createElectronSteamOverlay(window, {
+    closeWithWindow: false,
+    overlayShortcut: false,
+    autoPrepareForNotifications: false,
+    scrubSteamOverlayChildProcessEnv: false,
+    idleFps: 0,
+    activeOverlayFps: 120,
+    needsPresentFps: 120,
+    pollIntervalMs: 10000,
+    activationBoostMs: 0,
+    activeGraceMs: 0
+  });
+  t.after(() => overlay.close());
+  const presenter = overlay.presenter;
+  const continuousPresentCalls = () =>
+    fake.calls
+      .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
+      .map((call) => call.args);
+
+  assert.equal(overlay.snapshot().electronOverlay.presenterMode, "persistent");
+  assert.equal(overlay.snapshot().currentFps, 0);
+  assert.deepEqual(continuousPresentCalls(), [[false, 0]]);
+
+  const activation = presenter.beginOverlayActivation();
+  assert.equal(presenter.snapshot().currentFps, 120);
+  assert.deepEqual(continuousPresentCalls(), [[false, 0], [true, 120]]);
+
+  activation.disconnect();
+  assert.equal(presenter.snapshot().currentFps, 0);
+  assert.deepEqual(continuousPresentCalls(), [[false, 0], [true, 120], [false, 0]]);
+
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  assert.equal(presenter.snapshot().overlayActive, true);
+  assert.equal(presenter.snapshot().currentFps, 120);
+  assert.deepEqual(
+    continuousPresentCalls(),
+    [[false, 0], [true, 120], [false, 0], [true, 120]]
+  );
+
+  presenter.setFrameRate(48);
+  assert.equal(presenter.snapshot().currentFps, 48);
+  assert.deepEqual(continuousPresentCalls().at(-1), [true, 48]);
+  await new Promise((resolve) => setImmediate(resolve));
+  const managedPumpCount = fake.calls.filter(
+    (call) => call.method === "pumpNativeOverlayProbeWindow"
+  ).length;
+  const lifecycleSampleStartedAt = performance.now();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const lifecycleSampleDurationMs = performance.now() - lifecycleSampleStartedAt;
+  const managedPumpDelta = fake.calls.filter(
+    (call) => call.method === "pumpNativeOverlayProbeWindow"
+  ).length - managedPumpCount;
+  assert.ok(
+    managedPumpDelta <= 1,
+    `the JS lifecycle loop may consume one already-armed tick but must not duplicate Metal's display-rate clock (${managedPumpDelta} pumps in ${Math.round(lifecycleSampleDurationMs)} ms)`
+  );
+
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+  assert.equal(presenter.snapshot().overlayActive, false);
+  assert.equal(presenter.snapshot().currentFps, 0);
+  assert.deepEqual(continuousPresentCalls().at(-1), [false, 0]);
+
+  overlay.close();
+  assert.deepEqual(continuousPresentCalls().at(-1), [false, 0]);
+
+  const zeroFpsOverlay = steam.overlay.createElectronSteamOverlay(window, {
+    closeWithWindow: false,
+    overlayShortcut: false,
+    autoPrepareForNotifications: false,
+    scrubSteamOverlayChildProcessEnv: false,
+    idleFps: 0,
+    activeOverlayFps: 0,
+    needsPresentFps: 0,
+    pollIntervalMs: 10000,
+    activationBoostMs: 0,
+    activeGraceMs: 0
+  });
+  t.after(() => zeroFpsOverlay.close());
+  const zeroFpsCallCount = continuousPresentCalls().length;
+  assert.equal(zeroFpsOverlay.snapshot().currentFps, 0);
+  assert.deepEqual(continuousPresentCalls().at(-1), [false, 0]);
+
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  assert.equal(zeroFpsOverlay.snapshot().overlayActive, true);
+  assert.equal(zeroFpsOverlay.snapshot().currentFps, 0);
+  assert.equal(continuousPresentCalls().length, zeroFpsCallCount);
+
+  zeroFpsOverlay.close();
+});
+
+test("native overlay session retargets an active macOS MTKView without toggling it", (t) => {
+  setProcessPlatformForTest(t, "darwin");
+
+  const hostHandle = Buffer.from([6, 0, 0, 0, 0, 0, 0, 0]);
+  let hostOpen = false;
+  const fake = createFakeNative({
+    getMacOverlayEnvironment() {
+      return { screenLocked: false, displayAsleep: false };
+    },
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    setNativeOverlayHostCursorHidden() {},
+    setNativeOverlayHostFullScreen() {},
+    setNativeOverlayHostContinuousPresent(continuous, frameRate) {
+      this.calls.push({
+        method: "setNativeOverlayHostContinuousPresent",
+        args: [continuous, frameRate]
+      });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const session = steam.overlay.startNativeOverlaySession({
+    nativeWindowHandle: hostHandle,
+    continuousPresent: true,
+    frameRate: 30
+  });
+  const continuousPresentCalls = () => fake.calls
+    .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
+    .map((call) => call.args);
+
+  assert.deepEqual(continuousPresentCalls(), [[true, 30]]);
+  session.setFrameRate(60);
+  assert.deepEqual(continuousPresentCalls(), [[true, 30], [true, 60]]);
+  session.close();
+  assert.deepEqual(continuousPresentCalls(), [[true, 30], [true, 60], [false, 0]]);
 });
 
 test("electron steam overlay manager fails fast while the macOS native host is unavailable", async (t) => {
@@ -29312,6 +31194,76 @@ test("parties facade exposes typed callback helpers", (t) => {
   );
 });
 
+test("native inventory async calls use the callback lane that owns their interface", () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "compat.rs"),
+    "utf8"
+  );
+
+  const rustFunctionBody = (name) => {
+    const signatureMatch = new RegExp(`\\bfn ${name}(?:<[^>]+>)?\\s*\\(`).exec(source);
+    const signature = signatureMatch?.index ?? -1;
+    assert.notEqual(signature, -1, `missing Rust function ${name}`);
+    const bodyStart = source.indexOf("{", signature);
+    assert.notEqual(bodyStart, -1, `missing Rust function body ${name}`);
+    let depth = 0;
+    for (let index = bodyStart; index < source.length; index += 1) {
+      if (source[index] === "{") {
+        depth += 1;
+      } else if (source[index] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return source.slice(bodyStart, index + 1);
+        }
+      }
+    }
+    assert.fail(`unterminated Rust function body ${name}`);
+  };
+
+  const clientFunctions = [
+    "inventory_request_eligible_promo_item_definition_ids",
+    "inventory_start_purchase",
+    "inventory_request_prices"
+  ];
+  const gameServerFunctions = [
+    "game_server_inventory_request_eligible_promo_item_definition_ids",
+    "game_server_inventory_start_purchase",
+    "game_server_inventory_request_prices"
+  ];
+
+  for (const name of clientFunctions) {
+    const body = rustFunctionBody(name);
+    assert.match(body, /steam_client_inventory\(\)\?/);
+    assert.match(
+      body,
+      /wait_for_inventory_api_call\(\s*InventoryInterfaceContext::Client,/
+    );
+    assert.doesNotMatch(body, /steam_game_server_inventory\(\)\?/);
+    assert.doesNotMatch(body, /InventoryInterfaceContext::GameServer/);
+  }
+
+  for (const name of gameServerFunctions) {
+    const body = rustFunctionBody(name);
+    assert.match(body, /steam_game_server_inventory\(\)\?/);
+    assert.match(
+      body,
+      /wait_for_inventory_api_call\(\s*InventoryInterfaceContext::GameServer,/
+    );
+    assert.doesNotMatch(body, /steam_client_inventory\(\)\?/);
+    assert.doesNotMatch(body, /InventoryInterfaceContext::Client/);
+  }
+
+  const laneRouter = rustFunctionBody("wait_for_inventory_api_call");
+  assert.match(
+    laneRouter,
+    /InventoryInterfaceContext::Client\s*=>\s*\{\s*wait_for_api_call\(/
+  );
+  assert.match(
+    laneRouter,
+    /InventoryInterfaceContext::GameServer\s*=>\s*\{\s*wait_for_game_server_api_call\(/
+  );
+});
+
 test("inventory facade covers result, item, definition, price, and update flows", async (t) => {
   const player = { steamId64: "76561198000000008", steamId32: "STEAM_0:0:19867140", accountId: 39734280 };
   const fake = createFakeNative({
@@ -29623,7 +31575,9 @@ test("inventory facades expose typed callback helpers", (t) => {
     })
   ];
   const emit = (callbackName, payload) => {
-    fake.callbacks.get(steam.SteamCallback[callbackName])(payload);
+    // Match the positional argument envelope emitted by the real napi-rs
+    // JsCallback binding rather than the direct payload used by most mocks.
+    fake.callbacks.get(steam.SteamCallback[callbackName])({ 0: payload });
   };
 
   emit("SteamInventoryResultReady", { handle: 10, result: 1 });
