@@ -196,6 +196,16 @@ The same-day Chromium M150 branch head
 query in `SetPreferredInterval` and `GetSupportedFrameIntervals`, so no current
 Electron 43-compatible Chromium backport exists.
 
+FOV4 now owns a durable `--promotion-gate` mode instead of relying on an
+ignored RC-number-specific focused wrapper. It hard-selects the exact
+`warm-relaunch` / `display-pacing-transition` / `fps-baseline` prefix at the
+same-resolution fixed-60 profile, requires the shipped App ID and 95% cadence
+floor, rejects ad-hoc cases/profiles, and applies final-mode Developer ID,
+hardened-runtime, Gatekeeper, notarization, and stapled-ticket verification in
+both controller and isolated profile processes. The historical RC80 controller
+is explicitly non-reusable; HID inactivity is no longer authorization and
+lock-capable sleep remains permanently outside QA and release.
+
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
 unused hash-named copy. After the fixed-60 pacing prefix and the two affected

@@ -1,6 +1,6 @@
 # Cross-platform Actual-game Exhaustive QA
 
-Last updated: 2026-07-26
+Last updated: 2026-07-28
 
 This is the release-grade manual verification contract for a real game using
 Steam Bridge. It complements the API/route matrices; it does not multiply every
@@ -32,6 +32,10 @@ actual game renderer.
 - Restore the user's exact original display configuration even after a failed
   case. Prefer lifetime-scoped OS transactions and a separate restore guard to
   permanent display mutation.
+- Lock-capable display-sleep and system-sleep automation is permanently retired
+  on macOS because it can invoke the security lock screen. Preflight must reject
+  an already locked/asleep host, but QA and release must never induce sleep,
+  wake, or lock. Historical receipts remain diagnostic-only evidence.
 
 ## Result vocabulary
 
@@ -253,11 +257,12 @@ Required Mac additions:
   activation, notch/work-area, recording-stress, and mixed-display cases when
   those capabilities are present. Unsupported/private Space enumeration is not
   required.
-- Exercise the browser-only display-link path through cold and warm startup,
-  sleep/wake, display sleep/wake, and deliberate GPU-process failure/recovery.
-  Require the same renderer/application recovery semantics, correct selected
-  display cadence, no duplicate display-link clock, and zero new crash or hang
-  evidence. These cases remain open and are required before release.
+- Exercise the browser-only display-link path through cold and warm startup and
+  deliberate GPU-process failure/recovery. Require the same renderer/application
+  recovery semantics, correct selected display cadence, no duplicate display-link
+  clock, and zero new crash or hang evidence. Lock-capable display-sleep and
+  system-sleep cases are excluded by the operating rule above and must not be
+  restored as release gates.
 - Search current macOS DiagnosticReports plus Steam crash evidence from the
   exact run interval. Zero new app, native host, Steam, or injected renderer
   crashes are allowed.
@@ -366,7 +371,7 @@ with any required non-pass case.
 | Platform | Durable evidence | Remaining before next release |
 | --- | --- | --- |
 | Windows | Complete 2026-07-22 actual-game pass at 60/165 Hz, low/preferred resolution and 100/200% scale; 2026-07-26 actual-game proof of exact-host Steam modal capture, stable 165 Hz presentation, Escape release, and immediate title-drag recovery | Focused-retest only if the final candidate affects the modal/input diagnostics or a post-close transition, then run one final exact-candidate pass |
-| macOS Apple Silicon | Exact `338f203` signed smoke package passed 55/55 Steam route cases on Retina/Metal; focused receipt 36 passed the repaired 120 Hz/2x actual-game active move/resize/maximize/minimize/focus/simple-fullscreen path with callback-backed deactivation/reactivation, same-child hidden pause, stable counters, exact display restore, and zero crashes. Minimal Electron receipts 69/70/71 isolated the default persistent begin-frame `CVDisplayLink` restore defect; focused receipt 73 and fully occluded/unfocused receipt 75 held 120 -> 60 -> 120 with Chromium's browser-only `CADisplayLink` arm. These controls are diagnostic only. | Prove the browser-only arm on the exact actual-game candidate, including cold/warm startup, sleep/wake, display-sleep and GPU-process recovery; complete the still-unproven five-profile actual-game cases; then run one final complete actual-game pass and the 55-route gate once on that exact signed/notarized/stapled candidate |
+| macOS Apple Silicon | Exact `338f203` signed smoke package passed 55/55 Steam route cases on Retina/Metal. RC80/RC85 focused actual-game receipts close the attached-child geometry, gesture, minimum-size, native-state, overlay lifecycle, GPU-recovery, Retina/1x visual-shape, and display-supervisor defects. Exact signed/notarized/stapled test-only RC89 fingerprint `cb1d53b7631ba74444b0d06eaac6d905351e5be91acdbb5894620d4b3a4c5b98` ran Electron 44.0.0-alpha.7 / Chromium 152 twice and repeatably removed the Chromium 150 post-restore half-rate failure: factors stayed `[1,1]`, skipped callbacks stayed zero, restored cadence remained approximately 60 FPS, the display restored exactly, Steam survived, and all crash categories stayed zero. | Do not ship the isolation alpha. Promote an acceptable Electron 44 build or supported backport through the exact signed cadence gate; focused-retest the affected Retina/1x zoom shapes; then run one final complete 25-case/five-profile actual-game pass and the 55-route gate on that exact signed/notarized/stapled candidate. Lock-capable sleep is permanently excluded. |
 | Steam Deck Desktop | Actual-game one-host geometry/input/overlay/90 Hz pass | Bind to the final candidate and canonical receipt |
 | Steam Deck Game Mode | Focused `1280x800` compositor-native checks | Complete canonical Game Mode receipt on the final candidate |
 | Other Linux desktop | Architecture/package gates only | Physical desktop matrix when a supported runner is available |
