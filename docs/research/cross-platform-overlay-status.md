@@ -4797,6 +4797,19 @@ fallback was weakened to obtain the pass.
 
 ## Latest macOS Recovery Evidence
 
+Exact signed/notarized/stapled RC85 fingerprint
+`826a3605dae51ca40f413f7f7d5868bafe5253b333853c031dc8074e2639d73b`
+passed the focused scale-1 live-display case at
+`/private/tmp/fov4-macos-qa-rc85-scale1-display-live-clamp-01`. The preceding
+failure was isolated to the external QA driver retaining a scale-1 window
+origin after switching to a 1168x730 low-Retina mode, leaving the resize corner
+off-screen. FOV4 commit `694636d` clamps the staging origin to the temporary
+mode while preserving full gesture travel. The corrected case proved real
+title movement and corner resize, passive and active Steam transitions, exact
+same-child alignment, healthy pixels and cadence, exact display restoration,
+Steam survival, and zero crashes without changing the RC85 app or Steam Bridge
+native child.
+
 A physical Apple Silicon review at exact release head `0846e7b` used the public
 Apple Silicon native artifact retained by Release run `29363098329` and packaged
 Electron `43.1.0` from a clean checkout. Release-artifact verification, the

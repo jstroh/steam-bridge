@@ -52,6 +52,50 @@ than assuming a historical resolution or stable numeric mode ID. Use
 CoreGraphics application-scoped display transactions with an independent
 restore guarantee; never depend on a permanent display-setting mutation.
 
+### 2026-07-28 RC85 actual-game checkpoint
+
+The current exact signed, notarized, stapled, and Gatekeeper-accepted app is
+RC85 at
+`/private/tmp/fov4-macos-rc-browser-display-link-85/output/mac-arm64/Fantasy Online 2.app`.
+Its sorted-tree fingerprint is
+`826a3605dae51ca40f413f7f7d5868bafe5253b333853c031dc8074e2639d73b`
+(607 entries, 352338184 bytes). Focused receipt
+`/private/tmp/fov4-macos-qa-rc85-low-retina-simple-fullscreen-01` is green for
+the application-owned simple-fullscreen repair, semantic maximized-state
+restoration, exact work-area recovery, renderer focus, candidate cleanup,
+Steam survival, display restoration, and zero crashes.
+
+The prior complete RC82 actual-game attempt passed 119/125 executions. Every
+low-Retina baseline, trusted-input, minimum-size, and simple-fullscreen failure
+is now individually closed. The remaining scale-1 `display-live-transition`
+failure was also a harness defect, not an AppKit or attached-child regression:
+after entering the 1168x730 low-Retina mode, the driver reused the scale-1
+baseline origin and placed a 900x600 frame at `(360,270)`. Its bottom-right
+corner `(1260,870)` was outside the live desktop. Title dragging remained
+reachable while every corner drag correctly produced no resize. A one-run
+diagnostic sweep across offsets -8, -4, -1, 0, 1, 4, and 8 confirmed that no
+offset could make an off-screen target reachable; child/parent pairing,
+pointer cleanup, candidate cleanup, display restoration, Steam survival, and
+zero crashes remained green.
+
+FOV4 commit `694636d` makes gesture staging optionally consume the temporary
+mode's logical dimensions and reserves the contract's full 140-point right and
+70-point downward travel. The corrected live-transition frame is
+`(128,60,900,600)`. External driver hash
+`6d7731ba32c009bb50c61a6d1a6758e9daf2f97e4e9c3e9feec1976b8ddc5c17`
+passed the complete focused case at
+`/private/tmp/fov4-macos-qa-rc85-scale1-display-live-clamp-01`: physical title
+move and corner resize, passive and active scale transitions, exact child
+alignment, visual health, target-rate presentation, cleanup, exact desktop
+restoration, Steam survival, and all crash categories passed. RC85 itself was
+unchanged. Do not add an AppKit resize workaround, retarget the child, or retry
+more edge offsets for this settled harness error.
+
+Only the scale-1 `overlay-state-stress` visual failure from the RC82 attempt
+remains open. Retest that case next. After it is individually green, run one
+complete 25-case/five-profile actual-game pass and then the pinned 55-route
+matrix on the same exact candidate. Do not rerun already-green focused cases.
+
 Mac pacing has three deliberately separate signals. CoreGraphics supplies the
 nominal selected display rate. Renderer-PID-pinned Chromium `PipelineReporter`
 presentation feedback is the primary actual-game surface gate, bracketed by
