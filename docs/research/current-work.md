@@ -230,6 +230,17 @@ to Electron `44.0.0-alpha.7`, records channel `alpha` and
 `candidate_dependency_prerelease`. Steam remained healthy and the driver never
 reached display mutation or game launch.
 
+The affected current qualification lane then passed live on unchanged RC89 at
+`/private/tmp/fov4-macos-qa-rc89-qualification-gate-01`. Its canonical receipt
+labels the run `qualification`, retains the exact RC89 bundle hash, classifies
+Electron `44.0.0-alpha.7` as `alpha` and non-releasable, and closes every
+selected case. Post-restore renderer samples measured 60.000/60.002/59.984 FPS;
+PID-pinned Chromium presentation measured 58.343 FPS (97.2% of fixed 60 Hz).
+The following baseline remained approximately 60 FPS with the same 58.343 FPS
+presentation result. All crash categories stayed zero, the exact candidate
+closed, Steam survived, and the original 120 Hz display configuration restored
+exactly. This proves the separated isolation lane, not release eligibility.
+
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
 unused hash-named copy. After the fixed-60 pacing prefix and the two affected
