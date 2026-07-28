@@ -122,11 +122,27 @@ rounded. Focused-retest the same overlay-state case at max-Hz Retina and scale
 1 next; do not treat consolidation attempt 02 as release evidence or start a
 new full pass before both shapes are green.
 
+The same diagnostic attempt then reproduced the separately tracked Chromium
+post-restore half-rate defect in the fixed-60 profile. After the exact
+120 -> 60 -> 120 -> 60 sequence, renderer rAF and PID-pinned presentation
+feedback were both exactly 30 FPS while the unchanged attached Metal child
+remained healthy at 60 FPS. The transition trace recorded 110 skipped browser
+display-link callbacks and preference factors ending in factor two. This
+proves the newly added immediate one-DIP move-and-restore pair was not yet a
+valid repair: its compensating event allowed Chromium to return to the stale
+factor-two preference. The prior causal receipt proved one non-clicking
+one-DIP renderer-local move. FOV4 now sends exactly that single focused-window
+event after the display settles, never moves or clicks the OS pointer, and lets
+the next real pointer event replace the one-DIP page-local position. Build a
+new exact candidate and focused-retest only the reduced warm-relaunch/display-
+pacing/baseline prefix before broader QA.
+
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
-unused hash-named copy. After the two affected focused cases are green, run one
-complete 25-case/five-profile actual-game pass and then the pinned 55-route
-matrix on the same exact candidate. Do not rerun unrelated focused cases.
+unused hash-named copy. After the fixed-60 pacing prefix and the two affected
+zoom-shape cases are green on the new exact candidate, run one complete
+25-case/five-profile actual-game pass and then the pinned 55-route matrix on
+that same candidate. Do not rerun unrelated focused cases.
 
 Mac pacing has three deliberately separate signals. CoreGraphics supplies the
 nominal selected display rate. Renderer-PID-pinned Chromium `PipelineReporter`
