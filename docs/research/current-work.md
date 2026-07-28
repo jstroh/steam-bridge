@@ -240,6 +240,12 @@ The following baseline remained approximately 60 FPS with the same 58.343 FPS
 presentation result. All crash categories stayed zero, the exact candidate
 closed, Steam survived, and the original 120 Hz display configuration restored
 exactly. This proves the separated isolation lane, not release eligibility.
+The retained owner-executable wrapper SHA-256 is
+`acff87ed2bf1ff9224f1b5db12fe92e7a421ed4887252ccf350fdd70c5b0c7cf`;
+it pins driver SHA-256
+`b21253d6af7a42b57c51aa1533e6aca2ccaacd48184b96d5db1a392c95848225`
+and visual-contract SHA-256
+`0843430d0484c75419dae63570cd1f6eac872605a13e3852a8384bafd08f28e4`.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
