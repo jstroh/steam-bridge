@@ -342,6 +342,14 @@ timing guess; production timer ownership and shutdown behavior are unchanged.
 The isolated serial test and complete local `npm test` gate pass, including
 347/347 unit tests.
 
+Follow-up CI run `30355879714` confirmed that the Windows reservation test now
+passes on Linux and macOS runners, then exposed the identical hidden dependency
+in the immediately following Linux application-host warmup test. Both tests now
+use one shared referenced-deadline helper around promises whose production
+timers intentionally do not own process lifetime. This keeps the harness alive
+only until the operation settles or its explicit test deadline fails and avoids
+further fixed-delay guesses.
+
 The subsequent route-lane audit proves `--suite full` expands to exactly 55
 unique cases and contains zero unavailable, locked, display-asleep, or sleep
 actions; the separate `unavailable` suite is not a release requirement. The

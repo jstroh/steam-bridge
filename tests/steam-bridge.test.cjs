@@ -3720,6 +3720,21 @@ async function waitForCondition(predicate, timeoutMs = 500, intervalMs = 10) {
   return false;
 }
 
+async function waitForPromiseWithReferencedDeadline(promise, timeoutMs, description) {
+  let deadlineTimer;
+  const deadline = new Promise((_, reject) => {
+    deadlineTimer = setTimeout(
+      () => reject(new Error(`${description} did not settle within ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+  try {
+    return await Promise.race([promise, deadline]);
+  } finally {
+    clearTimeout(deadlineTimer);
+  }
+}
+
 function steamWebOverlayCalls(fake) {
   return fake.calls.filter((call) => call.method === "activateOverlayToWebPage");
 }
@@ -23198,19 +23213,11 @@ test("native overlay checkout reservation uses one Windows surface and fences st
     fake.calls.filter((call) => call.method === "isOverlayEnabled").length > enabledReadsBeforeWait
   );
   overlayEnabled = true;
-  let readinessDeadline;
-  const readinessTimeout = new Promise((_, reject) => {
-    readinessDeadline = setTimeout(
-      () => reject(new Error("checkout reservation did not observe readiness")),
-      600
-    );
-  });
-  let first;
-  try {
-    first = await Promise.race([pending, readinessTimeout]);
-  } finally {
-    clearTimeout(readinessDeadline);
-  }
+  const first = await waitForPromiseWithReferencedDeadline(
+    pending,
+    600,
+    "Windows checkout readiness"
+  );
   assert.equal(first.isActive(), true);
   assert.ok(first.readyAt >= first.reservedAt);
   assert.equal(first.expiresAt - first.readyAt, 60);
@@ -23310,7 +23317,11 @@ test("Linux application-host checkout reservation waits for warmup on the same h
   assert.ok(defaultWarmupStatus.warmupRemainingMs > 2500);
   assert.ok(defaultWarmupStatus.warmupRemainingMs <= 3000);
   await assert.rejects(
-    defaultWarmupSession.acquireCheckoutReservation({ timeoutMs: 10 }),
+    waitForPromiseWithReferencedDeadline(
+      defaultWarmupSession.acquireCheckoutReservation({ timeoutMs: 10 }),
+      100,
+      "default Linux checkout timeout"
+    ),
     (error) => {
       assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
       assert.equal(error.state, "be ready");
@@ -23335,7 +23346,11 @@ test("Linux application-host checkout reservation waits for warmup on the same h
   assert.equal(before.reason, "overlay-not-ready");
   assert.equal(before.canWait, true);
   assert.ok(before.warmupRemainingMs > 0);
-  const reservation = await session.acquireCheckoutReservation({ timeoutMs: 500, leaseTimeoutMs: 1000 });
+  const reservation = await waitForPromiseWithReferencedDeadline(
+    session.acquireCheckoutReservation({ timeoutMs: 500, leaseTimeoutMs: 1000 }),
+    600,
+    "Linux checkout warmup"
+  );
   assert.ok(reservation.readyAt - session.snapshot().startedAt >= 80);
   assert.equal(reservation.isActive(), true);
   const applicationHostOpens = fake.calls.filter(
