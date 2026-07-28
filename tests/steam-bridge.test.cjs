@@ -12122,7 +12122,7 @@ test("macOS keeps one display-synchronized MTKView clock in passive and active p
   const metalSource = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
     "utf8"
-  );
+  ).replace(/\r\n/g, "\n");
   assert.match(metalSource, /_view\.preferredFramesPerSecond = 60;/);
   assert.match(metalSource, /_view\.enableSetNeedsDisplay = NO;/);
   assert.match(metalSource, /_view\.autoResizeDrawable = NO;/);
@@ -12200,7 +12200,7 @@ test("macOS display notifications rebind the existing MTKView clock without recr
   const source = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
     "utf8"
-  );
+  ).replace(/\r\n/g, "\n");
   assert.match(
     source,
     /NSApplicationDidChangeScreenParametersNotification[\s\S]*updateDisplayConfigurationRebindingViewClock:YES/

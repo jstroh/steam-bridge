@@ -357,6 +357,13 @@ abort and close paths that settle synchronously retain their original direct
 assertions. This is the final checkout-reservation test block that can depend on
 the intentionally unreferenced production readiness and lease timers.
 
+CI run `30356476302` passed the complete macOS and Linux jobs, including unit,
+Rust format/native compile, and API gates. Its Windows job failed earlier in two
+macOS Objective-C++ source-shape tests because the runner supplied CRLF text and
+the tests searched for literal LF method boundaries. Those two test-only reads
+now normalize CRLF to LF before slicing. The native source and product behavior
+are unchanged.
+
 The subsequent route-lane audit proves `--suite full` expands to exactly 55
 unique cases and contains zero unavailable, locked, display-asleep, or sleep
 actions; the separate `unavailable` suite is not a release requirement. The
