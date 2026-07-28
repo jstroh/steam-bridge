@@ -350,6 +350,13 @@ timers intentionally do not own process lifetime. This keeps the harness alive
 only until the operation settles or its explicit test deadline fails and avoids
 further fixed-delay guesses.
 
+CI run `30356141907` then passed both reservation tests on every runner and
+exposed the same harness-lifetime assumption in the adjacent typed-wait/release
+coverage. Every timer-owned phase in that test now uses the same shared helper;
+abort and close paths that settle synchronously retain their original direct
+assertions. This is the final checkout-reservation test block that can depend on
+the intentionally unreferenced production readiness and lease timers.
+
 The subsequent route-lane audit proves `--suite full` expands to exactly 55
 unique cases and contains zero unavailable, locked, display-asleep, or sleep
 actions; the separate `unavailable` suite is not a release requirement. The

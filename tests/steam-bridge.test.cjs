@@ -23427,7 +23427,11 @@ test("native checkout preparation rejects typed waits and releases every wrapper
   });
 
   await assert.rejects(
-    session.acquireCheckoutReservation({ timeoutMs: 20, leaseTimeoutMs: 1000 }),
+    waitForPromiseWithReferencedDeadline(
+      session.acquireCheckoutReservation({ timeoutMs: 20, leaseTimeoutMs: 1000 }),
+      100,
+      "native checkout presentation timeout"
+    ),
     (error) => {
       assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
       assert.equal(error.state, "hook its Windows native presentation surface");
@@ -23469,7 +23473,11 @@ test("native checkout preparation rejects typed waits and releases every wrapper
     },
     { timeoutMs: 100, leaseTimeoutMs: 1000, signal: operationAbort.signal }
   );
-  await abortOperationStarted;
+  await waitForPromiseWithReferencedDeadline(
+    abortOperationStarted,
+    200,
+    "aborted checkout operation start"
+  );
   operationAbort.abort();
   await assert.rejects(abortedOperation, (error) => {
     assert.equal(error instanceof steam.SteamOverlayWaitAbortedError, true);
@@ -23496,8 +23504,16 @@ test("native checkout preparation rejects typed waits and releases every wrapper
     },
     { timeoutMs: 100, leaseTimeoutMs: 25 }
   );
-  await expiringOperationStarted;
-  await assert.rejects(expiredOperation, (error) => {
+  await waitForPromiseWithReferencedDeadline(
+    expiringOperationStarted,
+    200,
+    "expiring checkout operation start"
+  );
+  await assert.rejects(waitForPromiseWithReferencedDeadline(
+    expiredOperation,
+    100,
+    "checkout operation lease expiry"
+  ), (error) => {
     assert.equal(error instanceof steam.SteamOverlayWaitTimeoutError, true);
     assert.equal(error.state, "finish checkout preparation operation");
     assert.equal(error.timeoutMs, 25);
@@ -23510,9 +23526,13 @@ test("native checkout preparation rejects typed waits and releases every wrapper
 
   const operationError = new Error("backend checkout failed");
   await assert.rejects(
-    session.withCheckoutPrepared(() => {
-      throw operationError;
-    }),
+    waitForPromiseWithReferencedDeadline(
+      session.withCheckoutPrepared(() => {
+        throw operationError;
+      }),
+      200,
+      "synchronous checkout operation failure"
+    ),
     (error) => {
       assert.equal(error, operationError);
       assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
@@ -23521,14 +23541,22 @@ test("native checkout preparation rejects typed waits and releases every wrapper
   );
   const asyncOperationError = new Error("async backend checkout failed");
   await assert.rejects(
-    session.withCheckoutPrepared(() => Promise.reject(asyncOperationError)),
+    waitForPromiseWithReferencedDeadline(
+      session.withCheckoutPrepared(() => Promise.reject(asyncOperationError)),
+      200,
+      "asynchronous checkout operation failure"
+    ),
     (error) => {
       assert.equal(error, asyncOperationError);
       assert.deepEqual(steam.getSteamOverlayCheckoutErrorTargetSnapshot(error), { type: "checkout" });
       return true;
     }
   );
-  assert.equal(await session.withCheckoutPrepared(() => "ok"), "ok");
+  assert.equal(await waitForPromiseWithReferencedDeadline(
+    session.withCheckoutPrepared(() => "ok"),
+    200,
+    "successful checkout operation"
+  ), "ok");
   assert.equal(session.getCheckoutReservationStatus().reservationActive, false);
 
   let markClosingOperationStarted;
@@ -23542,7 +23570,11 @@ test("native checkout preparation rejects typed waits and releases every wrapper
     },
     { leaseTimeoutMs: 1000 }
   );
-  await closingOperationStarted;
+  await waitForPromiseWithReferencedDeadline(
+    closingOperationStarted,
+    200,
+    "closing checkout operation start"
+  );
   session.close();
   await assert.rejects(closedOperation, (error) => {
     assert.equal(error instanceof steam.SteamOverlayWaitClosedError, true);
