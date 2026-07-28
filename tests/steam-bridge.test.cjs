@@ -23198,6 +23198,7 @@ test("native overlay checkout reservation uses one Windows surface and fences st
     fake.calls.filter((call) => call.method === "isOverlayEnabled").length > enabledReadsBeforeWait
   );
   overlayEnabled = true;
+  await new Promise((resolve) => setTimeout(resolve, 30));
   const first = await pending;
   assert.equal(first.isActive(), true);
   assert.ok(first.readyAt >= first.reservedAt);

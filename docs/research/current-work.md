@@ -329,6 +329,14 @@ existing `STEAM_BRIDGE_PYTHON` hook, including Linux, Steam Deck, macOS, and
 Windows fixture self-tests. The macOS locked/asleep records in that smoke are
 synthetic verifier fixtures only; no live lock or sleep action was performed.
 
+Checkpoint CI run `30352751958` later cancelled tests 262-347 on macOS,
+Windows, and Linux after the checkout-reservation test became the only owner of
+an intentionally unreferenced production poll timer. Parallel local tests had
+accidentally kept Node alive and hidden the test-harness dependency. The test
+now retains one bounded referenced delay across the readiness flip; production
+timer ownership and shutdown behavior are unchanged. The isolated serial test
+and complete local `npm test` gate pass, including 347/347 unit tests.
+
 The subsequent route-lane audit proves `--suite full` expands to exactly 55
 unique cases and contains zero unavailable, locked, display-asleep, or sleep
 actions; the separate `unavailable` suite is not a release requirement. The
