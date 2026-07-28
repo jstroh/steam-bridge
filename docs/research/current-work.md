@@ -148,14 +148,25 @@ Chromium 150.0.7871.129 source supplies the decisive explanation: its
 controllable `UseFrameIntervalDecider` feature. The switch is therefore a
 closed path, not a repair.
 
-The narrow optional desktop matcher that can request this exact lower cadence
-is `SingleVideoFrameRateThrottling`; upstream describes it as selecting a
-slower interval when a single video-like surface has a lower perfect cadence.
-FOV4 owns the next explicit every-vsync policy by disabling only that matcher
-before Electron readiness. Steam Bridge continues to own the separate, safe
-browser-only CADisplayLink selection and does not impose game-specific cadence
-policy on other consumers. Build a new exact candidate and focused-retest only
-the same reduced prefix twice before broader QA.
+RC88 tested the remaining optional desktop matcher by disabling
+`SingleVideoFrameRateThrottling` before readiness. Exact signed, notarized,
+stapled focused receipt
+`/private/tmp/fov4-macos-qa-rc88-single-video-pacing-01` failed identically:
+the transition and following independent baseline were both exactly 30 FPS.
+Its retained trace recorded 1,286 display-link callbacks, 108 skipped-vsync
+events, and preferred factors `[1,1,1,2]`; the post-restore and baseline probes
+skipped essentially every other callback. Cleanup restored mode 54/120 Hz,
+Steam survived, and all crash categories remained zero. The matcher override
+is a closed path and has been removed from FOV4.
+
+Chromium 150 source matches the trace: `ExternalBeginFrameSourceMac` stores and
+applies `vsync_subsampling_factor_` on every callback, while its
+same-display refresh-change handler is an empty TODO. Factor two had already
+been selected before the restored 60 Hz callbacks arrived, so another renderer
+cadence feature flag is not a justified next candidate. Keep Steam Bridge's
+browser-only CADisplayLink ownership unchanged. Isolate a supported source
+refresh/recreation path or a later stable Chromium repair before building a
+new exact candidate, then focused-retest only the same reduced prefix twice.
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
