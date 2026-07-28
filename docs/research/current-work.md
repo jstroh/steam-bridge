@@ -170,9 +170,27 @@ cadence feature flag is therefore not a justified next candidate.
 Chromium commit `b43494c23fc0af79df367767396e3e216bd91e97`, present in M152,
 changes this exact browser-display-link path to use the last known cached
 minimum for a zero preference instead of an ahead-of-callback hardware query.
-Keep Steam Bridge's browser-only CADisplayLink ownership unchanged. Test that
-upstream semantic change under Electron 44, then focused-retest only the same
-reduced prefix twice before any broader QA.
+Exact signed/notarized/stapled RC89 fingerprint
+`cb1d53b7631ba74444b0d06eaac6d905351e5be91acdbb5894620d4b3a4c5b98`
+tested that change with test-only Electron `44.0.0-alpha.7` / Chromium
+152.0.7969.0. Focused receipts
+`/private/tmp/fov4-macos-qa-rc89-electron44-pacing-01` and
+`/private/tmp/fov4-macos-qa-rc89-electron44-pacing-02` both passed the exact
+reduced prefix. Their transition traces retained factors `[1,1]` with zero
+skipped display-link callbacks, restored renderer samples stayed approximately
+60 FPS, and presentation feedback measured 59.334 and 57.693 FPS. Both restored
+exact mode 54/120 Hz, kept Steam alive, and recorded zero crashes. This
+repeatable A/B result validates the M152 repair while preserving Steam Bridge's
+browser-only CADisplayLink ownership.
+
+Electron 44 alpha was an isolation dependency only and must not ship. FOV4 has
+returned to stable Electron 43.2.0. Promote to an acceptable Electron 44 channel
+or a supported backport, rebuild and re-fingerprint, run this reduced prefix once
+as the promotion gate, and only then run the complete Mac matrix and route gate
+on that exact release candidate. A registry check on 2026-07-28 found 43.2.0 as
+the latest stable, 44.0.0-alpha.7 as the only Electron 44 prerelease, and no
+44.0.0-beta.1 package yet; the official schedule targets Electron 44 stable for
+[2026-08-25](https://releases.electronjs.org/schedule).
 
 The focused controller also corrected a proof-integrity defect by hashing the
 exact fixed-name visual-contract module imported by the driver, rather than an
