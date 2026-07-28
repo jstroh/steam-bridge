@@ -272,9 +272,11 @@ Required Mac additions:
   forbidden for both testing and release. Historical `qualification` receipts
   remain causal evidence only; the retained lane now uses the same stable-only
   preflight. Missing, malformed, or prerelease dependency metadata fails closed
-  and remains visible in the sanitized candidate fingerprint. If the required
-  repair exists only upstream, record the exact upstream commit/TODO and move
-  on until it ships in a supported stable Electron release.
+  and remains visible in the sanitized candidate fingerprint. If a repair
+  exists only upstream, record the exact commit/TODO. A product-owner release
+  exception must be explicit, case/version/signature-bound, retained in the
+  receipt, and leave every unaffected and native-presentation gate strict; it
+  never authorizes prerelease Electron.
 
 The complete Steam route matrix remains a separate final-candidate gate. Do not
 rerun its 55 cases during window/display development; run focused affected
@@ -350,7 +352,7 @@ The canonical `summary.json` is closed-schema and contains:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "suite": "cross-platform-actual-game-exhaustive",
   "candidate": {},
   "consumer": {},
@@ -367,9 +369,10 @@ The canonical `summary.json` is closed-schema and contains:
 }
 ```
 
-Each case entry includes `id`, `platformCaseId`, `status`, start/end timestamps,
-display profile, app/host/target PIDs in run-local form, pre/post state, exact
-assertions, artifact-relative evidence paths, and a failure code when not
+Each case entry includes `id`, `platformCaseId`, and an ordered `executions`
+array with exactly one entry per selected display profile. Each execution owns
+its status, timestamps, app/host/target PIDs in run-local form, pre/post state,
+exact assertions, artifact-relative evidence paths, and failure code when not
 passing. The summary includes SHA-256 for every raw log, screenshot/capture,
 mode journal, case event stream, executable, package, and native addon.
 
@@ -381,7 +384,8 @@ events.jsonl
 summary.json
 display-original.json
 display-final.json
-cases/<case-id>/...
+display-profiles/<profile-id>/mode.json
+cases/<case-id>/<profile-id>/...
 logs/app.stdout.log
 logs/app.stderr.log
 logs/steam-sanitized.log
@@ -399,9 +403,9 @@ The consumer repository now owns the executable Linux/Deck auditor at
 a compatibility entrypoint). It recomputes every artifact hash and
 requires both consumer and Steam Bridge commit/version identity, package
 archive/tree and executable/native-addon hashes, the exact ordered 37-row CORE
-contract, hashed per-case evidence, run-local process continuity, closed
-pre/post state, fixed case-specific assertion sets, one distinct evidence
-directory per CORE row, the prescribed logs/display/crash files, exact desktop
+contract, hashed per-case/per-profile evidence, run-local process continuity,
+closed pre/post state, fixed case-specific assertion sets, one distinct evidence
+directory per CORE row and profile, the prescribed logs/display/crash files, exact desktop
 restore,
 empty application stderr, zero crash counts, and three settled renderer/native
 presentation samples for baseline, overlay-active, and post-close phases on
@@ -414,6 +418,16 @@ target the measured display rate; a lower self-declared target is not accepted.
 The receipt binds one exact ordered five-case CDP stream to the same platform
 ID and loopback-forward transport, and rejects missing/duplicate/reordered
 cases or a Deck/non-Deck attestation mismatch.
+
+Schema v2 rejects the prior one-arbitrary-profile loophole. Every Desktop
+receipt needs at least three distinct physical profiles that collectively own
+exactly one baseline, maximum-refresh, fixed-60-Hz, lower-resolution,
+100%-scale, and non-100%-scale stress role. Logical/pixel dimensions, scale,
+refresh, fixed-cadence policy, and roles must exactly match each profile's
+hashed mode record. All 37 CORE cases execute once under every profile in the
+same canonical profile order. Game Mode instead accepts exactly one native
+`1280x800`, scale-1 gamescope profile and retains its existing enumerated
+desktop-capability exclusions.
 
 The ordered IDs and fixed assertion-key map exist only in the consumer's
 `scripts/cross-platform-core-qa-contract.mjs`. Every platform adapter and
@@ -434,8 +448,11 @@ manual observations or turns operator answers into a pass.
 
 In this table, an "acceptable Electron" means an exact stable release only.
 Historical alpha evidence is not authorization to run alpha, beta, nightly, or
-another prerelease. The M152 cadence repair is an upstream dependency until it
-ships in a supported stable Electron release.
+another prerelease. The current macOS candidate uses stable Electron 43.2.0 and
+retains one explicitly accepted, evidence-bound upstream cadence exception.
+The macOS table cell below retains the historical M152 promotion path as the
+eventual exception-removal gate; it no longer blocks the current stable-43.2.0
+release pass described above.
 
 | Platform | Durable evidence | Remaining before next release |
 | --- | --- | --- |

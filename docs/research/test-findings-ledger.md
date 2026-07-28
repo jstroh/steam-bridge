@@ -24,8 +24,23 @@ history remains in the linked platform documents.
   paths, or raw private payloads.
 - Electron QA and release candidates must use an exact stable Electron version.
   Alpha, beta, nightly, and every other prerelease are closed paths. When a fix
-  exists only upstream, record its exact commit/TODO and wait for a supported
-  stable Electron release instead of testing another prerelease.
+  exists only upstream, record its exact commit/TODO instead of testing another
+  prerelease. Any product-owner release exception must be exact, executable,
+  evidence-bound, receipt-visible, and preserve every unaffected gate.
+
+### Active product-owner release exception
+
+`MAC-CHROMIUM-POST-RESTORE-HALF-RATE-001` no longer blocks the current release.
+The product owner accepted that one upstream Chromium defect on 2026-07-28
+rather than waiting indefinitely for M152. FOV4 schema-v2 final QA permits it
+only with explicit `--allow-known-upstream-cadence-defect`, exact stable
+Electron 43.2.0, the `display-pacing-transition`/`fps_below_display_rate`
+combination, the retained factor-two/skipped-vsync signature, exact focus, and
+full-rate healthy attached-Metal presentation. Every accepted profile is
+receipt-visible with the exact upstream commit and evidence path. This
+supersedes the older row's wait-for-stable repeat condition; it does not reopen
+prerelease Electron, feature flags, synthetic input, child recreation, or
+popup/companion paths.
 
 ## Windows x64
 

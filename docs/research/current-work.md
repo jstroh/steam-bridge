@@ -186,11 +186,16 @@ browser-only CADisplayLink ownership.
 Electron 44 alpha was a historical isolation dependency only. Do not run or
 ship alpha, beta, nightly, or any other prerelease Electron again. FOV4 has
 returned to stable Electron 43.2.0. Chromium commit
-`b43494c23fc0af79df367767396e3e216bd91e97` is now an upstream dependency:
-record its availability and move on until a stable Electron release contains it
-or a supported stable backport. Then rebuild and re-fingerprint, run this
-reduced prefix once as the promotion gate, and only then run the complete Mac
-matrix and route gate on that exact release candidate. A registry check on
+`b43494c23fc0af79df367767396e3e216bd91e97` remains the upstream repair, but
+the product owner explicitly accepted the isolated Chromium post-refresh
+cadence defect for the current release instead of waiting indefinitely. FOV4's
+schema-v2 final lane permits one explicit
+`--allow-known-upstream-cadence-defect` exception only for stable Electron
+43.2.0, `display-pacing-transition`, `fps_below_display_rate`, the retained
+factor-two/skipped-vsync trace signature, exact focus, and full-rate healthy
+native Metal presentation. The receipt exposes every accepted profile and the
+exact upstream commit. All other pacing, geometry, input, overlay, crash, and
+cleanup gates remain strict. A registry check on
 2026-07-28 found 43.2.0 as
 the latest stable, 44.0.0-alpha.7 as the only Electron 44 prerelease, and no
 44.0.0-beta.1 package yet; the official schedule targets Electron 44 stable for
@@ -998,14 +1003,15 @@ unchanged menu/canvas geometry. One immediate post-menu sample contained a
 single 333 ms transition stall and was rejected; the settled focused rerun is
 the applicable result.
 
-The consumer now has a fail-closed final Linux/Deck receipt auditor at
+The consumer now has a fail-closed schema-v2 final Linux/Deck receipt auditor at
 `scripts/linux-final-qa-receipt.mjs`, with the prior Deck-named path retained as
 a compatibility entrypoint. It binds Linux Desktop, Deck Desktop, and Deck Game
 Mode receipts to both repositories and the exact package/native binaries,
 recomputes the raw artifact manifest, enforces all 37 shared CORE rows,
 resanitizes the CDP JSONL,
-requires fixed per-case assertion sets and distinct state/process/evidence
-continuity, rejects private text even after rehashing, scores three settled
+requires one ordered execution per CORE row and selected physical profile,
+fixed per-case assertion sets, and distinct state/process/evidence continuity,
+rejects private text even after rehashing, scores three settled
 baseline/active/post-close pacing samples per display profile, and rejects
 lower self-declared fixed-rate targets, dirty cleanup, stderr, crashes, or
 display drift. Desktop permits no omitted CORE rows. The separate `1280x800`
@@ -1013,6 +1019,14 @@ gamescope receipt permits only the enumerated
 desktop-window capabilities to be `not-applicable`; it cannot misreport them as
 passes or omit supported Game Mode behaviors. This closes the prior prose-only
 receipt gap but does not substitute for running the exact final candidate.
+
+The schema-v2 auditor also closes the one-arbitrary-profile loophole. Desktop
+receipts require at least three distinct modes collectively proving baseline,
+maximum refresh, fixed 60 Hz, lower resolution, 100% scale, and non-100% scale.
+Role semantics are checked against logical/pixel dimensions, scale, refresh,
+and an exact hashed mode record. Every CORE row must execute once under every
+profile in canonical order with profile-isolated evidence. Deck Game Mode is
+the only one-profile lane and is fixed to its native `1280x800`, scale-1 mode.
 
 The consumer's `scripts/cross-platform-core-qa-contract.mjs` is the sole source
 of truth for the ordered 37 CORE IDs and their fixed required assertion keys.
@@ -1062,7 +1076,14 @@ restored to the already-authenticated Mac. The Deck host was also unreachable,
 and no qualifying physical non-Deck Linux host is configured. Do not claim a
 live pass from the unit-qualified adapters. Resume Windows only with an already
 authenticated client, Deck only when its host is reachable, and non-Deck Linux
-only on a real supported x64 desktop.
+only on a real supported x64 desktop. On 2026-07-28 the Deck became reachable
+again and two session-scoped QA inhibitors were installed: KDE blocks power
+management/screensaver and logind independently blocks sleep, idle, and lid
+sleep. Both units were active with zero restarts. Steam started exclusively on
+the Deck, but exposed no authenticated helper or IPC session; automation did
+not interact with authentication. The game remained stopped. Resume the live
+Deck lane only after Steam is already authenticated; do not ask for or automate
+login input.
 
 ## Read First After Compaction: Windows Architecture
 
