@@ -5047,7 +5047,14 @@ mod linux {
         texture_height: c_int,
     }
 
+    const DRM_FORMAT_MOD_LINEAR: u64 = 0;
     const CHROMIUM_NO_DRM_MODIFIER: u64 = 0x00ff_ffff_ffff_ffff;
+
+    fn supports_dri3_pixmap_modifier(modifier: u64) -> bool {
+        modifier == DRM_FORMAT_MOD_LINEAR
+            || modifier == CHROMIUM_NO_DRM_MODIFIER
+            || modifier == u64::MAX
+    }
 
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -6048,7 +6055,7 @@ mod linux {
                 "Linux shared texture plane has {size} bytes; at least {minimum_size} are required",
             )));
         }
-        if modifier != CHROMIUM_NO_DRM_MODIFIER && modifier != u64::MAX {
+        if !supports_dri3_pixmap_modifier(modifier) {
             return Err(Error::from_reason(format!(
                 "Linux shared texture dma-buf modifier {modifier} is not yet supported",
             )));
@@ -8703,6 +8710,19 @@ void main() {
                     .unwrap_or(ptr::null())
             }
         });
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{supports_dri3_pixmap_modifier, CHROMIUM_NO_DRM_MODIFIER};
+
+        #[test]
+        fn dri3_pixmap_import_accepts_linear_and_unspecified_modifiers() {
+            assert!(supports_dri3_pixmap_modifier(0));
+            assert!(supports_dri3_pixmap_modifier(CHROMIUM_NO_DRM_MODIFIER));
+            assert!(supports_dri3_pixmap_modifier(u64::MAX));
+            assert!(!supports_dri3_pixmap_modifier(1));
+        }
     }
 }
 

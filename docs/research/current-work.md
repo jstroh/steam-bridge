@@ -36,21 +36,23 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
-The immediate lane is macOS on the physical Apple Silicon Retina host. Continue
-from the unreleased working tree beyond `338f203`; preserve the already-green
-55/55 route matrix at
-`/tmp/steam-bridge-macos-overlay-matrix-full3-338f203-20260725` and do not rerun
-that expensive route suite during implementation. The missing qualification is
-actual FOV4 plus automated physical title drag and edge/corner resize, exact
-`640x480` minimum, Cmd+Tab/focus recovery, maximize/minimize/restore,
-application-owned simple-fullscreen and separate native-Spaces diagnostic,
-capability-selected Retina and 1x scale modes, scale-factor transitions, the
-same logical/pixel mode at fixed 48 Hz and 60 Hz plus maximum/adaptive 120 Hz,
-overlay-active state stress, pixel/geometry alignment, and renderer/Metal
-presentation cadence. Resolve public CoreGraphics modes on each run rather
-than assuming a historical resolution or stable numeric mode ID. Use
-CoreGraphics application-scoped display transactions with an independent
-restore guarantee; never depend on a permanent display-setting mutation.
+macOS qualification is complete at the stable-43.2.0 checkpoint below. No
+physical non-Deck Linux host is configured, so that lane remains explicitly
+environment-unavailable rather than green. The active lane is the physical
+Steam Deck in Plasma Desktop Mode, followed by Deck Game Mode and Windows.
+During the 2026-07-28 Deck Desktop focused pass, the exact Electron 43.2.0
+native-pixmap metadata exposed modifier `0`; Linux defines that value as the
+linear modifier, but the Bridge accepted only Chromium's unspecified-modifier
+sentinels. That rejection left the native host continuously presenting a
+retained frame while page rAF still reported 90 FPS. The unreleased repair
+accepts linear modifier zero without broadening support to tiled/vendor
+modifiers. Its Deck-native Rust build passes the Linux unit test, and the live
+Steam-launched actual game now reports 89-91 shared-texture imports per second,
+the `x11-dri3-glx-texture-from-pixmap` backend, continuously increasing import
+counts, zero import failures, and 90 FPS native presentation. The ordinary
+Friends overlay retains that imported frame at 90 FPS; Escape closes it and
+live imports resume at 90 FPS. Finish only affected Deck Desktop cases, then run
+one final complete Desktop pass on the rebuilt exact candidate before Game Mode.
 
 ### 2026-07-28 stable-43.2.0 final-candidate checkpoint
 
@@ -1131,6 +1133,22 @@ native EIS Escape closed Steam; and post-overlay RAF measured 90.003 FPS with
 unchanged menu/canvas geometry. One immediate post-menu sample contained a
 single 333 ms transition stall and was rejected; the settled focused rerun is
 the applicable result.
+
+The 2026-07-28 client-px requalification found one native-pixmap compatibility
+gap that page scheduling alone could not detect. Electron 43.2.0 supplied the
+standard linear dma-buf modifier as decimal string `0`; the native import guard
+rejected it, so presenter cadence advanced against a retained frame while DRI3
+import count stayed zero. [Linux's DRM UAPI](https://docs.kernel.org/6.3/gpu/drm-uapi.html#formats-and-modifiers)
+defines modifier zero as linear. The
+unreleased native repair accepts zero plus the two already-supported unspecified
+sentinels and continues to reject every other modifier. A Deck-native rebuild
+then held 89-91 shared-texture imports and 90 native presents per second with
+backend `x11-dri3-glx-texture-from-pixmap`, continuously increasing imports,
+zero failures, no bitmap fallback, and exact 90 FPS page scheduling. During the
+ordinary Friends overlay imports paused by design while retained presentation
+held 90 FPS; after native Escape, shared imports and the game resumed at 90 FPS.
+Do not accept page rAF or presenter cadence as live-game proof unless import or
+CPU-frame progress independently advances before overlay activation.
 
 The consumer now has a fail-closed schema-v2 final Linux/Deck receipt auditor at
 `scripts/linux-final-qa-receipt.mjs`, with the prior Deck-named path retained as
