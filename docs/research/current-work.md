@@ -147,6 +147,19 @@ testing. Because the otherwise distinct scale-1 profile passes the same
 semantic input/cursor contract, do not reinterpret this as evidence for
 changing the product child.
 
+The attempted final root `macos-final-stable-43-2-0-19bba4a-15` was invalid,
+not a product regression. After Steam had been restarted, the exact packaged
+candidate passed cold launch and the actual production game/WebGL gate, but
+the configured append-only app log received no records from that launch.
+`baseline-geometry` and `warm-relaunch` consequently timed out as
+`fps_unavailable` with empty native telemetry. The run was terminated, the
+exact candidate was closed, and an independent live inventory proved the Mac
+returned to its saved 3456x2234/120 Hz mode. The product candidate was not
+changed. FOV4 now requires a fresh, structurally valid
+`[steam-attached-host-fps]` record after launch and before the first profile
+case; failure is the distinct `telemetry_unavailable` precondition. Never run
+or diagnose the remaining matrix against a stale log.
+
 ### 2026-07-28 RC85 actual-game checkpoint
 
 The current exact signed, notarized, stapled, and Gatekeeper-accepted app is
