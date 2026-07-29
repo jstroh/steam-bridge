@@ -160,6 +160,27 @@ changed. FOV4 now requires a fresh, structurally valid
 case; failure is the distinct `telemetry_unavailable` precondition. Never run
 or diagnose the remaining matrix against a stale log.
 
+With Steam relaunched through the documented append-only QA log, focused root
+`macos-focused-fresh-telemetry-16` passed the fresh-marker gate, actual game,
+120 Hz baseline FPS, cleanup, and exact display restoration. Exhaustive final
+root `macos-final-stable-43-2-0-dc8bb13-17` then executed all 25 selected cases
+under all five required display profiles. It passed 124/125 profile-case
+executions, all five cleanup/display restorations, exact candidate recheck,
+Steam continuity, and zero app, overlay, Steam, or graphics crashes. In
+particular, title reversal passed under every profile and low-Retina passed
+cursor/baseline, semantic input, display transitions, drag/resize, state,
+overlay, and FPS coverage; the two prior synthetic blockers are closed.
+
+The only final-root red was max-refresh `fps-baseline`: renderer scheduling was
+120 FPS, Chromium presentation feedback was 119.668 FPS with no drops or trace
+loss, but the app lost foreground focus after measurement. The same case had
+already passed in focused root `macos-focused-fresh-telemetry-16`, and exact
+sequence retest `macos-focused-max-transition-fps-18` passed live display
+transition, pacing transition, max-refresh FPS, cleanup, and restoration.
+Per the focused-retest policy, do not rerun the other 124 green executions.
+macOS release-candidate evidence is complete as the exhaustive root plus this
+one exact supplemental closure receipt.
+
 ### 2026-07-28 RC85 actual-game checkpoint
 
 The current exact signed, notarized, stapled, and Gatekeeper-accepted app is
