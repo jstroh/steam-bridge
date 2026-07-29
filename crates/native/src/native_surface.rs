@@ -1543,7 +1543,7 @@ mod windows {
     use std::env;
     use std::mem;
     use std::ptr;
-    use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -1607,14 +1607,14 @@ mod windows {
         SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE,
         SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
         WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR,
-        WM_CLOSE, WM_COMMAND, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND,
-        WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN,
-        WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
-        WM_MOUSEWHEEL, WM_MOVE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_PAINT,
-        WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SIZE, WM_SYSCOMMAND,
-        WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-        WS_OVERLAPPEDWINDOW,
+        WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE,
+        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
+        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM,
+        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCHITTEST, WM_NCLBUTTONDOWN,
+        WM_NCLBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+        WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WNDCLASSW,
+        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
     };
 
     type Hglrc = isize;
@@ -1771,6 +1771,7 @@ mod windows {
     static STANDALONE_MIN_CLIENT_SIZE: AtomicU64 = AtomicU64::new(0);
     static STANDALONE_LOGICAL_CLIENT_SIZE: AtomicU64 = AtomicU64::new(0);
     static STANDALONE_WINDOW_DPI: AtomicU32 = AtomicU32::new(96);
+    static STANDALONE_DISPLAY_CLAMPED: AtomicBool = AtomicBool::new(false);
     static WINDOW_CLASS_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
     static WINDOW_MESSAGE_DIAGNOSTICS: Lazy<Mutex<WindowMessageDiagnostics>> =
         Lazy::new(|| Mutex::new(WindowMessageDiagnostics::default()));
@@ -1944,11 +1945,13 @@ mod windows {
         client_size = clamp_client_size_to_minimum(client_size, min_client_size);
         set_standalone_min_client_size(min_client_size);
         set_standalone_logical_client_size(client_size);
+        STANDALONE_DISPLAY_CLAMPED.store(false, Ordering::Relaxed);
         let surface = match unsafe { create_surface(&title, client_size, min_client_size) } {
             Ok(surface) => surface,
             Err(error) => {
                 set_standalone_min_client_size(None);
                 set_standalone_logical_client_size(None);
+                STANDALONE_DISPLAY_CLAMPED.store(false, Ordering::Relaxed);
                 return Err(error);
             }
         };
@@ -2683,6 +2686,10 @@ mod windows {
                 "messages": message_diagnostics,
             });
             if let Some(object) = diagnostics.as_object_mut() {
+                object.insert(
+                    "displayWorkAreaClamped".to_owned(),
+                    json!(STANDALONE_DISPLAY_CLAMPED.load(Ordering::Relaxed)),
+                );
                 object.insert("pointer".to_string(), pointer);
                 object.insert(
                     "dpiAwareness".to_owned(),
@@ -3500,6 +3507,7 @@ mod windows {
         }
         set_standalone_min_client_size(None);
         set_standalone_logical_client_size(None);
+        STANDALONE_DISPLAY_CLAMPED.store(false, Ordering::Relaxed);
         STANDALONE_WINDOW_DPI.store(96, Ordering::Relaxed);
     }
 
@@ -3977,8 +3985,13 @@ mod windows {
                 }
             }
             DrawMenuBar(hwnd);
+            reconcile_standalone_window_with_work_area(hwnd);
             render_retained_frame_from_window_message(hwnd, true, false);
             return 0;
+        }
+        if matches!(message, WM_DISPLAYCHANGE | WM_SETTINGCHANGE) {
+            reconcile_standalone_window_with_work_area(hwnd);
+            render_retained_frame_from_window_message(hwnd, true, false);
         }
         if message == WM_ENTERSIZEMOVE {
             // DefWindowProc owns a nested modal loop while a top-level window is
@@ -4001,6 +4014,7 @@ mod windows {
             KillTimer(hwnd, MODAL_PRESENT_TIMER_ID);
             set_modal_size_move_active(hwnd, false);
             remember_standalone_logical_client_size(hwnd);
+            STANDALONE_DISPLAY_CLAMPED.store(false, Ordering::Relaxed);
             render_retained_frame_from_window_message(hwnd, true, true);
         }
         if message == WM_MOVE {
@@ -4860,6 +4874,75 @@ mod windows {
         ))
     }
 
+    unsafe fn reconcile_standalone_window_with_work_area(hwnd: HWND) {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        if style & WS_OVERLAPPEDWINDOW == 0 || IsIconic(hwnd) != 0 || IsZoomed(hwnd) != 0 {
+            return;
+        }
+        let Some(current) = read_window_rect(hwnd) else {
+            return;
+        };
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut monitor_info: MONITORINFO = mem::zeroed();
+        monitor_info.cbSize = mem::size_of::<MONITORINFO>() as u32;
+        if monitor.is_null() || GetMonitorInfoW(monitor, &mut monitor_info) == 0 {
+            return;
+        }
+        let work = monitor_info.rcWork;
+        let work_width = rect_width(work);
+        let work_height = rect_height(work);
+        let current_outside = current.left < work.left
+            || current.top < work.top
+            || current.right > work.right
+            || current.bottom > work.bottom;
+        let was_clamped = STANDALONE_DISPLAY_CLAMPED.load(Ordering::Relaxed);
+        if !current_outside && !was_clamped {
+            return;
+        }
+
+        let dpi = GetDpiForWindow(hwnd).max(96);
+        let (logical_width, logical_height) =
+            standalone_logical_client_size().unwrap_or_else(|| {
+                let client = read_client_rect(hwnd).unwrap_or(RECT {
+                    left: 0,
+                    top: 0,
+                    right: rect_width(current),
+                    bottom: rect_height(current),
+                });
+                (
+                    physical_pixels_to_logical(rect_width(client), dpi),
+                    physical_pixels_to_logical(rect_height(client), dpi),
+                )
+            });
+        let mut desired = RECT {
+            left: 0,
+            top: 0,
+            right: logical_pixels_to_physical(logical_width, dpi),
+            bottom: logical_pixels_to_physical(logical_height, dpi),
+        };
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let has_menu = i32::from(!GetMenu(hwnd).is_null());
+        if AdjustWindowRectExForDpi(&mut desired, style, has_menu, ex_style, dpi) == 0 {
+            return;
+        }
+        let desired_width = rect_width(desired);
+        let desired_height = rect_height(desired);
+        let should_clamp = desired_width > work_width || desired_height > work_height;
+        let (x, y, width, height) = centered_window_rect(desired_width, desired_height, &work);
+        if SetWindowPos(
+            hwnd,
+            ptr::null_mut(),
+            x,
+            y,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+        ) != 0
+        {
+            STANDALONE_DISPLAY_CLAMPED.store(should_clamp, Ordering::Relaxed);
+        }
+    }
+
     unsafe fn primary_work_area() -> RECT {
         let mut work_area: RECT = mem::zeroed();
         if SystemParametersInfoW(
@@ -5041,6 +5124,7 @@ mod linux {
 
     struct LinuxFrameRenderer {
         program: gl::types::GLuint,
+        flip_frame_y_uniform: gl::types::GLint,
         vertex_array: gl::types::GLuint,
         texture: gl::types::GLuint,
         texture_width: c_int,
@@ -5087,6 +5171,8 @@ mod linux {
     ) -> *mut glx::GLXFBConfig;
     type GlXGetVisualFromFbConfig =
         unsafe extern "C" fn(*mut xlib::Display, glx::GLXFBConfig) -> *mut xlib::XVisualInfo;
+    type GlXGetFbConfigAttrib =
+        unsafe extern "C" fn(*mut xlib::Display, glx::GLXFBConfig, c_int, *mut c_int) -> c_int;
     type GlXCreatePixmap = unsafe extern "C" fn(
         *mut xlib::Display,
         glx::GLXFBConfig,
@@ -5105,6 +5191,7 @@ mod linux {
     const GLX_PIXMAP_BIT: c_int = 0x0002;
     const GLX_BIND_TO_TEXTURE_RGBA_EXT: c_int = 0x20D1;
     const GLX_BIND_TO_TEXTURE_TARGETS_EXT: c_int = 0x20D3;
+    const GLX_Y_INVERTED_EXT: c_int = 0x20D4;
     const GLX_TEXTURE_2D_BIT_EXT: c_int = 0x0002;
     const GLX_TEXTURE_FORMAT_EXT: c_int = 0x20D5;
     const GLX_TEXTURE_TARGET_EXT: c_int = 0x20D6;
@@ -5119,6 +5206,7 @@ mod linux {
         connection: *mut c_void,
         root: c_uint,
         fb_config: glx::GLXFBConfig,
+        y_inverted: bool,
         generate_id: XcbGenerateId,
         flush: XcbFlush,
         request_check: XcbRequestCheck,
@@ -6274,6 +6362,10 @@ mod linux {
                         .dri3_dma_buf_importer
                         .as_ref()
                         .map(|_| "x11-dri3-glx-texture-from-pixmap"),
+                    "sharedTextureImportYInverted": surface
+                        .dri3_dma_buf_importer
+                        .as_ref()
+                        .map(|importer| importer.y_inverted),
                     "frameDrawCount": surface.frame_draw_count,
                     "configureCount": surface.configure_count,
                     "viewportSize": {
@@ -8078,6 +8170,12 @@ mod linux {
         .ok_or_else(|| Error::from_reason("GLX does not expose glXGetVisualFromFBConfig"))?;
         let get_visual =
             mem::transmute::<unsafe extern "C" fn(), GlXGetVisualFromFbConfig>(get_visual_pointer);
+        let get_fb_config_attrib_pointer =
+            (glx_dispatch.get_proc_address)(b"glXGetFBConfigAttrib\0".as_ptr())
+                .ok_or_else(|| Error::from_reason("GLX does not expose glXGetFBConfigAttrib"))?;
+        let get_fb_config_attrib = mem::transmute::<unsafe extern "C" fn(), GlXGetFbConfigAttrib>(
+            get_fb_config_attrib_pointer,
+        );
         let create_pixmap_pointer = (glx_dispatch.get_proc_address)(b"glXCreatePixmap\0".as_ptr())
             .ok_or_else(|| Error::from_reason("GLX does not expose glXCreatePixmap"))?;
         let create_pixmap =
@@ -8146,6 +8244,14 @@ mod linux {
                 "GLX did not expose a depth-32 BGRA pixmap texture configuration",
             ));
         }
+        let mut y_inverted = 0;
+        let y_inverted_status =
+            get_fb_config_attrib(display, fb_config, GLX_Y_INVERTED_EXT, &mut y_inverted);
+        if y_inverted_status != 0 {
+            return Err(Error::from_reason(format!(
+                "GLX could not report GLX_Y_INVERTED_EXT for Linux shared texture import (status {y_inverted_status})",
+            )));
+        }
 
         Ok(Dri3DmaBufImporter {
             _x11_xcb_library: x11_xcb_library,
@@ -8154,6 +8260,7 @@ mod linux {
             connection,
             root: (xlib.XDefaultRootWindow)(display) as c_uint,
             fb_config,
+            y_inverted: y_inverted != 0,
             generate_id,
             flush,
             request_check,
@@ -8315,9 +8422,14 @@ mod linux {
             gl::Disable(gl::SCISSOR_TEST);
             gl::Viewport(0, 0, width, height);
             gl::UseProgram(renderer.program);
+            gl::Uniform1i(
+                renderer.flip_frame_y_uniform,
+                c_int::from(importer.y_inverted),
+            );
             gl::BindVertexArray(renderer.vertex_array);
             gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
             gl::BindVertexArray(0);
+            gl::Uniform1i(renderer.flip_frame_y_uniform, 0);
             gl::UseProgram(0);
         }
         let copy_error = gl::GetError();
@@ -8404,6 +8516,7 @@ mod linux {
             surface.viewport_height.min(c_int::MAX as u32) as c_int,
         );
         gl::UseProgram(renderer.program);
+        gl::Uniform1i(renderer.flip_frame_y_uniform, 0);
         gl::BindVertexArray(renderer.vertex_array);
         gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
         gl::BindVertexArray(0);
@@ -8440,10 +8553,15 @@ void main() {
             gl::FRAGMENT_SHADER,
             r#"#version 130
 uniform sampler2D frameTexture;
+uniform int flipFrameY;
 in vec2 frameTextureCoordinate;
 out vec4 outputColor;
 void main() {
-    outputColor = texture(frameTexture, frameTextureCoordinate);
+    vec2 coordinate = vec2(
+        frameTextureCoordinate.x,
+        flipFrameY != 0 ? 1.0 - frameTextureCoordinate.y : frameTextureCoordinate.y
+    );
+    outputColor = texture(frameTexture, coordinate);
 }
 "#,
         ) {
@@ -8479,6 +8597,16 @@ void main() {
         if sampler >= 0 {
             gl::Uniform1i(sampler, 0);
         }
+        let flip_frame_y_name = CString::new("flipFrameY").expect("static shader uniform");
+        let flip_frame_y_uniform = gl::GetUniformLocation(program, flip_frame_y_name.as_ptr());
+        if flip_frame_y_uniform < 0 {
+            gl::UseProgram(0);
+            gl::DeleteProgram(program);
+            return Err(Error::from_reason(
+                "Linux native overlay frame shader does not expose flipFrameY",
+            ));
+        }
+        gl::Uniform1i(flip_frame_y_uniform, 0);
         gl::UseProgram(0);
 
         let mut vertex_array = 0;
@@ -8502,6 +8630,7 @@ void main() {
 
         Ok(LinuxFrameRenderer {
             program,
+            flip_frame_y_uniform,
             vertex_array,
             texture,
             texture_width: 0,

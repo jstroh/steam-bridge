@@ -63,6 +63,36 @@ override and failed before opening X11; removing that override and inheriting
 Steam's live session environment produced one clean host with CDP disabled.
 Never persist a generated X11 authorization filename in a reusable runner.
 
+Deck is now in Gamescope Game Mode with both non-locking keep-awake services
+active. The installed product App ID can temporarily own the exact local
+candidate through a quoted Steam launch option, so `steam://rungameid/2957110`
+provides Steam-owned product identity without exposing or depending on the
+private non-Steam shortcut identifier. Restore the product's originally empty
+launch options after qualification. The failed remote forms remain closed only
+for the non-Steam shortcut path; do not cycle through them again.
+
+Steam started with its temporary CEF remote-debug marker/wrapper is invalid
+overlay evidence in Game Mode. In that state both FOV4 and the otherwise known-
+good raw Store smoke reached SteamUI with `IsOverlayEnabled=true` but never
+emitted `active=true`. Removing the marker/wrapper, restarting normal Steam,
+and rerunning only the failed smoke case restored visible Store activation,
+Escape close, `active=false`, focus return, and clean crashes. Never enable CEF
+debugging during Game Mode product qualification.
+
+The first normal-Steam product run exposed a real shared-texture defect: the
+Gamescope composite was vertically inverted while Electron's source screenshot
+and the forced CPU-upload control were upright. The Linux DRI3/GLX importer had
+never queried `GLX_Y_INVERTED_EXT`. The unreleased repair queries the selected
+FBConfig, records the result, flips Y only while copying the GLX-bound imported
+texture into the retained frame, and explicitly disables the flip for CPU
+upload and final presentation. Deck-native Rust tests pass. The exact rebuilt
+product candidate is visibly upright in a state-driven `gamescopectl`
+compositor screenshot at 1280x800, and focused affected checks pass at 90.003
+FPS baseline, 90.000 FPS with the visible product Store overlay, and 90.003 FPS
+after Escape. Activation callbacks are exactly `[true,false]`, product focus
+returns, and there are no bars or crop. Rebuild once more with the new
+orientation diagnostic, then run one complete Game Mode pass.
+
 ### 2026-07-28 stable-43.2.0 final-candidate checkpoint
 
 The current releasable macOS app is the signed, notarized, and stapled stable
@@ -2171,3 +2201,38 @@ Focus away/back and externally initiated display-mode, refresh, resolution, or
 DPI changes remain required active-overlay stress where applicable. Do not
 release Steam's capture, inject non-client messages, enter a synthetic
 `DefWindowProc` move loop, or revisit popup/`WS_CHILD` architectures.
+
+## 2026-07-28 Windows final source-linked QA
+
+After the Deck Game Mode orientation repair, Windows received focused coverage
+only for the two affected native surfaces. A full pass followed after both were
+green.
+
+The first focused red was a full-event-loop-turn dirty-frame pump that reduced a
+settled 165 Hz game surface to about 143.6 FPS. Coalescing on one microtask
+restored representative medians of 164.8 FPS baseline, 164.75 FPS with the real
+Steam overlay active, and 164.4 FPS after close. Renderer rAF stayed near
+165.017 FPS and all device-loss, recovery, and slow-copy counters remained zero.
+
+The second red was low-resolution work-area overflow. The same standalone HWND
+now centers and clamps on display/work-area notifications without replacing the
+host or overwriting the remembered logical client. At `1280x800@60` and 125%
+scale, the entire 1280x752 outer frame remained visible, the real Steam overlay
+matched the client including its rounded bottom corners, and eight settled
+samples produced 59.95 FPS present, 60.0 FPS paint, and 60.002 FPS rAF. Returning
+to `1920x1200@60` restored the exact 1600x900 physical / 1280x720 logical client.
+
+The final pass also covered the 100% and recommended 125% scale profiles, File/
+Edit/View menu clicks, slow/fast/reversing title movement, 1000x600, 800x500,
+640x480, rejected 500x300, and restored 1280x720 logical resize requests,
+maximize/restore, minimize/restore, focus loss/return, aspect-preserving
+fullscreen/restore, overlay open/duplicate/close, active-modal no-op window
+commands, 60/165 Hz transitions, and the 1280x800 low-resolution profile. The
+machine finished at its original `1920x1200@60` and recommended 125% scale.
+
+Do not spawn a disposable Notepad or other auxiliary UI application for future
+focus QA. A redundant post-pass attempt exhausted the external capture helper's
+D3D resources and destabilized the controller; it was not valid product
+evidence. Use an existing operator-approved focus target or direct native focus
+state, without capturing the unrelated window. The game was subsequently
+re-entered and a focused settled rAF retest passed at 60.002 FPS.

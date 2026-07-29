@@ -8457,7 +8457,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpTimer: NodeJS.Timeout | undefined;
   let pumpTimerDueAt: number | undefined;
   let pumpImmediate: NodeJS.Immediate | undefined;
-  let frameDrivenPumpImmediate: NodeJS.Immediate | undefined;
+  let frameDrivenPumpQueued = false;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let hideNativeHostTimer: NodeJS.Timeout | undefined;
   let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
@@ -8627,10 +8627,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       pumpImmediate = undefined;
     }
 
-    if (frameDrivenPumpImmediate) {
-      clearImmediate(frameDrivenPumpImmediate);
-      frameDrivenPumpImmediate = undefined;
-    }
+    frameDrivenPumpQueued = false;
 
     if (restoreFocusTimer) {
       clearTimeout(restoreFocusTimer);
@@ -9484,13 +9481,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
 
-    if (frameDrivenPumpImmediate) {
+    if (frameDrivenPumpQueued) {
       schedulePumpTimer();
       return;
     }
 
-    frameDrivenPumpImmediate = setImmediate(() => {
-      frameDrivenPumpImmediate = undefined;
+    frameDrivenPumpQueued = true;
+    queueMicrotask(() => {
+      frameDrivenPumpQueued = false;
       if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
         return;
       }
@@ -9514,7 +9512,6 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       }
       schedulePumpTimer();
     });
-    frameDrivenPumpImmediate.unref?.();
     schedulePumpTimer();
   }
 
@@ -9532,13 +9529,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       pumpImmediate = undefined;
     }
     if (
-      frameDrivenPumpImmediate
+      frameDrivenPumpQueued
       && process.platform === "win32"
       && !usesNativeHostView
       && overlayActive !== true
       && continuousPresentApplied !== true
     ) {
-      // The deferred frame pump owns this inactive Windows cadence. Leave no
+      // The queued frame pump owns this inactive Windows cadence. Leave no
       // regular timer that could race it into a duplicate DXGI Present.
       return;
     }

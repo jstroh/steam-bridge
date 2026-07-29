@@ -939,6 +939,10 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /SetThreadDpiAwarenessContext\(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2\)/);
   assert.match(source, /AreDpiAwarenessContextsEqual\(/);
   assert.match(source, /message == WM_DPICHANGED/);
+  assert.match(source, /matches!\(message, WM_DISPLAYCHANGE \| WM_SETTINGCHANGE\)/);
+  assert.match(source, /reconcile_standalone_window_with_work_area\(hwnd\)/);
+  assert.match(source, /STANDALONE_DISPLAY_CLAMPED\.store\(should_clamp, Ordering::Relaxed\)/);
+  assert.match(source, /"displayWorkAreaClamped"/);
   assert.match(source, /standalone_logical_client_size\(\)/);
   assert.match(source, /set_standalone_logical_client_size\(client_size\)/);
   assert.match(source, /surface\.source_frame = None;[\s\S]*surface\.source_frame_dirty = true;/);
@@ -12525,6 +12529,36 @@ test("Linux GLX host uploads a complete BGRA game frame before Steam swaps", () 
   assert.match(linuxSource, /"frameDrawCount": surface\.frame_draw_count/);
 });
 
+test("Linux GLX shared-texture import honors the selected FBConfig Y orientation only during import", () => {
+  const nativeSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
+    "utf8"
+  );
+  const linuxSource = nativeSource.slice(nativeSource.indexOf("mod linux {"));
+  const importerStart = linuxSource.indexOf("unsafe fn create_dri3_dma_buf_importer(");
+  const importerEnd = linuxSource.indexOf("unsafe fn free_dri3_pixmap(", importerStart);
+  const copyStart = linuxSource.indexOf("unsafe fn copy_dri3_dma_buf_into_frame_texture(");
+  const copyEnd = linuxSource.indexOf("unsafe fn draw_source_frame(", copyStart);
+  const drawStart = copyEnd;
+  const drawEnd = linuxSource.indexOf("unsafe fn create_frame_renderer(", drawStart);
+  for (const index of [importerStart, importerEnd, copyStart, copyEnd, drawStart, drawEnd]) {
+    assert.notEqual(index, -1);
+  }
+
+  const importer = linuxSource.slice(importerStart, importerEnd);
+  assert.match(importer, /glXGetFBConfigAttrib/);
+  assert.match(importer, /GLX_Y_INVERTED_EXT/);
+  assert.match(importer, /y_inverted: y_inverted != 0/);
+
+  const copy = linuxSource.slice(copyStart, copyEnd);
+  assert.match(copy, /c_int::from\(importer\.y_inverted\)/);
+  assert.match(copy, /gl::Uniform1i\(renderer\.flip_frame_y_uniform, 0\)/);
+
+  const draw = linuxSource.slice(drawStart, drawEnd);
+  assert.match(draw, /gl::Uniform1i\(renderer\.flip_frame_y_uniform, 0\)/);
+  assert.match(linuxSource, /"sharedTextureImportYInverted":/);
+});
+
 test("Linux GLX presentation resolves Steam LD_PRELOAD interposition instead of bypassing it", () => {
   const source = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "native_surface.rs"),
@@ -24067,7 +24101,7 @@ test("Windows frame-driven pump coalesces to the newest retained source", async 
   assert.deepEqual(pumpedSources, [2]);
 });
 
-test("closing a Windows session cancels its deferred frame-driven pump", async (t) => {
+test("closing a Windows session cancels its queued frame-driven pump", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   const steam = loadSteamWithFakeNative(fake);
@@ -24114,7 +24148,7 @@ test("Windows continuous presentation remains the sole pump owner for frame uplo
   );
 });
 
-test("Windows deferred frame pump revalidates overlay state before presenting", async (t) => {
+test("Windows queued frame pump revalidates overlay state before presenting", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   const steam = loadSteamWithFakeNative(fake);

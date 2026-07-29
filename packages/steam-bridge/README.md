@@ -161,6 +161,10 @@ Electron offscreen frames arrive as one-plane BGRA native pixmaps. Pass the
 `finally`. Steam Bridge imports the dma-buf through XCB DRI3 and
 `GLX_EXT_texture_from_pixmap`, copies it into a retained GL texture, and keeps
 presenting that texture while Steam pauses Electron paint.
+The importer reads `GLX_Y_INVERTED_EXT` from the selected FBConfig and applies
+that orientation only while copying the imported pixmap into the retained
+texture. Consumers must not add a platform-wide vertical flip: CPU-uploaded
+frames and the final host draw remain in their ordinary orientation.
 
 Popup companions, resize-time recreate/remap, nested-child GLX, direct Electron
 desktop GL/Vulkan, and EGLImage-to-GLX import are closed game-host paths. The
@@ -454,6 +458,11 @@ function applyDisplayRate(displayFrequency: number | undefined) {
 scales them to the primary display's DPI at creation and clamps the restored
 window to that display's usable work area. Moving the host between monitors
 preserves its logical size through the normal per-monitor-DPI transition.
+Resolution and work-area changes also reconcile the existing standalone host:
+an off-screen or oversized window is centered and clamped without replacing the
+host or forgetting its requested logical client size, then expands back when
+the work area can contain it. The current state is exposed as
+`nativeHostDiagnostics.displayWorkAreaClamped`.
 When both `minClientWidth` and `minClientHeight` are provided, the standalone
 Windows host enforces that minimum logical client size during edge and corner
 resize operations and clamps a smaller initial client request to that minimum.
