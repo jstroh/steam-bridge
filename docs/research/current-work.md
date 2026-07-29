@@ -36,10 +36,10 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
-macOS qualification is complete at the stable-43.2.0 checkpoint below. No
-physical non-Deck Linux host is configured, so that lane remains explicitly
-environment-unavailable rather than green. The active lane is the physical
-Steam Deck in Plasma Desktop Mode, followed by Deck Game Mode and Windows.
+macOS qualification and the physical Steam Deck Plasma Desktop Mode pass are
+complete at the stable-43.2.0 checkpoints below. No physical non-Deck Linux
+host is configured, so that lane remains explicitly environment-unavailable
+rather than green. The active lane is Deck Game Mode, followed by Windows.
 During the 2026-07-28 Deck Desktop focused pass, the exact Electron 43.2.0
 native-pixmap metadata exposed modifier `0`; Linux defines that value as the
 linear modifier, but the Bridge accepted only Chromium's unspecified-modifier
@@ -51,8 +51,17 @@ Steam-launched actual game now reports 89-91 shared-texture imports per second,
 the `x11-dri3-glx-texture-from-pixmap` backend, continuously increasing import
 counts, zero import failures, and 90 FPS native presentation. The ordinary
 Friends overlay retains that imported frame at 90 FPS; Escape closes it and
-live imports resume at 90 FPS. Finish only affected Deck Desktop cases, then run
-one final complete Desktop pass on the rebuilt exact candidate before Game Mode.
+live imports resume at 90 FPS. The rebuilt exact candidate then passed the
+complete Desktop sequence: 1280x718 maximized, 1280x800 fullscreen, exact
+640x480 minimum, five-step direction-reversing compositor move/resize stress,
+maximize/restore, minimize at 1 FPS and restore at 90 FPS, Alt+Tab focus return,
+the same transitions while the overlay was active, duplicate-open suppression,
+post-overlay 90 FPS import recovery, one application host, zero import failures,
+zero presentation errors, and no crash during the product test window. The
+normal-runner cleanup initially reused a stale session-specific `XAUTHORITY`
+override and failed before opening X11; removing that override and inheriting
+Steam's live session environment produced one clean host with CDP disabled.
+Never persist a generated X11 authorization filename in a reusable runner.
 
 ### 2026-07-28 stable-43.2.0 final-candidate checkpoint
 
