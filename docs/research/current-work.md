@@ -1336,40 +1336,41 @@ popup/child paths, makes unsupported attached Windows use fail clearly,
 validates the actual game with change-scoped manual and automated QA,
 requalifies affected platforms, and completes one immutable release-candidate
 review through documentation, version, commit, push, tag, GitHub Release, npm
-publication, and registry verification. That sequence completed for `v0.3.8`;
+publication, and registry verification. That sequence completed for `v0.3.9`;
 do not reopen it without a new code change and a new version.
 
 ## Current State
 
-`steam-bridge@0.3.8` is published to npm and is the stable GitHub Release:
-<https://github.com/jstroh/steam-bridge/releases/tag/v0.3.8>. Source commit
-`45a43686b465e8fa6c84184f946fbc372705c496` is bound to immutable tag
-`v0.3.8`. Tag workflow `29973234900` passed macOS arm64, Windows x64, Linux
-x64, and the exact Windows publish-tarball ASAR/package gate. Trusted publish
-workflow `29974384230` passed from the tag. The earlier main-ref dispatch
-`29974354896` was rejected before any step ran and changed no npm state.
+`steam-bridge@0.3.9` is published to npm and is the stable GitHub Release:
+<https://github.com/jstroh/steam-bridge/releases/tag/v0.3.9>. Source commit
+`b759788b96037ea51c173163a2859bf26ac31ea3` is bound to immutable tag
+`v0.3.9`. Tag CI `30430850524` and Release assembly `30430851010` passed
+macOS arm64, Windows x64, Linux x64, package smoke, and the exact Windows
+publish-tarball ASAR/package gate. Trusted publish workflow `30432433507`
+passed from the tag.
 
-The canonical Windows candidate contains 118 files with content SHA-256
-`69b706aff775f227e241e9080adbb38da6d259b6dcba8940ac9e0e3a429c56ff`.
+The canonical Windows candidate contains 122 files with content SHA-256
+`000178569c60f735efea836306c828c554725d4f9bba220fc3d0e9fc4d6464b5`.
 Its Windows archive SHA-256 is
-`a429b0fb8115c8ddc224f0d6ad803ed02d69858609c5c49749726a9b9bec98ce` and
+`f94121bfd00bfb721547f9c64b25aac4d43be7277b73bb39b5ea8227ce2adf73` and
 the npm tarball SHA-256 is
-`b3bf553560f40455ca36c22854d02c31f770b2588c71e238258140f340c7ae13`.
+`c3748692ff821d5b33ad1cfd01d456963fb676678418a3d84cd5d73a89798e79`.
 The downloaded registry tarball is byte-identical to that audited tarball.
 npm reports integrity
-`sha512-Cth1icQaTBf+Q21HZSdzaWjDel2J8+PODgH1JcRNAAHESDJfzYAHbQfLsEHmGDyVS7wDTdpJm44HaydOaf9pKQ==`,
-shasum `72154de8b9b5a489ae7b5e924c14a21e2da524c2`, and SLSA provenance.
+`sha512-91OMd7EqsQgW2UvOnHuEvMrqDg+JX+e82Sl27vkkUBwx0tq2v+jaIue2qj8RZn3aoy+p1KK2p7a/z+GIHMTLPQ==`
+and SLSA provenance. All five GitHub Release asset digests match the retained
+local files, and the release-scoped proof secret was deleted after publication.
 
-The final candidate-bound actual-game receipt is schema 4 with SHA-256
-`facfddeacd9c32f30a5208dee1046e7091b5e8a9000e7d5f5c95f8a9b9b9ab41`.
-It contains 110 game samples and 14 ordinary Friends-overlay samples. Game
-paint, game present, and overlay present medians were all 59.9 FPS against the
-60 Hz display, with zero unsynchronized steady-state samples, latency waits,
-slow copies, device losses, or recoveries. It records
-`humanInputRequired: false`. One earlier physical Shift+Tab qualification is
-retained as sufficient product evidence and must never become recurring QA
-input; automated releases use the opt-in native QA menu and the same safe
-`activateDialog("Friends")` API. No purchase or subscription was authorized.
+The final candidate-bound actual-game receipt is schema 4 with semantic
+SHA-256 `089fe3c94bbd846768f3e84c7bdcc5f12edd3dc434502beb9abd32dbf2f1d1c3`.
+It contains 279 qualified game samples and 35 ordinary Friends-overlay
+samples. Game paint, game present, and overlay present medians were all 59.9
+FPS against the 60 Hz display, with zero unsynchronized steady-state samples,
+latency waits, slow copies, device losses, or recoveries. The computer-driven
+pass covered startup chrome, menus, title drag, resize and exact 640 by 480
+minimum, maximize/restore, minimize/restore, fullscreen/restore, cursor and
+focus behavior, rounded corners, overlay alignment/close, and clean shutdown.
+DevTools stayed closed; no purchase or subscription was opened or authorized.
 
 The 2026-07-21 source-linked FOV4 Windows pass now exercises the actual game on
 the standalone native host rather than any attached presenter. A long modal

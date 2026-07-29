@@ -65,14 +65,18 @@ separate distributor concern and is not an npm publication requirement.
 `--require-publishable` is the tag candidate gate and deliberately runs
 before live proof, so it must remain receipt-free. An actual `--publish` must
 also receive `--live-proof-receipt <receipt.json>`. Generate that sanitized
-receipt only from the exact candidate's complete public `persistent-reuse`,
-synthetic `checkout`, `shortcut-routes`, and `managed-routes` roots. The
-generator requires all 31 exact cases, including 27 activation cases, rejects
-private `InitTxn` inputs, nondefault web/checkout inputs, renderer/health
-overrides, elevated tasks, custom runners, and stale-helper cleanup; compares
-exact Steam identity through each task cleanup and across profiles; and
-fingerprints the deployed candidate again after the live batch. The workflow
-must not fabricate this post-live record or run `--publish` automatically.
+receipt only from the exact candidate's standalone actual-game consumer proof.
+The generator requires all four exact cases (`standalone-startup`,
+`standalone-window-transitions`, `standalone-steam-overlay`, and
+`standalone-frame-pacing`), including one ordinary Friends-overlay activation.
+It rejects a linked or mismatched consumer install, open DevTools, checkout or
+subscription authorization, popup/child fallback, stderr, crashes, unhealthy
+presentation, and incomplete manual checks. It fingerprints the candidate and
+the installed consumer runtime again after the live run. The retired attached
+matrix scripts intentionally fail and must never be substituted for this proof.
+The workflow must not fabricate the post-live record or run `--publish`
+automatically. See the Windows standalone release-proof section in
+`examples/electron-basic/README.md` for the exact procedure.
 
 Before any live Windows candidate launch from a user-writable deployment root,
 use the combined deployment helper. It performs source and staged fingerprints,
