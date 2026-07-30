@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-07-30
 
 Review anchor: `338f2038bc1a5d563d1031ab960faedf488ef879`
 (`Preserve Node 22 named exports after minification`). npm `latest` is `0.3.8`;
@@ -35,6 +35,114 @@ close FPS against the authoritative display rate, crash/orphan cleanup, and
 exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
+
+### 2026-07-30 configured-product macOS commerce checkpoint
+
+The active lane is an exhaustive configured-product checkout and inventory pass
+against a stable Electron 43.2.0 consumer candidate. The product remains on the
+one attached Metal child architecture. Subscribe-to-Escape is now understood as
+Steam's own Cancel Transaction transition: macOS can emit
+`active=true -> active=false -> active=true` for one checkout while Steam swaps
+the checkout page for its confirmation dialog. Both active phases must remain
+checkout-correlated; the middle inactive callback is provisional and must not
+settle the client operation. The consumer/shell focused state suites and the
+live configured-product transition are green for that correlation repair.
+
+One active-checkout window-state probe deliberately shrank the parent to
+`1100x662` (a `1100x630` content area), then entered application-owned simple
+fullscreen. CoreGraphics and native diagnostics agreed that the parent and its
+same attached child became `1728x1117`; Metal bounds were `1728x1117`, drawable
+size was `3456x2234` at scale 2, parent-content matching remained true, and
+presentation continued at roughly 118-120 FPS against 120 Hz with no drawable
+or render failures. Pixel inspection showed the dimmed Steam surface covering
+the complete game area. Steam intentionally retained its own fully contained
+floating checkout-browser panel instead of stretching that browser window to
+the full display. This is not the historical tiny/partial host failure. Do not
+resize, detach, recreate, promote, or replace the child to stretch Steam-owned
+browser chrome. Repeat only if the attached child/drawable stops matching the
+parent, the Steam panel escapes the child or becomes unusably small, or the
+relevant Steam/AppKit/Metal sizing path changes.
+
+Focused subscription cancellation/retry and non-spending
+commerce/inventory/session cases are now green. Run one broad
+unchanged-candidate macOS pass only after every applicable individual case is
+green. Never authorize a purchase, and never run lock, sleep, display-sleep,
+or permission-reset cases.
+
+The isolated configured-product candidate now contains the then-current
+client-px main. A real subscription checkout remained active for more
+than eleven minutes, crossing both the client's five-minute uncertainty
+boundary and the consumer shell's retired ten-minute active-correlation
+deadline. The client correctly became fail-closed/unconfirmed at five minutes;
+the shell retained checkout correlation while Steam still reported the overlay
+active. Two native Escape transitions each emitted the expected provisional
+inactive/active Cancel Transaction pair against the same checkout, with no
+Friends substitution, duplicate target, child replacement, geometry drift, or
+crash. Exact late authorization tests now allow only the known order to settle
+that fail-closed state. Prepared intent alone retains a bounded deadline;
+Steam-reported active checkout correlation does not expire on elapsed time.
+This repair belongs to the consumer shell/client state machines, not Steam
+Bridge's attached-child presenter.
+
+The same candidate completed the destructive-but-non-spending inventory/mail
+lane. Trusted Steam inventory reads moved from eleven rows/twelve units to
+exactly zero, one unit per accepted transfer. Rapid double-clicking produced
+one transfer, a full mailbox produced a clean no-op, and newly transferred
+items appeared in mail without an extra send. The visible Gem Shop and direct
+Steam API both remained empty after Refresh, close/reopen, a real in-game
+logout/reload/login, and an exact process close plus Steam-owned relaunch. The
+relaunch restored the 1280x720 CSS / 2560x1440 backing surface at DPR 2 and
+created no new crash dump.
+
+The first broad pass then exposed a QA ownership defect around the already
+accepted stable-Chromium fixed-60 cadence exception. A matching 60 -> 120 -> 60
+factor-two trace left the renderer at 30 FPS, so the next independent baseline
+could only repeat that known state. The runner now distinguishes exact defect
+recognition from final-release authorization, honors the passive-child policy
+(an idle child intentionally presents at most 60 FPS on a higher-refresh
+display), performs one clean Steam-owned warm relaunch only for the complete
+known signature, and requires a fresh scheduler sample at the selected rate
+before continuing. Focused live attempt 03 reproduced factors `[1,1,1,2]`, 107
+skipped callbacks, exact 30 FPS post-restore, healthy 60 FPS passive Metal at
+both the 120 and 60 Hz phases, a new exact app process, 60.000 FPS after
+relaunch, and a green immediately following full traced baseline. Fixed 48 Hz,
+low-Retina 60 Hz, and scale-1 60 Hz transition/baseline pairs remained green.
+The isolated `display-pacing-transition` now runs before the independent
+`fps-baseline`, while the broader `display-live-transition` runs last in every
+profile. That order gives the exact cadence proof a clean process and prevents
+an accepted terminal Chromium residue from contaminating unrelated cases.
+
+The retained private configured-product receipt ran the 25 safe cases under all
+five exact profiles: same-resolution 120,
+60, and 48 Hz; low-Retina 60 Hz; and scale-1 60 Hz. All 125/125 executions and
+all 37/37 canonical requirements passed with no cadence exception used. The
+125 retained renderer/presentation samples were 115.028-120.004 FPS at 120 Hz,
+59.998-60.004 FPS at fixed 60 Hz, 47.999-48.003 FPS at fixed 48 Hz,
+59.669-60.002 FPS at low Retina, and 59.999-60.004 FPS at scale 1. Every ratio
+was inside the strict 95%-108% gate. All 275 attached-Metal samples passed app,
+display, child alignment, drawable scale, render health, input, corner,
+surface-identity, presentation-driver, and frame-rate-policy checks. All 395
+visual records passed; steady startup, overlay, duplicate-overlay, fullscreen,
+and overlay-display-transition samples had zero blank, purple, chrome-cover,
+flash, dropout, or right/bottom coverage failures. Short cover observations
+occurred only inside intentional focus-away/minimize/fullscreen transition
+streams and recovered within their bounded transition contracts. Three of
+the 4,585 active-overlay transition frames reported a one-frame outer-right
+lane diagnostic while ScreenCaptureKit rescaled the changing source (one each
+at fixed 48 Hz, fixed 60 Hz, and scale-1 60 Hz). They were not coverage or
+dropout failures: every coarse continuous-stream gate remained green, and all
+six native-scale exact overlay captures in every profile passed both right and
+bottom boundary checks (minimum changed ratios 0.934 and 0.961 respectively;
+low-Retina bottom minimum 0.980). This is the intended contract split: the
+fixed-output transition stream detects broad coverage/dropout continuously,
+while unscaled native captures own exact one-pixel edge proof. Every crash
+category remained zero. Cleanup closed the exact candidate, kept Steam alive,
+removed the private launcher environment, and restored exact display mode 54
+at 1728x1117 logical / 3456x2234 backing / 120 Hz. The retained private receipt
+binds the candidate, summary, and manifest with SHA-256 fingerprints.
+Do not repeat already-green commerce, long-duration checkout, or broad cases
+until a relevant implementation surface changes or release-candidate identity
+requires one final qualification pass.
 
 macOS qualification and the physical Steam Deck Plasma Desktop Mode pass are
 complete at the stable-43.2.0 checkpoints below. No physical non-Deck Linux

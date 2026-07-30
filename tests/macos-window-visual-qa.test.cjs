@@ -150,10 +150,20 @@ test("direct BGRA sampling honors the Core Video vertical origin", () => {
   assert.match(source, /"lowerLeftOriginFrames": lowerLeftOriginFrames/);
 });
 
+test("title-bar cursor proof compares in-memory ScreenCaptureKit frames without exposing pointer coordinates", () => {
+  assert.match(source, /configuration\.showsCursor = showsCursor/);
+  assert.match(source, /captureImage\(window: window, showsCursor: false\)/);
+  assert.match(source, /captureImage\(window: window, showsCursor: true\)/);
+  assert.match(source, /private func cursorDifference/);
+  assert.match(source, /pointerInTitleBand/);
+  assert.match(source, /"cursorVisible": cursorVisible/);
+  assert.doesNotMatch(source, /"(?:pointerX|pointerY|normalizedX|normalizedY)"\s*:/);
+});
+
 test("helper command and reference names are closed allowlists", () => {
   assert.match(source, /allowedSlots: Set<String> = \["baseline", "overlay"\]/);
   assert.match(source, /\["health", "overlay"\]\.contains\(mode\)/);
-  for (const command of ["capture", "compare", "begin-series", "end-series", "visibility", "clear", "quit"]) {
+  for (const command of ["capture", "compare", "begin-series", "end-series", "visibility", "cursor", "clear", "quit"]) {
     assert.match(source, new RegExp(`case "${command}"`));
   }
   assert.match(source, /default:\s*throw ClosedCode\.invalidArguments/);

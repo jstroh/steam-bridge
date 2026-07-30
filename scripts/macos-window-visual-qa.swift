@@ -187,6 +187,54 @@ private func pixelDistance(_ left: Pixel, _ right: Pixel) -> Double {
     return clamp(sqrt((red * red + green * green + blue * blue + alpha * alpha) / 4))
 }
 
+private func cursorDifference(
+    withoutCursor: PixelPlane,
+    withCursor: PixelPlane,
+    normalizedX: Double,
+    normalizedY: Double
+) -> (changedRatio: Double, meanDelta: Double, maxDelta: Double) {
+    guard withoutCursor.width == withCursor.width,
+          withoutCursor.height == withCursor.height else {
+        return (0, 0, 0)
+    }
+    let centerX = min(
+        withoutCursor.width - 1,
+        max(0, Int((clamp(normalizedX) * Double(withoutCursor.width)).rounded(.down)))
+    )
+    let centerY = min(
+        withoutCursor.height - 1,
+        max(0, Int((clamp(normalizedY) * Double(withoutCursor.height)).rounded(.down)))
+    )
+    // The normalized analysis plane intentionally keeps no native-resolution
+    // pixels. A 48-point neighborhood is still large enough to contain every
+    // supported system pointer at the app's tested scales.
+    let radiusX = max(3, Int(ceil(Double(withoutCursor.width) * 48 / 640)))
+    let radiusY = max(3, Int(ceil(Double(withoutCursor.height) * 48 / 480)))
+    let minX = max(0, centerX - radiusX)
+    let maxX = min(withoutCursor.width - 1, centerX + radiusX)
+    let minY = max(0, centerY - radiusY)
+    let maxY = min(withoutCursor.height - 1, centerY + radiusY)
+    var changed = 0
+    var count = 0
+    var total = 0.0
+    var maximum = 0.0
+    for y in minY...maxY {
+        for x in minX...maxX {
+            let index = y * withoutCursor.width + x
+            let delta = pixelDistance(withoutCursor.pixels[index], withCursor.pixels[index])
+            if delta >= 0.045 { changed += 1 }
+            total += delta
+            maximum = max(maximum, delta)
+            count += 1
+        }
+    }
+    return (
+        Double(changed) / Double(max(1, count)),
+        total / Double(max(1, count)),
+        maximum
+    )
+}
+
 private func isPurple(_ pixel: Pixel) -> Bool {
     let high = max(pixel.red, pixel.blue)
     let low = min(pixel.red, pixel.blue)
@@ -1230,9 +1278,10 @@ private final class CaptureSession {
         return selected
     }
 
-    private func capture() async throws -> CapturedSample {
-        let window = try await targetWindow()
-        let aspectRatio = max(0.25, min(4, window.frame.width / max(1, window.frame.height)))
+    private func captureImage(
+        window: SCWindow,
+        showsCursor: Bool
+    ) async throws -> (image: CGImage, filter: SCContentFilter, pointPixelScale: Double) {
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let pointPixelScale = Double(filter.pointPixelScale)
         let nativeWidth = Int(ceil(Double(filter.contentRect.width) * pointPixelScale))
@@ -1254,26 +1303,72 @@ private final class CaptureSession {
         configuration.colorSpaceName = CGColorSpace.sRGB
         configuration.scalesToFit = false
         configuration.preservesAspectRatio = true
-        configuration.showsCursor = false
+        configuration.showsCursor = showsCursor
         configuration.shouldBeOpaque = false
         configuration.ignoreShadowsSingleWindow = true
         if #available(macOS 15.0, *) {
             configuration.includeChildWindows = true
         }
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        return (image, filter, pointPixelScale)
+    }
+
+    private func capture() async throws -> CapturedSample {
+        let window = try await targetWindow()
+        let aspectRatio = max(0.25, min(4, window.frame.width / max(1, window.frame.height)))
+        let captured = try await captureImage(window: window, showsCursor: false)
         return CapturedSample(
             frame: CapturedFrame(
-                plane: try makePlane(image: image, aspectRatio: aspectRatio),
-                boundary: try makeBoundarySignature(image: image)
+                plane: try makePlane(image: captured.image, aspectRatio: aspectRatio),
+                boundary: try makeBoundarySignature(image: captured.image)
             ),
             source: [
                 "frameWidth": window.frame.width,
                 "frameHeight": window.frame.height,
-                "filterWidth": filter.contentRect.width,
-                "filterHeight": filter.contentRect.height,
-                "pointPixelScale": pointPixelScale,
+                "filterWidth": captured.filter.contentRect.width,
+                "filterHeight": captured.filter.contentRect.height,
+                "pointPixelScale": captured.pointPixelScale,
             ]
         )
+    }
+
+    func cursor() async throws -> [String: Any] {
+        let window = try await targetWindow()
+        guard let pointer = CGEvent(source: nil)?.location else {
+            throw ClosedCode.captureFailed
+        }
+        let normalizedX = (pointer.x - window.frame.minX) / max(1, window.frame.width)
+        let normalizedY = (pointer.y - window.frame.minY) / max(1, window.frame.height)
+        let pointerInWindow = window.frame.contains(pointer)
+        let titleBandHeight = min(64, max(24, window.frame.height * 0.10))
+        let pointerInTitleBand = pointerInWindow
+            && pointer.y >= window.frame.minY
+            && pointer.y < window.frame.minY + titleBandHeight
+        let aspectRatio = max(0.25, min(4, window.frame.width / max(1, window.frame.height)))
+        let withoutCursor = try await captureImage(window: window, showsCursor: false)
+        let withCursor = try await captureImage(window: window, showsCursor: true)
+        let difference = cursorDifference(
+            withoutCursor: try makePlane(image: withoutCursor.image, aspectRatio: aspectRatio),
+            withCursor: try makePlane(image: withCursor.image, aspectRatio: aspectRatio),
+            normalizedX: normalizedX,
+            normalizedY: normalizedY
+        )
+        let cursorVisible = pointerInTitleBand
+            && difference.changedRatio >= 0.003
+            && difference.meanDelta >= 0.0005
+            && difference.maxDelta >= 0.15
+        return [
+            "schema": schemaVersion,
+            "type": "cursor",
+            "status": "pass",
+            "code": ClosedCode.ok.rawValue,
+            "pointerInTargetWindow": pointerInWindow,
+            "pointerInTitleBand": pointerInTitleBand,
+            "cursorVisible": cursorVisible,
+            "changedRatio": rounded(difference.changedRatio),
+            "meanDelta": rounded(difference.meanDelta),
+            "maxDelta": rounded(difference.maxDelta),
+        ]
     }
 
     func capture(slot: String?) async throws -> [String: Any] {
@@ -1509,6 +1604,8 @@ private func runSession(processID: pid_t) async {
                 emit(try await session.endSeries())
             case "visibility":
                 emit(try await session.visibility())
+            case "cursor":
+                emit(try await session.cursor())
             case "clear":
                 guard let slot = validSlot(object["slot"]) else { throw ClosedCode.invalidArguments }
                 emit(session.clear(slot: slot))
