@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-07-31
+Last reviewed: 2026-08-01
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -178,3 +178,4 @@ not execute their popup/companion pairing matrix against the current product.
 | ID | Status | Finding | Repeat only when | Evidence |
 | --- | --- | --- | --- | --- |
 | `CROSS-PURCHASE-001` | `SETTLED` | App ID `480` proves generic overlay plumbing and synthetic routing only. It cannot prove real purchase content or authorization. | Never. Real proof always uses private runtime inputs with only sanitized committed evidence. | [Purchase overlay checklist](cross-platform-overlay-status.md#purchase-overlay-checklist) |
+| `CROSS-MATCHMAKING-SHUTDOWN-001` | `SETTLED` | A live App ID `480` probe proved that invalidating waiter generations alone was insufficient: shutting down with an unregistered one-shot matchmaking server-list request emitted a Steam matchmaking lock failure and terminated the Node process with an access violation. The replacement registers list and ping/player/rules queries while holding the shared lifecycle lock, gives shutdown sole cancellation/release ownership, and keeps callback response state alive until its future rejects. The rebuilt native addon rejected the pending list in 32 ms, rejected a simultaneous open request as stale after reinitialization in 69 ms, and rejected a generic pending leaderboard call in 15 ms, with clean exits. A following stress probe passed 20 generic API and 10 matchmaking init/request/immediate-shutdown cycles with prompt rejections and zero crashes. | Repeat only if matchmaking request registration, active-query ownership, client shutdown ordering, lifecycle generations, manual dispatch, or Steam SDK behavior changes, or a shutdown-with-pending-work crash regresses. Do not test lifecycle safety by leaving a native request unregistered. | [0.3.12 checkpoint](current-work.md#2026-08-01-0312-security-and-lifecycle-release-checkpoint) |

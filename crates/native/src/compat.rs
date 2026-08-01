@@ -13,7 +13,7 @@ use napi_derive::napi;
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::future::Future;
 use std::mem::MaybeUninit;
@@ -360,7 +360,12 @@ struct GcMessageAvailableRaw {
 }
 
 static NEXT_NETWORKING_FAKE_UDP_PORT_HANDLE: AtomicU32 = AtomicU32::new(1);
-static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, usize>>> =
+#[derive(Clone, Copy)]
+struct NetworkingFakeUdpPortEntry {
+    port: usize,
+    domain: NetworkingInterfaceContext,
+}
+static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, NetworkingFakeUdpPortEntry>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static NEXT_INPUT_ACTION_EVENT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
 static INPUT_ACTION_EVENT_HANDLER: Lazy<Mutex<Option<(u64, FatalThreadsafeFunction<Value>)>>> =
@@ -376,6 +381,10 @@ static NEXT_MATCHMAKING_SERVER_LIST_HANDLE: AtomicU64 = AtomicU64::new(1);
 static MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<
     Mutex<HashMap<u64, MatchmakingServerListRequestEntry>>,
 > = Lazy::new(|| Mutex::new(HashMap::new()));
+static ACTIVE_MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<Mutex<HashSet<usize>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
+static ACTIVE_MATCHMAKING_SERVER_QUERIES: Lazy<Mutex<HashSet<i32>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
 const CALLBACK_HTTP_REQUEST_COMPLETED: i32 = 2101;
 const CALLBACK_HTTP_REQUEST_HEADERS_RECEIVED: i32 = 2102;
 const CALLBACK_HTTP_REQUEST_DATA_RECEIVED: i32 = 2103;
@@ -10461,6 +10470,8 @@ pub fn game_server_shutdown() {
 
 pub(crate) fn game_server_shutdown_locked() {
     if crate::state::is_game_server_initialized() {
+        crate::state::invalidate_lifecycle_generation(crate::state::CallbackDomain::GameServer);
+        clear_networking_fake_udp_ports(crate::state::CallbackDomain::GameServer);
         unsafe { sys::SteamGameServer_Shutdown() };
         crate::state::mark_game_server_initialized(false);
     }
@@ -13322,21 +13333,30 @@ game_server_networking_sockets_wrapper!(
 
 #[napi(js_name = "networkingFakeUdpPortDestroy")]
 pub fn networking_fake_udp_port_destroy(handle: u32) -> Result<bool, Error> {
-    ensure_networking_or_game_server_initialized()?;
-    let port = NETWORKING_FAKE_UDP_PORTS
+    let mut registry = NETWORKING_FAKE_UDP_PORTS
         .lock()
-        .expect("Steam fake UDP port registry poisoned")
-        .remove(&handle);
-    if let Some(port) = port {
+        .expect("Steam fake UDP port registry poisoned");
+    let Some(entry) = registry.get(&handle).copied() else {
+        if !crate::state::is_initialized() && !crate::state::is_game_server_initialized() {
+            return Err(Error::from_reason(
+                "Steam Bridge or Steam Game Server has not been initialized",
+            ));
+        }
+        return Ok(false);
+    };
+    ensure_networking_context_initialized(entry.domain)?;
+    let entry = registry
+        .remove(&handle)
+        .expect("Steam fake UDP port disappeared while locked");
+    drop(registry);
+    if entry.port != 0 {
         unsafe {
             sys::SteamAPI_ISteamNetworkingFakeUDPPort_DestroyFakeUDPPort(
-                port as *mut sys::ISteamNetworkingFakeUDPPort,
+                entry.port as *mut sys::ISteamNetworkingFakeUDPPort,
             );
         }
-        Ok(true)
-    } else {
-        Ok(false)
     }
+    Ok(true)
 }
 
 #[napi(js_name = "networkingFakeUdpPortSendMessageToFakeIp")]
@@ -18219,7 +18239,7 @@ fn steam_game_server_networking_messages() -> Result<*mut sys::ISteamNetworkingM
     )
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum NetworkingInterfaceContext {
     Client,
     GameServer,
@@ -20427,18 +20447,26 @@ fn game_server_public_ip(address: &mut sys::SteamIPAddress_t) -> GameServerPubli
     }
 }
 
-pub(crate) fn clear_networking_fake_udp_ports() {
-    let ports = NETWORKING_FAKE_UDP_PORTS
-        .lock()
-        .expect("Steam fake UDP port registry poisoned")
-        .drain()
-        .map(|(_, port)| port)
-        .collect::<Vec<_>>();
-    for port in ports {
-        if port != 0 {
+pub(crate) fn clear_networking_fake_udp_ports(domain: crate::state::CallbackDomain) {
+    let context = networking_context_for_callback_domain(domain);
+    let ports = {
+        let mut registry = NETWORKING_FAKE_UDP_PORTS
+            .lock()
+            .expect("Steam fake UDP port registry poisoned");
+        let handles = registry
+            .iter()
+            .filter_map(|(handle, entry)| (entry.domain == context).then_some(*handle))
+            .collect::<Vec<_>>();
+        handles
+            .into_iter()
+            .filter_map(|handle| registry.remove(&handle))
+            .collect::<Vec<_>>()
+    };
+    for entry in ports {
+        if entry.port != 0 {
             unsafe {
                 sys::SteamAPI_ISteamNetworkingFakeUDPPort_DestroyFakeUDPPort(
-                    port as *mut sys::ISteamNetworkingFakeUDPPort,
+                    entry.port as *mut sys::ISteamNetworkingFakeUDPPort,
                 );
             }
         }
@@ -20456,7 +20484,13 @@ fn register_networking_fake_udp_port(
         if handle == 0 || registry.contains_key(&handle) {
             continue;
         }
-        registry.insert(handle, port as usize);
+        registry.insert(
+            handle,
+            NetworkingFakeUdpPortEntry {
+                port: port as usize,
+                domain: networking_interface_context(),
+            },
+        );
         return Ok(handle);
     }
     Err(Error::from_reason("exhausted Steam fake UDP port handles"))
@@ -20466,24 +20500,30 @@ fn with_networking_fake_udp_port<T>(
     handle: u32,
     action: impl FnOnce(*mut sys::ISteamNetworkingFakeUDPPort) -> Result<T, Error>,
 ) -> Result<T, Error> {
-    ensure_networking_or_game_server_initialized()?;
     let registry = NETWORKING_FAKE_UDP_PORTS
         .lock()
         .expect("Steam fake UDP port registry poisoned");
-    let port = registry
+    let entry = registry
         .get(&handle)
         .copied()
         .ok_or_else(|| Error::from_reason("invalid Steam fake UDP port handle"))?;
-    action(port as *mut sys::ISteamNetworkingFakeUDPPort)
+    ensure_networking_context_initialized(entry.domain)?;
+    action(entry.port as *mut sys::ISteamNetworkingFakeUDPPort)
 }
 
-fn ensure_networking_or_game_server_initialized() -> Result<(), Error> {
-    if crate::state::is_initialized() || crate::state::is_game_server_initialized() {
-        Ok(())
-    } else {
-        Err(Error::from_reason(
-            "Steam Bridge or Steam Game Server has not been initialized",
-        ))
+fn networking_context_for_callback_domain(
+    domain: crate::state::CallbackDomain,
+) -> NetworkingInterfaceContext {
+    match domain {
+        crate::state::CallbackDomain::Client => NetworkingInterfaceContext::Client,
+        crate::state::CallbackDomain::GameServer => NetworkingInterfaceContext::GameServer,
+    }
+}
+
+fn ensure_networking_context_initialized(context: NetworkingInterfaceContext) -> Result<(), Error> {
+    match context {
+        NetworkingInterfaceContext::Client => crate::state::ensure_initialized(),
+        NetworkingInterfaceContext::GameServer => crate::state::ensure_game_server_initialized(),
     }
 }
 
@@ -21174,11 +21214,16 @@ where
             "Steam returned an invalid game server API call handle",
         ));
     }
+    let domain = crate::state::CallbackDomain::GameServer;
+    let generation = crate::state::lifecycle_generation(domain);
+    crate::state::ensure_lifecycle_generation(domain, generation)?;
     let started = Instant::now();
     loop {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         run_game_server_callbacks();
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         if let Some(result) = take_completed_api_call(
-            crate::state::CallbackDomain::GameServer,
+            domain,
             call,
             expected_callback,
             "Steam game server API call",
@@ -21217,15 +21262,17 @@ where
             "Steam returned an invalid API call handle",
         ));
     }
+    let domain = crate::state::CallbackDomain::Client;
+    let generation = crate::state::lifecycle_generation(domain);
+    crate::state::ensure_lifecycle_generation(domain, generation)?;
     let started = Instant::now();
     loop {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         run_callbacks();
-        if let Some(result) = take_completed_api_call(
-            crate::state::CallbackDomain::Client,
-            call,
-            expected_callback,
-            "Steam API call",
-        ) {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
+        if let Some(result) =
+            take_completed_api_call(domain, call, expected_callback, "Steam API call")
+        {
             return result;
         }
         if started.elapsed() > Duration::from_secs(timeout_seconds) {
@@ -23624,20 +23671,28 @@ async fn request_matchmaking_server_list(
     let filter_count = len_to_u32(filter_values.len(), "matchmaking server filters")?;
 
     let mut response = matchmaking_server_list_response();
-    let request_handle = match start_matchmaking_server_list_request(
-        kind,
-        app_id,
-        filter_count,
-        &mut filter_values,
-        &mut response,
-    ) {
-        Ok(request) => request,
-        Err(err) => {
-            drop_matchmaking_server_list_response(response);
-            return Err(err);
-        }
+    let request_handle = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        let request = match start_matchmaking_server_list_request(
+            kind,
+            app_id,
+            filter_count,
+            &mut filter_values,
+            &mut response,
+        ) {
+            Ok(request) => request,
+            Err(err) => {
+                drop_matchmaking_server_list_response(response);
+                return Err(err);
+            }
+        };
+        matchmaking_server_list_set_request(&response, request);
+        ACTIVE_MATCHMAKING_SERVER_LIST_REQUESTS
+            .lock()
+            .unwrap()
+            .insert(request);
+        request
     };
-    matchmaking_server_list_set_request(&response, request_handle);
 
     let wait_result = wait_for_matchmaking_server_list(
         &response,
@@ -23645,35 +23700,59 @@ async fn request_matchmaking_server_list(
         u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
     )
     .await;
-    let servers = steam_matchmaking_servers()?;
-    let request = request_handle as sys::HServerListRequest;
-    let result = match wait_result {
-        Ok(response_code) => {
-            let count =
-                unsafe { sys::SteamAPI_ISteamMatchmakingServers_GetServerCount(servers, request) };
-            let mut items = Vec::new();
-            for index in 0..count.max(0) {
-                let item = unsafe {
-                    sys::SteamAPI_ISteamMatchmakingServers_GetServerDetails(servers, request, index)
-                };
-                if let Some(item) = matchmaking_server_item(item) {
-                    items.push(item);
+    let result = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        let owned = ACTIVE_MATCHMAKING_SERVER_LIST_REQUESTS
+            .lock()
+            .unwrap()
+            .remove(&request_handle);
+        if !owned {
+            Err(Error::from_reason(
+                "Steam shut down while the matchmaking server list request was pending",
+            ))
+        } else {
+            let servers = match steam_matchmaking_servers() {
+                Ok(servers) => servers,
+                Err(error) => {
+                    drop(_dispatch);
+                    drop_matchmaking_server_list_response(response);
+                    return Err(error);
                 }
-            }
-            let (responded, failed) = matchmaking_server_list_events(&response);
-            Ok(MatchmakingServerListResult {
-                response: response_code,
-                responded,
-                failed,
-                servers: items,
-            })
-        }
-        Err(err) => {
-            unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(servers, request) };
-            Err(err)
+            };
+            let request = request_handle as sys::HServerListRequest;
+            let result = match wait_result {
+                Ok(response_code) => {
+                    let count = unsafe {
+                        sys::SteamAPI_ISteamMatchmakingServers_GetServerCount(servers, request)
+                    };
+                    let mut items = Vec::new();
+                    for index in 0..count.max(0) {
+                        let item = unsafe {
+                            sys::SteamAPI_ISteamMatchmakingServers_GetServerDetails(
+                                servers, request, index,
+                            )
+                        };
+                        if let Some(item) = matchmaking_server_item(item) {
+                            items.push(item);
+                        }
+                    }
+                    let (responded, failed) = matchmaking_server_list_events(&response);
+                    Ok(MatchmakingServerListResult {
+                        response: response_code,
+                        responded,
+                        failed,
+                        servers: items,
+                    })
+                }
+                Err(err) => {
+                    unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(servers, request) };
+                    Err(err)
+                }
+            };
+            unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
+            result
         }
     };
-    unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
     drop_matchmaking_server_list_response(response);
     result
 }
@@ -23686,6 +23765,7 @@ fn open_matchmaking_server_list_request(
     let mut filter_values = matchmaking_server_filters(filters)?;
     let filter_count = len_to_u32(filter_values.len(), "matchmaking server filters")?;
     let mut response = matchmaking_server_list_response();
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
     let request = match start_matchmaking_server_list_request(
         kind,
         app_id,
@@ -23926,6 +24006,46 @@ fn release_matchmaking_server_list_request(handle: BigInt) -> Result<bool, Error
     Ok(true)
 }
 
+pub(crate) fn clear_matchmaking_server_list_requests() {
+    let entries = MATCHMAKING_SERVER_LIST_REQUESTS
+        .lock()
+        .unwrap()
+        .drain()
+        .map(|(_, entry)| entry)
+        .collect::<Vec<_>>();
+    let active_requests = ACTIVE_MATCHMAKING_SERVER_LIST_REQUESTS
+        .lock()
+        .unwrap()
+        .drain()
+        .collect::<Vec<_>>();
+    let active_queries = ACTIVE_MATCHMAKING_SERVER_QUERIES
+        .lock()
+        .unwrap()
+        .drain()
+        .collect::<Vec<_>>();
+    let servers = steam_matchmaking_servers().ok();
+    for entry in entries {
+        if let Some(servers) = servers {
+            let request = entry.request as sys::HServerListRequest;
+            if unsafe { sys::SteamAPI_ISteamMatchmakingServers_IsRefreshing(servers, request) } {
+                unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(servers, request) };
+            }
+            unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
+        }
+        drop_matchmaking_server_list_response(entry.response);
+    }
+    if let Some(servers) = servers {
+        for request in active_requests {
+            let request = request as sys::HServerListRequest;
+            unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(servers, request) };
+            unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
+        }
+        for query in active_queries {
+            unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query) };
+        }
+    }
+}
+
 fn matchmaking_server_list_request_error(handle: u64) -> Error {
     Error::from_reason(format!(
         "unknown matchmaking server list request handle {handle}"
@@ -23941,39 +24061,61 @@ async fn ping_matchmaking_server(
     let response_ptr = response.as_mut() as *mut MatchmakingPingResponseRaw
         as *mut sys::ISteamMatchmakingPingResponse;
     let query = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
         let servers = steam_matchmaking_servers()?;
-        unsafe {
+        let query = unsafe {
             sys::SteamAPI_ISteamMatchmakingServers_PingServer(
                 servers,
                 ip,
                 port_to_u16(query_port, "matchmaking server query port")?,
                 response_ptr,
             )
+        };
+        if query == sys::HSERVERQUERY_INVALID {
+            drop_matchmaking_ping_response(response);
+            return Err(Error::from_reason(
+                "Steam returned an invalid matchmaking server ping query",
+            ));
         }
+        ACTIVE_MATCHMAKING_SERVER_QUERIES
+            .lock()
+            .unwrap()
+            .insert(query);
+        query
     };
-    if query == sys::HSERVERQUERY_INVALID {
-        drop_matchmaking_ping_response(response);
-        return Err(Error::from_reason(
-            "Steam returned an invalid matchmaking server ping query",
-        ));
-    }
     let wait_result = wait_for_matchmaking_ping(
         &response,
         u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
     )
     .await;
-    let result = match wait_result {
-        Ok(()) => {
-            let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
-            Ok(MatchmakingServerPingResult {
-                responded: inner.responded,
-                server: inner.server.take(),
-            })
-        }
-        Err(err) => {
-            let servers = steam_matchmaking_servers()?;
-            unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query) };
-            Err(err)
+    let result = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        let owned = ACTIVE_MATCHMAKING_SERVER_QUERIES
+            .lock()
+            .unwrap()
+            .remove(&query);
+        if !owned {
+            Err(Error::from_reason(
+                "Steam shut down while the matchmaking server ping query was pending",
+            ))
+        } else {
+            match wait_result {
+                Ok(()) => {
+                    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+                    Ok(MatchmakingServerPingResult {
+                        responded: inner.responded,
+                        server: inner.server.take(),
+                    })
+                }
+                Err(err) => {
+                    if let Ok(servers) = steam_matchmaking_servers() {
+                        unsafe {
+                            sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query)
+                        };
+                    }
+                    Err(err)
+                }
+            }
         }
     };
     drop_matchmaking_ping_response(response);
@@ -23989,39 +24131,61 @@ async fn get_matchmaking_server_players(
     let response_ptr = response.as_mut() as *mut MatchmakingPlayersResponseRaw
         as *mut sys::ISteamMatchmakingPlayersResponse;
     let query = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
         let servers = steam_matchmaking_servers()?;
-        unsafe {
+        let query = unsafe {
             sys::SteamAPI_ISteamMatchmakingServers_PlayerDetails(
                 servers,
                 ip,
                 port_to_u16(query_port, "matchmaking server query port")?,
                 response_ptr,
             )
+        };
+        if query == sys::HSERVERQUERY_INVALID {
+            drop_matchmaking_players_response(response);
+            return Err(Error::from_reason(
+                "Steam returned an invalid matchmaking server players query",
+            ));
         }
+        ACTIVE_MATCHMAKING_SERVER_QUERIES
+            .lock()
+            .unwrap()
+            .insert(query);
+        query
     };
-    if query == sys::HSERVERQUERY_INVALID {
-        drop_matchmaking_players_response(response);
-        return Err(Error::from_reason(
-            "Steam returned an invalid matchmaking server players query",
-        ));
-    }
     let wait_result = wait_for_matchmaking_players(
         &response,
         u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
     )
     .await;
-    let result = match wait_result {
-        Ok(()) => {
-            let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
-            Ok(MatchmakingServerPlayersResult {
-                responded: inner.responded,
-                players: std::mem::take(&mut inner.players),
-            })
-        }
-        Err(err) => {
-            let servers = steam_matchmaking_servers()?;
-            unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query) };
-            Err(err)
+    let result = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        let owned = ACTIVE_MATCHMAKING_SERVER_QUERIES
+            .lock()
+            .unwrap()
+            .remove(&query);
+        if !owned {
+            Err(Error::from_reason(
+                "Steam shut down while the matchmaking server players query was pending",
+            ))
+        } else {
+            match wait_result {
+                Ok(()) => {
+                    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+                    Ok(MatchmakingServerPlayersResult {
+                        responded: inner.responded,
+                        players: std::mem::take(&mut inner.players),
+                    })
+                }
+                Err(err) => {
+                    if let Ok(servers) = steam_matchmaking_servers() {
+                        unsafe {
+                            sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query)
+                        };
+                    }
+                    Err(err)
+                }
+            }
         }
     };
     drop_matchmaking_players_response(response);
@@ -24037,39 +24201,61 @@ async fn get_matchmaking_server_rules(
     let response_ptr = response.as_mut() as *mut MatchmakingRulesResponseRaw
         as *mut sys::ISteamMatchmakingRulesResponse;
     let query = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
         let servers = steam_matchmaking_servers()?;
-        unsafe {
+        let query = unsafe {
             sys::SteamAPI_ISteamMatchmakingServers_ServerRules(
                 servers,
                 ip,
                 port_to_u16(query_port, "matchmaking server query port")?,
                 response_ptr,
             )
+        };
+        if query == sys::HSERVERQUERY_INVALID {
+            drop_matchmaking_rules_response(response);
+            return Err(Error::from_reason(
+                "Steam returned an invalid matchmaking server rules query",
+            ));
         }
+        ACTIVE_MATCHMAKING_SERVER_QUERIES
+            .lock()
+            .unwrap()
+            .insert(query);
+        query
     };
-    if query == sys::HSERVERQUERY_INVALID {
-        drop_matchmaking_rules_response(response);
-        return Err(Error::from_reason(
-            "Steam returned an invalid matchmaking server rules query",
-        ));
-    }
     let wait_result = wait_for_matchmaking_rules(
         &response,
         u64::from(timeout_seconds.unwrap_or(DEFAULT_ASYNC_TIMEOUT_SECONDS as u32)),
     )
     .await;
-    let result = match wait_result {
-        Ok(()) => {
-            let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
-            Ok(MatchmakingServerRulesResult {
-                responded: inner.responded,
-                rules: std::mem::take(&mut inner.rules),
-            })
-        }
-        Err(err) => {
-            let servers = steam_matchmaking_servers()?;
-            unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query) };
-            Err(err)
+    let result = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        let owned = ACTIVE_MATCHMAKING_SERVER_QUERIES
+            .lock()
+            .unwrap()
+            .remove(&query);
+        if !owned {
+            Err(Error::from_reason(
+                "Steam shut down while the matchmaking server rules query was pending",
+            ))
+        } else {
+            match wait_result {
+                Ok(()) => {
+                    let mut inner = unsafe { &*response.state }.inner.lock().unwrap();
+                    Ok(MatchmakingServerRulesResult {
+                        responded: inner.responded,
+                        rules: std::mem::take(&mut inner.rules),
+                    })
+                }
+                Err(err) => {
+                    if let Ok(servers) = steam_matchmaking_servers() {
+                        unsafe {
+                            sys::SteamAPI_ISteamMatchmakingServers_CancelServerQuery(servers, query)
+                        };
+                    }
+                    Err(err)
+                }
+            }
         }
     };
     drop_matchmaking_rules_response(response);
@@ -24242,9 +24428,14 @@ async fn wait_for_matchmaking_server_list(
     request: usize,
     timeout_seconds: u64,
 ) -> Result<u32, Error> {
+    let domain = crate::state::CallbackDomain::Client;
+    let generation = crate::state::lifecycle_generation(domain);
+    crate::state::ensure_lifecycle_generation(domain, generation)?;
     let started = Instant::now();
     loop {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         run_callbacks();
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         {
             let inner = unsafe { &*response.state }.inner.lock().unwrap();
             if inner.completed && (inner.request == 0 || inner.request == request) {
@@ -24264,9 +24455,14 @@ async fn wait_for_matchmaking_ping(
     response: &MatchmakingPingResponseRaw,
     timeout_seconds: u64,
 ) -> Result<(), Error> {
+    let domain = crate::state::CallbackDomain::Client;
+    let generation = crate::state::lifecycle_generation(domain);
+    crate::state::ensure_lifecycle_generation(domain, generation)?;
     let started = Instant::now();
     loop {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         run_callbacks();
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         if unsafe { &*response.state }.inner.lock().unwrap().completed {
             return Ok(());
         }
@@ -24283,9 +24479,14 @@ async fn wait_for_matchmaking_players(
     response: &MatchmakingPlayersResponseRaw,
     timeout_seconds: u64,
 ) -> Result<(), Error> {
+    let domain = crate::state::CallbackDomain::Client;
+    let generation = crate::state::lifecycle_generation(domain);
+    crate::state::ensure_lifecycle_generation(domain, generation)?;
     let started = Instant::now();
     loop {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         run_callbacks();
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         if unsafe { &*response.state }.inner.lock().unwrap().completed {
             return Ok(());
         }
@@ -24302,9 +24503,14 @@ async fn wait_for_matchmaking_rules(
     response: &MatchmakingRulesResponseRaw,
     timeout_seconds: u64,
 ) -> Result<(), Error> {
+    let domain = crate::state::CallbackDomain::Client;
+    let generation = crate::state::lifecycle_generation(domain);
+    crate::state::ensure_lifecycle_generation(domain, generation)?;
     let started = Instant::now();
     loop {
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         run_callbacks();
+        crate::state::ensure_lifecycle_generation(domain, generation)?;
         if unsafe { &*response.state }.inner.lock().unwrap().completed {
             return Ok(());
         }
@@ -25530,5 +25736,78 @@ fn query_stat(
         Some(value.into())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_resource_tests {
+    use super::*;
+
+    #[test]
+    fn fake_udp_cleanup_is_scoped_to_its_owning_domain() {
+        let _test = crate::state::lock_test_state();
+        crate::state::mark_initialized(false);
+        crate::state::mark_game_server_initialized(false);
+        let mut registry = NETWORKING_FAKE_UDP_PORTS
+            .lock()
+            .expect("Steam fake UDP port registry poisoned");
+        registry.clear();
+        registry.insert(
+            1,
+            NetworkingFakeUdpPortEntry {
+                port: 0,
+                domain: NetworkingInterfaceContext::Client,
+            },
+        );
+        registry.insert(
+            2,
+            NetworkingFakeUdpPortEntry {
+                port: 0,
+                domain: NetworkingInterfaceContext::GameServer,
+            },
+        );
+        drop(registry);
+
+        clear_networking_fake_udp_ports(crate::state::CallbackDomain::Client);
+        let registry = NETWORKING_FAKE_UDP_PORTS
+            .lock()
+            .expect("Steam fake UDP port registry poisoned");
+        assert!(!registry.contains_key(&1));
+        assert!(registry.contains_key(&2));
+        drop(registry);
+
+        clear_networking_fake_udp_ports(crate::state::CallbackDomain::GameServer);
+        assert!(NETWORKING_FAKE_UDP_PORTS
+            .lock()
+            .expect("Steam fake UDP port registry poisoned")
+            .is_empty());
+    }
+
+    #[test]
+    fn matchmaking_request_cleanup_drops_uninitialized_response_state() {
+        let _test = crate::state::lock_test_state();
+        crate::state::mark_initialized(false);
+        MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap().insert(
+            1,
+            MatchmakingServerListRequestEntry {
+                request: 0,
+                app_id: 480,
+                kind: MatchmakingServerListKind::Internet,
+                response: matchmaking_server_list_response(),
+            },
+        );
+        ACTIVE_MATCHMAKING_SERVER_LIST_REQUESTS
+            .lock()
+            .unwrap()
+            .insert(2);
+        ACTIVE_MATCHMAKING_SERVER_QUERIES.lock().unwrap().insert(3);
+
+        clear_matchmaking_server_list_requests();
+        assert!(MATCHMAKING_SERVER_LIST_REQUESTS.lock().unwrap().is_empty());
+        assert!(ACTIVE_MATCHMAKING_SERVER_LIST_REQUESTS
+            .lock()
+            .unwrap()
+            .is_empty());
+        assert!(ACTIVE_MATCHMAKING_SERVER_QUERIES.lock().unwrap().is_empty());
     }
 }

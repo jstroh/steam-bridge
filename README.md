@@ -169,7 +169,9 @@ const transaction = await steamWebApi.microTxn.initClientTxn(request);
 `createPublisherWebApiClient()` reads `STEAM_PUBLISHER_WEB_API_KEY`, with
 `STEAM_WEB_API_KEY` retained as a server-only compatibility alias. Steam Bridge
 sends keys in `x-webapi-key`, requires HTTPS, rejects credential-bearing
-redirects, and keeps keys out of generated and returned URLs.
+redirects, and keeps keys out of generated and returned URLs. Requests with
+caller-provided headers receive the same HTTPS, no-redirect, and error-redaction
+protections.
 
 See the [Web API reference](packages/steam-bridge/README.md#steam-web-api) for
 public, user-key, publisher-key, authentication-ticket, and encrypted-ticket

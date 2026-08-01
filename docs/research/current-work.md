@@ -2,9 +2,9 @@
 
 Last reviewed: 2026-08-01
 
-Review anchor: `b43167b0c33c148c1f7d68d0ed14dc660f3c0aa2`
-(`Improve onboarding and release safeguards`). npm `latest` and the
-stable GitHub Release are `0.3.10`; release commit
+Review anchor: `d546b69bde6993c864f09e4bee9f8accba58bc2a`
+(`Prepare steam-bridge 0.3.11 release`). npm `latest` and the stable GitHub
+Release are `0.3.10`; release commit
 `d4f732fa7df9f6c3ea69326335210e39738f058b` is bound to immutable tag
 `v0.3.10`. Neither the source commit alone nor an intermediate ad-hoc bundle is
 a publishable candidate. Exact
@@ -19,7 +19,10 @@ Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
 and `v0.3.10` are published; `v0.3.10` is the current stable
-release. Never move, reuse, or publish any rejected tag.
+release. Exact `v0.3.11` is immutable and unpublished; the post-tag adversarial
+review found Web API credential fail-open paths and native lifecycle/resource
+ownership defects, so it must never be moved, reused, or published. Never move,
+reuse, or publish any rejected tag.
 
 ## Active Goal: Cross-platform exhaustive actual-game QA
 
@@ -36,7 +39,42 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
-### 2026-08-01 0.3.11 release-preparation checkpoint
+### 2026-08-01 0.3.12 security and lifecycle release checkpoint
+
+The `0.3.12` candidate replaces rejected `v0.3.11`. Caller-provided Web API
+header values now require HTTPS, reject redirects, and participate in transport
+error redaction. Valid JSON deeper than the bounded credential-inspection limit
+fails closed instead of allowing a recursive traversal failure to be treated as
+credential-free. Focused tests reproduce both former leak paths without making
+a network request.
+
+Client and game-server lifecycle generations now invalidate pending Steam API
+and matchmaking query waits as soon as shutdown begins, so old promises cannot
+pump or consume callbacks from a later initialization. Matchmaking server-list
+requests and ping/player/rules queries are registered under the lifecycle lock,
+cancelled/released before client shutdown, and removed by one explicit owner.
+Their response state remains alive until the waiting future observes shutdown
+and rejects. Fake UDP ports retain their owning client/game-server domain
+and are destroyed before that specific subsystem shuts down; handles cannot be
+made valid merely by initializing the other domain. The one-shot matchmaking
+paths also retain response cleanup when shutdown prevents query cancellation.
+The first live App ID 480 one-shot server-list shutdown probe reproduced an
+access violation before active requests were registered; that failed design is
+superseded by the explicit active-query ownership above. The rebuilt native
+probe now rejects a pending server-list request in 32 ms, rejects a simultaneous
+open request as stale after reinitialization in 69 ms, and rejects a generic
+pending leaderboard request in 15 ms, with clean process exits. Focused Rust
+lifecycle/resource tests, all 30 native tests, native formatting and
+compilation, and the complete 363-test JavaScript suite pass locally. A final
+live stress probe also completed 20 generic API and 10 matchmaking
+init/request/immediate-shutdown cycles with prompt rejections and zero crashes.
+
+After final code/package gates, commit and tag exact `v0.3.12`, build its
+cross-platform candidate, and run only the candidate-bound Windows release
+proof required for code/native publication. Do not reuse `v0.3.11` artifacts or
+receipts.
+
+### 2026-08-01 0.3.11 rejected release-preparation checkpoint
 
 The current worktree prepares the first release after `v0.3.10`. The public
 landing README is reorganized around install, first initialization, platform
@@ -64,9 +102,8 @@ Electron checks, complete 361-test suite, packed-package smoke, Rust
 format/check, API coverage audit, platform policy, production dependency audit,
 and diff/credential scan pass locally. Exact baseline commit `b43167b` also
 passed GitHub CI run `30702216770` on Apple Silicon macOS, Windows, Linux, and
-the isolated packed-package job. Freeze `0.3.11`, push its immutable tag, build
-the exact candidate, and generate a fresh candidate-bound Windows receipt.
-This is not a
+the isolated packed-package job. This candidate was subsequently rejected by
+the adversarial review recorded above and must not be published. This was not a
 documentation-only successor: callback, Web API, lifecycle, and ESM changes
 after `v0.3.10` require the normal live-proof publication path.
 

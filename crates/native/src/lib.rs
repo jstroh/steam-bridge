@@ -255,13 +255,15 @@ pub fn shutdown() -> Result<(), Error> {
 fn shutdown_all_locked() {
     compat::game_server_shutdown_locked();
     if state::is_initialized() {
+        state::invalidate_lifecycle_generation(state::CallbackDomain::Client);
         native_surface::close();
         compat::clear_warning_message_hook();
         compat::clear_input_action_event_callback(None);
         compat::clear_client_process_hooks();
         compat::clear_networking_utils_global_callbacks();
         compat::clear_networking_debug_output_hook();
-        compat::clear_networking_fake_udp_ports();
+        compat::clear_matchmaking_server_list_requests();
+        compat::clear_networking_fake_udp_ports(state::CallbackDomain::Client);
         state::clear_callbacks();
         unsafe {
             sys::SteamAPI_Shutdown();

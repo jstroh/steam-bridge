@@ -27839,6 +27839,12 @@ interface SteamWebApiBodyCredentialInspection {
   redactedText?: string;
 }
 
+interface SteamWebApiHeaderCredentialInspection {
+  sensitiveValues: string[];
+}
+
+const MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH = 128;
+
 function assertSteamWebApiHeadersDoNotContainKey(headers: Record<string, string>): void {
   if (Object.keys(headers).some((name) => name.toLowerCase() === "x-webapi-key")) {
     throw new Error(
@@ -27848,11 +27854,20 @@ function assertSteamWebApiHeadersDoNotContainKey(headers: Record<string, string>
   }
 }
 
+function inspectSteamWebApiHeaderCredentials(
+  headers: Record<string, string>
+): SteamWebApiHeaderCredentialInspection {
+  return {
+    sensitiveValues: Object.values(headers).filter((value) => value.length > 0)
+  };
+}
+
 function assertSteamWebApiRequestSecurity(
   options: ResolvedSteamWebApiRequestOptions,
   clientOptions: SteamWebApiClientOptions,
   urlValue: string,
-  bodyInspection: SteamWebApiBodyCredentialInspection
+  bodyInspection: SteamWebApiBodyCredentialInspection,
+  headerInspection: SteamWebApiHeaderCredentialInspection
 ): void {
   const url = new URL(urlValue);
   if (url.username || url.password) {
@@ -27872,8 +27887,9 @@ function assertSteamWebApiRequestSecurity(
   }
   const sensitiveUrl = steamWebApiUrlContainsCredentials(url, options);
   const sensitiveBody = bodyInspection.sensitiveValues.some((value) => value.length > 0);
+  const sensitiveHeaders = headerInspection.sensitiveValues.some((value) => value.length > 0);
   const securitySensitiveEndpoint = steamWebApiEndpointRequiresSecureTransport(options);
-  if (!apiKey && !sensitiveUrl && !sensitiveBody && !securitySensitiveEndpoint) {
+  if (!apiKey && !sensitiveUrl && !sensitiveBody && !sensitiveHeaders && !securitySensitiveEndpoint) {
     return;
   }
   if (apiKey) {
@@ -27990,20 +28006,19 @@ function redactSteamWebApiJsonText(
     return { redactedText: value, sensitiveValues: [], hasCredentialKeyField: false };
   }
 
+  let parsed: unknown;
   try {
-    const redaction = redactSteamWebApiJsonValue(
-      JSON.parse(value),
-      0,
-      additionalSensitiveFieldNames
-    );
-    return {
-      redactedText: redaction.changed ? JSON.stringify(redaction.value) : value,
-      sensitiveValues: redaction.sensitiveValues,
-      hasCredentialKeyField: redaction.hasCredentialKeyField
-    };
+    parsed = JSON.parse(value);
   } catch {
     return { redactedText: value, sensitiveValues: [], hasCredentialKeyField: false };
   }
+
+  const redaction = redactSteamWebApiJsonValue(parsed, 0, additionalSensitiveFieldNames);
+  return {
+    redactedText: redaction.changed ? JSON.stringify(redaction.value) : value,
+    sensitiveValues: redaction.sensitiveValues,
+    hasCredentialKeyField: redaction.hasCredentialKeyField
+  };
 }
 
 function redactSteamWebApiJsonValue(
@@ -28011,6 +28026,11 @@ function redactSteamWebApiJsonValue(
   depth: number,
   additionalSensitiveFieldNames?: ReadonlySet<string>
 ): SteamWebApiJsonRedaction {
+  if (depth > MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH) {
+    throw new Error(
+      `Steam Web API JSON exceeds the maximum inspection depth of ${MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH}.`
+    );
+  }
   if (Array.isArray(value)) {
     const entries = value.map((entry) =>
       redactSteamWebApiJsonValue(entry, depth + 1, additionalSensitiveFieldNames)
@@ -28056,13 +28076,19 @@ function redactSteamWebApiJsonValue(
 }
 
 function steamWebApiSecretScalarValues(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap(steamWebApiSecretScalarValues);
+  const values: string[] = [];
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (Array.isArray(entry)) {
+      pending.push(...entry);
+    } else if (entry !== null && typeof entry === "object") {
+      pending.push(...Object.values(entry as Record<string, unknown>));
+    } else if (entry !== undefined && entry !== null) {
+      values.push(String(entry));
+    }
   }
-  if (value !== null && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).flatMap(steamWebApiSecretScalarValues);
-  }
-  return value === undefined || value === null ? [] : [String(value)];
+  return values;
 }
 
 function steamWebApiSensitiveUrlValues(
@@ -28215,13 +28241,15 @@ function sanitizeSteamWebApiRequestError(
   error: unknown,
   options: ResolvedSteamWebApiRequestOptions,
   urlValue: string,
-  bodyInspection: SteamWebApiBodyCredentialInspection
+  bodyInspection: SteamWebApiBodyCredentialInspection,
+  headerInspection: SteamWebApiHeaderCredentialInspection
 ): Error {
   const url = new URL(urlValue);
   const sensitiveValues = [
     options.key,
     ...steamWebApiSensitiveUrlValues(url, options),
-    ...bodyInspection.sensitiveValues
+    ...bodyInspection.sensitiveValues,
+    ...headerInspection.sensitiveValues
   ];
   const redactErrorText = (original: string): string => {
     let redacted = replaceSteamWebApiText(
@@ -28358,10 +28386,11 @@ async function requestSteamWebApiWithClient<T = unknown>(
 
   const headers = { ...(options.headers ?? {}) };
   assertSteamWebApiHeadersDoNotContainKey(headers);
+  const headerInspection = inspectSteamWebApiHeaderCredentials(headers);
   const body = serializeSteamWebApiBody(options.body, headers);
   const bodyInspection = inspectSteamWebApiBodyCredentials(body, headers, options);
   const url = buildSteamWebApiRequestUrl(options);
-  assertSteamWebApiRequestSecurity(options, clientOptions, url, bodyInspection);
+  assertSteamWebApiRequestSecurity(options, clientOptions, url, bodyInspection, headerInspection);
   if (options.key) {
     headers["x-webapi-key"] = options.key;
   }
@@ -28370,6 +28399,7 @@ async function requestSteamWebApiWithClient<T = unknown>(
     Boolean(options.key?.trim()) ||
     steamWebApiUrlContainsCredentials(new URL(url), options) ||
     bodyInspection.sensitiveValues.some((value) => value.length > 0) ||
+    headerInspection.sensitiveValues.some((value) => value.length > 0) ||
     steamWebApiEndpointRequiresSecureTransport(options);
   let response: SteamWebApiFetchResponse;
   try {
@@ -28381,7 +28411,7 @@ async function requestSteamWebApiWithClient<T = unknown>(
       ...(rejectCredentialRedirects ? { redirect: "error" } : {})
     });
   } catch (error) {
-    throw sanitizeSteamWebApiRequestError(error, options, url, bodyInspection);
+    throw sanitizeSteamWebApiRequestError(error, options, url, bodyInspection, headerInspection);
   }
   try {
     const text = await response.text();
@@ -28395,7 +28425,7 @@ async function requestSteamWebApiWithClient<T = unknown>(
       text
     };
   } catch (error) {
-    throw sanitizeSteamWebApiRequestError(error, options, url, bodyInspection);
+    throw sanitizeSteamWebApiRequestError(error, options, url, bodyInspection, headerInspection);
   }
 }
 

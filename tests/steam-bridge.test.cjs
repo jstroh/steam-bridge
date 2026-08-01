@@ -35201,6 +35201,85 @@ test("web API client builds generic Steam Web API URLs and parses JSON responses
   assert.equal(fetchCalls[0].init.redirect, undefined);
 });
 
+test("web API client protects and redacts caller-provided headers", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const secret = "caller-header-secret";
+  const client = steam.createSteamWebApiClient({
+    fetch: async (url, init = {}) => {
+      fetchCalls.push({ url, init });
+      throw new Error(`transport echoed ${init.headers.Authorization}`);
+    }
+  });
+
+  t.after(clearSteamBridgeCache);
+
+  await assert.rejects(
+    client.request({
+      interfaceName: "ITest",
+      methodName: "Public",
+      endpointAccess: "public",
+      baseUrl: "http://example.invalid",
+      headers: { Authorization: `Bearer ${secret}`, Cookie: `session=${secret}` }
+    }),
+    /require HTTPS/
+  );
+  assert.equal(fetchCalls.length, 0);
+
+  await assert.rejects(
+    client.request({
+      interfaceName: "ITest",
+      methodName: "Public",
+      endpointAccess: "public",
+      baseUrl: "https://example.invalid",
+      headers: { Authorization: `Bearer ${secret}` }
+    }),
+    (error) => {
+      assert.equal(error.message.includes(secret), false);
+      assert.match(error.message, /REDACTED/);
+      return true;
+    }
+  );
+  assert.equal(fetchCalls[0].init.redirect, "error");
+});
+
+test("web API credential inspection rejects JSON beyond its safe depth", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const secret = "deep-json-secret";
+  const nestedJson = `${'{"nested":'.repeat(130)}{"access_token":"${secret}"}${"}".repeat(130)}`;
+  const client = steam.createSteamWebApiClient({
+    fetch: async (url, init = {}) => {
+      fetchCalls.push({ url, init });
+      return { ok: true, status: 200, headers: { forEach() {} }, async text() { return "{}"; } };
+    }
+  });
+
+  t.after(clearSteamBridgeCache);
+
+  await assert.rejects(
+    client.request({
+      interfaceName: "ITest",
+      methodName: "DeepBody",
+      endpointAccess: "public",
+      baseUrl: "http://example.invalid",
+      headers: { "content-type": "application/json" },
+      body: nestedJson
+    }),
+    /maximum inspection depth/
+  );
+  assert.equal(fetchCalls.length, 0);
+  assert.throws(
+    () => client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "DeepQuery",
+      endpointAccess: "public",
+      params: { input_json: nestedJson }
+    }),
+    /maximum inspection depth/
+  );
+});
+
 test("web API access metadata routes hosts and keeps credentials out of URLs", async (t) => {
   const steam = loadSteamWithFakeNative(createFakeNative());
   const server = require(distFile("server.js"));

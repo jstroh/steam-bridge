@@ -11,6 +11,8 @@ type NetworkingDebugOutputFn = Box<dyn FnMut(i32, String) + Send + 'static>;
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static GAME_SERVER_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static CLIENT_GENERATION: AtomicU64 = AtomicU64::new(1);
+static GAME_SERVER_GENERATION: AtomicU64 = AtomicU64::new(1);
 static NEXT_CALLBACK_ID: AtomicU64 = AtomicU64::new(1);
 static CALLBACKS: Lazy<Mutex<CallbackRegistry>> =
     Lazy::new(|| Mutex::new(CallbackRegistry::default()));
@@ -89,11 +91,51 @@ impl Drop for NetworkingDebugOutputRegistration {
 }
 
 pub fn mark_initialized(initialized: bool) {
-    INITIALIZED.store(initialized, Ordering::SeqCst);
+    if INITIALIZED.swap(initialized, Ordering::SeqCst) != initialized {
+        CLIENT_GENERATION.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 pub fn is_initialized() -> bool {
     INITIALIZED.load(Ordering::SeqCst)
+}
+
+pub fn lifecycle_generation(domain: CallbackDomain) -> u64 {
+    match domain {
+        CallbackDomain::Client => CLIENT_GENERATION.load(Ordering::SeqCst),
+        CallbackDomain::GameServer => GAME_SERVER_GENERATION.load(Ordering::SeqCst),
+    }
+}
+
+pub fn invalidate_lifecycle_generation(domain: CallbackDomain) {
+    match domain {
+        CallbackDomain::Client => {
+            CLIENT_GENERATION.fetch_add(1, Ordering::SeqCst);
+        }
+        CallbackDomain::GameServer => {
+            GAME_SERVER_GENERATION.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+pub fn ensure_lifecycle_generation(
+    domain: CallbackDomain,
+    expected_generation: u64,
+) -> Result<(), Error> {
+    let initialized = match domain {
+        CallbackDomain::Client => is_initialized(),
+        CallbackDomain::GameServer => is_game_server_initialized(),
+    };
+    if initialized && lifecycle_generation(domain) == expected_generation {
+        Ok(())
+    } else {
+        Err(Error::from_reason(match domain {
+            CallbackDomain::Client => "Steam shut down while the API call was pending",
+            CallbackDomain::GameServer => {
+                "Steam Game Server shut down while the API call was pending"
+            }
+        }))
+    }
 }
 
 pub fn ensure_initialized() -> Result<(), Error> {
@@ -105,7 +147,9 @@ pub fn ensure_initialized() -> Result<(), Error> {
 }
 
 pub fn mark_game_server_initialized(initialized: bool) {
-    GAME_SERVER_INITIALIZED.store(initialized, Ordering::SeqCst);
+    if GAME_SERVER_INITIALIZED.swap(initialized, Ordering::SeqCst) != initialized {
+        GAME_SERVER_GENERATION.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 pub fn is_game_server_initialized() -> bool {
@@ -459,6 +503,31 @@ mod tests {
         assert!(MANUAL_DISPATCH.try_lock().is_err());
         drop(server);
         assert!(MANUAL_DISPATCH.try_lock().is_ok());
+    }
+
+    #[test]
+    fn lifecycle_generations_invalidate_pending_domain_work_independently() {
+        let _test = lock_test_state();
+        mark_initialized(false);
+        mark_game_server_initialized(false);
+
+        mark_initialized(true);
+        mark_game_server_initialized(true);
+        let client_generation = lifecycle_generation(CallbackDomain::Client);
+        let server_generation = lifecycle_generation(CallbackDomain::GameServer);
+        assert!(ensure_lifecycle_generation(CallbackDomain::Client, client_generation).is_ok());
+        assert!(ensure_lifecycle_generation(CallbackDomain::GameServer, server_generation).is_ok());
+
+        invalidate_lifecycle_generation(CallbackDomain::Client);
+        assert!(ensure_lifecycle_generation(CallbackDomain::Client, client_generation).is_err());
+        assert!(ensure_lifecycle_generation(CallbackDomain::GameServer, server_generation).is_ok());
+
+        invalidate_lifecycle_generation(CallbackDomain::GameServer);
+        assert!(
+            ensure_lifecycle_generation(CallbackDomain::GameServer, server_generation).is_err()
+        );
+        mark_initialized(false);
+        mark_game_server_initialized(false);
     }
 
     #[test]

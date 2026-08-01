@@ -625,6 +625,9 @@ returned URLs, and rejects publisher-key operations in browsers and Electron.
 requires publisher keys to remain on secure publisher servers.
 Sensitive token/ticket fields in supported structured URLs and bodies also
 require HTTPS, reject redirects, and are scrubbed from surfaced fetch errors.
+Caller-provided header values receive the same protections. Structured JSON
+deeper than 128 levels is rejected before fetch so credential inspection never
+fails open on an excessively nested payload.
 AuthenticationService, UserAuth, and UserOAuth calls enforce those transport
 rules even when a particular request currently contains no recognized secret.
 The dangerous client-runtime override exists only for exceptional migration
