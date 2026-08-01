@@ -76,10 +76,24 @@ function readJson(filePath) {
 }
 
 function npmViewElectronVersion() {
-  const result = spawnSync("npm", ["view", "electron", "version", "--silent"], {
+  const adjacentNpmCliPath = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  const npmExecPath = [process.env.npm_execpath, adjacentNpmCliPath].find(
+    (candidate) => typeof candidate === "string" && fs.existsSync(candidate)
+  );
+  if (!npmExecPath && process.platform === "win32") {
+    throw new Error("Could not locate npm-cli.js beside Node or through npm_execpath.");
+  }
+  const npmCommand = npmExecPath ? process.execPath : "npm";
+  const npmArgs = npmExecPath
+    ? [npmExecPath, "view", "electron", "version", "--silent"]
+    : ["view", "electron", "version", "--silent"];
+  const result = spawnSync(npmCommand, npmArgs, {
     cwd: repoRoot,
     encoding: "utf8"
   });
+  if (result.error) {
+    throw new Error(`Could not run ${npmCommand} view electron version: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     throw new Error(
       `Could not read latest Electron version from npm.\n${result.stderr || result.stdout || "npm view failed"}`

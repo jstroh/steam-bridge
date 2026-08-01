@@ -49,4 +49,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:electron:latest
       - run: npm run package:smoke

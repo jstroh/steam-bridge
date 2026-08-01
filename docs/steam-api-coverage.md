@@ -91,7 +91,10 @@ covered.
   `partner.steam-api.com` routing; public/user traffic defaults to the API host,
   publisher traffic defaults to the partner host, and documented exceptions
   can independently select either host without changing access requirements;
-  this includes keyless `ISteamUserAuth.AuthenticateUser` on the partner host
+  this includes keyless `ISteamUserAuth.AuthenticateUser` on the partner host,
+  plus `ISteamUserAuth.AuthenticateUserTicket` with either its default
+  publisher-key/partner-host route or Valve's rate-limited user-key/API-host
+  route,
   and publisher-only SiteLicense, Inventory price-sheet, and PublishedFile
   deletion calls on the API host;
   keyless helpers on the main

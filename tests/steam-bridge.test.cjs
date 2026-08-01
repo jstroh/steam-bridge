@@ -38515,7 +38515,7 @@ test("web API user auth and community facades map ticket and moderation fields",
       }
     };
   };
-  const client = steam.createSteamWebApiClient({ apiKey: "publisher-secret", fetch: fetchImpl });
+  const client = steam.createSteamWebApiClient({ apiKey: "web-api-secret", fetch: fetchImpl });
 
   t.after(clearSteamBridgeCache);
 
@@ -38528,6 +38528,12 @@ test("web API user auth and community facades map ticket and moderation fields",
     appId: 480,
     ticket: Buffer.from([10, 11, 12]),
     identity: "steam-bridge-example"
+  });
+  await client.userAuth.authenticateUserTicket({
+    appId: 480,
+    ticket: Buffer.from([13, 14, 15]),
+    identity: "steam-bridge-user-key",
+    keyType: "user"
   });
   await client.community.reportAbuse({
     actorSteamId64: 76561198000000000n,
@@ -38552,12 +38558,26 @@ test("web API user auth and community facades map ticket and moderation fields",
   );
   assert.equal(
     fetchCalls[2].url,
+    "https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v0001/?format=json&appid=480&ticket=0d0e0f&identity=steam-bridge-user-key"
+  );
+  assert.equal(fetchCalls[2].init.headers["x-webapi-key"], "web-api-secret");
+  assert.equal(
+    fetchCalls[3].url,
     "https://partner.steam-api.com/ISteamCommunity/ReportAbuse/v0001/?format=json"
   );
   assert.equal(
-    fetchCalls[2].init.body,
+    fetchCalls[3].init.body,
     "steamidActor=76561198000000000&steamidTarget=76561198000000001&appid=480&abuseType=1&contentType=2&description=Abuse+report&gid=123"
   );
+  assert.throws(
+    () => client.userAuth.authenticateUserTicket({
+      appId: 480,
+      ticket: Buffer.from([16, 17, 18]),
+      keyType: "account"
+    }),
+    /keyType must be "publisher" or "user"/
+  );
+  assert.equal(fetchCalls.length, 4, "invalid ticket key types must fail before fetch");
 });
 
 test("web API published item search and voting facades map workshop fields", async (t) => {

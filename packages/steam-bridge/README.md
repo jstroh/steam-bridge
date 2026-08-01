@@ -24,9 +24,50 @@ Requirements:
 - Electron 24 or newer when used with Electron
 - A running Steam client and a Steam app ID
 
-The repository smoke application tracks Electron `43.1.1`. Windows
+The repository smoke application tracks Electron `43.2.0`. Windows
 shared-texture hosting is tested against that runtime; applications using the
 lower-level host should feature-detect Electron's offscreen texture event.
+
+## Quick start
+
+```ts
+import steamworks from "steam-bridge";
+
+const client = steamworks.init(480);
+
+console.log("Steam ID:", client.localplayer.getSteamId().steamId64);
+console.log("Subscribed:", client.apps.isSubscribed());
+
+client.callback.register("GameOverlayActivated", ({ active }) => {
+  console.log("Steam overlay active:", active);
+});
+
+client.overlay.activateToStore(480, client.overlay.StoreFlag.None);
+```
+
+Valve's SpaceWar App ID `480` is useful for generic local smoke testing.
+Replace it with your own app ID for app-specific features and production.
+Purchase flows require your real Steam-launched app and configured products;
+SpaceWar cannot prove them.
+
+When launching outside Steam during development, place a `steam_appid.txt`
+containing your app ID next to the executable or in its working directory.
+
+## Choose an integration path
+
+| Goal | Start with |
+| --- | --- |
+| Call native Steam APIs from Node/Electron | `steamworks.init(appId)` and the grouped client APIs |
+| Add Steam routes to an existing Linux/macOS Electron window | [`createElectronSteamOverlay()`](#electron-overlay) |
+| Put a live Electron game behind Steam on Windows | [Windows standalone game-host mode](#windows-game-host-mode) |
+| Put a live Electron game behind Steam on Linux/Deck | [Linux application-host mode](#linux-and-steam-deck) |
+| Call publisher or commerce Web APIs | [`steam-bridge/server`](#steam-web-api) from a trusted Node.js server |
+| Package with electron-builder | [Packaging helpers](#packaging) |
+
+The [project overview](https://github.com/jstroh/steam-bridge#readme) is the
+short onboarding guide. This document is the detailed integration reference;
+the [Electron example](https://github.com/jstroh/steam-bridge/tree/main/examples/electron-basic)
+contains complete runnable host, input, frame-forwarding, and packaging code.
 
 ## What is included
 
@@ -71,36 +112,7 @@ requires its `qa-menu` marker plus real Steam active/inactive callbacks. A human
 Shift+Tab is a one-time qualification only when shortcut routing changes, not a
 recurring candidate or publication requirement.
 
-## Quick start
-
-```ts
-import steamworks from "steam-bridge";
-
-const client = steamworks.init(480);
-
-const steamId = client.localplayer.getSteamId().steamId64;
-const ticket = await client.auth.getAuthTicketForWebApi("my-game");
-
-client.callback.register("MicroTxnAuthorizationResponse", (event) => {
-  console.log(event);
-});
-
-client.overlay.activateToWebPage(
-  "https://store.steampowered.com/app/480/"
-);
-
-console.log({ steamId, ticketBytes: ticket.getBytes().length });
-```
-
-Valve's SpaceWar App ID `480` is useful for generic local smoke testing.
-Replace it with your own app ID for app-specific features and production.
-Purchase flows require your real Steam-launched app and configured products;
-SpaceWar cannot prove them.
-
-When launching outside Steam during development, place a `steam_appid.txt`
-containing your app ID next to the executable or in its working directory.
-
-### Callback dispatch ownership
+## Callback dispatch ownership
 
 Steam Bridge enables Valve's manual callback mode and exclusively owns each
 callback pipe's `RunFrame` / `GetNextCallback` / `GetAPICallResult` /
@@ -584,6 +596,25 @@ being misclassified as publisher-only; SiteLicense, Inventory price-sheet, and
 PublishedFile deletion keep publisher-only access while explicitly using the
 API host. `util.getSupportedApiList()` remains anonymous unless that call is
 given its optional key explicitly.
+
+`userAuth.authenticateUserTicket()` defaults to Valve's publisher-key route on
+`partner.steam-api.com`. Valve also supports a rate-limited user authentication
+key on `api.steampowered.com`; select that documented route explicitly:
+
+```ts
+const userKeyClient = steamworks.createSteamWebApiClient({
+  apiKey: userAuthenticationKey
+});
+
+const authenticated = await userKeyClient.userAuth.authenticateUserTicket({
+  appId: 480,
+  ticket,
+  identity: "my-game",
+  keyType: "user"
+});
+```
+
+Omitting `keyType` preserves the publisher-key/partner-host behavior.
 
 `createPublisherWebApiClient()` reads `STEAM_PUBLISHER_WEB_API_KEY`, with
 `STEAM_WEB_API_KEY` retained as a server-only compatibility alias. An explicit

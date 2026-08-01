@@ -5783,6 +5783,7 @@ export interface SteamWebApiUserAuthFacade {
 }
 
 export type SteamWebApiBinaryValue = string | Buffer | Uint8Array;
+export type SteamWebApiAuthenticateUserTicketKeyType = "publisher" | "user";
 
 export interface SteamWebApiAuthenticateUserOptions extends SteamWebApiEndpointOptions {
   steamId64: bigint | number | string;
@@ -5794,6 +5795,7 @@ export interface SteamWebApiAuthenticateUserTicketOptions extends SteamWebApiEnd
   appId: number;
   ticket: SteamWebApiBinaryValue;
   identity?: string;
+  keyType?: SteamWebApiAuthenticateUserTicketKeyType;
 }
 
 export interface SteamWebApiUserOAuthFacade {
@@ -27036,13 +27038,19 @@ function createSteamWebApiUserAuthFacade(clientOptions: SteamWebApiClientOptions
     authenticateUserTicket<T = unknown>(
       options: SteamWebApiAuthenticateUserTicketOptions
     ): Promise<SteamWebApiResponse<T>> {
+      const keyType = options.keyType ?? "publisher";
+      if (keyType !== "publisher" && keyType !== "user") {
+        throw new Error('Steam Web API AuthenticateUserTicket keyType must be "publisher" or "user".');
+      }
       return steamWebApiGet<T>(
         clientOptions,
         "ISteamUserAuth",
         "AuthenticateUserTicket",
         1,
         { appid: options.appId, ticket: steamWebApiBinaryString(options.ticket), identity: options.identity },
-        options, "publisher-only"
+        options,
+        keyType === "user" ? "user-key" : "publisher-only",
+        keyType === "user" ? "api" : "partner"
       );
     }
   };

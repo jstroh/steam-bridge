@@ -2,8 +2,8 @@
 
 Last reviewed: 2026-08-01
 
-Review anchor: `c7959b777ee5e4ce489fef2a737130a68e6092c8`
-(`Stabilize native host lifecycle and macOS fullscreen`). npm `latest` and the
+Review anchor: `f41e44774ce4793b2bdfa5a85f4d024b3821d75c`
+(`fix: expose server exports to Node ESM`). npm `latest` and the
 stable GitHub Release are `0.3.10`; release commit
 `d4f732fa7df9f6c3ea69326335210e39738f058b` is bound to immutable tag
 `v0.3.10`. Neither the source commit alone nor an intermediate ad-hoc bundle is
@@ -35,6 +35,39 @@ close FPS against the authoritative display rate, crash/orphan cleanup, and
 exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
+
+### 2026-08-01 0.3.11 release-preparation checkpoint
+
+The current worktree prepares the first release after `v0.3.10`. The public
+landing README is reorganized around install, first initialization, platform
+window-model selection, client/server trust boundaries, packaging, and a
+symptom-first troubleshooting table. The npm README now gives the runnable
+client example and integration-path selector before the detailed platform and
+release material.
+
+The stable Electron smoke dependency is updated from 43.1.1 to 43.2.0, matching
+the configured-product candidate and the current npm stable release. The
+optional latest-version verifier now invokes npm without the broken Windows
+batch-file spawn, works both inside and outside an npm script, and runs in CI
+and the tag Release workflow before package assembly. Prerelease Electron
+versions remain rejected by the exact-semver gate.
+
+`ISteamUserAuth.AuthenticateUserTicket` retains its backward-compatible default
+publisher-key route on `partner.steam-api.com` and now exposes Valve's official
+rate-limited user-authentication-key route on `api.steampowered.com` through
+`keyType: "user"`. Invalid JavaScript key types fail before fetch, and focused
+coverage proves the access classification, host, key header, and no-fetch
+failure path.
+
+The focused Web API test, TypeScript, and both direct and npm-driven latest
+Electron checks pass. One full local gate initially failed only because the
+human-first README wrapped an exact Rosetta policy sentence that an existing
+source-policy test matches literally; the sentence is restored intact and the
+focused policy test passes. Run the complete local source/package gates next,
+then freeze `0.3.11`, push its immutable tag, build the exact candidate, and
+generate a fresh candidate-bound Windows receipt. This is not a
+documentation-only successor: callback, Web API, lifecycle, and ESM changes
+after `v0.3.10` require the normal live-proof publication path.
 
 ### 2026-08-01 Web API boundary and JavaScript lifecycle checkpoint
 
