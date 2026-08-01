@@ -3,10 +3,11 @@
 Last reviewed: 2026-07-31
 
 Review anchor: `c7959b777ee5e4ce489fef2a737130a68e6092c8`
-(`Stabilize native host lifecycle and macOS fullscreen`). npm `latest` is
-`0.3.9`; the release-candidate version is `0.3.10`. The version metadata is
-newer than that reviewed runtime anchor; neither the source commit alone nor an
-intermediate ad-hoc bundle is the final publishable candidate. Exact
+(`Stabilize native host lifecycle and macOS fullscreen`). npm `latest` and the
+stable GitHub Release are `0.3.10`; release commit
+`d4f732fa7df9f6c3ea69326335210e39738f058b` is bound to immutable tag
+`v0.3.10`. Neither the source commit alone nor an intermediate ad-hoc bundle is
+a publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
 rejected candidates. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
@@ -16,10 +17,9 @@ published: the candidate-bound proof contract still required repeated physical
 Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
-minimize/restore target transition as steady-state pacing. `v0.3.8` and
-`v0.3.9` are published; `v0.3.9` remains the current stable release until the
-complete `v0.3.10` candidate and publication gates pass. Never move, reuse, or
-publish any rejected tag.
+minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
+and `v0.3.10` are published; `v0.3.10` is the current stable
+release. Never move, reuse, or publish any rejected tag.
 
 ## Active Goal: Cross-platform exhaustive actual-game QA
 
@@ -1607,37 +1607,39 @@ popup/child paths, makes unsupported attached Windows use fail clearly,
 validates the actual game with change-scoped manual and automated QA,
 requalifies affected platforms, and completes one immutable release-candidate
 review through documentation, version, commit, push, tag, GitHub Release, npm
-publication, and registry verification. That sequence completed for `v0.3.9`;
+publication, and registry verification. That sequence completed for `v0.3.10`;
 do not reopen it without a new code change and a new version.
 
 ## Current State
 
-`steam-bridge@0.3.9` is published to npm and is the stable GitHub Release:
-<https://github.com/jstroh/steam-bridge/releases/tag/v0.3.9>. Source commit
-`b759788b96037ea51c173163a2859bf26ac31ea3` is bound to immutable tag
-`v0.3.9`. Tag CI `30430850524` and Release assembly `30430851010` passed
-macOS arm64, Windows x64, Linux x64, package smoke, and the exact Windows
-publish-tarball ASAR/package gate. Trusted publish workflow `30432433507`
+`steam-bridge@0.3.10` is published to npm and is the stable GitHub Release:
+<https://github.com/jstroh/steam-bridge/releases/tag/v0.3.10>. Source commit
+`d4f732fa7df9f6c3ea69326335210e39738f058b` is bound to immutable tag
+`v0.3.10`. Main CI `30675507597`, tag CI `30675612376`, and Release assembly
+`30675612441` all passed macOS arm64, Windows x64, Linux x64, package smoke,
+and the exact Windows
+publish-tarball ASAR/package gate. Trusted publish workflow `30678228541`
 passed from the tag.
 
 The canonical Windows candidate contains 122 files with content SHA-256
-`000178569c60f735efea836306c828c554725d4f9bba220fc3d0e9fc4d6464b5`.
+`0c1943e5e9627acb52aa6cea108dc7025198c73ab647e44d5a840e4afadb757f`.
 Its Windows archive SHA-256 is
-`f94121bfd00bfb721547f9c64b25aac4d43be7277b73bb39b5ea8227ce2adf73` and
+`cdf7c40541d4fb0e83cd039464f9a4f031f30036aae5234f1fb58a7443769e3e` and
 the npm tarball SHA-256 is
-`c3748692ff821d5b33ad1cfd01d456963fb676678418a3d84cd5d73a89798e79`.
+`028303ad5830e9fb6fe512a9174a052187af951c3040ab66fb7ab60f78e954b9`.
 The downloaded registry tarball is byte-identical to that audited tarball.
 npm reports integrity
-`sha512-91OMd7EqsQgW2UvOnHuEvMrqDg+JX+e82Sl27vkkUBwx0tq2v+jaIue2qj8RZn3aoy+p1KK2p7a/z+GIHMTLPQ==`
+`sha512-ldZSgAegduBj0Gh87Ep4FxUbBxXLQosSJg5kb2XFN2zyeglYhYrsLoVxqrQ1yX1DEQSlP2VYiHj3gFyL1z4nYw==`
 and SLSA provenance. All five GitHub Release asset digests match the retained
 local files, and the release-scoped proof secret was deleted after publication.
 
 The final candidate-bound actual-game receipt is schema 4 with semantic
-SHA-256 `089fe3c94bbd846768f3e84c7bdcc5f12edd3dc434502beb9abd32dbf2f1d1c3`.
-It contains 279 qualified game samples and 35 ordinary Friends-overlay
+SHA-256 `41a686f267974d57fe0af3af9dc5d25ccb7c5a75a15ce4eb759a2b8964592091`.
+It contains 451 qualified game samples and 20 ordinary Friends-overlay
 samples. Game paint, game present, and overlay present medians were all 59.9
 FPS against the 60 Hz display, with zero unsynchronized steady-state samples,
-latency waits, slow copies, device losses, or recoveries. The computer-driven
+one bounded frame-latency wait, zero slow copies, and zero device losses or
+recoveries. The computer-driven
 pass covered startup chrome, menus, title drag, resize and exact 640 by 480
 minimum, maximize/restore, minimize/restore, fullscreen/restore, cursor and
 focus behavior, rounded corners, overlay alignment/close, and clean shutdown.
