@@ -2,8 +2,8 @@
 
 Last reviewed: 2026-08-01
 
-Review anchor: `f41e44774ce4793b2bdfa5a85f4d024b3821d75c`
-(`fix: expose server exports to Node ESM`). npm `latest` and the
+Review anchor: `b43167b0c33c148c1f7d68d0ed14dc660f3c0aa2`
+(`Improve onboarding and release safeguards`). npm `latest` and the
 stable GitHub Release are `0.3.10`; release commit
 `d4f732fa7df9f6c3ea69326335210e39738f058b` is bound to immutable tag
 `v0.3.10`. Neither the source commit alone nor an intermediate ad-hoc bundle is
@@ -59,13 +59,14 @@ rate-limited user-authentication-key route on `api.steampowered.com` through
 coverage proves the access classification, host, key header, and no-fetch
 failure path.
 
-The focused Web API test, TypeScript, and both direct and npm-driven latest
-Electron checks pass. One full local gate initially failed only because the
-human-first README wrapped an exact Rosetta policy sentence that an existing
-source-policy test matches literally; the sentence is restored intact and the
-focused policy test passes. Run the complete local source/package gates next,
-then freeze `0.3.11`, push its immutable tag, build the exact candidate, and
-generate a fresh candidate-bound Windows receipt. This is not a
+The focused Web API test, TypeScript, both direct and npm-driven latest
+Electron checks, complete 361-test suite, packed-package smoke, Rust
+format/check, API coverage audit, platform policy, production dependency audit,
+and diff/credential scan pass locally. Exact baseline commit `b43167b` also
+passed GitHub CI run `30702216770` on Apple Silicon macOS, Windows, Linux, and
+the isolated packed-package job. Freeze `0.3.11`, push its immutable tag, build
+the exact candidate, and generate a fresh candidate-bound Windows receipt.
+This is not a
 documentation-only successor: callback, Web API, lifecycle, and ESM changes
 after `v0.3.10` require the normal live-proof publication path.
 
