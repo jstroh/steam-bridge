@@ -2,12 +2,11 @@
 
 Last reviewed: 2026-07-31
 
-Review anchor: `338f2038bc1a5d563d1031ab960faedf488ef879`
-(`Preserve Node 22 named exports after minification`). npm `latest` is `0.3.8`;
-the unpublished working version is `0.3.9`. The current working tree contains
-the unreleased macOS actual-game repair described below **beyond** that review
-anchor; neither `338f203` nor an intermediate ad-hoc bundle is the final
-candidate. Exact
+Review anchor: `c7959b777ee5e4ce489fef2a737130a68e6092c8`
+(`Stabilize native host lifecycle and macOS fullscreen`). npm `latest` is
+`0.3.9`; the release-candidate version is `0.3.10`. The version metadata is
+newer than that reviewed runtime anchor; neither the source commit alone nor an
+intermediate ad-hoc bundle is the final publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
 rejected candidates. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
@@ -17,9 +16,10 @@ published: the candidate-bound proof contract still required repeated physical
 Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
-minimize/restore target transition as steady-state pacing. `v0.3.8` is the
-published successor and current stable release. Never move, reuse, or publish
-any rejected tag.
+minimize/restore target transition as steady-state pacing. `v0.3.8` and
+`v0.3.9` are published; `v0.3.9` remains the current stable release until the
+complete `v0.3.10` candidate and publication gates pass. Never move, reuse, or
+publish any rejected tag.
 
 ## Active Goal: Cross-platform exhaustive actual-game QA
 
