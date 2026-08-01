@@ -1743,6 +1743,7 @@ export interface NativeBinding {
   utilsShowFloatingGamepadTextInput(mode: number, x: number, y: number, width: number, height: number): boolean;
 
   registerSteamCallback(callback: number, handler: (event: unknown) => void): NativeCallbackHandle;
+  registerGameServerSteamCallback(callback: number, handler: (event: unknown) => void): NativeCallbackHandle;
   registerRawSteamCallback(callbackBasePointer: bigint, callback: number): void;
   unregisterRawSteamCallback(callbackBasePointer: bigint): void;
   registerRawSteamCallResult(callbackBasePointer: bigint, apiCall: bigint): void;

@@ -38,6 +38,15 @@ production and for app-specific inventory or commerce. When running outside
 Steam during development, put `steam_appid.txt` beside the executable or in its
 working directory.
 
+Steam Bridge owns Valve's manual callback dispatcher. Client subscriptions use
+`client.callback.register(...)`; game-server subscriptions use
+`client.gameServer.onCallback(...)`, and the two domains never receive each
+other's events. Call `runCallbacks()` when using a custom pump. The legacy-named
+`runLegacyCallbacks()` remains only as a deprecated alias to that same safe
+manual pump. Do not combine Steam Bridge with raw `CCallbackBase` or
+`CCallResult` registration; those registration methods reject because Valve
+does not permit legacy and manual callback dispatch to be mixed.
+
 Requirements:
 
 - Node.js 18 or newer

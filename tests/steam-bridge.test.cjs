@@ -2442,6 +2442,7 @@ function actionErrorSmokeResult(error, presenter = undefined, events = []) {
 function createFakeNative(overrides = {}) {
   const calls = [];
   const callbacks = new Map();
+  const gameServerCallbacks = new Map();
   const activationState = {
     inputPassthrough: true,
     opaque: false,
@@ -2456,6 +2457,7 @@ function createFakeNative(overrides = {}) {
   const fake = {
     calls,
     callbacks,
+    gameServerCallbacks,
     init(appId) {
       calls.push({ method: "init", args: [appId] });
     },
@@ -2616,6 +2618,16 @@ function createFakeNative(overrides = {}) {
         disconnect() {
           callbacks.delete(callbackId);
           calls.push({ method: "disconnectCallback", args: [callbackId] });
+        }
+      };
+    },
+    registerGameServerSteamCallback(callbackId, handler) {
+      calls.push({ method: "registerGameServerSteamCallback", args: [callbackId] });
+      gameServerCallbacks.set(callbackId, handler);
+      return {
+        disconnect() {
+          gameServerCallbacks.delete(callbackId);
+          calls.push({ method: "disconnectGameServerCallback", args: [callbackId] });
         }
       };
     },
@@ -6689,44 +6701,44 @@ test("game server facades expose typed callback helpers", (t) => {
     })
   ];
 
-  fake.callbacks.get(steam.SteamCallback.SteamServersConnectedSteamworks)({});
-  fake.callbacks.get(steam.SteamCallback.SteamServerConnectFailureSteamworks)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamServersConnectedSteamworks)({});
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamServerConnectFailureSteamworks)({
     reason: 3,
     still_retrying: true
   });
-  fake.callbacks.get(steam.SteamCallback.SteamServersDisconnectedSteamworks)({ reason: 2 });
-  fake.callbacks.get(steam.SteamCallback.GameServerClientApprove)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamServersDisconnectedSteamworks)({ reason: 2 });
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerClientApprove)({
     steam_id: "76561198000000020",
     owner_steam_id: "76561198000000021"
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerClientDeny)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerClientDeny)({
     steam_id: "76561198000000022",
     deny_reason: 4,
     optional_text: "bad auth"
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerClientKick)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerClientKick)({
     steam_id: "76561198000000023",
     deny_reason: 5
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerClientAchievementStatus)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerClientAchievementStatus)({
     steam_id: "76561198000000024",
     achievement: "ACH_WIN_ONE",
     unlocked: true
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerPolicyResponse)({ secure: true });
-  fake.callbacks.get(steam.SteamCallback.GameServerGameplayStats)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerPolicyResponse)({ secure: true });
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerGameplayStats)({
     result: 1,
     rank: 7,
     total_connects: 120,
     total_minutes_played: 4800
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerClientGroupStatus)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerClientGroupStatus)({
     steam_id: "76561198000000025",
     group_id: "103582791429521412",
     member: true,
     officer: false
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerReputation)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerReputation)({
     result: 1,
     reputation_score: 900,
     banned: true,
@@ -6736,23 +6748,23 @@ test("game server facades expose typed callback helpers", (t) => {
     banned_game_id: "480",
     ban_expires: 1234567890
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerAssociateWithClan)({ result: 1 });
-  fake.callbacks.get(steam.SteamCallback.GameServerPlayerCompatibility)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerAssociateWithClan)({ result: 1 });
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerPlayerCompatibility)({
     result: 1,
     players_that_dont_like_candidate: 2,
     players_that_candidate_doesnt_like: 3,
     clan_players_that_dont_like_candidate: 4,
     candidate_steam_id: "76561198000000026"
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerStatsReceived)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerStatsReceived)({
     result: 1,
     steam_id: "76561198000000027"
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerStatsStored)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerStatsStored)({
     result: 1,
     steam_id: "76561198000000028"
   });
-  fake.callbacks.get(steam.SteamCallback.GameServerStatsUnloaded)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.GameServerStatsUnloaded)({
     steam_id: "76561198000000029"
   });
 
@@ -6809,12 +6821,48 @@ test("game server facades expose typed callback helpers", (t) => {
     steam.SteamCallback.GameServerStatsUnloaded
   ];
   assert.deepEqual(
-    fake.calls.filter((call) => call.method === "registerSteamCallback"),
-    callbackIds.map((callbackId) => ({ method: "registerSteamCallback", args: [callbackId] }))
+    fake.calls.filter((call) => call.method === "registerGameServerSteamCallback"),
+    callbackIds.map((callbackId) => ({ method: "registerGameServerSteamCallback", args: [callbackId] }))
   );
   assert.deepEqual(
-    fake.calls.filter((call) => call.method === "disconnectCallback"),
-    callbackIds.map((callbackId) => ({ method: "disconnectCallback", args: [callbackId] }))
+    fake.calls.filter((call) => call.method === "disconnectGameServerCallback"),
+    callbackIds.map((callbackId) => ({ method: "disconnectGameServerCallback", args: [callbackId] }))
+  );
+});
+
+test("generic client and game-server callbacks stay isolated for the same callback id", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(clearSteamBridgeCache);
+
+  let clientEvents = 0;
+  let serverEvents = 0;
+  const callbackId = steam.SteamCallback.SteamServersConnectedSteamworks;
+  const clientHandle = steam.callback.register(callbackId, () => {
+    clientEvents += 1;
+  });
+  const serverHandle = steam.gameServer.onCallback(callbackId, () => {
+    serverEvents += 1;
+  });
+
+  fake.callbacks.get(callbackId)({});
+  assert.equal(clientEvents, 1);
+  assert.equal(serverEvents, 0);
+
+  fake.gameServerCallbacks.get(callbackId)({});
+  assert.equal(clientEvents, 1);
+  assert.equal(serverEvents, 1);
+
+  clientHandle.disconnect();
+  serverHandle.disconnect();
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerSteamCallback"),
+    [{ method: "registerSteamCallback", args: [callbackId] }]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerGameServerSteamCallback"),
+    [{ method: "registerGameServerSteamCallback", args: [callbackId] }]
   );
 });
 
@@ -28293,7 +28341,7 @@ test("game server legacy networking facade dispatches through game server native
   const serverP2pRequestHandle = steam.gameServerNetworking.onP2PSessionRequest((event) => {
     serverP2pRequestEvent = event;
   });
-  fake.callbacks.get(steam.SteamCallback.P2PSessionRequestSteamworks)({ remote: String(peer) });
+  fake.gameServerCallbacks.get(steam.SteamCallback.P2PSessionRequestSteamworks)({ remote: String(peer) });
   serverP2pRequestHandle.disconnect();
   assert.equal(serverP2pRequestEvent.remote, peer);
 
@@ -28981,7 +29029,7 @@ test("game server networking sockets facade uses game-server native bindings", (
   const connectionStatusHandle = steam.gameServerNetworkingSockets.onConnectionStatusChanged((event) => {
     statusEvent = event;
   });
-  fake.callbacks.get(steam.SteamCallback.SteamNetConnectionStatusChanged)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamNetConnectionStatusChanged)({
     connection: 202,
     old_state: 2,
     info: connectionInfo
@@ -28994,7 +29042,7 @@ test("game server networking sockets facade uses game-server native bindings", (
   const fakeIpHandle = steam.gameServerNetworkingSockets.onFakeIpResult((event) => {
     fakeIpEvent = event;
   });
-  fake.callbacks.get(steam.SteamCallback.SteamNetworkingFakeIPResult)({
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamNetworkingFakeIPResult)({
     result: 1,
     identity: peer,
     ipv4: 167772161,
@@ -29009,15 +29057,15 @@ test("game server networking sockets facade uses game-server native bindings", (
   assert.deepEqual(
     fake.calls.filter(
       (call) =>
-        call.method === "disconnectCallback" &&
+        call.method === "disconnectGameServerCallback" &&
         [
           steam.SteamCallback.SteamNetConnectionStatusChanged,
           steam.SteamCallback.SteamNetworkingFakeIPResult
         ].includes(call.args[0])
     ),
     [
-      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetConnectionStatusChanged] },
-      { method: "disconnectCallback", args: [steam.SteamCallback.SteamNetworkingFakeIPResult] }
+      { method: "disconnectGameServerCallback", args: [steam.SteamCallback.SteamNetConnectionStatusChanged] },
+      { method: "disconnectGameServerCallback", args: [steam.SteamCallback.SteamNetworkingFakeIPResult] }
     ]
   );
 });
@@ -30592,27 +30640,60 @@ test("http facades expose typed callback helpers", (t) => {
 
   handles.forEach((handle) => handle.disconnect());
 
+  let serverCompletedEvent;
+  let serverHeadersEvent;
   let serverDataEvent;
-  const serverHandle = steam.gameServerHttp.onRequestDataReceived((event) => {
-    serverDataEvent = event;
-  });
-  fake.callbacks.get(steam.SteamCallback.HTTPRequestDataReceived)({
+  const serverHandles = [
+    steam.gameServerHttp.onRequestCompleted((event) => {
+      serverCompletedEvent = event;
+    }),
+    steam.gameServerHttp.onRequestHeadersReceived((event) => {
+      serverHeadersEvent = event;
+    }),
+    steam.gameServerHttp.onRequestDataReceived((event) => {
+      serverDataEvent = event;
+    })
+  ];
+  fake.gameServerCallbacks.get(steam.SteamCallback.HTTPRequestCompleted)({
     request: 14,
     context_value: "9007199254740996",
+    request_successful: true,
+    status_code: 200,
+    body_size: 2048
+  });
+  fake.gameServerCallbacks.get(steam.SteamCallback.HTTPRequestHeadersReceived)({
+    request: 15,
+    context_value: "9007199254740997"
+  });
+  fake.gameServerCallbacks.get(steam.SteamCallback.HTTPRequestDataReceived)({
+    request: 16,
+    context_value: "9007199254740998",
     offset: 256,
     bytes_received: 1024
   });
-  assert.equal(serverDataEvent.contextValue, 9007199254740996n);
+  assert.equal(serverCompletedEvent.contextValue, 9007199254740996n);
+  assert.equal(serverCompletedEvent.requestSuccessful, true);
+  assert.equal(serverCompletedEvent.statusCode, 200);
+  assert.equal(serverCompletedEvent.bodySize, 2048);
+  assert.equal(serverHeadersEvent.contextValue, 9007199254740997n);
+  assert.equal(serverDataEvent.contextValue, 9007199254740998n);
   assert.equal(serverDataEvent.bytesReceived, 1024);
-  serverHandle.disconnect();
+  serverHandles.forEach((handle) => handle.disconnect());
 
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "registerSteamCallback"),
     [
       { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestCompleted] },
       { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestHeadersReceived] },
-      { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] },
       { method: "registerSteamCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] }
+    ]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerGameServerSteamCallback"),
+    [
+      { method: "registerGameServerSteamCallback", args: [steam.SteamCallback.HTTPRequestCompleted] },
+      { method: "registerGameServerSteamCallback", args: [steam.SteamCallback.HTTPRequestHeadersReceived] },
+      { method: "registerGameServerSteamCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] }
     ]
   );
   assert.deepEqual(
@@ -30620,8 +30701,15 @@ test("http facades expose typed callback helpers", (t) => {
     [
       { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestCompleted] },
       { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestHeadersReceived] },
-      { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] },
       { method: "disconnectCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] }
+    ]
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectGameServerCallback"),
+    [
+      { method: "disconnectGameServerCallback", args: [steam.SteamCallback.HTTPRequestCompleted] },
+      { method: "disconnectGameServerCallback", args: [steam.SteamCallback.HTTPRequestHeadersReceived] },
+      { method: "disconnectGameServerCallback", args: [steam.SteamCallback.HTTPRequestDataReceived] }
     ]
   );
 });
@@ -31800,25 +31888,44 @@ test("inventory facades expose typed callback helpers", (t) => {
   assert.equal(events.startPurchaseResult.transactionId, 9223372036854775808n);
   assert.equal(events.requestPricesResult.currency, "USD");
 
-  handles.forEach((handle) => handle.disconnect());
-
   const serverHandles = [
-    steam.gameServerInventory.onResultReady(() => {}),
+    steam.gameServerInventory.onResultReady((event) => {
+      events.serverResultReady = event;
+    }),
     steam.gameServerInventory.onFullUpdate(() => {}),
     steam.gameServerInventory.onDefinitionUpdate(() => {}),
     steam.gameServerInventory.onEligiblePromoItemDefIds(() => {}),
     steam.gameServerInventory.onStartPurchaseResult(() => {}),
     steam.gameServerInventory.onRequestPricesResult(() => {})
   ];
+
+  emit("SteamInventoryResultReady", { handle: 20, result: 1 });
+  assert.equal(events.resultReady.handle, 20);
+  assert.equal(events.serverResultReady, undefined);
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamInventoryResultReady)({
+    0: { handle: 21, result: 1 }
+  });
+  assert.equal(events.resultReady.handle, 20);
+  assert.equal(events.serverResultReady.handle, 21);
+
+  handles.forEach((handle) => handle.disconnect());
   serverHandles.forEach((handle) => handle.disconnect());
 
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "registerSteamCallback").map((call) => call.args[0]),
-    [...callbackNames, ...callbackNames].map((callbackName) => steam.SteamCallback[callbackName])
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "registerGameServerSteamCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
   );
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "disconnectCallback").map((call) => call.args[0]),
-    [...callbackNames, ...callbackNames].map((callbackName) => steam.SteamCallback[callbackName])
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
+  );
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectGameServerCallback").map((call) => call.args[0]),
+    callbackNames.map((callbackName) => steam.SteamCallback[callbackName])
   );
 });
 
@@ -34527,9 +34634,16 @@ test("game server workshop facade uses game-server native bindings", async (t) =
   const serverDeleteHandle = steam.gameServerWorkshop.onDeleteItemResult((event) => {
     serverDeleteEvents.push(event);
   });
-  fake.callbacks.get(steam.SteamCallback.SteamUGCDeleteItemResult)({ result: 1, item_id: "44" });
+  fake.gameServerCallbacks.get(steam.SteamCallback.SteamUGCDeleteItemResult)({ result: 1, item_id: "44" });
   serverDeleteHandle.disconnect();
   assert.equal(serverDeleteEvents[0].itemId, 44n);
+  assert.deepEqual(
+    fake.calls.find((call) => call.method === "registerGameServerSteamCallback"),
+    {
+      method: "registerGameServerSteamCallback",
+      args: [steam.SteamCallback.SteamUGCDeleteItemResult]
+    }
+  );
 
   const progressEvents = [];
   const updateDetails = { title: "Game Server Workshop Item" };

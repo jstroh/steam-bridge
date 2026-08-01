@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-31
+Last reviewed: 2026-08-01
 
 Review anchor: `c7959b777ee5e4ce489fef2a737130a68e6092c8`
 (`Stabilize native host lifecycle and macOS fullscreen`). npm `latest` and the
@@ -35,6 +35,39 @@ close FPS against the authoritative display rate, crash/orphan cleanup, and
 exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
+
+### 2026-08-01 callback-dispatch correctness checkpoint
+
+The next release includes a focused Steam callback repair. Client and
+game-server callback registrations, completed API-call results, dispatch, and
+shutdown cleanup are now keyed by an explicit domain. One process-wide lock
+serializes both Steam pipes and owns the entire manual-dispatch lifecycle,
+including init/shutdown, pipe acquisition, `RunFrame`, `GetNextCallback`,
+completion-result retrieval, observer routing, and exactly one
+`FreeLastCallback`. API-call results are copied and cached while Valve's
+completion callback is still valid, so concurrent async waiters and the normal
+JavaScript callback timer cannot steal one another's results. Callback
+registration and callback-producing ticket/text-input requests also recheck
+initialization and complete their setup under that lock, closing shutdown and
+early-delivery races before an async wait begins. Shutdown also drops the sole
+sender owned by each pending ticket or gamepad callback, so its promise rejects
+promptly instead of waiting for the full operation timeout.
+
+`runLegacyCallbacks()` is now a deprecated alias to the manual client pump;
+Steam Bridge never mixes Valve's legacy and manual dispatchers. `initSafe()`
+joins the same locked manual lifecycle. Raw `CCallbackBase` and `CCallResult`
+registration rejects with facade guidance because it cannot be made valid in
+the package's always-manual mode. Generic server subscriptions use
+`gameServer.onCallback(...)`, and all typed server facades—including shared
+networking and Workshop helpers—register in the game-server domain. P1.3's
+required Linux Steam launch flags are unchanged.
+
+Final affected-path validation on the Windows development host passed: 352/352
+JavaScript tests, 27/27 Rust tests, TypeScript, native format/check, supported-
+target policy, API coverage, npm package dry-run, and the complete packed-
+consumer smoke suite. The Rust test build still emits the repository's known
+pre-existing dead-code warnings. No overlay presenter or live-Steam behavior
+changed in this slice, so no redundant live overlay matrix was run.
 
 ### 2026-07-30 configured-product macOS commerce checkpoint
 

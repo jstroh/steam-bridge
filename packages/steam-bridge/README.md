@@ -100,6 +100,22 @@ SpaceWar cannot prove them.
 When launching outside Steam during development, place a `steam_appid.txt`
 containing your app ID next to the executable or in its working directory.
 
+### Callback dispatch ownership
+
+Steam Bridge enables Valve's manual callback mode and exclusively owns each
+callback pipe's `RunFrame` / `GetNextCallback` / `GetAPICallResult` /
+`FreeLastCallback` sequence. This keeps the built-in callback timer, concurrent
+async operations, and custom `runCallbacks()` calls serialized. Completed API
+call results are copied before Valve releases the completion callback, then
+consumed by the matching async operation.
+
+Client and game-server callbacks are separate domains. Register generic client
+events with `client.callback.register(...)` and game-server events with
+`client.gameServer.onCallback(...)`; identical callback IDs cannot cross-route.
+`runLegacyCallbacks()` is retained as a deprecated source-compatible alias to
+the manual client pump. Raw `CCallbackBase` and `CCallResult` registration is
+not compatible with this model and throws with guidance to the safe facade.
+
 ## Electron overlay
 
 On Linux and macOS, configure Electron before `app.ready`, then create one

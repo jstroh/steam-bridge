@@ -60,6 +60,12 @@ const intentionallyInternalSdkExports = [
   "SteamInternal_FindOrCreateGameServerInterface",
   "SteamInternal_SteamAPI_Init"
 ];
+const intentionallyUnsupportedSdkExports = new Map([
+  ["SteamAPI_RunCallbacks", "Steam Bridge exclusively uses Steam manual callback dispatch"],
+  ["SteamGameServer_RunCallbacks", "Steam Bridge exclusively uses Steam manual callback dispatch"],
+  ["SteamAPI_RegisterCallback", "CCallbackBase registration cannot be mixed with manual dispatch"],
+  ["SteamAPI_RegisterCallResult", "CCallResult registration cannot be mixed with manual dispatch"]
+]);
 assertNapiExportScannerSelfTest();
 assertFlatApiCoverage();
 assertSdkExportCoverage();
@@ -112,7 +118,9 @@ function assertFlatApiCoverage() {
 }
 
 function assertSdkExportCoverage() {
-  const exportedSymbols = readSdkExportNames().filter((name) => !intentionallyInternalSdkExports.includes(name));
+  const exportedSymbols = readSdkExportNames().filter(
+    (name) => !intentionallyInternalSdkExports.includes(name) && !intentionallyUnsupportedSdkExports.has(name)
+  );
   const nativeSource = readNativeSource();
 
   const missing = exportedSymbols.filter((fnName) => !nativeSource.includes(fnName));

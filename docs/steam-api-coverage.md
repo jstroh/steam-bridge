@@ -20,15 +20,17 @@ covered.
 ## Implemented Areas
 
 - Steam lifecycle and utils: initialization, anonymous-user initialization, safe
-  initialization, shutdown, manual and legacy callback pumping, current-thread
+  initialization, shutdown, serialized manual callback pumping with a deprecated
+  legacy-named alias, current-thread
   API memory release, try/catch callback toggles, Breakpad crash handler and
   minidump helpers, restart checks, Steam install path, Steam Deck, Big Picture,
   App ID, overlay diagnostics, server time, activity timers,
   connected universe, Steam UI language, image reads, battery/IPCCall counts,
   legacy CSER IP/port reads,
   overlay notification placement, VR helpers, China launcher checks, text
-  filtering, IPv6 connectivity checks, file signature checks, raw APICall
-  inspection, raw `CCallbackBase` registration bridges, generic Steamworks
+  filtering, IPv6 connectivity checks, file signature checks, cached raw APICall
+  inspection, explicit rejection of manual-dispatch-incompatible raw
+  `CCallbackBase`/`CCallResult` registration, generic Steamworks
   callback ID aliases and name-based subscription helpers, generated exact SDK
   enum constants, gamepad text input helpers, warning hooks, IPC failure,
   license update, client/server-deny, game-web, and typed API-call,

@@ -7793,6 +7793,7 @@ export function initSafe(): boolean {
   return native().initSafe();
 }
 
+/** @deprecated Steam Bridge always uses manual dispatch; use runCallbacks(). */
 export function runLegacyCallbacks(): void {
   native().runLegacyCallbacks();
 }
@@ -8001,6 +8002,23 @@ export function onSteamCallback(
   const callbackId = resolveSteamCallbackId(steamCallback);
   return wrapCallbackHandle(
     native().registerSteamCallback(callbackId, (event) => {
+      handler(normalizeCallbackEvent(callbackId, event));
+    })
+  );
+}
+
+type SteamCallbackRegistrar = (
+  steamCallback: SteamCallbackName | SteamCallbackId | number,
+  handler: (event: unknown) => void
+) => CallbackHandle;
+
+function onGameServerSteamCallback(
+  steamCallback: SteamCallbackName | SteamCallbackId | number,
+  handler: (event: unknown) => void
+): CallbackHandle {
+  const callbackId = resolveSteamCallbackId(steamCallback);
+  return wrapCallbackHandle(
+    native().registerGameServerSteamCallback(callbackId, (event) => {
       handler(normalizeCallbackEvent(callbackId, event));
     })
   );
@@ -19151,17 +19169,17 @@ export const user = {
 
 export const gameServerStats = {
   onUserStatsReceived(handler: (event: GameServerStatsReceivedEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerStatsReceived", (event) => {
+    return onGameServerSteamCallback("GameServerStatsReceived", (event) => {
       handler(event as GameServerStatsReceivedEvent);
     });
   },
   onUserStatsStored(handler: (event: GameServerStatsStoredEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerStatsStored", (event) => {
+    return onGameServerSteamCallback("GameServerStatsStored", (event) => {
       handler(event as GameServerStatsStoredEvent);
     });
   },
   onUserStatsUnloaded(handler: (event: GameServerStatsUnloadedEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerStatsUnloaded", (event) => {
+    return onGameServerSteamCallback("GameServerStatsUnloaded", (event) => {
       handler(event as GameServerStatsUnloadedEvent);
     });
   },
@@ -19202,68 +19220,74 @@ export const gameServer = {
   BeginAuthSessionResult,
   UserHasLicenseForAppResult,
   stats: gameServerStats,
+  onCallback(
+    steamCallback: SteamCallbackName | SteamCallbackId | number,
+    handler: (event: unknown) => void
+  ): CallbackHandle {
+    return onGameServerSteamCallback(steamCallback, handler);
+  },
   onServersConnected(handler: (event: GameServerServersConnectedEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamServersConnectedSteamworks", (event) => {
+    return onGameServerSteamCallback("SteamServersConnectedSteamworks", (event) => {
       handler(event as GameServerServersConnectedEvent);
     });
   },
   onServerConnectFailure(handler: (event: GameServerConnectFailureEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamServerConnectFailureSteamworks", (event) => {
+    return onGameServerSteamCallback("SteamServerConnectFailureSteamworks", (event) => {
       handler(event as GameServerConnectFailureEvent);
     });
   },
   onServersDisconnected(handler: (event: GameServerServersDisconnectedEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamServersDisconnectedSteamworks", (event) => {
+    return onGameServerSteamCallback("SteamServersDisconnectedSteamworks", (event) => {
       handler(event as GameServerServersDisconnectedEvent);
     });
   },
   onClientApprove(handler: (event: GameServerClientApproveEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerClientApprove", (event) => {
+    return onGameServerSteamCallback("GameServerClientApprove", (event) => {
       handler(event as GameServerClientApproveEvent);
     });
   },
   onClientDeny(handler: (event: GameServerClientDenyEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerClientDeny", (event) => {
+    return onGameServerSteamCallback("GameServerClientDeny", (event) => {
       handler(event as GameServerClientDenyEvent);
     });
   },
   onClientKick(handler: (event: GameServerClientKickEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerClientKick", (event) => {
+    return onGameServerSteamCallback("GameServerClientKick", (event) => {
       handler(event as GameServerClientKickEvent);
     });
   },
   onClientAchievementStatus(handler: (event: GameServerClientAchievementStatusEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerClientAchievementStatus", (event) => {
+    return onGameServerSteamCallback("GameServerClientAchievementStatus", (event) => {
       handler(event as GameServerClientAchievementStatusEvent);
     });
   },
   onPolicyResponse(handler: (event: GameServerPolicyResponseEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerPolicyResponse", (event) => {
+    return onGameServerSteamCallback("GameServerPolicyResponse", (event) => {
       handler(event as GameServerPolicyResponseEvent);
     });
   },
   onGameplayStats(handler: (event: GameServerGameplayStatsEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerGameplayStats", (event) => {
+    return onGameServerSteamCallback("GameServerGameplayStats", (event) => {
       handler(event as GameServerGameplayStatsEvent);
     });
   },
   onClientGroupStatus(handler: (event: GameServerClientGroupStatusEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerClientGroupStatus", (event) => {
+    return onGameServerSteamCallback("GameServerClientGroupStatus", (event) => {
       handler(event as GameServerClientGroupStatusEvent);
     });
   },
   onReputation(handler: (event: GameServerReputationEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerReputation", (event) => {
+    return onGameServerSteamCallback("GameServerReputation", (event) => {
       handler(event as GameServerReputationEvent);
     });
   },
   onAssociateWithClan(handler: (event: GameServerAssociateWithClanEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerAssociateWithClan", (event) => {
+    return onGameServerSteamCallback("GameServerAssociateWithClan", (event) => {
       handler(event as GameServerAssociateWithClanEvent);
     });
   },
   onPlayerCompatibility(handler: (event: GameServerPlayerCompatibilityEvent) => void): CallbackHandle {
-    return onSteamCallback("GameServerPlayerCompatibility", (event) => {
+    return onGameServerSteamCallback("GameServerPlayerCompatibility", (event) => {
       handler(event as GameServerPlayerCompatibilityEvent);
     });
   },
@@ -20058,17 +20082,17 @@ export const http = {
 export const gameServerHttp = {
   HttpMethod,
   onRequestCompleted(handler: (event: HttpRequestCompletedEvent) => void): CallbackHandle {
-    return onSteamCallback("HTTPRequestCompleted", (event) => {
+    return onGameServerSteamCallback("HTTPRequestCompleted", (event) => {
       handler(event as HttpRequestCompletedEvent);
     });
   },
   onRequestHeadersReceived(handler: (event: HttpRequestHeadersReceivedEvent) => void): CallbackHandle {
-    return onSteamCallback("HTTPRequestHeadersReceived", (event) => {
+    return onGameServerSteamCallback("HTTPRequestHeadersReceived", (event) => {
       handler(event as HttpRequestHeadersReceivedEvent);
     });
   },
   onRequestDataReceived(handler: (event: HttpRequestDataReceivedEvent) => void): CallbackHandle {
-    return onSteamCallback("HTTPRequestDataReceived", (event) => {
+    return onGameServerSteamCallback("HTTPRequestDataReceived", (event) => {
       handler(event as HttpRequestDataReceivedEvent);
     });
   },
@@ -20668,32 +20692,32 @@ export const inventory = {
 export const gameServerInventory = {
   InventoryItemFlags,
   onResultReady(handler: (event: InventoryResultReadyEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamInventoryResultReady", (event) => {
+    return onGameServerSteamCallback("SteamInventoryResultReady", (event) => {
       handler(event as InventoryResultReadyEvent);
     });
   },
   onFullUpdate(handler: (event: InventoryFullUpdateEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamInventoryFullUpdate", (event) => {
+    return onGameServerSteamCallback("SteamInventoryFullUpdate", (event) => {
       handler(event as InventoryFullUpdateEvent);
     });
   },
   onDefinitionUpdate(handler: (event: InventoryDefinitionUpdateEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamInventoryDefinitionUpdate", (event) => {
+    return onGameServerSteamCallback("SteamInventoryDefinitionUpdate", (event) => {
       handler(event as InventoryDefinitionUpdateEvent);
     });
   },
   onEligiblePromoItemDefIds(handler: (event: InventoryEligiblePromoItemDefIdsEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamInventoryEligiblePromoItemDefIds", (event) => {
+    return onGameServerSteamCallback("SteamInventoryEligiblePromoItemDefIds", (event) => {
       handler(event as InventoryEligiblePromoItemDefIdsEvent);
     });
   },
   onStartPurchaseResult(handler: (event: InventoryStartPurchaseResultEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamInventoryStartPurchaseResult", (event) => {
+    return onGameServerSteamCallback("SteamInventoryStartPurchaseResult", (event) => {
       handler(event as InventoryStartPurchaseResultEvent);
     });
   },
   onRequestPricesResult(handler: (event: InventoryRequestPricesResultEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamInventoryRequestPricesResult", (event) => {
+    return onGameServerSteamCallback("SteamInventoryRequestPricesResult", (event) => {
       handler(event as InventoryRequestPricesResultEvent);
     });
   },
@@ -21708,30 +21732,32 @@ export const matchmaking = {
   }
 };
 
-function createLegacyNetworkingCallbackHelpers() {
+function createLegacyNetworkingCallbackHelpers(
+  registerCallback: SteamCallbackRegistrar = onSteamCallback
+) {
   return {
     onSocketStatus(handler: (event: LegacyNetworkingSocketStatusEvent) => void): CallbackHandle {
-      return onSteamCallback("SocketStatusCallback", (event) => {
+      return registerCallback("SocketStatusCallback", (event) => {
         handler(event as LegacyNetworkingSocketStatusEvent);
       });
     },
     onP2PSessionRequest(handler: (event: LegacyNetworkingP2PSessionRequestEvent) => void): CallbackHandle {
-      return onSteamCallback("P2PSessionRequestSteamworks", (event) => {
+      return registerCallback("P2PSessionRequestSteamworks", (event) => {
         handler(event as LegacyNetworkingP2PSessionRequestEvent);
       });
     },
     onP2PSessionConnectFail(handler: (event: LegacyNetworkingP2PSessionConnectFailEvent) => void): CallbackHandle {
-      return onSteamCallback("P2PSessionConnectFailSteamworks", (event) => {
+      return registerCallback("P2PSessionConnectFailSteamworks", (event) => {
         handler(event as LegacyNetworkingP2PSessionConnectFailEvent);
       });
     },
     onLegacyP2PSessionRequest(handler: (event: LegacyNetworkingP2PSessionRequestEvent) => void): CallbackHandle {
-      return onSteamCallback("P2PSessionRequest", (event) => {
+      return registerCallback("P2PSessionRequest", (event) => {
         handler(event as LegacyNetworkingP2PSessionRequestEvent);
       });
     },
     onLegacyP2PSessionConnectFail(handler: (event: LegacyNetworkingP2PSessionConnectFailEvent) => void): CallbackHandle {
-      return onSteamCallback("P2PSessionConnectFail", (event) => {
+      return registerCallback("P2PSessionConnectFail", (event) => {
         handler(event as LegacyNetworkingP2PSessionConnectFailEvent);
       });
     }
@@ -22393,7 +22419,7 @@ export const gameServerNetworking = {
   P2PSessionError,
   LegacySocketState: LegacyNetworkingSocketState,
   LegacySocketConnectionType: LegacyNetworkingSocketConnectionType,
-  ...createLegacyNetworkingCallbackHelpers(),
+  ...createLegacyNetworkingCallbackHelpers(onGameServerSteamCallback),
   sendP2PPacket(steamId64: bigint, sendType: number, data: Buffer | Uint8Array): boolean {
     return native().gameServerNetworkingSendP2PPacket(steamId64, sendType, Buffer.from(data));
   },
@@ -22675,7 +22701,7 @@ export const gameServerNetworkingSockets = {
     native().gameServerNetworkingSocketsRunCallbacks();
   },
   onConnectionStatusChanged(handler: (event: NetworkingConnectionStatusChangedEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamNetConnectionStatusChanged", (event) => {
+    return onGameServerSteamCallback("SteamNetConnectionStatusChanged", (event) => {
       handler(event as NetworkingConnectionStatusChangedEvent);
     });
   },
@@ -22758,7 +22784,7 @@ export const gameServerNetworkingSockets = {
     return native().gameServerNetworkingSocketsBeginAsyncRequestFakeIp(numPorts);
   },
   onFakeIpResult(handler: (event: NetworkingFakeIpResultEvent) => void): CallbackHandle {
-    return onSteamCallback("SteamNetworkingFakeIPResult", (event) => {
+    return onGameServerSteamCallback("SteamNetworkingFakeIPResult", (event) => {
       handler(event as NetworkingFakeIpResultEvent);
     });
   },
@@ -23767,7 +23793,14 @@ export const utils = {
   }
 };
 
-function createWorkshopCallbackHelpers() {
+function createWorkshopCallbackHelpers(
+  registerCallback: SteamCallbackRegistrar = onSteamCallback
+) {
+  const onWorkshopCallback = <T>(
+    steamCallback: SteamCallbackName,
+    handler: (event: T) => void
+  ): CallbackHandle => registerCallback(steamCallback, (event) => handler(event as T));
+
   return {
     onQueryCompleted(handler: (event: WorkshopQueryCompletedEvent) => void): CallbackHandle {
       return onWorkshopCallback("SteamUGCQueryCompleted", handler);
@@ -23829,12 +23862,6 @@ function createWorkshopCallbackHelpers() {
       return onWorkshopCallback("SteamUGCWorkshopEULAStatus", handler);
     }
   };
-}
-
-function onWorkshopCallback<T>(steamCallback: SteamCallbackName, handler: (event: T) => void): CallbackHandle {
-  return onSteamCallback(steamCallback, (event) => {
-    handler(event as T);
-  });
 }
 
 export const workshop = {
@@ -24047,7 +24074,7 @@ export const gameServerWorkshop = {
   ItemPreviewType,
   UserListType,
   UserListOrder,
-  ...createWorkshopCallbackHelpers(),
+  ...createWorkshopCallbackHelpers(onGameServerSteamCallback),
   async createItem(appId?: number | null): Promise<UgcResult> {
     return normalizeUgcResult(await native().gameServerWorkshopCreateItem(appId ?? undefined));
   },

@@ -37,6 +37,7 @@ const CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE: i32 = 168;
 const CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE: i32 = 152;
 const CALLBACK_GAME_OVERLAY_ACTIVATED: i32 = 331;
 const H_AUTH_TICKET_INVALID: sys::HAuthTicket = 0;
+const MAX_MANUAL_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
 
 // steamworks-sys 0.13.0 generates Valve's header-local
 // k_SteamItemInstanceIDInvalid as an extern static. Export the literal value so
@@ -61,6 +62,90 @@ struct BreakpadCrashHandlerStrings {
     version: CString,
     date: CString,
     time: CString,
+}
+
+trait ManualDispatchBackend {
+    fn run_frame(&self, pipe: sys::HSteamPipe);
+    fn get_next_callback(&self, pipe: sys::HSteamPipe, callback: &mut sys::CallbackMsg_t) -> bool;
+    fn get_api_call_result(
+        &self,
+        pipe: sys::HSteamPipe,
+        api_call: sys::SteamAPICall_t,
+        data: *mut c_void,
+        byte_length: i32,
+        expected_callback: i32,
+        failed: &mut bool,
+    ) -> bool;
+    fn get_api_call_failure_reason(
+        &self,
+        domain: state::CallbackDomain,
+        api_call: sys::SteamAPICall_t,
+    ) -> Option<i32>;
+    fn free_last_callback(&self, pipe: sys::HSteamPipe);
+}
+
+struct SteamManualDispatchBackend;
+
+impl ManualDispatchBackend for SteamManualDispatchBackend {
+    fn run_frame(&self, pipe: sys::HSteamPipe) {
+        unsafe { sys::SteamAPI_ManualDispatch_RunFrame(pipe) };
+    }
+
+    fn get_next_callback(&self, pipe: sys::HSteamPipe, callback: &mut sys::CallbackMsg_t) -> bool {
+        unsafe { sys::SteamAPI_ManualDispatch_GetNextCallback(pipe, callback) }
+    }
+
+    fn get_api_call_result(
+        &self,
+        pipe: sys::HSteamPipe,
+        api_call: sys::SteamAPICall_t,
+        data: *mut c_void,
+        byte_length: i32,
+        expected_callback: i32,
+        failed: &mut bool,
+    ) -> bool {
+        unsafe {
+            sys::SteamAPI_ManualDispatch_GetAPICallResult(
+                pipe,
+                api_call,
+                data,
+                byte_length,
+                expected_callback,
+                failed,
+            )
+        }
+    }
+
+    fn get_api_call_failure_reason(
+        &self,
+        domain: state::CallbackDomain,
+        api_call: sys::SteamAPICall_t,
+    ) -> Option<i32> {
+        let utils = match domain {
+            state::CallbackDomain::Client => unsafe { sys::SteamAPI_SteamUtils_v010() },
+            state::CallbackDomain::GameServer => unsafe {
+                sys::SteamAPI_SteamGameServerUtils_v010()
+            },
+        };
+        (!utils.is_null()).then(|| unsafe {
+            sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(utils, api_call) as i32
+        })
+    }
+
+    fn free_last_callback(&self, pipe: sys::HSteamPipe) {
+        unsafe { sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe) };
+    }
+}
+
+struct ManualCallbackLease<'a, B: ManualDispatchBackend> {
+    backend: &'a B,
+    pipe: sys::HSteamPipe,
+}
+
+impl<B: ManualDispatchBackend> Drop for ManualCallbackLease<'_, B> {
+    fn drop(&mut self) {
+        self.backend.free_last_callback(self.pipe);
+    }
 }
 
 #[derive(Debug)]
@@ -134,8 +219,10 @@ impl CallbackHandle {
 
 #[napi(js_name = "init")]
 pub fn init(app_id: u32) -> Result<(), Error> {
+    let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
     if state::is_initialized() {
-        shutdown()?;
+        native_surface::ensure_main_thread()?;
+        shutdown_all_locked();
     }
 
     std::env::set_var("SteamAppId", app_id.to_string());
@@ -160,7 +247,13 @@ pub fn shutdown() -> Result<(), Error> {
     // macOS AppKit/MTKView ownership is main-thread-only. Reject worker
     // teardown before touching Steam callbacks or the attached child.
     native_surface::ensure_main_thread()?;
-    compat::game_server_shutdown();
+    let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
+    shutdown_all_locked();
+    Ok(())
+}
+
+fn shutdown_all_locked() {
+    compat::game_server_shutdown_locked();
     if state::is_initialized() {
         native_surface::close();
         compat::clear_warning_message_hook();
@@ -175,7 +268,6 @@ pub fn shutdown() -> Result<(), Error> {
         }
         state::mark_initialized(false);
     }
-    Ok(())
 }
 
 #[napi(js_name = "restartAppIfNecessary")]
@@ -195,35 +287,396 @@ pub fn get_steam_install_path() -> Option<String> {
 
 #[napi(js_name = "runCallbacks")]
 pub fn run_callbacks() {
-    if !state::is_initialized() {
+    run_manual_callbacks(state::CallbackDomain::Client);
+}
+
+pub(crate) fn run_manual_callbacks(domain: state::CallbackDomain) {
+    let _dispatch = state::lock_manual_dispatch(domain);
+    let initialized = match domain {
+        state::CallbackDomain::Client => state::is_initialized(),
+        state::CallbackDomain::GameServer => state::is_game_server_initialized(),
+    };
+    if !initialized {
         return;
     }
 
-    unsafe {
-        let pipe = sys::SteamAPI_GetHSteamPipe();
-        if pipe == 0 {
-            return;
+    let pipe = match domain {
+        state::CallbackDomain::Client => unsafe { sys::SteamAPI_GetHSteamPipe() },
+        state::CallbackDomain::GameServer => unsafe { sys::SteamGameServer_GetHSteamPipe() },
+    };
+    if pipe == 0 {
+        return;
+    }
+
+    drain_manual_callbacks(
+        domain,
+        pipe,
+        &SteamManualDispatchBackend,
+        |callback_id, param| match domain {
+            state::CallbackDomain::Client => {
+                state::dispatch_callback(callback_id, param.cast::<c_void>());
+            }
+            state::CallbackDomain::GameServer => {
+                state::dispatch_game_server_callback(callback_id, param.cast::<c_void>());
+            }
+        },
+    );
+}
+
+fn drain_manual_callbacks<B, F>(
+    domain: state::CallbackDomain,
+    pipe: sys::HSteamPipe,
+    backend: &B,
+    mut route: F,
+) where
+    B: ManualDispatchBackend,
+    F: FnMut(i32, *mut u8),
+{
+    backend.run_frame(pipe);
+    let mut callback = unsafe { std::mem::zeroed::<sys::CallbackMsg_t>() };
+
+    while backend.get_next_callback(pipe, &mut callback) {
+        let _lease = ManualCallbackLease { backend, pipe };
+        let callback_id = unsafe { ptr::addr_of!(callback.m_iCallback).read_unaligned() };
+        let param = unsafe { ptr::addr_of!(callback.m_pubParam).read_unaligned() };
+
+        if callback_id == sys::SteamAPICallCompleted_t_k_iCallback as i32 {
+            capture_completed_api_call(domain, pipe, &callback, backend);
         }
 
-        sys::SteamAPI_ManualDispatch_RunFrame(pipe);
-        let mut callback = std::mem::zeroed::<sys::CallbackMsg_t>();
+        route(callback_id, param);
+    }
+}
 
-        while sys::SteamAPI_ManualDispatch_GetNextCallback(pipe, &mut callback) {
-            let callback_id = ptr::addr_of!(callback.m_iCallback).read_unaligned();
-            let param = ptr::addr_of!(callback.m_pubParam).read_unaligned();
+fn capture_completed_api_call<B: ManualDispatchBackend>(
+    domain: state::CallbackDomain,
+    pipe: sys::HSteamPipe,
+    callback: &sys::CallbackMsg_t,
+    backend: &B,
+) {
+    let param = unsafe { ptr::addr_of!(callback.m_pubParam).read_unaligned() };
+    let callback_size = unsafe { ptr::addr_of!(callback.m_cubParam).read_unaligned() };
+    if param.is_null() || callback_size < std::mem::size_of::<sys::SteamAPICallCompleted_t>() as i32
+    {
+        return;
+    }
 
-            state::dispatch_callback(callback_id, param.cast::<c_void>());
-            sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe);
+    let completed = unsafe {
+        param
+            .cast::<sys::SteamAPICallCompleted_t>()
+            .read_unaligned()
+    };
+    let byte_length = unsafe { ptr::addr_of!(completed.m_cubParam).read_unaligned() };
+    let expected_callback = unsafe { ptr::addr_of!(completed.m_iCallback).read_unaligned() };
+    let api_call = unsafe { ptr::addr_of!(completed.m_hAsyncCall).read_unaligned() };
+
+    let Some(byte_length_i32) = i32::try_from(byte_length).ok() else {
+        state::store_completed_api_call(
+            domain,
+            api_call,
+            state::CompletedApiCall {
+                callback_id: expected_callback,
+                byte_length: byte_length as usize,
+                data: Vec::new(),
+                ok: false,
+                failed: true,
+                failure_reason: None,
+            },
+        );
+        return;
+    };
+
+    if byte_length > MAX_MANUAL_API_CALL_RESULT_BYTES {
+        state::store_completed_api_call(
+            domain,
+            api_call,
+            state::CompletedApiCall {
+                callback_id: expected_callback,
+                byte_length: byte_length as usize,
+                data: Vec::new(),
+                ok: false,
+                failed: true,
+                failure_reason: None,
+            },
+        );
+        return;
+    }
+
+    let byte_length_usize = byte_length as usize;
+    let aligned_slots = byte_length_usize
+        .div_ceil(std::mem::size_of::<u128>())
+        .max(1);
+    let mut aligned_data = vec![0u128; aligned_slots];
+    let mut failed = false;
+    let ok = backend.get_api_call_result(
+        pipe,
+        api_call,
+        aligned_data.as_mut_ptr().cast::<c_void>(),
+        byte_length_i32,
+        expected_callback,
+        &mut failed,
+    );
+    let data = if ok {
+        unsafe {
+            std::slice::from_raw_parts(aligned_data.as_ptr().cast::<u8>(), byte_length_usize)
+                .to_vec()
         }
+    } else {
+        Vec::new()
+    };
+    let failure_reason = if failed || !ok {
+        backend.get_api_call_failure_reason(domain, api_call)
+    } else {
+        None
+    };
+
+    state::store_completed_api_call(
+        domain,
+        api_call,
+        state::CompletedApiCall {
+            callback_id: expected_callback,
+            byte_length: byte_length_usize,
+            data,
+            ok,
+            failed,
+            failure_reason,
+        },
+    );
+}
+
+#[cfg(test)]
+mod manual_dispatch_tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    enum FakePayload {
+        Empty,
+        ApiCall {
+            completion: Box<sys::SteamAPICallCompleted_t>,
+            result: Vec<u8>,
+            ok: bool,
+            failed: bool,
+            failure_reason: Option<i32>,
+        },
+    }
+
+    struct FakeCallback {
+        callback_id: i32,
+        payload: FakePayload,
+    }
+
+    struct FakeState {
+        queued: VecDeque<FakeCallback>,
+        current: Option<FakeCallback>,
+        trace: Vec<String>,
+    }
+
+    struct FakeManualDispatchBackend {
+        state: Mutex<FakeState>,
+    }
+
+    impl FakeManualDispatchBackend {
+        fn new(callbacks: impl IntoIterator<Item = FakeCallback>) -> Self {
+            Self {
+                state: Mutex::new(FakeState {
+                    queued: callbacks.into_iter().collect(),
+                    current: None,
+                    trace: Vec::new(),
+                }),
+            }
+        }
+
+        fn trace(&self) -> Vec<String> {
+            self.state
+                .lock()
+                .expect("fake dispatcher poisoned")
+                .trace
+                .clone()
+        }
+    }
+
+    impl ManualDispatchBackend for FakeManualDispatchBackend {
+        fn run_frame(&self, _pipe: sys::HSteamPipe) {
+            self.state
+                .lock()
+                .expect("fake dispatcher poisoned")
+                .trace
+                .push("run_frame".to_owned());
+        }
+
+        fn get_next_callback(
+            &self,
+            _pipe: sys::HSteamPipe,
+            callback: &mut sys::CallbackMsg_t,
+        ) -> bool {
+            let mut state = self.state.lock().expect("fake dispatcher poisoned");
+            assert!(state.current.is_none(), "callback was not freed");
+            state.trace.push("get_next".to_owned());
+            let Some(next) = state.queued.pop_front() else {
+                return false;
+            };
+            state.current = Some(next);
+            let current = state.current.as_mut().expect("current callback missing");
+            callback.m_hSteamUser = 0;
+            callback.m_iCallback = current.callback_id;
+            match &mut current.payload {
+                FakePayload::Empty => {
+                    callback.m_pubParam = ptr::null_mut();
+                    callback.m_cubParam = 0;
+                }
+                FakePayload::ApiCall { completion, .. } => {
+                    callback.m_pubParam = completion.as_mut() as *mut _ as *mut u8;
+                    callback.m_cubParam =
+                        std::mem::size_of::<sys::SteamAPICallCompleted_t>() as i32;
+                }
+            }
+            true
+        }
+
+        fn get_api_call_result(
+            &self,
+            _pipe: sys::HSteamPipe,
+            api_call: sys::SteamAPICall_t,
+            data: *mut c_void,
+            byte_length: i32,
+            expected_callback: i32,
+            failed: &mut bool,
+        ) -> bool {
+            let mut state = self.state.lock().expect("fake dispatcher poisoned");
+            state.trace.push("get_api_call_result".to_owned());
+            let current = state.current.as_ref().expect("current callback missing");
+            let FakePayload::ApiCall {
+                completion,
+                result,
+                ok,
+                failed: result_failed,
+                ..
+            } = &current.payload
+            else {
+                panic!("API result requested for a non-completion callback");
+            };
+            assert_eq!(completion.m_hAsyncCall, api_call);
+            assert_eq!(completion.m_iCallback, expected_callback);
+            assert_eq!(result.len(), byte_length as usize);
+            *failed = *result_failed;
+            if *ok {
+                unsafe {
+                    ptr::copy_nonoverlapping(result.as_ptr(), data.cast::<u8>(), result.len())
+                };
+            }
+            *ok
+        }
+
+        fn get_api_call_failure_reason(
+            &self,
+            _domain: state::CallbackDomain,
+            _api_call: sys::SteamAPICall_t,
+        ) -> Option<i32> {
+            let state = self.state.lock().expect("fake dispatcher poisoned");
+            let current = state.current.as_ref()?;
+            let FakePayload::ApiCall { failure_reason, .. } = &current.payload else {
+                return None;
+            };
+            *failure_reason
+        }
+
+        fn free_last_callback(&self, _pipe: sys::HSteamPipe) {
+            let mut state = self.state.lock().expect("fake dispatcher poisoned");
+            state.trace.push("free_last".to_owned());
+            assert!(state.current.take().is_some(), "no callback to free");
+        }
+    }
+
+    #[test]
+    fn dispatcher_retrieves_api_results_and_frees_every_callback_in_order() {
+        let _test = state::lock_test_state();
+        state::clear_callbacks();
+        let backend = FakeManualDispatchBackend::new([
+            FakeCallback {
+                callback_id: sys::SteamAPICallCompleted_t_k_iCallback as i32,
+                payload: FakePayload::ApiCall {
+                    completion: Box::new(sys::SteamAPICallCompleted_t {
+                        m_hAsyncCall: 42,
+                        m_iCallback: 9001,
+                        m_cubParam: 4,
+                    }),
+                    result: vec![1, 2, 3, 4],
+                    ok: true,
+                    failed: false,
+                    failure_reason: None,
+                },
+            },
+            FakeCallback {
+                callback_id: 999,
+                payload: FakePayload::Empty,
+            },
+        ]);
+        let mut routed = Vec::new();
+
+        drain_manual_callbacks(
+            state::CallbackDomain::Client,
+            1,
+            &backend,
+            |callback_id, _| {
+                backend
+                    .state
+                    .lock()
+                    .expect("fake dispatcher poisoned")
+                    .trace
+                    .push(format!("route:{callback_id}"));
+                routed.push(callback_id);
+            },
+        );
+
+        assert_eq!(
+            backend.trace(),
+            [
+                "run_frame",
+                "get_next",
+                "get_api_call_result",
+                "route:703",
+                "free_last",
+                "get_next",
+                "route:999",
+                "free_last",
+                "get_next",
+            ]
+        );
+        assert_eq!(routed, [703, 999]);
+        assert!(matches!(
+            state::take_completed_api_call(state::CallbackDomain::Client, 42, 9001, 4),
+            state::CompletedApiCallLookup::Ready(state::CompletedApiCall { data, .. })
+                if data == vec![1, 2, 3, 4]
+        ));
+    }
+
+    #[test]
+    fn dispatcher_frees_the_current_callback_when_routing_unwinds() {
+        let _test = state::lock_test_state();
+        let backend = FakeManualDispatchBackend::new([FakeCallback {
+            callback_id: 999,
+            payload: FakePayload::Empty,
+        }]);
+
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            drain_manual_callbacks(state::CallbackDomain::Client, 1, &backend, |_, _| {
+                panic!("route failed")
+            });
+        }));
+
+        assert!(unwind.is_err());
+        assert_eq!(backend.trace(), ["run_frame", "get_next", "free_last"]);
     }
 }
 
 #[napi(js_name = "initAnonymousUser")]
 pub fn init_anonymous_user() -> bool {
+    let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
     if state::is_initialized() {
-        if shutdown().is_err() {
+        if native_surface::ensure_main_thread().is_err() {
             return false;
         }
+        shutdown_all_locked();
     }
 
     let initialized = unsafe { SteamAPI_InitAnonymousUser() };
@@ -238,12 +691,24 @@ pub fn init_anonymous_user() -> bool {
 
 #[napi(js_name = "initSafe")]
 pub fn init_safe() -> bool {
-    unsafe { SteamAPI_InitSafe() }
+    let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
+    if state::is_initialized() {
+        return true;
+    }
+
+    let initialized = unsafe { SteamAPI_InitSafe() };
+    if initialized {
+        unsafe {
+            sys::SteamAPI_ManualDispatch_Init();
+        }
+        state::mark_initialized(true);
+    }
+    initialized
 }
 
 #[napi(js_name = "runLegacyCallbacks")]
 pub fn run_legacy_callbacks() {
-    unsafe { sys::SteamAPI_RunCallbacks() };
+    run_callbacks();
 }
 
 #[napi(js_name = "releaseCurrentThreadMemory")]
@@ -1101,54 +1566,57 @@ pub async fn get_auth_ticket_for_web_api(
     identity: String,
     timeout_seconds: Option<u32>,
 ) -> Result<AuthTicket, Error> {
-    state::ensure_initialized()?;
-
     let identity = cstring(identity, "identity")?;
     let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
-    let tx = Arc::new(Mutex::new(Some(tx)));
+    let tx_for_callback = Arc::new(Mutex::new(Some(tx)));
     let expected_ticket = Arc::new(AtomicU32::new(H_AUTH_TICKET_INVALID));
 
-    let tx_for_callback = tx.clone();
     let expected_for_callback = expected_ticket.clone();
-    let _registration =
-        state::register_callback(CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE, move |param| {
-            let response = unsafe { &*(param as *const sys::GetTicketForWebApiResponse_t) };
-            let expected = expected_for_callback.load(Ordering::SeqCst);
-            if expected == H_AUTH_TICKET_INVALID || response.m_hAuthTicket != expected {
-                return;
-            }
+    let (_registration, ticket_handle) = {
+        let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
+        state::ensure_initialized()?;
 
-            let result = if response.m_eResult == sys::EResult::k_EResultOK {
-                let len = response
-                    .m_cubTicket
-                    .clamp(0, sys::GetTicketForWebApiResponse_t_k_nCubTicketMaxLength)
-                    as usize;
-                Ok(response.m_rgubTicket[..len].to_vec())
-            } else {
-                Err(format!(
-                    "Steam Web API ticket failed: {:?}",
-                    response.m_eResult
-                ))
-            };
+        let registration =
+            state::register_callback(CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE, move |param| {
+                let response = unsafe { &*(param as *const sys::GetTicketForWebApiResponse_t) };
+                let expected = expected_for_callback.load(Ordering::SeqCst);
+                if expected == H_AUTH_TICKET_INVALID || response.m_hAuthTicket != expected {
+                    return;
+                }
 
-            if let Some(tx) = tx_for_callback
-                .lock()
-                .expect("Steam ticket callback sender poisoned")
-                .take()
-            {
-                let _ = tx.send(result);
-            }
-        });
+                let result = if response.m_eResult == sys::EResult::k_EResultOK {
+                    let len = response
+                        .m_cubTicket
+                        .clamp(0, sys::GetTicketForWebApiResponse_t_k_nCubTicketMaxLength)
+                        as usize;
+                    Ok(response.m_rgubTicket[..len].to_vec())
+                } else {
+                    Err(format!(
+                        "Steam Web API ticket failed: {:?}",
+                        response.m_eResult
+                    ))
+                };
 
-    let user = steam_user()?;
-    let ticket_handle =
-        unsafe { sys::SteamAPI_ISteamUser_GetAuthTicketForWebApi(user, identity.as_ptr()) };
-    if ticket_handle == H_AUTH_TICKET_INVALID {
-        return Err(Error::from_reason(
-            "Steam returned an invalid Web API auth ticket handle",
-        ));
-    }
-    expected_ticket.store(ticket_handle, Ordering::SeqCst);
+                if let Some(tx) = tx_for_callback
+                    .lock()
+                    .expect("Steam ticket callback sender poisoned")
+                    .take()
+                {
+                    let _ = tx.send(result);
+                }
+            });
+
+        let user = steam_user()?;
+        let ticket_handle =
+            unsafe { sys::SteamAPI_ISteamUser_GetAuthTicketForWebApi(user, identity.as_ptr()) };
+        if ticket_handle == H_AUTH_TICKET_INVALID {
+            return Err(Error::from_reason(
+                "Steam returned an invalid Web API auth ticket handle",
+            ));
+        }
+        expected_ticket.store(ticket_handle, Ordering::SeqCst);
+        (registration, ticket_handle)
+    };
 
     let timeout_seconds = u64::from(timeout_seconds.unwrap_or(10));
     let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_seconds), rx).await;
@@ -1179,17 +1647,18 @@ pub async fn get_auth_ticket_for_web_api(
 pub fn register_micro_txn_authorization_response(
     #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, serde_json::Value>,
 ) -> Result<CallbackHandle, Error> {
-    state::ensure_initialized()?;
-
     let threadsafe_handler: FatalThreadsafeFunction<serde_json::Value> = handler
         .build_threadsafe_function::<serde_json::Value>()
         .build_callback(|ctx| Ok(vec![ctx.value]))?;
 
-    let registration =
+    let registration = {
+        let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
+        state::ensure_initialized()?;
         state::register_callback(CALLBACK_MICRO_TXN_AUTHORIZATION_RESPONSE, move |param| {
             let value = unsafe { micro_txn_to_json(param) };
             threadsafe_handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
-        });
+        })
+    };
 
     Ok(CallbackHandle {
         registration: Some(registration),
@@ -1204,16 +1673,18 @@ pub fn register_micro_txn_authorization_response(
 pub fn register_game_overlay_activated(
     #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, serde_json::Value>,
 ) -> Result<CallbackHandle, Error> {
-    state::ensure_initialized()?;
-
     let threadsafe_handler: FatalThreadsafeFunction<serde_json::Value> = handler
         .build_threadsafe_function::<serde_json::Value>()
         .build_callback(|ctx| Ok(vec![ctx.value]))?;
 
-    let registration = state::register_callback(CALLBACK_GAME_OVERLAY_ACTIVATED, move |param| {
-        let value = unsafe { game_overlay_activated_to_json(param) };
-        threadsafe_handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
-    });
+    let registration = {
+        let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
+        state::ensure_initialized()?;
+        state::register_callback(CALLBACK_GAME_OVERLAY_ACTIVATED, move |param| {
+            let value = unsafe { game_overlay_activated_to_json(param) };
+            threadsafe_handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
+        })
+    };
 
     Ok(CallbackHandle {
         registration: Some(registration),

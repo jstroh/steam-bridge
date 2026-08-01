@@ -10396,8 +10396,9 @@ pub fn overlay_activate_to_store(app_id: u32, flag: u32) -> Result<(), Error> {
 
 #[napi(js_name = "gameServerInit")]
 pub fn game_server_init(options: GameServerInitOptions) -> Result<(), Error> {
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::GameServer);
     if crate::state::is_game_server_initialized() {
-        game_server_shutdown();
+        game_server_shutdown_locked();
     }
     let version = cstring(options.version, "game server version")?;
     let mut err_msg: sys::SteamErrMsg = [0; 1024];
@@ -10454,13 +10455,16 @@ pub fn game_server_get_h_steam_user() -> Result<i32, Error> {
 
 #[napi(js_name = "gameServerShutdown")]
 pub fn game_server_shutdown() {
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::GameServer);
+    game_server_shutdown_locked();
+}
+
+pub(crate) fn game_server_shutdown_locked() {
     if crate::state::is_game_server_initialized() {
         unsafe { sys::SteamGameServer_Shutdown() };
         crate::state::mark_game_server_initialized(false);
-        if !crate::state::is_initialized() {
-            crate::state::clear_callbacks();
-        }
     }
+    crate::state::clear_game_server_callbacks();
 }
 
 #[napi(js_name = "gameServerRunCallbacks")]
@@ -14015,11 +14019,20 @@ pub fn networking_utils_iterate_generic_editable_config_values(
     Ok(next as u32)
 }
 
+fn dispatch_networking_callback(callback_id: i32, param: *mut c_void) {
+    match networking_interface_context() {
+        NetworkingInterfaceContext::Client => crate::state::dispatch_callback(callback_id, param),
+        NetworkingInterfaceContext::GameServer => {
+            crate::state::dispatch_game_server_callback(callback_id, param)
+        }
+    }
+}
+
 unsafe extern "C" fn steam_networking_utils_connection_status_changed_callback(
     event: *mut sys::SteamNetConnectionStatusChangedCallback_t,
 ) {
     if !event.is_null() {
-        crate::state::dispatch_callback(
+        dispatch_networking_callback(
             CALLBACK_STEAM_NET_CONNECTION_STATUS_CHANGED,
             event.cast::<c_void>(),
         );
@@ -14030,7 +14043,7 @@ unsafe extern "C" fn steam_networking_utils_authentication_status_changed_callba
     event: *mut sys::SteamNetAuthenticationStatus_t,
 ) {
     if !event.is_null() {
-        crate::state::dispatch_callback(
+        dispatch_networking_callback(
             CALLBACK_STEAM_NET_AUTHENTICATION_STATUS,
             event.cast::<c_void>(),
         );
@@ -14041,10 +14054,7 @@ unsafe extern "C" fn steam_networking_utils_relay_network_status_changed_callbac
     event: *mut sys::SteamRelayNetworkStatus_t,
 ) {
     if !event.is_null() {
-        crate::state::dispatch_callback(
-            CALLBACK_STEAM_RELAY_NETWORK_STATUS,
-            event.cast::<c_void>(),
-        );
+        dispatch_networking_callback(CALLBACK_STEAM_RELAY_NETWORK_STATUS, event.cast::<c_void>());
     }
 }
 
@@ -14052,7 +14062,7 @@ unsafe extern "C" fn steam_networking_utils_fake_ip_result_callback(
     event: *mut sys::SteamNetworkingFakeIPResult_t,
 ) {
     if !event.is_null() {
-        crate::state::dispatch_callback(
+        dispatch_networking_callback(
             CALLBACK_STEAM_NETWORKING_FAKE_IP_RESULT,
             event.cast::<c_void>(),
         );
@@ -14063,7 +14073,7 @@ unsafe extern "C" fn steam_networking_utils_messages_session_request_callback(
     event: *mut sys::SteamNetworkingMessagesSessionRequest_t,
 ) {
     if !event.is_null() {
-        crate::state::dispatch_callback(
+        dispatch_networking_callback(
             CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_REQUEST,
             event.cast::<c_void>(),
         );
@@ -14074,7 +14084,7 @@ unsafe extern "C" fn steam_networking_utils_messages_session_failed_callback(
     event: *mut sys::SteamNetworkingMessagesSessionFailed_t,
 ) {
     if !event.is_null() {
-        crate::state::dispatch_callback(
+        dispatch_networking_callback(
             CALLBACK_STEAM_NETWORKING_MESSAGES_SESSION_FAILED,
             event.cast::<c_void>(),
         );
@@ -14357,8 +14367,15 @@ pub fn utils_register_warning_message_hook(
 
 #[napi(js_name = "utilsIsApiCallCompleted")]
 pub fn utils_is_api_call_completed(api_call: BigInt) -> Result<UtilsApiCallCompletion, Error> {
-    let utils = steam_utils()?;
     let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+    if let Some((completed, failed)) =
+        crate::state::completed_api_call_status(crate::state::CallbackDomain::Client, api_call)
+    {
+        return Ok(UtilsApiCallCompletion { completed, failed });
+    }
+
+    let utils = steam_utils()?;
     let mut failed = false;
     let completed =
         unsafe { sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, api_call, &mut failed) };
@@ -14367,12 +14384,17 @@ pub fn utils_is_api_call_completed(api_call: BigInt) -> Result<UtilsApiCallCompl
 
 #[napi(js_name = "utilsGetApiCallFailureReason")]
 pub fn utils_get_api_call_failure_reason(api_call: BigInt) -> Result<i32, Error> {
-    let reason = unsafe {
-        sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(
-            steam_utils()?,
-            bigint_to_u64(api_call, "Steam API call handle")?,
-        )
-    };
+    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+    if let Some(reason) = crate::state::completed_api_call_failure_reason(
+        crate::state::CallbackDomain::Client,
+        api_call,
+    ) {
+        return Ok(reason.unwrap_or(sys::ESteamAPICallFailure::k_ESteamAPICallFailureNone as i32));
+    }
+
+    let reason =
+        unsafe { sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(steam_utils()?, api_call) };
     Ok(reason as i32)
 }
 
@@ -14391,24 +14413,48 @@ pub fn utils_get_api_call_result(
     let byte_length_i32 = i32::try_from(byte_length)
         .map_err(|_| Error::from_reason("API call result buffer is too large"))?;
     let expected_callback = callback_id_from_compat(expected_callback).unwrap_or(expected_callback);
-    let mut data = vec![0u8; byte_length as usize];
+    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+    match crate::state::take_completed_api_call(
+        crate::state::CallbackDomain::Client,
+        api_call,
+        expected_callback,
+        byte_length as usize,
+    ) {
+        crate::state::CompletedApiCallLookup::Ready(completed) => {
+            return Ok(UtilsApiCallResult {
+                ok: completed.ok,
+                failed: completed.failed,
+                data: completed.ok.then(|| completed.data.into()),
+            });
+        }
+        crate::state::CompletedApiCallLookup::MetadataMismatch { .. }
+        | crate::state::CompletedApiCallLookup::Pending => {}
+    }
+
+    let byte_length_usize = byte_length as usize;
+    let aligned_slots = byte_length_usize
+        .div_ceil(std::mem::size_of::<u128>())
+        .max(1);
+    let mut aligned_data = vec![0u128; aligned_slots];
     let mut failed = false;
     let ok = unsafe {
         sys::SteamAPI_ISteamUtils_GetAPICallResult(
             steam_utils()?,
-            bigint_to_u64(api_call, "Steam API call handle")?,
-            data.as_mut_ptr().cast::<c_void>(),
+            api_call,
+            aligned_data.as_mut_ptr().cast::<c_void>(),
             byte_length_i32,
             expected_callback,
             &mut failed,
         )
     };
+    let data = ok.then(|| unsafe {
+        std::slice::from_raw_parts(aligned_data.as_ptr().cast::<u8>(), byte_length_usize)
+            .to_vec()
+            .into()
+    });
 
-    Ok(UtilsApiCallResult {
-        ok,
-        failed,
-        data: ok.then(|| data.into()),
-    })
+    Ok(UtilsApiCallResult { ok, failed, data })
 }
 
 #[napi(js_name = "utilsCheckFileSignature")]
@@ -14545,43 +14591,46 @@ pub async fn utils_show_gamepad_text_input(
     existing_text: Option<String>,
     timeout_seconds: Option<u32>,
 ) -> Result<Option<String>, Error> {
-    crate::state::ensure_initialized()?;
-    let utils = steam_utils()?;
     let description = cstring(description, "gamepad text input description")?;
     let existing_text = cstring(existing_text.unwrap_or_default(), "existing gamepad text")?;
     let input_mode = gamepad_text_input_mode_from_u32(input_mode)?;
     let input_line_mode = gamepad_text_input_line_mode_from_u32(input_line_mode)?;
 
     let (tx, rx) = oneshot::channel::<Option<String>>();
-    let tx = Arc::new(Mutex::new(Some(tx)));
-    let tx_for_callback = tx.clone();
-    let _registration =
-        crate::state::register_callback(CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED, move |param| {
-            let event = unsafe { &*(param as *const sys::GamepadTextInputDismissed_t) };
-            let submitted = unsafe { ptr::addr_of!(event.m_bSubmitted).read_unaligned() };
-            let value = if submitted {
-                entered_gamepad_text().ok().flatten()
-            } else {
-                None
-            };
-            if let Some(tx) = tx_for_callback
-                .lock()
-                .expect("gamepad text input sender poisoned")
-                .take()
-            {
-                let _ = tx.send(value);
-            }
-        });
+    let tx_for_callback = Arc::new(Mutex::new(Some(tx)));
+    let (_registration, shown) = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        crate::state::ensure_initialized()?;
+        let utils = steam_utils()?;
+        let registration =
+            crate::state::register_callback(CALLBACK_GAMEPAD_TEXT_INPUT_DISMISSED, move |param| {
+                let event = unsafe { &*(param as *const sys::GamepadTextInputDismissed_t) };
+                let submitted = unsafe { ptr::addr_of!(event.m_bSubmitted).read_unaligned() };
+                let value = if submitted {
+                    entered_gamepad_text().ok().flatten()
+                } else {
+                    None
+                };
+                if let Some(tx) = tx_for_callback
+                    .lock()
+                    .expect("gamepad text input sender poisoned")
+                    .take()
+                {
+                    let _ = tx.send(value);
+                }
+            });
 
-    let shown = unsafe {
-        sys::SteamAPI_ISteamUtils_ShowGamepadTextInput(
-            utils,
-            input_mode,
-            input_line_mode,
-            description.as_ptr(),
-            max_characters,
-            existing_text.as_ptr(),
-        )
+        let shown = unsafe {
+            sys::SteamAPI_ISteamUtils_ShowGamepadTextInput(
+                utils,
+                input_mode,
+                input_line_mode,
+                description.as_ptr(),
+                max_characters,
+                existing_text.as_ptr(),
+            )
+        };
+        (registration, shown)
     };
     if !shown {
         return Ok(None);
@@ -15353,12 +15402,37 @@ pub fn register_steam_callback(
     callback: i32,
     #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, Value>,
 ) -> Result<CallbackHandle, Error> {
-    crate::state::ensure_initialized()?;
     let callback_id = callback_id_from_compat(callback)?;
     let threadsafe_handler: FatalThreadsafeFunction<Value> = handler
         .build_threadsafe_function::<Value>()
         .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+    crate::state::ensure_initialized()?;
     let registration = crate::state::register_callback(callback_id, move |param| {
+        let value = unsafe { callback_to_json(callback, param) };
+        threadsafe_handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
+    });
+    Ok(CallbackHandle {
+        registration: Some(registration),
+        warning_message_registration: None,
+        networking_debug_output_registration: None,
+        input_action_event_registration: None,
+        client_process_hook_registration: None,
+    })
+}
+
+#[napi(js_name = "registerGameServerSteamCallback")]
+pub fn register_game_server_steam_callback(
+    callback: i32,
+    #[napi(ts_arg_type = "(value: any) => void")] handler: JsCallback<'_, Value>,
+) -> Result<CallbackHandle, Error> {
+    let callback_id = callback_id_from_compat(callback)?;
+    let threadsafe_handler: FatalThreadsafeFunction<Value> = handler
+        .build_threadsafe_function::<Value>()
+        .build_callback(|ctx| Ok(vec![ctx.value]))?;
+    let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::GameServer);
+    crate::state::ensure_game_server_initialized()?;
+    let registration = crate::state::register_game_server_callback(callback_id, move |param| {
         let value = unsafe { callback_to_json(callback, param) };
         threadsafe_handler.call(value, ThreadsafeFunctionCallMode::NonBlocking);
     });
@@ -15373,13 +15447,12 @@ pub fn register_steam_callback(
 
 #[napi(js_name = "registerRawSteamCallback")]
 pub fn register_raw_steam_callback(
-    callback_base_pointer: BigInt,
-    callback: i32,
+    _callback_base_pointer: BigInt,
+    _callback: i32,
 ) -> Result<(), Error> {
-    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
-    let callback_id = callback_id_from_compat(callback)?;
-    unsafe { sys::SteamAPI_RegisterCallback(callback_base, callback_id) };
-    Ok(())
+    Err(Error::from_reason(
+        "Raw Steam callback-base registration is incompatible with Steam Bridge manual dispatch; use callback.register() or gameServer.onCallback()",
+    ))
 }
 
 #[napi(js_name = "unregisterRawSteamCallback")]
@@ -15391,13 +15464,12 @@ pub fn unregister_raw_steam_callback(callback_base_pointer: BigInt) -> Result<()
 
 #[napi(js_name = "registerRawSteamCallResult")]
 pub fn register_raw_steam_call_result(
-    callback_base_pointer: BigInt,
-    api_call: BigInt,
+    _callback_base_pointer: BigInt,
+    _api_call: BigInt,
 ) -> Result<(), Error> {
-    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
-    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
-    unsafe { sys::SteamAPI_RegisterCallResult(callback_base, api_call) };
-    Ok(())
+    Err(Error::from_reason(
+        "Raw Steam call-result registration is incompatible with Steam Bridge manual dispatch; use utils.onSteamAPICallCompleted() and utils.getApiCallResult()",
+    ))
 }
 
 #[napi(js_name = "unregisterRawSteamCallResult")]
@@ -20925,56 +20997,61 @@ async fn get_session_ticket(
     identity: Option<sys::SteamNetworkingIdentity>,
     timeout_seconds: Option<u32>,
 ) -> Result<AuthTicket, Error> {
-    crate::state::ensure_initialized()?;
     let (tx, rx) = oneshot::channel::<Result<(), String>>();
-    let tx = Arc::new(Mutex::new(Some(tx)));
+    let tx_for_callback = Arc::new(Mutex::new(Some(tx)));
     let expected_ticket = Arc::new(AtomicU32::new(H_AUTH_TICKET_INVALID));
-    let tx_for_callback = tx.clone();
     let expected_for_callback = expected_ticket.clone();
-    let _registration =
-        crate::state::register_callback(CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE, move |param| {
-            let response = unsafe { &*(param as *const sys::GetAuthSessionTicketResponse_t) };
-            let expected = expected_for_callback.load(Ordering::SeqCst);
-            if expected == H_AUTH_TICKET_INVALID || response.m_hAuthTicket != expected {
-                return;
-            }
-            let result = if response.m_eResult == sys::EResult::k_EResultOK {
-                Ok(())
-            } else {
-                Err(format!(
-                    "Steam auth session ticket failed: {:?}",
-                    response.m_eResult
-                ))
-            };
-            if let Some(tx) = tx_for_callback
-                .lock()
-                .expect("Steam auth ticket callback sender poisoned")
-                .take()
-            {
-                let _ = tx.send(result);
-            }
-        });
-
     let mut data = vec![0u8; 4096];
     let mut data_len = 0u32;
     let identity_ptr = identity
         .as_ref()
         .map_or(ptr::null(), |identity| identity as *const _);
-    let ticket_handle = unsafe {
-        sys::SteamAPI_ISteamUser_GetAuthSessionTicket(
-            steam_user()?,
-            data.as_mut_ptr().cast::<c_void>(),
-            data.len() as i32,
-            &mut data_len,
-            identity_ptr,
-        )
+    let (_registration, ticket_handle) = {
+        let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
+        crate::state::ensure_initialized()?;
+        let registration = crate::state::register_callback(
+            CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE,
+            move |param| {
+                let response = unsafe { &*(param as *const sys::GetAuthSessionTicketResponse_t) };
+                let expected = expected_for_callback.load(Ordering::SeqCst);
+                if expected == H_AUTH_TICKET_INVALID || response.m_hAuthTicket != expected {
+                    return;
+                }
+                let result = if response.m_eResult == sys::EResult::k_EResultOK {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Steam auth session ticket failed: {:?}",
+                        response.m_eResult
+                    ))
+                };
+                if let Some(tx) = tx_for_callback
+                    .lock()
+                    .expect("Steam auth ticket callback sender poisoned")
+                    .take()
+                {
+                    let _ = tx.send(result);
+                }
+            },
+        );
+
+        let ticket_handle = unsafe {
+            sys::SteamAPI_ISteamUser_GetAuthSessionTicket(
+                steam_user()?,
+                data.as_mut_ptr().cast::<c_void>(),
+                data.len() as i32,
+                &mut data_len,
+                identity_ptr,
+            )
+        };
+        if ticket_handle == H_AUTH_TICKET_INVALID {
+            return Err(Error::from_reason(
+                "Steam returned an invalid auth session ticket handle",
+            ));
+        }
+        expected_ticket.store(ticket_handle, Ordering::SeqCst);
+        (registration, ticket_handle)
     };
-    if ticket_handle == H_AUTH_TICKET_INVALID {
-        return Err(Error::from_reason(
-            "Steam returned an invalid auth session ticket handle",
-        ));
-    }
-    expected_ticket.store(ticket_handle, Ordering::SeqCst);
     data.truncate(data_len as usize);
     let timeout_seconds = u64::from(timeout_seconds.unwrap_or(10));
     match tokio::time::timeout(std::time::Duration::from_secs(timeout_seconds), rx).await {
@@ -20997,28 +21074,7 @@ async fn get_session_ticket(
 }
 
 fn run_game_server_callbacks() {
-    if !crate::state::is_game_server_initialized() {
-        return;
-    }
-
-    unsafe {
-        let pipe = sys::SteamGameServer_GetHSteamPipe();
-        if pipe == 0 {
-            sys::SteamGameServer_RunCallbacks();
-            return;
-        }
-
-        sys::SteamAPI_ManualDispatch_RunFrame(pipe);
-        let mut callback = std::mem::zeroed::<sys::CallbackMsg_t>();
-
-        while sys::SteamAPI_ManualDispatch_GetNextCallback(pipe, &mut callback) {
-            let callback_id = ptr::addr_of!(callback.m_iCallback).read_unaligned();
-            let param = ptr::addr_of!(callback.m_pubParam).read_unaligned();
-
-            crate::state::dispatch_callback(callback_id, param.cast::<c_void>());
-            sys::SteamAPI_ManualDispatch_FreeLastCallback(pipe);
-        }
-    }
+    crate::run_manual_callbacks(crate::state::CallbackDomain::GameServer);
 }
 
 async fn wait_for_api_call<T>(
@@ -21054,6 +21110,56 @@ async fn wait_for_inventory_api_call<T>(
     }
 }
 
+fn take_completed_api_call<T>(
+    domain: crate::state::CallbackDomain,
+    call: sys::SteamAPICall_t,
+    expected_callback: i32,
+    context: &str,
+) -> Option<Result<T, Error>> {
+    let expected_byte_length = std::mem::size_of::<T>();
+    match crate::state::take_completed_api_call(
+        domain,
+        call,
+        expected_callback,
+        expected_byte_length,
+    ) {
+        crate::state::CompletedApiCallLookup::Pending => None,
+        crate::state::CompletedApiCallLookup::MetadataMismatch {
+            callback_id,
+            byte_length,
+        } => Some(Err(Error::from_reason(format!(
+            "{context} completed with callback {callback_id} ({byte_length} bytes), expected callback {expected_callback} ({expected_byte_length} bytes)"
+        )))),
+        crate::state::CompletedApiCallLookup::Ready(completed) => {
+            if !completed.ok || completed.failed {
+                let reason = completed
+                    .failure_reason
+                    .map(|value| format!(": {value}"))
+                    .unwrap_or_default();
+                return Some(Err(Error::from_reason(format!(
+                    "{context} result retrieval failed{reason}"
+                ))));
+            }
+            if completed.data.len() != expected_byte_length {
+                return Some(Err(Error::from_reason(format!(
+                    "{context} returned {} bytes after declaring {expected_byte_length}",
+                    completed.data.len()
+                ))));
+            }
+
+            let mut result = MaybeUninit::<T>::uninit();
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    completed.data.as_ptr(),
+                    result.as_mut_ptr().cast::<u8>(),
+                    expected_byte_length,
+                );
+                Some(Ok(result.assume_init()))
+            }
+        }
+    }
+}
+
 async fn wait_for_game_server_api_call_with_progress<T, F>(
     call: sys::SteamAPICall_t,
     expected_callback: i32,
@@ -21071,48 +21177,13 @@ where
     let started = Instant::now();
     loop {
         run_game_server_callbacks();
-        let utils = steam_game_server_utils()?;
-        let mut failed = false;
-        let completed =
-            unsafe { sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, call, &mut failed) };
-        if completed {
-            if failed {
-                let reason =
-                    unsafe { sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(utils, call) };
-                return Err(Error::from_reason(format!(
-                    "Steam game server API call failed: {reason:?}"
-                )));
-            }
-            let mut result = MaybeUninit::<T>::zeroed();
-            let mut result_failed = false;
-            let pipe = unsafe { sys::SteamGameServer_GetHSteamPipe() };
-            let ok = (pipe != 0
-                && unsafe {
-                    sys::SteamAPI_ManualDispatch_GetAPICallResult(
-                        pipe,
-                        call,
-                        result.as_mut_ptr().cast::<c_void>(),
-                        std::mem::size_of::<T>() as i32,
-                        expected_callback,
-                        &mut result_failed,
-                    )
-                })
-                || unsafe {
-                    sys::SteamAPI_ISteamUtils_GetAPICallResult(
-                        utils,
-                        call,
-                        result.as_mut_ptr().cast::<c_void>(),
-                        std::mem::size_of::<T>() as i32,
-                        expected_callback,
-                        &mut result_failed,
-                    )
-                };
-            if !ok || result_failed {
-                return Err(Error::from_reason(
-                    "Steam game server API call completed but result retrieval failed",
-                ));
-            }
-            return Ok(unsafe { result.assume_init() });
+        if let Some(result) = take_completed_api_call(
+            crate::state::CallbackDomain::GameServer,
+            call,
+            expected_callback,
+            "Steam game server API call",
+        ) {
+            return result;
         }
         if started.elapsed() > Duration::from_secs(timeout_seconds) {
             return Err(Error::from_reason("Steam game server API call timed out"));
@@ -21149,46 +21220,13 @@ where
     let started = Instant::now();
     loop {
         run_callbacks();
-        let utils = steam_utils()?;
-        let mut failed = false;
-        let completed =
-            unsafe { sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, call, &mut failed) };
-        if completed {
-            if failed {
-                let reason =
-                    unsafe { sys::SteamAPI_ISteamUtils_GetAPICallFailureReason(utils, call) };
-                return Err(Error::from_reason(format!(
-                    "Steam API call failed: {reason:?}"
-                )));
-            }
-            let mut result = MaybeUninit::<T>::zeroed();
-            let mut result_failed = false;
-            let pipe = unsafe { sys::SteamAPI_GetHSteamPipe() };
-            let ok = unsafe {
-                sys::SteamAPI_ManualDispatch_GetAPICallResult(
-                    pipe,
-                    call,
-                    result.as_mut_ptr().cast::<c_void>(),
-                    std::mem::size_of::<T>() as i32,
-                    expected_callback,
-                    &mut result_failed,
-                )
-            } || unsafe {
-                sys::SteamAPI_ISteamUtils_GetAPICallResult(
-                    utils,
-                    call,
-                    result.as_mut_ptr().cast::<c_void>(),
-                    std::mem::size_of::<T>() as i32,
-                    expected_callback,
-                    &mut result_failed,
-                )
-            };
-            if !ok || result_failed {
-                return Err(Error::from_reason(
-                    "Steam API call completed but result retrieval failed",
-                ));
-            }
-            return Ok(unsafe { result.assume_init() });
+        if let Some(result) = take_completed_api_call(
+            crate::state::CallbackDomain::Client,
+            call,
+            expected_callback,
+            "Steam API call",
+        ) {
+            return result;
         }
         if started.elapsed() > Duration::from_secs(timeout_seconds) {
             return Err(Error::from_reason("Steam API call timed out"));
