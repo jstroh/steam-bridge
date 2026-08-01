@@ -1,7 +1,7 @@
 import {
-  buildSteamWebApiUrl,
+  buildSteamWebApiUrl as buildSteamWebApiUrlImpl,
   createSteamWebApiClient as createBaseSteamWebApiClient,
-  encryptedAppTicket,
+  encryptedAppTicket as encryptedAppTicketImpl,
   type SteamWebApiClient,
   type SteamWebApiClientOptions,
   type SteamWebApiRequestOptions,
@@ -9,7 +9,7 @@ import {
 } from "./index";
 import {
   assertSteamPublisherServerRuntime,
-  SteamPublisherSecretsClientRuntimeError
+  SteamPublisherSecretsClientRuntimeError as SteamPublisherSecretsClientRuntimeErrorImpl
 } from "./publisher-security";
 
 export type {
@@ -26,7 +26,15 @@ export type {
   SteamWebApiRequestOptions,
   SteamWebApiResponse
 } from "./index";
-export { buildSteamWebApiUrl, encryptedAppTicket, SteamPublisherSecretsClientRuntimeError };
+// Assign re-exported values explicitly so Node 18/20/22 ESM consumers can
+// discover every named export through their CommonJS lexer.
+export const buildSteamWebApiUrl = buildSteamWebApiUrlImpl;
+export const encryptedAppTicket = encryptedAppTicketImpl;
+export const SteamPublisherSecretsClientRuntimeError =
+  SteamPublisherSecretsClientRuntimeErrorImpl;
+export type SteamPublisherSecretsClientRuntimeError = InstanceType<
+  typeof SteamPublisherSecretsClientRuntimeErrorImpl
+>;
 
 export interface SteamWebApiServerClientOptions extends SteamWebApiClientOptions {}
 

@@ -94,6 +94,9 @@ passes 361/361, and the packed CJS, ESM, TypeScript, CLI, and export-map consume
 smoke passes with the repository's documented real-Python Windows adapter.
 The final local gate also passes supported-target policy, the complete npm test
 command, native formatting and compilation, API coverage, and diff checks.
+The server entrypoint assigns its cross-module value exports explicitly so
+Node 18/20/22 ESM consumers discover the same named API as CommonJS; the packed
+consumer smoke asserts every server value export in both module systems.
 
 ### 2026-08-01 callback-dispatch correctness checkpoint
 
