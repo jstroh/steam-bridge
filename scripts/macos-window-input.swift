@@ -5,6 +5,7 @@ import ApplicationServices
 import CoreGraphics
 import Darwin
 import Foundation
+import IOKit
 
 private enum InputError: Error, CustomStringConvertible {
     case usage(String)
@@ -47,6 +48,19 @@ private let titleDragMouseDownLatchSeconds = 0.08
 // a synthetic slow drag begins with sub-hysteresis motion.  Cross the latch
 // distance once, then preserve the requested duration and remaining cadence.
 private let titleDragMinimumLatchDistance = 8.0
+
+private func consoleLockedState() -> Bool? {
+    let root = IORegistryGetRootEntry(kIOMainPortDefault)
+    guard root != 0 else { return nil }
+    defer { IOObjectRelease(root) }
+    guard let property = IORegistryEntryCreateCFProperty(
+        root,
+        "IOConsoleLocked" as CFString,
+        kCFAllocatorDefault,
+        0
+    )?.takeRetainedValue() else { return nil }
+    return property as? Bool
+}
 
 private func usage() -> String {
     """
@@ -1198,10 +1212,12 @@ private func main() -> Int32 {
         let options = try parseOptions(Array(arguments.dropFirst()))
         switch command {
         case "preflight":
+            let consoleLocked = consoleLockedState() ?? true
             try writeJson([
                 "schemaVersion": 1,
                 "accessibilityTrusted": AXIsProcessTrusted(),
                 "screenCaptureGranted": CGPreflightScreenCaptureAccess(),
+                "consoleLocked": consoleLocked,
             ])
         case "pointer":
             let point = CGEvent(source: nil)?.location ?? .zero

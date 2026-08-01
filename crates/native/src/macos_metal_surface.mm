@@ -183,6 +183,23 @@ static void SteamBridgeRecordFailure(
     std::shared_ptr<SteamBridgeMetalDiagnostics> _diagnostics;
 }
 
+- (BOOL)usesTransparentFullscreenBackground {
+    if (!_parentWindow) {
+        return NO;
+    }
+    BOOL titled = (_parentWindow.styleMask & NSWindowStyleMaskTitled) == NSWindowStyleMaskTitled;
+    BOOL nativeFullScreen =
+        (_parentWindow.styleMask & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen;
+    NSRect contentLayoutRect = _parentWindow.contentLayoutRect;
+    BOOL titlebarConsumesFrame = SteamBridgeValidRect(contentLayoutRect) &&
+        NSMaxY(contentLayoutRect) < NSHeight(_parentWindow.frame) - 0.5;
+    return nativeFullScreen || !titled || !titlebarConsumesFrame;
+}
+
+- (BOOL)effectiveOpaqueBackground {
+    return _opaqueBackground && ![self usesTransparentFullscreenBackground];
+}
+
 - (instancetype)initWithX:(double)x
                         y:(double)y
                     width:(double)width
@@ -603,7 +620,11 @@ static void SteamBridgeRecordFailure(
     // layer as fully opaque when no corner mask is active.
     [_window setOpaque:NO];
     [_window setBackgroundColor:[NSColor clearColor]];
-    layer.opaque = _opaqueBackground && !rounded;
+    BOOL effectiveOpaque = [self effectiveOpaqueBackground];
+    layer.opaque = effectiveOpaque && !rounded;
+    _view.clearColor = effectiveOpaque
+        ? MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
+        : MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
 }
 
 - (void)updateDrawableSize {
@@ -822,7 +843,7 @@ static void SteamBridgeRecordFailure(
             _displayID != kCGNullDirectDisplay ? _displayID : CGMainDisplayID())),
         @"parentKeyWindow": @(_parentWindow ? _parentWindow.keyWindow : NO),
         @"inputPassthrough": @(_inputPassthrough),
-        @"opaque": @(_opaqueBackground),
+        @"opaque": @([self effectiveOpaqueBackground]),
         @"roundedBottomCorners": @(_roundedBottomCorners),
         @"windowCornerRadius": @(_windowCornerRadius),
         @"windowNumber": @(_window.windowNumber),
@@ -1001,7 +1022,7 @@ static void SteamBridgeRecordFailure(
         return;
     }
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    pass.colorAttachments[0].clearColor = _opaqueBackground
+    pass.colorAttachments[0].clearColor = [self effectiveOpaqueBackground]
         ? MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
         : MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
 
@@ -1137,13 +1158,7 @@ extern "C" void steam_bridge_metal_surface_set_opaque(void *surface, bool opaque
         [metalSurface.window setOpaque:NO];
         [metalSurface.window setBackgroundColor:[NSColor clearColor]];
         metalSurface.opaqueBackground = opaque ? YES : NO;
-        metalSurface.view.layer.opaque = opaque && !metalSurface.roundedBottomCorners;
-        metalSurface.view.clearColor = opaque
-            ? MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
-            : MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
-
-        CAMetalLayer *layer = (CAMetalLayer *)metalSurface.view.layer;
-        layer.opaque = opaque && !metalSurface.roundedBottomCorners;
+        [metalSurface updateParentCornerMask];
     }
 }
 

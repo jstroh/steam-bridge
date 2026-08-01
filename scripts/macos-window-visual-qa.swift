@@ -617,6 +617,9 @@ private final class SeriesAccumulator {
     private var chromeCoverFrames = 0
     private var fullFrameFlashEvents = 0
     private var overlayDropoutFrames = 0
+    private var baselineChangeDropoutFrames = 0
+    private var baselineProximityDropoutFrames = 0
+    private var overlaySignatureDropoutFrames = 0
     private var overlayCoverageFailureFrames = 0
     private var coverageWidthFailureFrames = 0
     private var coverageHeightFailureFrames = 0
@@ -861,10 +864,14 @@ private final class SeriesAccumulator {
                 let signatureSupport = overlayReference.map {
                     overlaySupportRatio(current: frame, baseline: reference, overlay: $0)
                 } ?? 0
-                let dropout = referenceDelta.changedRatio < 0.14
+                let baselineChangeDropout = referenceDelta.changedRatio < 0.14
                     || referenceDelta.contentChangedRatio < 0.14
-                    || (closerToBaseline && referenceDelta.meanDelta < 0.22)
-                    || signatureSupport < 0.35
+                let baselineProximityDropout = closerToBaseline
+                    && referenceDelta.meanDelta < 0.22
+                let overlaySignatureDropout = signatureSupport < 0.35
+                let dropout = baselineChangeDropout
+                    || baselineProximityDropout
+                    || overlaySignatureDropout
                 let widthFailure = referenceDelta.coverageWidth < 0.78
                 let heightFailure = referenceDelta.coverageHeight < 0.62
                 let rightReachFailure = referenceDelta.coverageRightReach < 0.96
@@ -898,6 +905,9 @@ private final class SeriesAccumulator {
                     }
                     overlayDropoutStartedDisplayTime = nil
                 }
+                if baselineChangeDropout { baselineChangeDropoutFrames += 1 }
+                if baselineProximityDropout { baselineProximityDropoutFrames += 1 }
+                if overlaySignatureDropout { overlaySignatureDropoutFrames += 1 }
                 if widthFailure { coverageWidthFailureFrames += 1 }
                 if heightFailure { coverageHeightFailureFrames += 1 }
                 if rightReachFailure { coverageRightReachFailureFrames += 1 }
@@ -948,6 +958,9 @@ private final class SeriesAccumulator {
                 "fullFrameFlashEvents": fullFrameFlashEvents,
                 "maxConsecutiveUnhealthyMs": maximumConsecutiveUnhealthyMs,
                 "overlayDropoutFrames": overlayDropoutFrames,
+                "baselineChangeDropoutFrames": baselineChangeDropoutFrames,
+                "baselineProximityDropoutFrames": baselineProximityDropoutFrames,
+                "overlaySignatureDropoutFrames": overlaySignatureDropoutFrames,
                 "overlayCoverageFailureFrames": overlayCoverageFailureFrames,
                 "coverageWidthFailureFrames": coverageWidthFailureFrames,
                 "coverageHeightFailureFrames": coverageHeightFailureFrames,

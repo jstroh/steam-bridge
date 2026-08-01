@@ -2655,15 +2655,32 @@ pub(crate) fn clear_client_process_hooks() {
     clear_client_check_callback_registered_in_process_hook(None);
 }
 
+fn should_clear_client_process_hook(
+    requested_registration_id: Option<u64>,
+    active_registration_id: Option<u64>,
+) -> bool {
+    match (requested_registration_id, active_registration_id) {
+        (Some(requested_id), Some(active_id)) => requested_id == active_id,
+        (None, Some(_)) => true,
+        (Some(_), None) => false,
+        // Linux Steam can reach __cxa_pure_virtual when ordered shutdown
+        // removes one of these deprecated hooks without a matching bridge
+        // registration. Apple and Windows Steam retain process-global callback
+        // state that their SDK reset call must clear even when this Rust module
+        // has no active handler; skipping that reset can terminate the process
+        // when the overlay callback is first delivered on macOS.
+        (None, None) => !cfg!(target_os = "linux"),
+    }
+}
+
 fn clear_client_post_api_result_in_process_hook(registration_id: Option<u64>) {
     let mut handler = CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER
         .lock()
         .expect("Steam client post API-result handler poisoned");
-    let should_clear = match (registration_id, handler.as_ref()) {
-        (Some(registration_id), Some((active_id, _))) => registration_id == *active_id,
-        (Some(_), None) => false,
-        (None, _) => true,
-    };
+    let should_clear = should_clear_client_process_hook(
+        registration_id,
+        handler.as_ref().map(|(active_id, _)| *active_id),
+    );
     if should_clear {
         *handler = None;
         unsafe {
@@ -2678,16 +2695,32 @@ fn clear_client_check_callback_registered_in_process_hook(registration_id: Optio
     let mut handler = CLIENT_CHECK_CALLBACK_REGISTERED_IN_PROCESS_HANDLER
         .lock()
         .expect("Steam client callback registration check handler poisoned");
-    let should_clear = match (registration_id, handler.as_ref()) {
-        (Some(registration_id), Some((active_id, _, _))) => registration_id == *active_id,
-        (Some(_), None) => false,
-        (None, _) => true,
-    };
+    let should_clear = should_clear_client_process_hook(
+        registration_id,
+        handler.as_ref().map(|(active_id, _, _)| *active_id),
+    );
     if should_clear {
         *handler = None;
         unsafe {
             steam_bridge_client_set_check_callback_registered_in_process(None);
         }
+    }
+}
+
+#[cfg(test)]
+mod client_process_hook_tests {
+    use super::should_clear_client_process_hook;
+
+    #[test]
+    fn empty_cleanup_preserves_platform_sdk_semantics() {
+        assert_eq!(
+            should_clear_client_process_hook(None, None),
+            !cfg!(target_os = "linux")
+        );
+        assert!(!should_clear_client_process_hook(Some(7), None));
+        assert!(!should_clear_client_process_hook(Some(7), Some(8)));
+        assert!(should_clear_client_process_hook(Some(7), Some(7)));
+        assert!(should_clear_client_process_hook(None, Some(7)));
     }
 }
 

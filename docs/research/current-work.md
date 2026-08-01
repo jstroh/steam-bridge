@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-07-30
+Last reviewed: 2026-07-31
 
 Review anchor: `338f2038bc1a5d563d1031ab960faedf488ef879`
 (`Preserve Node 22 named exports after minification`). npm `latest` is `0.3.8`;
@@ -144,10 +144,150 @@ Do not repeat already-green commerce, long-duration checkout, or broad cases
 until a relevant implementation surface changes or release-candidate identity
 requires one final qualification pass.
 
-macOS qualification and the physical Steam Deck Plasma Desktop Mode pass are
-complete at the stable-43.2.0 checkpoints below. No physical non-Deck Linux
-host is configured, so that lane remains explicitly environment-unavailable
-rather than green. The active lane is Deck Game Mode, followed by Windows.
+### 2026-07-31 macOS unattended-console QA finding
+
+The next unchanged-candidate macOS pass completed its first 23 cases and then
+reported visual-helper failures. This was not a product, attached-child, Steam,
+or persistent ScreenCaptureKit-session regression. The console lock timestamp
+preceded the first failed capture, and unified logging showed ScreenCaptureKit
+permission remained allowed while WindowServer rejected each screenshot after
+the display entered the locked state. Repeated helper processes and a user-level
+`replayd` restart could not make a locked console capturable and are not repair
+paths.
+
+The input helper now reports the current IOKit system-console lock state, fails
+closed if that state is unavailable, and both controller and profile preflights
+stop with `desktop_locked` before launching the game or changing a display mode.
+A live locked-console probe exited with that exact code in 2.3 seconds. The
+runner keeps one persistent visual-helper session; the temporary per-case
+restart experiment was removed after the actual lock cause was established.
+Any unattended wrapper must keep an independent, continuous `UserIsActive`
+assertion for the complete run in addition to its display/system sleep
+assertions; a short wake pulse does not prevent the configured automatic lock.
+Release QA still never invokes lock, screen-sleep, or system-sleep transitions.
+After one ordinary manual unlock, rerun only the three interrupted tail cases,
+then run the one fresh full candidate pass if that focused tail is green.
+
+### 2026-07-31 macOS high-refresh helper finding
+
+Three unchanged-candidate 120 Hz `fps-overlay` attempts retained exact 120 FPS
+renderer scheduling, stable focus and layer ownership, zero display-link skips,
+and no crashes, but Chromium presentation feedback measured 111.0-113.7 FPS.
+Hiding or temporarily pausing other Electron applications did not cross the
+strict 114 FPS floor. The repeated `/usr/bin/swift` compilation used for every
+input-helper focus and snapshot was the remaining measurement perturbation.
+
+The actual-game driver now accepts an absolute precompiled input-helper binary.
+After compiling the unchanged helper once with `swiftc -O`, two consecutive
+strict runs passed without relaxing the 95% floor. The first measured 115.36,
+115.03, and 114.35 FPS across baseline, overlay-active, and post-close phases;
+the second measured approximately 115.7 FPS in all three phases. The pending
+120 -> 60 -> 120 live-display transition then passed with exact child geometry,
+input pairing, overlay coverage, cleanup, and display restoration. Use the
+precompiled input helper for release cadence evidence; `.swift` source mode
+remains available for non-performance diagnostics.
+
+The faster executable also removed the compiler delay between the exact child
+and parent-title pointer probes. One final-matrix baseline attempt consequently
+hit a transient helper failure while returning to the title bar, even though
+eight immediate direct child-to-title repetitions all proved the same attached
+pair, exact target, and zero missing or mismatched samples. The consumer QA
+driver now gives parent-title acquisition the same bounded five-second retry as
+child acquisition; every attempt still has to satisfy the complete pair and
+pointer proof. The focused `baseline-geometry` rerun passed against the
+unchanged signed candidate before the full matrix resumed.
+
+The first resumed final pass then exposed the same removed compiler delay in
+`overlay-state-stress`: both title drags and the shrink transaction passed, but
+an immediately spawned, separate expand transaction arrived before the resized
+Electron/Metal pair had published a stable new state. It reproduced exactly in
+the focused case, while the ordinary rapid resize-reversal case remained green.
+One focused rerun passed after synchronizing only between shrink and expand, but
+the next independent run showed the shrink itself could begin before the two
+title transactions had settled. The overlay case therefore requires fresh
+healthy active-overlay telemetry after the title pair and again after shrink,
+under the same uninterrupted visual capture, before each distinct resize mouse
+transaction. The later focused runs passed both exact resize deltas, returned
+to the original frame, retained full overlay coverage, completed every later
+window-state transition, restored the display, and recorded zero crashes.
+
+### 2026-07-31 macOS active-overlay fullscreen alpha finding
+
+The first active-overlay fullscreen endpoint captured a real product defect.
+The attached Metal child had inherited the Linux active-host policy of clearing
+its complete surface opaque black. That is safe behind the titled windowed
+content shape, but application-owned simple fullscreen removes the titlebar and
+makes the child cover the entire parent. Steam's translucent pixels then
+composited against that child clear instead of the Chromium game below it. The
+settled fullscreen frame was 86.5-86.7% black with mean luma about 0.020 even
+though Steam UI edges remained visible, so the older generic nonblank gate had
+incorrectly accepted a Steam-only black backbuffer.
+
+The macOS child now treats requested opacity as effective only while the parent
+still has a titlebar consuming frame. Native or application-owned full-frame
+states keep the same attached child, input policy, texture, and presentation
+clock but clear the Metal layer transparent. The child is never detached,
+recreated, promoted to a popup, or replaced by a companion window. Returning to
+a titled window restores the requested windowed opacity and the existing bottom
+corner mask.
+
+The actual-game contract now compares active-overlay fullscreen against the
+active windowed frame and requires retained game-underlay luma and structure
+plus bounded black growth. The old signed candidate failed this new gate with
+the exact black signature. The rebuilt Developer-ID-signed, notarized, stapled,
+and Gatekeeper-accepted stable-Electron-43.2.0 candidate passed two consecutive
+focused `overlay-state-stress` receipts,
+`focused-fixed-overlay-state-20` and `focused-fixed-overlay-state-21`. Their
+settled fullscreen frames measured mean luma 0.084, black ratio 0.294/0.293,
+edge density 0.010, exact opaque outer boundaries, and every underlay-retention
+check green. Both runs also passed active move, separately synchronized resize,
+maximize/restore, minimize/restore, focus away/back, fullscreen enter/exit,
+same-child geometry, exact 3456x2234 drawable size at scale 2, roughly 120 FPS
+Metal presentation against 120 Hz, rounded window restoration, display restore,
+and zero app, Steam overlay, Steam-client, or graphics crashes.
+
+The fullscreen transition stream initially reported windowed-overlay signature
+dropout while every broad coverage and health check passed. Predicate-level
+counters proved zero baseline-change dropout and zero width, height, right, or
+bottom coverage failures; only baseline-proximity and overlay-signature tests
+fired while the background deliberately changed from opaque black to alpha and
+Steam reflowed its UI. The fullscreen-only transition contract now gates actual
+baseline reversion and continuous coverage, while the native-resolution settled
+capture owns the active overlay, game-underlay, and exact one-pixel boundary
+proof. Ordinary windowed overlay transitions retain their strict zero-dropout
+contract. Repeat only if this opacity/fullscreen path or one of those gates
+changes; do not revive an always-opaque full-frame child or any popup/companion
+architecture.
+
+The exact repaired candidate then completed the fresh `final-06` release gate.
+All 125/125 platform-case executions and all 37/37 canonical requirements
+passed across native Retina 120/60/48 Hz, low-Retina 60 Hz, and scale-1 60 Hz.
+The active-overlay state/fullscreen case passed in every profile with the same
+attached child, visible game underlay, exact settled boundary proof, and clean
+titled-window restoration. All 125 pacing samples passed the unchanged
+95%-108% gate, no known exception was used, every app/Steam-overlay/Steam/
+graphics crash count was zero, the exact app closed, Steam remained alive, and
+display mode 54 (1728x1117 logical, 3456x2234 backing, 120 Hz) restored exactly.
+The signed candidate bundle SHA-256 is
+`c1fc8a911a3b7a39c7b0f8645b5c69efeabcd4c3b4295a2b093f219c2ddd6fd1`;
+the repaired native addon SHA-256 is
+`5ac1743e979a0064078fa8bdafa04249d1ca126d4be753630a8773e46da4d266`.
+
+An earlier fresh matrix stopped at one 112.045/120 FPS presentation sample
+(93.4%) while renderer cadence remained 120 FPS, presentation identity stayed
+stable, and the macOS trace recorded zero display-link skips. The exact
+display-transition -> baseline sequence then passed twice independently at
+120.000 and 116.344 FPS, and the unchanged candidate passed that same sequence
+inside `final-06`. The acceptance floor was not weakened and no product retry
+was added; the failed sample remains retained as isolated variance rather than
+being rewritten as a pass.
+
+macOS qualification, both physical Steam Deck modes, and the Windows final pass
+are complete at the stable-43.2.0 checkpoints in this document. No physical
+non-Deck Linux host is configured, so that lane remains explicitly
+environment-unavailable rather than green. The configured physical-platform
+qualification is complete; release preparation is a separate, explicit next
+step.
 During the 2026-07-28 Deck Desktop focused pass, the exact Electron 43.2.0
 native-pixmap metadata exposed modifier `0`; Linux defines that value as the
 linear modifier, but the Bridge accepted only Chromium's unspecified-modifier
@@ -171,35 +311,58 @@ override and failed before opening X11; removing that override and inheriting
 Steam's live session environment produced one clean host with CDP disabled.
 Never persist a generated X11 authorization filename in a reusable runner.
 
-Deck is now in Gamescope Game Mode with both non-locking keep-awake services
-active. The installed product App ID can temporarily own the exact local
-candidate through a quoted Steam launch option, so `steam://rungameid/2957110`
-provides Steam-owned product identity without exposing or depending on the
-private non-Steam shortcut identifier. Restore the product's originally empty
-launch options after qualification. The failed remote forms remain closed only
-for the non-Steam shortcut path; do not cycle through them again.
+### 2026-07-30 Deck shutdown and exact-candidate requalification
 
-Steam started with its temporary CEF remote-debug marker/wrapper is invalid
-overlay evidence in Game Mode. In that state both FOV4 and the otherwise known-
-good raw Store smoke reached SteamUI with `IsOverlayEnabled=true` but never
-emitted `active=true`. Removing the marker/wrapper, restarting normal Steam,
-and rerunning only the failed smoke case restored visible Store activation,
-Escape close, `active=false`, focus return, and clean crashes. Never enable CEF
-debugging during Game Mode product qualification.
+The exact stable-Electron configured-product candidate now passes both Steam
+Deck Game Mode and Plasma Desktop Mode after two narrowly owned Steam Bridge
+shutdown repairs. X11 can deliver `WM_DELETE_WINDOW` and `DestroyNotify` in one
+native pump. The JavaScript session previously threw the terminal drawable
+error before draining the already-captured `close` input, which could leave the
+hidden renderer alive. It now dispatches captured input before rethrowing the
+terminal pump error. Separately, native shutdown called Steam's deprecated
+post-API-result removal virtual method even when no such hook had ever been
+registered. That empty cleanup reached `__cxa_pure_virtual` inside the live Deck
+Steam client. Empty process-hook cleanup is now a no-op on Linux; exact and
+stale registration IDs retain their prior ownership rules. macOS and Windows
+retain the empty-state SDK reset required by their process-global callback
+state. A focused macOS regression proved that applying the Linux no-op cross-
+platform can terminate the process at first overlay activation, while the
+platform-specific split preserves that activation.
 
-The first normal-Steam product run exposed a real shared-texture defect: the
-Gamescope composite was vertically inverted while Electron's source screenshot
-and the forced CPU-upload control were upright. The Linux DRI3/GLX importer had
-never queried `GLX_Y_INVERTED_EXT`. The unreleased repair queries the selected
-FBConfig, records the result, flips Y only while copying the GLX-bound imported
-texture into the retained frame, and explicitly disables the flip for CPU
-upload and final presentation. Deck-native Rust tests pass. The exact rebuilt
-product candidate is visibly upright in a state-driven `gamescopectl`
-compositor screenshot at 1280x800, and focused affected checks pass at 90.003
-FPS baseline, 90.000 FPS with the visible product Store overlay, and 90.003 FPS
-after Escape. Activation callbacks are exactly `[true,false]`, product focus
-returns, and there are no bars or crop. Rebuild once more with the new
-orientation diagnostic, then run one complete Game Mode pass.
+The repaired Linux addon passed its focused Rust unit test, the complete 350-
+test Steam Bridge gate, and live configured-product shutdown. File -> Exit,
+`SIGTERM`, and a compositor-native close all reached the complete ordered Steam
+shutdown lifecycle, left no app process, kept Steam alive, and warm-relaunched
+through Steam. The compositor close is also live proof that the queued close
+event survives a same-pump native drawable teardown.
+
+Game Mode passed the full current-product lane on the unchanged packaged
+candidate: exact 1280x800/DPR-1 game surface, hidden cursor, native input,
+ordinary overlay open plus duplicate suppression, native Escape close, 90 FPS
+while active and after close against the Deck's 90 Hz display, all four shipped
+non-spending inventory checkout entry/cancel routes, clean shutdown, and warm
+relaunch. The earlier state-driven Gamescope capture remains the pixel authority
+for upright orientation, full coverage, and absence of bars/crop; the shutdown-
+only native delta did not touch GLX sampling or presentation geometry.
+
+Plasma Desktop Mode then passed the complete focused-to-exhaustive sequence:
+1280x718 maximized client with the 26-DIP menu, exact 1280x800 fullscreen,
+exact 640x480 minimum client, five-step direction-reversing compositor
+move/resize stress, maximize/restore, minimize at 1 FPS and restore at 90 FPS,
+Alt+Tab focus loss/return, physical File/Edit/View clicks, cursor visible over
+the menu and hidden again over the game, and the same geometry, fullscreen,
+maximize, minimize, focus, and cadence transitions while Steam remained active.
+Native Escape closed Steam, post-close cadence returned to 90 FPS, the final
+ordered five-case CDP lane passed, compositor close shut down cleanly, and the
+fresh Steam-owned process returned to the live game. This Deck panel advertises
+only one 1280x800@90 mode and scale 1 in Plasma X11; no unsupported display mode
+or synthetic profile was manufactured.
+
+Steam CEF remote debugging remains invalid Game Mode evidence, and failed
+remote non-Steam launch forms remain closed paths. Restore the product's normal
+launch options and non-CDP runner after qualification. These source changes are
+newer than published `v0.3.9`; any publication requires a new immutable version
+and fresh release-candidate artifacts.
 
 ### 2026-07-28 stable-43.2.0 final-candidate checkpoint
 

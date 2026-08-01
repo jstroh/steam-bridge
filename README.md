@@ -81,6 +81,10 @@ These are product rules, not implementation suggestions:
   because Steam hooks the GLX application host.
 - The macOS presenter remains an AppKit child of the Electron window. Do not
   detach it or fall back to an independent popup.
+- In macOS fullscreen, that same child keeps a transparent Metal background so
+  Steam's translucent overlay pixels composite over the live game. Do not make
+  the full-frame child opaque; windowed opacity and corner clipping are restored
+  with the titled parent.
 
 The detailed integration contracts and frame-forwarding examples live in the
 [npm package reference](packages/steam-bridge/README.md).

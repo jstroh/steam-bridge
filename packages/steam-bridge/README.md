@@ -258,6 +258,13 @@ session and did not enter reliably for the Steam-launched qualification app;
 `setSimpleFullScreen(true)` is the proved fallback when an application does not
 need a separate macOS Space. Do not have Steam Bridge force that product choice.
 
+The managed Metal surface remains one attached AppKit child throughout these
+transitions. In a titled window it follows the parent's content shape and bottom
+corner mask. In native or simple full-frame states its background stays
+transparent so Steam's alpha composites over the live Chromium game instead of
+an opaque black clear. Do not detach, recreate, or replace it with a popup to
+handle fullscreen.
+
 Retina coordinates remain in Electron display-independent pixels while the
 native Metal host uses the corresponding physical backing scale. Do not add a
 process-wide Chromium scale override to compensate for the overlay. macOS also

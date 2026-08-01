@@ -8514,7 +8514,17 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       syncFullScreen();
       syncNativeHostBounds();
       syncContinuousPresent();
-      native().pumpNativeOverlayProbeWindow();
+      try {
+        native().pumpNativeOverlayProbeWindow();
+      } catch (error) {
+        // X11 can deliver WM_DELETE_WINDOW and DestroyNotify in the same pump.
+        // The native layer has already queued the close input before reporting
+        // that the drawable disappeared, so dispatch captured input before the
+        // terminal error closes this session. Otherwise an application host can
+        // lose its only close request and leave its hidden renderer running.
+        dispatchNativeInputEvents();
+        throw error;
+      }
       nativePumpSequence += 1;
       advanceStandaloneLinuxHostActivationCommit();
       completeKWinWaylandPresentationHold();

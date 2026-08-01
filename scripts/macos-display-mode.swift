@@ -336,6 +336,15 @@ private func applyMode(_ display: CGDirectDisplayID, _ mode: CGDisplayMode) thro
     }
 }
 
+private func modesMatch(_ actual: CGDisplayMode, _ expected: CGDisplayMode) -> Bool {
+    actual.ioDisplayModeID == expected.ioDisplayModeID
+        && actual.width == expected.width
+        && actual.height == expected.height
+        && actual.pixelWidth == expected.pixelWidth
+        && actual.pixelHeight == expected.pixelHeight
+        && abs(actual.refreshRate - expected.refreshRate) <= refreshTolerance
+}
+
 private func observedMode(
     _ display: CGDirectDisplayID,
     matching expected: CGDisplayMode,
@@ -344,12 +353,7 @@ private func observedMode(
     let deadline = Date().addingTimeInterval(timeoutSeconds)
     repeat {
         let current = try currentMode(display)
-        if current.ioDisplayModeID == expected.ioDisplayModeID
-            && current.width == expected.width
-            && current.height == expected.height
-            && current.pixelWidth == expected.pixelWidth
-            && current.pixelHeight == expected.pixelHeight
-            && abs(current.refreshRate - expected.refreshRate) <= refreshTolerance {
+        if modesMatch(current, expected) {
             return current
         }
         Thread.sleep(forTimeInterval: 0.1)
@@ -357,6 +361,23 @@ private func observedMode(
     throw SupervisorError.failure(
         "display mode verification failed: expected \(DisplayModeRecord(expected)), observed \(DisplayModeRecord(try currentMode(display)))"
     )
+}
+
+private func ensureMode(_ display: CGDirectDisplayID, _ expected: CGDisplayMode) throws -> CGDisplayMode {
+    let current = try currentMode(display)
+    if modesMatch(current, expected) { return current }
+    do {
+        try applyMode(display, expected)
+    } catch {
+        // CoreGraphics can reject completion after the display has already
+        // reached the requested mode. The observed public mode is authoritative
+        // for restoration; accept only an exact identity match.
+        if let observed = try? currentMode(display), modesMatch(observed, expected) {
+            return observed
+        }
+        throw error
+    }
+    return try observedMode(display, matching: expected)
 }
 
 private func writeJournal(_ path: String, _ record: JournalRecord) throws {
@@ -509,13 +530,12 @@ private func runSupervised(_ options: RunOptions) throws -> Int32 {
             if let child { terminate(child) }
             // Last-ditch best effort. The application-scoped configuration also
             // reverts when this helper exits, including SIGKILL/crash paths.
-            try? applyMode(display, original)
+            _ = try? ensureMode(display, original)
         }
     }
 
     do {
-        try applyMode(display, requested)
-        let applied = try observedMode(display, matching: requested)
+        let applied = try ensureMode(display, requested)
         try writeJournal(journalPath, journal(
             state: "mode-applied",
             parentPid: parentPid,
@@ -558,8 +578,7 @@ private func runSupervised(_ options: RunOptions) throws -> Int32 {
             if let controlDirectory = options.controlDirectory,
                let request = try readControlRequest(controlDirectory, sequence: nextControlSequence) {
                 let controlledMode = try resolveMode(display, modeId: request.modeId)
-                try applyMode(display, controlledMode)
-                let controlledObserved = try observedMode(display, matching: controlledMode)
+                let controlledObserved = try ensureMode(display, controlledMode)
                 try writeControlResponse(
                     controlDirectory,
                     request: request,
@@ -583,8 +602,7 @@ private func runSupervised(_ options: RunOptions) throws -> Int32 {
     if let child { terminate(child) }
     restorationAttempted = true
     do {
-        try applyMode(display, original)
-        let observed = try observedMode(display, matching: original)
+        let observed = try ensureMode(display, original)
         let state: String
         if operationFailure != nil {
             state = "failed"

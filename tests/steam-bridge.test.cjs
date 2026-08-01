@@ -12093,7 +12093,15 @@ test("macOS attached Metal child clips only the parent's rounded bottom content 
   assert.match(mask, /layer\.masksToBounds = rounded/);
   assert.match(mask, /layer\.cornerRadius = radius/);
   assert.match(mask, /\[_window setOpaque:NO\]/);
-  assert.match(mask, /layer\.opaque = _opaqueBackground && !rounded/);
+  assert.match(mask, /BOOL effectiveOpaque = \[self effectiveOpaqueBackground\]/);
+  assert.match(mask, /layer\.opaque = effectiveOpaque && !rounded/);
+  const fullscreenTransparencyStart = source.indexOf("- (BOOL)usesTransparentFullscreenBackground");
+  const fullscreenTransparencyEnd = source.indexOf("- (BOOL)effectiveOpaqueBackground", fullscreenTransparencyStart);
+  const fullscreenTransparency = source.slice(fullscreenTransparencyStart, fullscreenTransparencyEnd);
+  assert.match(fullscreenTransparency, /NSWindowStyleMaskFullScreen/);
+  assert.match(fullscreenTransparency, /NSWindowStyleMaskTitled/);
+  assert.match(fullscreenTransparency, /contentLayoutRect/);
+  assert.match(fullscreenTransparency, /nativeFullScreen \|\| !titled \|\| !titlebarConsumesFrame/);
   assert.doesNotMatch(mask, /NSThemeFrame|valueForKey|performSelector/);
   assert.match(source, /@"roundedBottomCorners": @\(_roundedBottomCorners\)/);
   assert.match(source, /@"windowCornerRadius": @\(_windowCornerRadius\)/);
@@ -12105,6 +12113,7 @@ test("macOS attached Metal child clips only the parent's rounded bottom content 
     source.indexOf('extern "C" void steam_bridge_metal_surface_render_frame')
   );
   assert.match(opaqueSetter, /\[metalSurface\.window setOpaque:NO\]/);
+  assert.match(opaqueSetter, /\[metalSurface updateParentCornerMask\]/);
   assert.doesNotMatch(opaqueSetter, /\[metalSurface\.window setOpaque:opaque/);
 });
 
@@ -12286,8 +12295,12 @@ test("macOS display helper keeps one application-scoped owner across live mode t
   assert.match(source, /request\.sequence == sequence/);
   assert.match(source, /request\.token\.count == 32/);
   assert.match(source, /resolveMode\(display, modeId: request\.modeId\)/);
-  assert.match(source, /applyMode\(display, controlledMode\)/);
-  assert.match(source, /observedMode\(display, matching: controlledMode\)/);
+  assert.match(source, /ensureMode\(display, controlledMode\)/);
+  assert.match(source, /if modesMatch\(current, expected\) \{ return current \}/);
+  assert.match(
+    source,
+    /catch \{[\s\S]*currentMode\(display\)[\s\S]*modesMatch\(observed, expected\)[\s\S]*throw error/
+  );
   assert.match(source, /writeControlResponse/);
   assert.match(source, /nextControlSequence \+= 1/);
   assert.equal(
@@ -12391,6 +12404,20 @@ test("macOS input QA observes pointer restoration and can safely target the atta
   assert.match(source, /--y-from-top must be in \[1, 32768\]/);
   assert.match(source, /try postDistinctMouseMove\(to: target, inside: pair\.child\.bounds\)/);
   assert.match(source, /try postDistinctMouseMove\(to: target, inside: pair\.parent\.bounds\)/);
+});
+
+test("macOS input QA preflight fails closed when the console lock state is unavailable", () => {
+  const source = readSourceFile("scripts", "macos-window-input.swift");
+  const preflightStart = source.indexOf('case "preflight":');
+  const preflightEnd = source.indexOf('case "pointer":', preflightStart);
+  assert.notEqual(preflightStart, -1);
+  assert.notEqual(preflightEnd, -1);
+  const preflight = source.slice(preflightStart, preflightEnd);
+  assert.match(source, /IORegistryGetRootEntry\(kIOMainPortDefault\)/);
+  assert.match(source, /IORegistryEntryCreateCFProperty\([\s\S]*"IOConsoleLocked" as CFString/);
+  assert.match(source, /private func consoleLockedState\(\) -> Bool\?/);
+  assert.match(preflight, /consoleLockedState\(\) \?\? true/);
+  assert.match(preflight, /"consoleLocked": consoleLocked/);
 });
 
 test("macOS rapid title drags let AppKit latch mouse-down before timed motion", () => {
@@ -24029,6 +24056,66 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     () => session.updateSharedTexture({ handle: Buffer.alloc(8), width: 1, height: 1 }),
     /session is closed/
   );
+});
+
+test("native overlay session dispatches captured close input before a terminal native pump error", (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let probeOpen = false;
+  let failPump = false;
+  const queuedInputEvents = [];
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow() {
+      probeOpen = true;
+    },
+    pumpNativeOverlayProbeWindow() {
+      if (failPump) {
+        throw new Error("native drawable was destroyed");
+      }
+    },
+    drainNativeOverlayHostInputEventsJson() {
+      return JSON.stringify(queuedInputEvents.splice(0));
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const receivedInputEvents = [];
+
+  t.after(clearSteamBridgeCache);
+
+  const session = steam.overlay.startNativeOverlaySession({
+    pumpIntervalMs: 10000,
+    onInputEvent(event) {
+      receivedInputEvents.push(event);
+    }
+  });
+  queuedInputEvents.push({
+    kind: "close",
+    capturedAtMs: 1001,
+    message: 33,
+    wparam: 0,
+    lparam: 0,
+    shift: false,
+    control: false,
+    alt: false,
+    clientWidth: 1280,
+    clientHeight: 800,
+    minimized: false
+  });
+  failPump = true;
+
+  assert.throws(() => session.pump(), /native drawable was destroyed/);
+  assert.deepEqual(receivedInputEvents.map((event) => event.kind), ["close"]);
+  assert.equal(session.isOpen(), false);
+  assert.equal(session.snapshot().closeReason, "error");
 });
 
 function createFrameDrivenPumpTestNative() {

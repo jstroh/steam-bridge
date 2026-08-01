@@ -1,6 +1,6 @@
 # Cross-Platform Overlay Status
 
-Last updated: 2026-07-19
+Last updated: 2026-07-31
 
 This tracks the current runtime evidence for the Electron smoke app on Linux x64,
 Steam Deck, and macOS Apple Silicon. The public smoke target is Valve's SpaceWar
@@ -11,6 +11,33 @@ force-close Steam plus its web and overlay helpers on every non-target test
 machine, verify zero remnants, and start Steam only on the target. Evidence
 collected while another test machine still owns a Steam client session is not
 accepted as release proof.
+
+## 2026-07-31 macOS active-fullscreen requalification
+
+The configured-product macOS candidate exposed a real attached-child alpha
+defect: application-owned simple fullscreen removed the titlebar, but the Metal
+child continued clearing its new full-parent surface opaque black. Steam's
+translucent overlay pixels therefore composited against black instead of the
+Chromium game. The old signed candidate measured 86.5-86.7% black at the
+settled active-fullscreen endpoint.
+
+The native macOS presenter now keeps requested opacity only while a parent
+titlebar consumes frame. Full-frame states retain the same attached child but
+use a transparent Metal clear; windowed restore re-applies the established
+opacity and rounded-corner policy. The child is never detached, recreated, or
+replaced with a popup/companion. A product visual gate now compares active
+fullscreen with the active windowed frame and requires retained game luma and
+structure, bounded black growth, continuous broad coverage during transition,
+and exact settled right/bottom boundaries.
+
+Two focused 120 Hz receipts passed the complete active move/resize/maximize/
+minimize/focus/fullscreen sequence. The exact Developer-ID-signed, notarized,
+stapled, Gatekeeper-accepted stable-Electron-43.2.0 candidate then passed the
+fresh five-profile final gate: 125/125 platform-case executions and 37/37
+canonical requirements, with no cadence exception, no crash in any category,
+exact app cleanup, Steam preserved, and the original 1728x1117 logical /
+3456x2234 backing / 120 Hz display mode restored. Active-overlay fullscreen
+passed at native Retina 120/60/48 Hz, low-Retina 60 Hz, and scale-1 60 Hz.
 
 ## 2026-07-19 Steam Deck Requalification
 
@@ -122,6 +149,40 @@ samples, while the renderer measured 86.350 then 83.358 FPS. This separates
 the passive bridge presenter from the remaining sparse stalls: the presenter
 is not pumping, but Steam's injected `gameoverlayui` remains attached until the
 game process exits. The no-presenter baseline remains refresh-locked.
+
+## 2026-07-30 Steam Deck configured-product requalification
+
+The exact packaged product was requalified in both Steam Deck Game Mode and
+Plasma Desktop Mode after two shutdown fixes. Native cleanup had attempted to
+remove a deprecated Steam process hook even when this process had never
+registered one, which could abort inside Steam during otherwise ordered
+shutdown. Empty hook cleanup is now a no-op on Linux; macOS and Windows retain
+the SDK reset required for their process-global callback state. Separately, X11 can capture
+`WM_DELETE_WINDOW` and receive terminal `DestroyNotify` in the same pump; the
+JavaScript session now drains the already-captured close event before
+propagating the pump error. Steam-menu exit, `SIGTERM`, and compositor-native
+close now all complete the ordered shutdown path, leave no product process,
+keep Steam running, and allow a warm relaunch.
+
+Game Mode passed world entry, input, ordinary-overlay duplicate suppression,
+physical Escape close, all four configured inventory purchase-entry routes
+without authorizing a purchase, and post-close recovery. The game surface was
+1280x800 with no menu band, the hidden cursor policy held, and steady overlay
+and post-close samples matched the 90 Hz panel. Plasma Desktop Mode passed the
+640x480 minimum client size, restored and maximized resize stress, native menu
+interaction, Alt+Tab focus loss/return, minimize throttling and recovery,
+fullscreen transitions, duplicate suppression, physical Escape, overlay-active
+move/resize/fullscreen/minimize/restore transitions, and a final ordered full
+suite. Steady renderer and presenter samples matched 90 Hz; minimized samples
+throttled to approximately 1 FPS and returned to refresh rate after restore.
+The Deck exposed one usable logical display profile during this pass: 1280x800,
+90 Hz, scale 1. Unsupported refresh, resolution, or scale profiles were not
+fabricated.
+
+This delta changed close/shutdown ordering and cursor focus policy, not the GLX
+visual path. The prior state-driven Gamescope compositor capture therefore
+remains the pixel-authority evidence for orientation, full coverage, and lack
+of bars, while this pass requalified all affected behavior on stable Electron.
 
 ## Current Evidence
 
