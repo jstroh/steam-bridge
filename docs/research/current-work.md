@@ -2,12 +2,11 @@
 
 Last reviewed: 2026-08-01
 
-Review anchor: `d546b69bde6993c864f09e4bee9f8accba58bc2a`
-(`Prepare steam-bridge 0.3.11 release`). npm `latest` and the stable GitHub
-Release are `0.3.10`; release commit
-`d4f732fa7df9f6c3ea69326335210e39738f058b` is bound to immutable tag
-`v0.3.10`. Neither the source commit alone nor an intermediate ad-hoc bundle is
-a publishable candidate. Exact
+Review anchor: `9c1f1a8a46d5a2bd2c634e56907faa25c4757830`
+(`Fix Web API and native lifecycle safety`). npm `latest` and the stable GitHub
+Release are `0.3.12`; the review anchor is bound to immutable tag `v0.3.12`.
+Neither the source commit alone nor an intermediate ad-hoc bundle is a
+publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
 rejected candidates. Exact `v0.3.5` is also immutable
 and unpublished, but is obsolete because the current native and consumer
@@ -18,7 +17,7 @@ Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
-and `v0.3.10` are published; `v0.3.10` is the current stable
+`v0.3.10`, and `v0.3.12` are published; `v0.3.12` is the current stable
 release. Exact `v0.3.11` is immutable and unpublished; the post-tag adversarial
 review found Web API credential fail-open paths and native lifecycle/resource
 ownership defects, so it must never be moved, reused, or published. Never move,
@@ -69,10 +68,20 @@ compilation, and the complete 363-test JavaScript suite pass locally. A final
 live stress probe also completed 20 generic API and 10 matchmaking
 init/request/immediate-shutdown cycles with prompt rejections and zero crashes.
 
-After final code/package gates, commit and tag exact `v0.3.12`, build its
-cross-platform candidate, and run only the candidate-bound Windows release
-proof required for code/native publication. Do not reuse `v0.3.11` artifacts or
-receipts.
+Exact `v0.3.12` passed main CI `30722285293`, tag CI `30722419316`, and Release
+assembly `30722419288` across macOS arm64, Windows x64, Linux x64, package
+smoke, and the Windows publish-tarball/ASAR gate. Candidate-bound Windows
+actual-game proof passed all four release cases with 711 qualified game samples
+and 35 overlay samples, 59.9 FPS median paint/presentation against 60 Hz, empty
+stderr, zero crashes, zero device loss/recovery, and zero slow texture copies.
+Trusted npm publication `30723510912` passed from the exact protected tag. npm
+serves a tarball byte-identical to the audited candidate at SHA-256
+`6d9a62a7aab12e0da121e99d36029f36f62f8634d86d53e2831d9e55000f1331`;
+the sanitized receipt semantic SHA-256 is
+`a7ccca1379d2897be9bea2e1a90e9c4db3f0ebfa53205fbe3b7b258fae304ec9`.
+All five GitHub Release asset digests match the retained local records, and the
+temporary publication-proof secret was removed after publication. Do not reuse
+`v0.3.11` artifacts or receipts.
 
 ### 2026-08-01 0.3.11 rejected release-preparation checkpoint
 
