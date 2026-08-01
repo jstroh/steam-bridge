@@ -25,6 +25,8 @@ import {
   type KWinWaylandOverlayPresentationConvergedState
 } from "./kwin";
 import { isMainThread } from "node:worker_threads";
+import { assertSteamPublisherServerRuntime } from "./publisher-security";
+export { SteamPublisherSecretsClientRuntimeError } from "./publisher-security";
 import { SteamworksEnums as GeneratedSteamworksEnums } from "./generated-steamworks-enums";
 import type {
   SteamworksEnumName,
@@ -2891,22 +2893,22 @@ type InternalNativeOverlayPresenterOverlayOptions = NativeOverlayPresenterOverla
   [SKIP_NATIVE_OVERLAY_PRESENTER_PREPARE]?: boolean;
 };
 
-const electronNotificationPresenters = new Set<NativeOverlayPresenter>();
-
 function registerElectronNotificationPresenter(presenter: NativeOverlayPresenter): CallbackHandle {
-  electronNotificationPresenters.add(presenter);
+  const presenters = steamOverlayProcessOwnershipRegistry().electronNotificationPresenters;
+  presenters.add(presenter);
   return {
     disconnect() {
-      electronNotificationPresenters.delete(presenter);
+      presenters.delete(presenter);
     }
   };
 }
 
 function prepareElectronNotificationPresenters(): void {
-  for (const presenter of Array.from(electronNotificationPresenters)) {
+  const presenters = steamOverlayProcessOwnershipRegistry().electronNotificationPresenters;
+  for (const presenter of Array.from(presenters)) {
     try {
       if (!presenter.isOpen()) {
-        electronNotificationPresenters.delete(presenter);
+        presenters.delete(presenter);
         continue;
       }
 
@@ -2920,7 +2922,7 @@ function prepareElectronNotificationPresenters(): void {
 
       presenter.prepareForPassiveOverlay();
     } catch {
-      electronNotificationPresenters.delete(presenter);
+      presenters.delete(presenter);
     }
   }
 }
@@ -4366,6 +4368,8 @@ export interface AppIDs {
 }
 
 export type SteamWebApiMethod = "GET" | "POST";
+export type SteamWebApiEndpointAccess = "public" | "user-key" | "publisher-only";
+export type SteamWebApiEndpointHost = "api" | "partner";
 export type SteamWebApiParamValue = string | number | bigint | boolean | null | undefined;
 export type SteamWebApiParams = Record<string, SteamWebApiParamValue | readonly SteamWebApiParamValue[]>;
 export type SteamWebApiBody = SteamWebApiParams | URLSearchParams | string | Buffer | Uint8Array | null | undefined;
@@ -4378,6 +4382,8 @@ export interface SteamWebApiRequestOptions {
   params?: SteamWebApiParams;
   body?: SteamWebApiBody;
   key?: string | null;
+  endpointAccess?: SteamWebApiEndpointAccess;
+  endpointHost?: SteamWebApiEndpointHost;
   format?: string | null;
   baseUrl?: string;
   headers?: Record<string, string>;
@@ -4386,10 +4392,12 @@ export interface SteamWebApiRequestOptions {
 
 export interface SteamWebApiClientOptions {
   apiKey?: string | null;
+  publisherApiKey?: string | null;
   baseUrl?: string;
   defaultFormat?: string | null;
   headers?: Record<string, string>;
   fetch?: SteamWebApiFetch;
+  dangerouslyAllowClientSidePublisherSecrets?: boolean;
 }
 
 export interface SteamWebApiEndpointOptions {
@@ -4472,6 +4480,7 @@ export type SteamWebApiFetch = (
     headers?: Record<string, string>;
     body?: string | Buffer | Uint8Array;
     signal?: AbortSignal;
+    redirect?: "error" | "follow" | "manual";
   }
 ) => Promise<SteamWebApiFetchResponse>;
 
@@ -7331,9 +7340,6 @@ export type InputTypeCodeValue = typeof InputTypeCode[keyof typeof InputTypeCode
 const DEFAULT_STEAM_WEB_API_BASE_URL = "https://api.steampowered.com";
 const DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL = "https://partner.steam-api.com";
 
-let callbackTimer: NodeJS.Timeout | undefined;
-let activeCallbackIntervalMs = 33;
-
 export class Ticket implements AuthTicket {
   constructor(private readonly ticket: NativeAuthTicket) {}
 
@@ -7748,14 +7754,31 @@ export class Lobby {
 
 export function init(options?: InitOptions | number | null): SteamBridgeClient {
   const normalized = normalizeInitOptions(options);
-  native().init(normalized.appId);
+  const previousCallbackPump = snapshotCallbackPump();
+  const cleanupError = closeSteamBridgeJsResources();
+  if (cleanupError !== undefined) {
+    restoreCallbackPump(previousCallbackPump);
+    throw cleanupError;
+  }
+  try {
+    native().init(normalized.appId);
+  } finally {
+    resetSteamBridgeProcessOwnership();
+  }
   startCallbackPump(normalized.callbackIntervalMs);
   return createCompatibilityClient();
 }
 
 export function shutdown(): void {
-  stopCallbackPump();
-  native().shutdown();
+  const cleanupError = closeSteamBridgeJsResources();
+  try {
+    native().shutdown();
+  } finally {
+    resetSteamBridgeProcessOwnership();
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
 }
 
 export function restartAppIfNecessary(appId: number): boolean {
@@ -7786,11 +7809,41 @@ export function runCallbacks(): void {
 }
 
 export function initAnonymousUser(): boolean {
-  return native().initAnonymousUser();
+  const previousCallbackPump = snapshotCallbackPump();
+  const cleanupError = closeSteamBridgeJsResources();
+  if (cleanupError !== undefined) {
+    restoreCallbackPump(previousCallbackPump);
+    throw cleanupError;
+  }
+  let initialized: boolean;
+  try {
+    initialized = native().initAnonymousUser();
+  } finally {
+    resetSteamBridgeProcessOwnership();
+  }
+  if (initialized) {
+    restoreCallbackPump(previousCallbackPump);
+  }
+  return initialized;
 }
 
 export function initSafe(): boolean {
-  return native().initSafe();
+  const previousCallbackPump = snapshotCallbackPump();
+  const cleanupError = closeSteamBridgeJsResources();
+  if (cleanupError !== undefined) {
+    restoreCallbackPump(previousCallbackPump);
+    throw cleanupError;
+  }
+  let initialized: boolean;
+  try {
+    initialized = native().initSafe();
+  } finally {
+    resetSteamBridgeProcessOwnership();
+  }
+  if (initialized) {
+    restoreCallbackPump(previousCallbackPump);
+  }
+  return initialized;
 }
 
 /** @deprecated Steam Bridge always uses manual dispatch; use runCallbacks(). */
@@ -8196,6 +8249,7 @@ interface NativeOverlaySurfaceLease {
   generation: number;
   kind: NativeOverlaySurfaceOwner;
   rawSurfaceKind?: RawNativeOverlaySurfaceKind;
+  close?: () => void;
 }
 
 interface SteamOverlayProcessOwnershipRegistry {
@@ -8203,6 +8257,9 @@ interface SteamOverlayProcessOwnershipRegistry {
   nextNativeOverlaySurfaceGeneration: number;
   activeElectronSteamOverlayControllerLease?: ElectronSteamOverlayControllerLease;
   nextElectronSteamOverlayControllerGeneration: number;
+  callbackTimer?: NodeJS.Timeout;
+  activeCallbackIntervalMs: number;
+  electronNotificationPresenters: Set<NativeOverlayPresenter>;
 }
 
 const STEAM_OVERLAY_PROCESS_OWNERSHIP_REGISTRY = Symbol.for(
@@ -8213,12 +8270,19 @@ function steamOverlayProcessOwnershipRegistry(): SteamOverlayProcessOwnershipReg
   const registryHost = process as unknown as Record<PropertyKey, unknown>;
   const existing = registryHost[STEAM_OVERLAY_PROCESS_OWNERSHIP_REGISTRY];
   if (existing && typeof existing === "object") {
-    return existing as SteamOverlayProcessOwnershipRegistry;
+    const registry = existing as Partial<SteamOverlayProcessOwnershipRegistry>;
+    registry.nextNativeOverlaySurfaceGeneration ??= 0;
+    registry.nextElectronSteamOverlayControllerGeneration ??= 0;
+    registry.activeCallbackIntervalMs ??= 33;
+    registry.electronNotificationPresenters ??= new Set<NativeOverlayPresenter>();
+    return registry as SteamOverlayProcessOwnershipRegistry;
   }
 
   const registry: SteamOverlayProcessOwnershipRegistry = {
     nextNativeOverlaySurfaceGeneration: 0,
-    nextElectronSteamOverlayControllerGeneration: 0
+    nextElectronSteamOverlayControllerGeneration: 0,
+    activeCallbackIntervalMs: 33,
+    electronNotificationPresenters: new Set<NativeOverlayPresenter>()
   };
   Object.defineProperty(registryHost, STEAM_OVERLAY_PROCESS_OWNERSHIP_REGISTRY, {
     configurable: false,
@@ -8297,6 +8361,70 @@ function releaseNativeOverlaySurface(lease: NativeOverlaySurfaceLease | undefine
   }
 }
 
+function bindNativeOverlaySurfaceClose(
+  lease: NativeOverlaySurfaceLease | undefined,
+  close: () => void
+): void {
+  if (lease && ownsNativeOverlaySurface(lease)) {
+    lease.close = close;
+  }
+}
+
+function closeSteamBridgeJsResources(): unknown {
+  const registry = steamOverlayProcessOwnershipRegistry();
+  stopCallbackPump();
+  let firstError: unknown;
+
+  const controllerLease = registry.activeElectronSteamOverlayControllerLease;
+  if (controllerLease?.close) {
+    try {
+      controllerLease.close();
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+
+  const surfaceLease = registry.activeNativeOverlaySurfaceLease;
+  if (surfaceLease?.close) {
+    try {
+      surfaceLease.close();
+    } catch (error) {
+      firstError ??= error;
+    }
+  } else if (surfaceLease?.kind === "raw") {
+    try {
+      cleanupRawNativeOverlaySurface(surfaceLease);
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+
+  registry.electronNotificationPresenters.clear();
+  if (
+    firstError === undefined &&
+    (registry.activeElectronSteamOverlayControllerLease || registry.activeNativeOverlaySurfaceLease)
+  ) {
+    const remainingOwners = [
+      registry.activeElectronSteamOverlayControllerLease ? "managed Electron controller" : undefined,
+      registry.activeNativeOverlaySurfaceLease
+        ? `${registry.activeNativeOverlaySurfaceLease.kind} native surface`
+        : undefined
+    ].filter((owner): owner is string => owner !== undefined);
+    firstError = new Error(
+      `Steam Bridge could not close its ${remainingOwners.join(" and ")} before the lifecycle transition; ` +
+        "reinitialization is blocked to preserve process-global native surface ownership."
+    );
+  }
+  return firstError;
+}
+
+function resetSteamBridgeProcessOwnership(): void {
+  const registry = steamOverlayProcessOwnershipRegistry();
+  registry.activeNativeOverlaySurfaceLease = undefined;
+  registry.activeElectronSteamOverlayControllerLease = undefined;
+  registry.electronNotificationPresenters.clear();
+}
+
 function runRawNativeOverlaySurfaceOpen(
   rawSurfaceKind: RawNativeOverlaySurfaceKind,
   operation: () => void,
@@ -8305,6 +8433,7 @@ function runRawNativeOverlaySurfaceOpen(
   const lease = claimNativeOverlaySurface("raw", rawSurfaceKind);
   try {
     operation();
+    bindNativeOverlaySurfaceClose(lease, () => cleanupRawNativeOverlaySurface(lease));
   } catch (error) {
     try {
       cleanup();
@@ -8862,6 +8991,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   };
 
   surfaceLease = claimNativeOverlaySurface("session");
+  bindNativeOverlaySurfaceClose(surfaceLease, () => closeWithReason("closed"));
   try {
     if (usesStandaloneLinuxHost) {
       disconnectKWinTransportSafety = onKWinWaylandOverlayTransportSafetyRequired((phase) => {
@@ -11975,6 +12105,7 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
   const startedAt = Date.now();
 
   surfaceLease = claimNativeOverlaySurface("presenter");
+  bindNativeOverlaySurfaceClose(surfaceLease, () => closeWithReason("closed"));
   try {
     if (usesStandaloneLinuxHost) {
       disconnectKWinTransportSafety = onKWinWaylandOverlayTransportSafetyRequired((phase) => {
@@ -14896,6 +15027,7 @@ function assertElectronSteamOverlayTargetCanWait(
 
 interface ElectronSteamOverlayControllerLease {
   generation: number;
+  close?: () => void;
 }
 
 export class SteamOverlayElectronControllerOwnershipError extends Error {
@@ -14925,6 +15057,15 @@ function releaseElectronSteamOverlayController(lease: ElectronSteamOverlayContro
   const registry = steamOverlayProcessOwnershipRegistry();
   if (registry.activeElectronSteamOverlayControllerLease === lease) {
     registry.activeElectronSteamOverlayControllerLease = undefined;
+  }
+}
+
+function bindElectronSteamOverlayControllerClose(
+  lease: ElectronSteamOverlayControllerLease,
+  close: () => void
+): void {
+  if (steamOverlayProcessOwnershipRegistry().activeElectronSteamOverlayControllerLease === lease) {
+    lease.close = close;
   }
 }
 
@@ -15003,9 +15144,6 @@ function createElectronSteamOverlayWithLease(
               restoreFocusDelayMs: managedPresenterOptions.restoreFocusDelayMs
             }))
           : attachOverlayPresenter(electronOverlayPresenterOptions(window, managedPresenterOptions));
-  if (tracksDisplayFrameRate) {
-    syncElectronSteamOverlayDisplayFrameRate(window, presenter);
-  }
   let removeShortcutListener: (() => void) | undefined;
   let removeWindowSyncListeners: (() => void) | undefined;
   let removeWindowClosedListener: (() => void) | undefined;
@@ -15799,6 +15937,9 @@ function createElectronSteamOverlayWithLease(
   };
 
   try {
+    if (tracksDisplayFrameRate) {
+      syncElectronSteamOverlayDisplayFrameRate(window, presenter);
+    }
     presenterTerminalHandle = (presenter as NativeOverlayPresenterInternal).onStateChange?.(() => {
       if (!closed && presenter.snapshot().closed) {
         controller.close();
@@ -15829,6 +15970,7 @@ function createElectronSteamOverlayWithLease(
     if (scrubSteamOverlayChildProcessEnv) {
       scrubbedEnvKeys = electronScrubSteamOverlayChildProcessEnv();
     }
+    bindElectronSteamOverlayControllerClose(controllerLease, () => controller.close());
   } catch (error) {
     controller.close();
     throw error;
@@ -18844,12 +18986,14 @@ export const appTicket = {
   }
 };
 
+/** @deprecated Import encryptedAppTicket from steam-bridge/server on a trusted Node.js server. */
 export const encryptedAppTicket = {
   decrypt(
     ticket: Buffer | Uint8Array,
     key: Buffer | Uint8Array,
     maxBytes?: number | null
   ): Buffer | null {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketDecrypt(
       Buffer.from(ticket),
       Buffer.from(key),
@@ -18857,52 +19001,71 @@ export const encryptedAppTicket = {
     ) ?? null;
   },
   isTicketForApp(ticket: Buffer | Uint8Array, appId: number): boolean {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketIsTicketForApp(Buffer.from(ticket), appId);
   },
   getTicketIssueTime(ticket: Buffer | Uint8Array): number {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketGetTicketIssueTime(Buffer.from(ticket));
   },
   getTicketSteamId(ticket: Buffer | Uint8Array): SteamId {
+    assertSteamPublisherServerRuntime();
     return normalizeSteamId(native().encryptedAppTicketGetTicketSteamId(Buffer.from(ticket)));
   },
   getTicketAppId(ticket: Buffer | Uint8Array): number {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketGetTicketAppId(Buffer.from(ticket));
   },
   userOwnsAppInTicket(ticket: Buffer | Uint8Array, appId: number): boolean {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketUserOwnsAppInTicket(Buffer.from(ticket), appId);
   },
   userIsVacBanned(ticket: Buffer | Uint8Array): boolean {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketUserIsVacBanned(Buffer.from(ticket));
   },
   getAppDefinedValue(ticket: Buffer | Uint8Array): number | null {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketGetAppDefinedValue(Buffer.from(ticket)) ?? null;
   },
   getUserVariableData(ticket: Buffer | Uint8Array): Buffer | null {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketGetUserVariableData(Buffer.from(ticket)) ?? null;
   },
   isTicketSigned(ticket: Buffer | Uint8Array, rsaKey: Buffer | Uint8Array): boolean {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketIsTicketSigned(Buffer.from(ticket), Buffer.from(rsaKey));
   },
   isLicenseBorrowed(ticket: Buffer | Uint8Array): boolean {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketIsLicenseBorrowed(Buffer.from(ticket));
   },
   isLicenseTemporary(ticket: Buffer | Uint8Array): boolean {
+    assertSteamPublisherServerRuntime();
     return native().encryptedAppTicketIsLicenseTemporary(Buffer.from(ticket));
   }
 };
 
 export function buildSteamWebApiUrl(options: SteamWebApiRequestOptions): string {
+  return redactSteamWebApiUrl(buildSteamWebApiRequestUrl(options), options);
+}
+
+function buildSteamWebApiRequestUrl(options: SteamWebApiRequestOptions): string {
+  assertSteamWebApiEndpointMetadata(options);
+  const baseUrl = parseSteamWebApiBaseUrl(
+    options.baseUrl ??
+      (options.endpointHost === "partner" ||
+        (options.endpointHost === undefined && options.endpointAccess === "publisher-only")
+        ? DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL
+        : DEFAULT_STEAM_WEB_API_BASE_URL)
+  );
   const url = new URL(
     `${steamWebApiPathComponent(options.interfaceName, "interfaceName")}/${steamWebApiPathComponent(
       options.methodName,
       "methodName"
     )}/${normalizeSteamWebApiVersion(options.version)}/`,
-    baseUrlWithTrailingSlash(options.baseUrl ?? DEFAULT_STEAM_WEB_API_BASE_URL)
+    baseUrl
   );
-
-  if (options.key) {
-    url.searchParams.set("key", options.key);
-  }
 
   if (options.format) {
     url.searchParams.set("format", options.format);
@@ -18912,12 +19075,25 @@ export function buildSteamWebApiUrl(options: SteamWebApiRequestOptions): string 
   return url.toString();
 }
 
+function parseSteamWebApiBaseUrl(value: string): URL {
+  try {
+    return new URL(baseUrlWithTrailingSlash(value));
+  } catch {
+    throw new Error("Steam Web API baseUrl must be a valid absolute URL.");
+  }
+}
+
 export async function requestSteamWebApi<T = unknown>(
   options: SteamWebApiRequestOptions
 ): Promise<SteamWebApiResponse<T>> {
   return requestSteamWebApiWithClient<T>(options, {});
 }
 
+/**
+ * Creates a Steam Web API client. Public/keyless use belongs here; authenticated
+ * and publisher-only use should import createPublisherWebApiClient from
+ * steam-bridge/server.
+ */
 export function createSteamWebApiClient(options: SteamWebApiClientOptions = {}): SteamWebApiClient {
   const clientOptions = { ...options };
   return {
@@ -24375,7 +24551,7 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
       appId: number,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetAppBetas", 1, { appid: appId }, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetAppBetas", 1, { appid: appId }, options, "publisher-only");
     },
     getAppBuilds<T = unknown>(options: SteamWebApiAppBuildsOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiGet<T>(
@@ -24384,17 +24560,17 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
         "GetAppBuilds",
         1,
         { appid: options.appId, count: options.count },
-        options
+        options, "publisher-only"
       );
     },
     getAppDepotVersions<T = unknown>(
       appId: number,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetAppDepotVersions", 1, { appid: appId }, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetAppDepotVersions", 1, { appid: appId }, options, "publisher-only");
     },
     getAppList<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetAppList", 2, {}, options, false);
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetAppList", 2, {}, options, "public");
     },
     getPartnerAppListForWebApiKey<T = unknown>(
       options?: SteamWebApiPartnerAppListOptions | null
@@ -24405,20 +24581,20 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
         "GetPartnerAppListForWebAPIKey",
         2,
         { type_filter: commaString(options?.typeFilter) },
-        options
+        options, "publisher-only"
       );
     },
     getPlayersBanned<T = unknown>(
       appId: number,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetPlayersBanned", 1, { appid: appId }, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetPlayersBanned", 1, { appid: appId }, options, "publisher-only");
     },
     getSdrConfig<T = unknown>(
       appId: number,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetSDRConfig", 1, { appid: appId }, options, false);
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetSDRConfig", 1, { appid: appId }, options, "public");
     },
     getServerList<T = unknown>(options?: SteamWebApiServerListOptions | null): Promise<SteamWebApiResponse<T>> {
       return steamWebApiGet<T>(
@@ -24427,14 +24603,14 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
         "GetServerList",
         1,
         { filter: options?.filter, limit: options?.limit },
-        options
+        options, "publisher-only"
       );
     },
     getServersAtAddress<T = unknown>(
       address: string,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetServersAtAddress", 1, { addr: address }, options, false);
+      return steamWebApiGet<T>(clientOptions, "ISteamApps", "GetServersAtAddress", 1, { addr: address }, options, "public");
     },
     setAppBuildLive<T = unknown>(options: SteamWebApiSetAppBuildLiveOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiPost<T>(
@@ -24449,7 +24625,7 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
           steamid: options.steamId64,
           description: options.description
         },
-        options
+        options, "publisher-only"
       );
     },
     upToDateCheck<T = unknown>(options: SteamWebApiUpToDateCheckOptions): Promise<SteamWebApiResponse<T>> {
@@ -24460,7 +24636,7 @@ function createSteamWebApiAppsFacade(clientOptions: SteamWebApiClientOptions): S
         1,
         { appid: options.appId, version: options.version },
         options,
-        false
+        "public"
       );
     }
   };
@@ -24476,7 +24652,7 @@ function createSteamWebApiNewsFacade(clientOptions: SteamWebApiClientOptions): S
         2,
         steamWebApiNewsForAppParams(options),
         options,
-        false
+        "public"
       );
     },
     getNewsForAppAuthed<T = unknown>(options: SteamWebApiNewsForAppOptions): Promise<SteamWebApiResponse<T>> {
@@ -24486,7 +24662,7 @@ function createSteamWebApiNewsFacade(clientOptions: SteamWebApiClientOptions): S
         "GetNewsForAppAuthed",
         2,
         steamWebApiNewsForAppParams(options),
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -24510,7 +24686,7 @@ function createSteamWebApiAuthenticationServiceFacade(
           token_to_revoke: options.tokenToRevoke
         },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     getAuthSessionInfo<T = unknown>(
@@ -24524,7 +24700,7 @@ function createSteamWebApiAuthenticationServiceFacade(
         1,
         { client_id: clientId },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     getAuthSessionRiskInfo<T = unknown>(
@@ -24537,7 +24713,7 @@ function createSteamWebApiAuthenticationServiceFacade(
         1,
         { client_id: options.clientId, language: options.language },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     notifyRiskQuizResults<T = unknown>(
@@ -24555,7 +24731,7 @@ function createSteamWebApiAuthenticationServiceFacade(
           did_confirm_login: options.didConfirmLogin
         },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     getPasswordRsaPublicKey<T = unknown>(
@@ -24569,7 +24745,7 @@ function createSteamWebApiAuthenticationServiceFacade(
         1,
         { account_name: accountName },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     beginAuthSessionViaCredentials<T = unknown>(
@@ -24595,7 +24771,7 @@ function createSteamWebApiAuthenticationServiceFacade(
           qos_level: options.qosLevel
         },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     updateAuthSessionWithSteamGuardCode<T = unknown>(
@@ -24613,7 +24789,7 @@ function createSteamWebApiAuthenticationServiceFacade(
           code_type: options.codeType
         },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     beginAuthSessionViaQr<T = unknown>(
@@ -24631,7 +24807,7 @@ function createSteamWebApiAuthenticationServiceFacade(
           website_id: options.websiteId
         },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     },
     updateAuthSessionWithMobileConfirmation<T = unknown>(
@@ -24651,7 +24827,7 @@ function createSteamWebApiAuthenticationServiceFacade(
           persistence: options.persistence
         },
         steamWebApiKeylessEndpointOptions(options),
-        false
+        "public"
       );
     }
   };
@@ -24660,7 +24836,7 @@ function createSteamWebApiAuthenticationServiceFacade(
 function createSteamWebApiBroadcastFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiBroadcastFacade {
   return {
     playerStats<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiPost<T>(clientOptions, "ISteamBroadcast", "PlayerStats", 1, {}, options, false);
+      return steamWebApiPost<T>(clientOptions, "ISteamBroadcast", "PlayerStats", 1, {}, options, "public");
     },
     viewerHeartbeat<T = unknown>(
       options: SteamWebApiBroadcastViewerHeartbeatOptions
@@ -24677,7 +24853,7 @@ function createSteamWebApiBroadcastFacade(clientOptions: SteamWebApiClientOption
           stream: options.stream
         },
         options,
-        false
+        "public"
       );
     }
   };
@@ -24693,7 +24869,7 @@ function createSteamWebApiDirectoryFacade(clientOptions: SteamWebApiClientOption
         1,
         { cellid: options.cellId, maxcount: options.maxCount },
         options,
-        false
+        "public"
       );
     },
     getCmListForConnect<T = unknown>(
@@ -24712,13 +24888,13 @@ function createSteamWebApiDirectoryFacade(clientOptions: SteamWebApiClientOption
           qoslevel: options?.qosLevel
         },
         options,
-        false
+        "public"
       );
     },
     getSteamPipeDomains<T = unknown>(
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamDirectory", "GetSteamPipeDomains", 1, {}, options, false);
+      return steamWebApiGet<T>(clientOptions, "ISteamDirectory", "GetSteamPipeDomains", 1, {}, options, "public");
     }
   };
 }
@@ -24734,7 +24910,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
         "GetRecentlyPlayedGames",
         1,
         { steamid: options.steamId64, count: options.count },
-        options
+        options, "user-key"
       );
     },
     getSingleGamePlaytime<T = unknown>(
@@ -24746,7 +24922,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
         "GetSingleGamePlaytime",
         1,
         { steamid: options.steamId64, appid: options.appId },
-        options
+        options, "user-key"
       );
     },
     getOwnedGames<T = unknown>(options: SteamWebApiOwnedGamesOptions): Promise<SteamWebApiResponse<T>> {
@@ -24761,7 +24937,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
           include_played_free_games: options.includePlayedFreeGames,
           appids_filter: options.appIdsFilter
         },
-        options
+        options, "user-key"
       );
     },
     getSteamLevel<T = unknown>(
@@ -24774,7 +24950,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
         "GetSteamLevel",
         1,
         { steamid: steamId64 },
-        options
+        options, "user-key"
       );
     },
     getBadges<T = unknown>(
@@ -24787,7 +24963,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
         "GetBadges",
         1,
         { steamid: steamId64 },
-        options
+        options, "user-key"
       );
     },
     getCommunityBadgeProgress<T = unknown>(
@@ -24799,7 +24975,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
         "GetCommunityBadgeProgress",
         1,
         { steamid: options.steamId64, badgeid: options.badgeId },
-        options
+        options, "user-key"
       );
     },
     recordOfflinePlaytime<T = unknown>(
@@ -24815,7 +24991,7 @@ function createSteamWebApiPlayerServiceFacade(clientOptions: SteamWebApiClientOp
           ticket: options.ticket,
           play_sessions: options.playSessions
         },
-        options
+        options, "public"
       );
     }
   };
@@ -24840,7 +25016,7 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
           last_appid: options?.lastAppId,
           max_results: options?.maxResults
         },
-        options
+        options, "user-key"
       );
     },
     getGamesFollowed<T = unknown>(
@@ -24853,7 +25029,7 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
         "GetGamesFollowed",
         1,
         { steamid: steamId64 },
-        options
+        options, "public"
       );
     },
     getGamesFollowedCount<T = unknown>(
@@ -24866,7 +25042,7 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
         "GetGamesFollowedCount",
         1,
         { steamid: steamId64 },
-        options
+        options, "public"
       );
     },
     getRecommendedTagsForUser<T = unknown>(
@@ -24882,7 +25058,7 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
           country_code: options.countryCode,
           favor_rarer_tags: options.favorRarerTags
         },
-        options
+        options, "public"
       );
     }
   };
@@ -24891,7 +25067,7 @@ function createSteamWebApiStoreServiceFacade(clientOptions: SteamWebApiClientOpt
 function createSteamWebApiTfSystemFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiTfSystemFacade {
   return {
     getWorldStatus<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ITFSystem_440", "GetWorldStatus", 1, {}, options, false);
+      return steamWebApiGet<T>(clientOptions, "ITFSystem_440", "GetWorldStatus", 1, {}, options, "public");
     }
   };
 }
@@ -24914,7 +25090,7 @@ function createSteamWebApiContentServerDirectoryServiceFacade(
           client_region: options.clientRegion
         },
         options,
-        false
+        "public"
       );
     },
     pickSingleContentServer<T = unknown>(
@@ -24931,7 +25107,7 @@ function createSteamWebApiContentServerDirectoryServiceFacade(
           client_ip: options.clientIp
         },
         options,
-        false
+        "public"
       );
     },
     getServersForSteamPipe<T = unknown>(
@@ -24951,7 +25127,7 @@ function createSteamWebApiContentServerDirectoryServiceFacade(
           current_connections: options.currentConnections
         },
         options,
-        false
+        "public"
       );
     },
     getClientUpdateHosts<T = unknown>(
@@ -24964,7 +25140,7 @@ function createSteamWebApiContentServerDirectoryServiceFacade(
         1,
         { cached_signature: options.cachedSignature },
         options,
-        false
+        "public"
       );
     },
     getDepotPatchInfo<T = unknown>(options: SteamWebApiDepotPatchInfoOptions): Promise<SteamWebApiResponse<T>> {
@@ -24980,7 +25156,7 @@ function createSteamWebApiContentServerDirectoryServiceFacade(
           target_manifestid: options.targetManifestId
         },
         options,
-        false
+        "public"
       );
     }
   };
@@ -25005,7 +25181,7 @@ function createSteamWebApiHelpRequestLogsServiceFacade(
           log_contents: options.logContents,
           request_id: options.requestId
         },
-        options
+        options, "public"
       );
     },
     getApplicationLogDemand<T = unknown>(
@@ -25017,7 +25193,7 @@ function createSteamWebApiHelpRequestLogsServiceFacade(
         "GetApplicationLogDemand",
         1,
         { appid: options.appId },
-        options
+        options, "public"
       );
     }
   };
@@ -25037,7 +25213,8 @@ function createSteamWebApiSiteLicenseServiceFacade(
         1,
         { siteid: options?.siteId },
         options,
-        false
+        "publisher-only",
+        "api"
       );
     },
     getTotalPlaytime<T = unknown>(
@@ -25054,7 +25231,8 @@ function createSteamWebApiSiteLicenseServiceFacade(
           siteid: options.siteId
         },
         options,
-        false
+        "publisher-only",
+        "api"
       );
     }
   };
@@ -25073,7 +25251,7 @@ function createSteamWebApiRemoteStorageFacade(
         "EnumerateUserSubscribedFiles",
         1,
         { steamid: options.steamId64, appid: options.appId, listtype: options.listType },
-        options
+        options, "publisher-only"
       );
     },
     getCollectionDetails<T = unknown>(
@@ -25089,7 +25267,7 @@ function createSteamWebApiRemoteStorageFacade(
         1,
         body,
         options,
-        false
+        "public"
       );
     },
     getPublishedFileDetails<T = unknown>(
@@ -25105,7 +25283,7 @@ function createSteamWebApiRemoteStorageFacade(
         1,
         body,
         options,
-        false
+        "public"
       );
     },
     getUgcFileDetails<T = unknown>(options: SteamWebApiUgcFileDetailsOptions): Promise<SteamWebApiResponse<T>> {
@@ -25116,7 +25294,7 @@ function createSteamWebApiRemoteStorageFacade(
         1,
         { ugcid: options.ugcId, appid: options.appId, steamid: options.steamId64 },
         options,
-        false
+        "user-key"
       );
     },
     setUgcUsedByGc<T = unknown>(options: SteamWebApiSetUgcUsedByGcOptions): Promise<SteamWebApiResponse<T>> {
@@ -25126,7 +25304,7 @@ function createSteamWebApiRemoteStorageFacade(
         "SetUGCUsedByGC",
         1,
         { steamid: options.steamId64, ugcid: options.ugcId, appid: options.appId, used: options.used },
-        options
+        options, "publisher-only"
       );
     },
     subscribePublishedFile<T = unknown>(
@@ -25138,7 +25316,7 @@ function createSteamWebApiRemoteStorageFacade(
         "SubscribePublishedFile",
         1,
         { steamid: options.steamId64, appid: options.appId, publishedfileid: options.publishedFileId },
-        options
+        options, "publisher-only"
       );
     },
     unsubscribePublishedFile<T = unknown>(
@@ -25150,7 +25328,7 @@ function createSteamWebApiRemoteStorageFacade(
         "UnsubscribePublishedFile",
         1,
         { steamid: options.steamId64, appid: options.appId, publishedfileid: options.publishedFileId },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -25274,7 +25452,7 @@ function createSteamWebApiBroadcastServiceFacade(
           broadcast_id: options.broadcastId,
           frame_data: options.frameData
         },
-        options
+        options, "publisher-only"
       );
     },
     postGameDataFrameRtmp<T = unknown>(
@@ -25291,7 +25469,7 @@ function createSteamWebApiBroadcastServiceFacade(
           rtmp_token: options.rtmpToken,
           frame_data: options.frameData
         },
-        options
+        options, "public"
       );
     }
   };
@@ -25302,7 +25480,7 @@ function createSteamWebApiClientStats1046930Facade(
 ): SteamWebApiClientStats1046930Facade {
   return {
     reportEvent<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiPost<T>(clientOptions, "IClientStats_1046930", "ReportEvent", 1, {}, options, false);
+      return steamWebApiPost<T>(clientOptions, "IClientStats_1046930", "ReportEvent", 1, {}, options, "public");
     }
   };
 }
@@ -25332,7 +25510,7 @@ function createSteamWebApiCheatReportingServiceFacade(
           suspicionstarttime: options.suspicionStartTime,
           severity: options.severity
         },
-        options
+        options, "publisher-only"
       );
     },
     requestPlayerGameBan<T = unknown>(
@@ -25352,7 +25530,7 @@ function createSteamWebApiCheatReportingServiceFacade(
           delayban: options.delayBan,
           flags: options.flags
         },
-        options
+        options, "publisher-only"
       );
     },
     removePlayerGameBan<T = unknown>(
@@ -25364,7 +25542,7 @@ function createSteamWebApiCheatReportingServiceFacade(
         "RemovePlayerGameBan",
         1,
         { steamid: options.steamId64, appid: options.appId },
-        options
+        options, "publisher-only"
       );
     },
     getCheatingReports<T = unknown>(
@@ -25384,7 +25562,7 @@ function createSteamWebApiCheatReportingServiceFacade(
           includebans: options.includeBans,
           steamid: options.steamId64
         },
-        options
+        options, "publisher-only"
       );
     },
     requestVacStatusForUser<T = unknown>(
@@ -25396,7 +25574,7 @@ function createSteamWebApiCheatReportingServiceFacade(
         "RequestVacStatusForUser",
         1,
         { steamid: options.steamId64, appid: options.appId, session_id: options.sessionId },
-        options
+        options, "publisher-only"
       );
     },
     startSecureMultiplayerSession<T = unknown>(
@@ -25408,7 +25586,7 @@ function createSteamWebApiCheatReportingServiceFacade(
         "StartSecureMultiplayerSession",
         1,
         { steamid: options.steamId64, appid: options.appId },
-        options
+        options, "publisher-only"
       );
     },
     endSecureMultiplayerSession<T = unknown>(
@@ -25420,7 +25598,7 @@ function createSteamWebApiCheatReportingServiceFacade(
         "EndSecureMultiplayerSession",
         1,
         { steamid: options.steamId64, appid: options.appId, session_id: options.sessionId },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -25439,7 +25617,7 @@ function createSteamWebApiEconMarketServiceFacade(
         "GetMarketEligibility",
         1,
         { steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     cancelAppListingsForUser<T = unknown>(
@@ -25455,7 +25633,7 @@ function createSteamWebApiEconMarketServiceFacade(
           steamid: options.steamId64,
           synchronous: options.synchronous
         },
-        options
+        options, "publisher-only"
       );
     },
     getAssetId<T = unknown>(options: SteamWebApiEconMarketAssetIdOptions): Promise<SteamWebApiResponse<T>> {
@@ -25465,7 +25643,7 @@ function createSteamWebApiEconMarketServiceFacade(
         "GetAssetID",
         1,
         { appid: options.appId, listingid: options.listingId },
-        options
+        options, "publisher-only"
       );
     },
     getPopular<T = unknown>(options: SteamWebApiEconMarketPopularOptions): Promise<SteamWebApiResponse<T>> {
@@ -25481,7 +25659,7 @@ function createSteamWebApiEconMarketServiceFacade(
           filter_appid: options.filterAppId,
           ecurrency: options.currency
         },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -25496,7 +25674,7 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
         "CanTrade",
         1,
         { appid: options.appId, steamid: options.steamId64, targetid: options.targetSteamId64 },
-        options
+        options, "publisher-only"
       );
     },
     finalizeAssetTransaction<T = unknown>(
@@ -25513,7 +25691,7 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
           txnid: options.transactionId,
           language: options.language
         },
-        options
+        options, "publisher-only"
       );
     },
     getAssetClassInfo<T = unknown>(options: SteamWebApiAssetClassInfoOptions): Promise<SteamWebApiResponse<T>> {
@@ -25531,7 +25709,7 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
       params.appid = options.appId;
       params.class_count = options.classes.length;
       params.language = options.language;
-      return steamWebApiGet<T>(clientOptions, "ISteamEconomy", "GetAssetClassInfo", 1, params, options, false);
+      return steamWebApiGet<T>(clientOptions, "ISteamEconomy", "GetAssetClassInfo", 1, params, options, "user-key");
     },
     getAssetPrices<T = unknown>(options: SteamWebApiAssetPricesOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiGet<T>(
@@ -25541,7 +25719,7 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
         1,
         { appid: options.appId, currency: options.currency, language: options.language },
         options,
-        false
+        "user-key"
       );
     },
     getExportedAssetsForUser<T = unknown>(
@@ -25553,14 +25731,14 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
         "GetExportedAssetsForUser",
         1,
         { steamid: options.steamId64, appid: options.appId, contextid: options.contextId },
-        options
+        options, "publisher-only"
       );
     },
     getMarketPrices<T = unknown>(
       appId: number,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamEconomy", "GetMarketPrices", 1, { appid: appId }, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamEconomy", "GetMarketPrices", 1, { appid: appId }, options, "publisher-only");
     },
     startAssetTransaction<T = unknown>(
       options: SteamWebApiStartAssetTransactionOptions
@@ -25583,7 +25761,7 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
       body.ipaddress = options.ipAddress;
       body.referrer = options.referrer;
       body.clientauth = options.clientAuth;
-      return steamWebApiPost<T>(clientOptions, "ISteamEconomy", "StartAssetTransaction", 1, body, options);
+      return steamWebApiPost<T>(clientOptions, "ISteamEconomy", "StartAssetTransaction", 1, body, options, "publisher-only");
     },
     startTrade<T = unknown>(options: SteamWebApiStartTradeOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiGet<T>(
@@ -25592,7 +25770,7 @@ function createSteamWebApiEconomyFacade(clientOptions: SteamWebApiClientOptions)
         "StartTrade",
         1,
         { appid: options.appId, partya: options.partyA, partyb: options.partyB },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -25617,7 +25795,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
           include_total: options.includeTotal
         },
         options,
-        false
+        "user-key"
       );
     },
     flushInventoryCache<T = unknown>(
@@ -25633,7 +25811,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
           appid: options.appId,
           contextid: options.contextId
         },
-        options
+        options, "publisher-only"
       );
     },
     flushAssetAppearanceCache<T = unknown>(
@@ -25646,7 +25824,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
         "FlushAssetAppearanceCache",
         1,
         { appid: appId },
-        options
+        options, "publisher-only"
       );
     },
     flushContextCache<T = unknown>(
@@ -25659,7 +25837,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
         "FlushContextCache",
         1,
         { appid: appId },
-        options
+        options, "publisher-only"
       );
     },
     getTradeOffers<T = unknown>(options: SteamWebApiTradeOffersOptions): Promise<SteamWebApiResponse<T>> {
@@ -25678,7 +25856,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
           time_historical_cutoff: options.timeHistoricalCutoff
         },
         options,
-        false
+        "user-key"
       );
     },
     getTradeOffer<T = unknown>(options: SteamWebApiTradeOfferOptions): Promise<SteamWebApiResponse<T>> {
@@ -25689,7 +25867,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
         1,
         { tradeofferid: options.tradeOfferId, language: options.language },
         options,
-        false
+        "user-key"
       );
     },
     getTradeOffersSummary<T = unknown>(
@@ -25702,7 +25880,7 @@ function createSteamWebApiEconServiceFacade(clientOptions: SteamWebApiClientOpti
         1,
         { time_last_visit: options?.timeLastVisit },
         options,
-        false
+        "user-key"
       );
     }
   };
@@ -25727,7 +25905,7 @@ function createSteamWebApiGameInventoryFacade(
           contextid: options.contextId,
           arguments: options.commandArguments
         },
-        options
+        options, "publisher-only"
       );
     },
     getUserHistory<T = unknown>(
@@ -25745,7 +25923,7 @@ function createSteamWebApiGameInventoryFacade(
           starttime: options.startTime,
           endtime: options.endTime
         },
-        options
+        options, "publisher-only"
       );
     },
     historyExecuteCommands<T = unknown>(
@@ -25762,7 +25940,7 @@ function createSteamWebApiGameInventoryFacade(
           contextid: options.contextId,
           actorid: options.actorId
         },
-        options
+        options, "publisher-only"
       );
     },
     supportGetAssetHistory<T = unknown>(
@@ -25774,7 +25952,7 @@ function createSteamWebApiGameInventoryFacade(
         "SupportGetAssetHistory",
         1,
         { appid: options.appId, assetid: options.assetId, contextid: options.contextId },
-        options
+        options, "publisher-only"
       );
     },
     updateItemDefs<T = unknown>(
@@ -25786,7 +25964,7 @@ function createSteamWebApiGameInventoryFacade(
         "UpdateItemDefs",
         1,
         { appid: options.appId, itemdefs: steamWebApiInputJsonValue(options.itemDefs) },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -25800,79 +25978,79 @@ function createSteamWebApiGameCoordinatorVersionFacade(
       getClientVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_1046930", "GetClientVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1046930", "GetClientVersion", 1, {}, options, "public");
       },
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_1046930", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1046930", "GetServerVersion", 1, {}, options, "public");
       }
     },
     app1269260: {
       getClientVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_1269260", "GetClientVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1269260", "GetClientVersion", 1, {}, options, "public");
       },
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_1269260", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1269260", "GetServerVersion", 1, {}, options, "public");
       }
     },
     app1422450: {
       getClientVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_1422450", "GetClientVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1422450", "GetClientVersion", 1, {}, options, "public");
       },
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_1422450", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_1422450", "GetServerVersion", 1, {}, options, "public");
       }
     },
     teamFortress2: {
       getClientVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_440", "GetClientVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_440", "GetClientVersion", 1, {}, options, "public");
       },
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_440", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_440", "GetServerVersion", 1, {}, options, "public");
       }
     },
     dota2: {
       getClientVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_570", "GetClientVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_570", "GetClientVersion", 1, {}, options, "public");
       },
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_570", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_570", "GetServerVersion", 1, {}, options, "public");
       }
     },
     app583950: {
       getClientVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_583950", "GetClientVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_583950", "GetClientVersion", 1, {}, options, "public");
       },
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_583950", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_583950", "GetServerVersion", 1, {}, options, "public");
       }
     },
     counterStrike2: {
       getServerVersion<T = unknown>(
         options?: SteamWebApiEndpointOptions | null
       ): Promise<SteamWebApiResponse<T>> {
-        return steamWebApiGet<T>(clientOptions, "IGCVersion_730", "GetServerVersion", 1, {}, options, false);
+        return steamWebApiGet<T>(clientOptions, "IGCVersion_730", "GetServerVersion", 1, {}, options, "public");
       }
     }
   };
@@ -25897,7 +26075,7 @@ function createSteamWebApiInventoryServiceFacade(
           requestid: options.requestId,
           trade_restriction: options.tradeRestriction
         },
-        options
+        options, "publisher-only"
       );
     },
     addPromoItem<T = unknown>(options: SteamWebApiInventoryAddPromoItemOptions): Promise<SteamWebApiResponse<T>> {
@@ -25913,7 +26091,7 @@ function createSteamWebApiInventoryServiceFacade(
           notify: options.notify,
           requestid: options.requestId
         },
-        options
+        options, "publisher-only"
       );
     },
     consumeItem<T = unknown>(options: SteamWebApiInventoryConsumeItemOptions): Promise<SteamWebApiResponse<T>> {
@@ -25929,7 +26107,7 @@ function createSteamWebApiInventoryServiceFacade(
           steamid: options.steamId64,
           requestid: options.requestId
         },
-        options
+        options, "publisher-only"
       );
     },
     exchangeItem<T = unknown>(options: SteamWebApiInventoryExchangeItemOptions): Promise<SteamWebApiResponse<T>> {
@@ -25945,7 +26123,7 @@ function createSteamWebApiInventoryServiceFacade(
           materialsquantity: options.materials.map((material) => material.quantity),
           outputitemdefid: options.outputItemDefId
         },
-        options
+        options, "publisher-only"
       );
     },
     getInventory<T = unknown>(options: SteamWebApiInventoryUserAppOptions): Promise<SteamWebApiResponse<T>> {
@@ -25955,7 +26133,7 @@ function createSteamWebApiInventoryServiceFacade(
         "GetInventory",
         1,
         { appid: options.appId, steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     getItemDefs<T = unknown>(options: SteamWebApiInventoryItemDefsOptions): Promise<SteamWebApiResponse<T>> {
@@ -25971,7 +26149,7 @@ function createSteamWebApiInventoryServiceFacade(
           workshopids: options.workshopIds,
           cache_max_age_seconds: options.cacheMaxAgeSeconds
         },
-        options
+        options, "publisher-only"
       );
     },
     getPriceSheet<T = unknown>(
@@ -25985,7 +26163,8 @@ function createSteamWebApiInventoryServiceFacade(
         1,
         { ecurrency: currency },
         options,
-        false
+        "publisher-only",
+        "api"
       );
     },
     consolidate<T = unknown>(options: SteamWebApiInventoryConsolidateOptions): Promise<SteamWebApiResponse<T>> {
@@ -26000,7 +26179,7 @@ function createSteamWebApiInventoryServiceFacade(
           itemdefid: options.itemDefIds,
           force: options.force
         },
-        options
+        options, "publisher-only"
       );
     },
     getQuantity<T = unknown>(options: SteamWebApiInventoryQuantityOptions): Promise<SteamWebApiResponse<T>> {
@@ -26015,7 +26194,7 @@ function createSteamWebApiInventoryServiceFacade(
           itemdefid: options.itemDefIds,
           force: options.force
         },
-        options
+        options, "publisher-only"
       );
     },
     modifyItems<T = unknown>(options: SteamWebApiInventoryModifyItemsOptions): Promise<SteamWebApiResponse<T>> {
@@ -26038,7 +26217,7 @@ function createSteamWebApiInventoryServiceFacade(
             remove_property: update.removeProperty
           }))
         },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26063,7 +26242,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
           users: options.users.map(steamWebApiGameNotificationsUserState),
           steamid: options.steamId64
         },
-        options
+        options, "publisher-only"
       );
     },
     userCreateSession<T = unknown>(
@@ -26081,7 +26260,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
           users: options.users.map(steamWebApiGameNotificationsUserState),
           steamid: options.steamId64
         },
-        options
+        options, "public"
       );
     },
     updateSession<T = unknown>(
@@ -26099,7 +26278,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
           users: options.users?.map(steamWebApiGameNotificationsUserState),
           steamid: options.steamId64
         },
-        options
+        options, "publisher-only"
       );
     },
     userUpdateSession<T = unknown>(
@@ -26117,7 +26296,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
           users: options.users?.map(steamWebApiGameNotificationsUserState),
           steamid: options.steamId64
         },
-        options
+        options, "public"
       );
     },
     enumerateSessionsForApp<T = unknown>(
@@ -26135,7 +26314,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
           include_auth_user_message: options.includeAuthUserMessage,
           language: options.language
         },
-        options
+        options, "publisher-only"
       );
     },
     getSessionDetailsForApp<T = unknown>(
@@ -26151,7 +26330,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
           sessions: options.sessions.map(steamWebApiGameNotificationsSessionDetailsRequest),
           language: options.language
         },
-        options
+        options, "publisher-only"
       );
     },
     requestNotifications<T = unknown>(
@@ -26163,7 +26342,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
         "RequestNotifications",
         1,
         { steamid: options.steamId64, appid: options.appId },
-        options
+        options, "publisher-only"
       );
     },
     deleteSession<T = unknown>(
@@ -26175,7 +26354,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
         "DeleteSession",
         1,
         { sessionid: options.sessionId, appid: options.appId, steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     userDeleteSession<T = unknown>(
@@ -26187,7 +26366,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
         "UserDeleteSession",
         1,
         { sessionid: options.sessionId, appid: options.appId, steamid: options.steamId64 },
-        options
+        options, "public"
       );
     },
     deleteSessionBatch<T = unknown>(
@@ -26199,7 +26378,7 @@ function createSteamWebApiGameNotificationsServiceFacade(
         "DeleteSessionBatch",
         1,
         { sessionid: options.sessionIds, appid: options.appId },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26219,7 +26398,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         {},
         options,
-        false
+        "user-key"
       );
     },
     createAccount<T = unknown>(
@@ -26232,7 +26411,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { appid: options.appId, memo: options.memo },
         options,
-        false
+        "user-key"
       );
     },
     setMemo<T = unknown>(options: SteamWebApiGameServersSetMemoOptions): Promise<SteamWebApiResponse<T>> {
@@ -26243,7 +26422,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { steamid: options.steamId64, memo: options.memo },
         options,
-        false
+        "user-key"
       );
     },
     resetLoginToken<T = unknown>(
@@ -26256,7 +26435,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { steamid: options.steamId64 },
         options,
-        false
+        "user-key"
       );
     },
     deleteAccount<T = unknown>(
@@ -26269,7 +26448,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { steamid: options.steamId64 },
         options,
-        false
+        "user-key"
       );
     },
     getAccountPublicInfo<T = unknown>(
@@ -26283,7 +26462,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { steamid: steamId64 },
         options,
-        false
+        "user-key"
       );
     },
     queryLoginToken<T = unknown>(
@@ -26297,7 +26476,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { login_token: loginToken },
         options,
-        false
+        "user-key"
       );
     },
     getServerSteamIdsByIp<T = unknown>(
@@ -26311,7 +26490,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { server_ips: commaString(serverIps) },
         options,
-        false
+        "user-key"
       );
     },
     getServerIpsBySteamId<T = unknown>(
@@ -26325,7 +26504,7 @@ function createSteamWebApiGameServersServiceFacade(
         1,
         { server_steamids: commaList(serverSteamIds) },
         options,
-        false
+        "user-key"
       );
     }
   };
@@ -26350,7 +26529,7 @@ function createSteamWebApiGameServerStatsFacade(
           rangeend: options.rangeEnd,
           maxresults: options.maxResults
         },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26365,7 +26544,7 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
         "DeleteLeaderboard",
         1,
         { appid: options.appId, name: options.name },
-        options
+        options, "publisher-only"
       );
     },
     deleteLeaderboardScore<T = unknown>(
@@ -26377,7 +26556,7 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
         "DeleteLeaderboardScore",
         1,
         { appid: options.appId, leaderboardid: options.leaderboardId, steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     findOrCreateLeaderboard<T = unknown>(
@@ -26397,7 +26576,7 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
           onlytrustedwrites: options.onlyTrustedWrites,
           onlyfriendsreads: options.onlyFriendsReads
         },
-        options
+        options, "publisher-only"
       );
     },
     getLeaderboardEntries<T = unknown>(
@@ -26416,14 +26595,14 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
           leaderboardid: options.leaderboardId,
           datarequest: options.dataRequest
         },
-        options
+        options, "publisher-only"
       );
     },
     getLeaderboardsForGame<T = unknown>(
       appId: number,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamLeaderboards", "GetLeaderboardsForGame", 2, { appid: appId }, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamLeaderboards", "GetLeaderboardsForGame", 2, { appid: appId }, options, "publisher-only");
     },
     resetLeaderboard<T = unknown>(options: SteamWebApiLeaderboardIdOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiPost<T>(
@@ -26432,7 +26611,7 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
         "ResetLeaderboard",
         1,
         { appid: options.appId, leaderboardid: options.leaderboardId },
-        options
+        options, "publisher-only"
       );
     },
     setLeaderboardScore<T = unknown>(
@@ -26451,7 +26630,7 @@ function createSteamWebApiLeaderboardsFacade(clientOptions: SteamWebApiClientOpt
           scoremethod: options.scoreMethod,
           details: options.details === undefined ? undefined : steamWebApiBinaryString(options.details)
         },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26472,7 +26651,7 @@ function createSteamWebApiPortal2LeaderboardsFacade(
         1,
         { leaderboardName },
         options,
-        false
+        "public"
       );
     }
   };
@@ -26490,7 +26669,8 @@ function createSteamWebApiPublishedFileServiceFacade(
         1,
         { publishedfileid: options.publishedFileId, appid: options.appId },
         options,
-        false
+        "publisher-only",
+        "api"
       );
     },
     queryFiles<T = unknown>(options: SteamWebApiPublishedFileQueryOptions): Promise<SteamWebApiResponse<T>> {
@@ -26532,7 +26712,7 @@ function createSteamWebApiPublishedFileServiceFacade(
           return_playtime_stats: options.returnPlaytimeStats
         },
         options,
-        false
+        "user-key"
       );
     },
     getUserVoteSummary<T = unknown>(
@@ -26545,7 +26725,7 @@ function createSteamWebApiPublishedFileServiceFacade(
         1,
         { publishedfileids: options.publishedFileIds },
         options,
-        false
+        "public"
       );
     },
     setDeveloperMetadata<T = unknown>(
@@ -26557,7 +26737,7 @@ function createSteamWebApiPublishedFileServiceFacade(
         "SetDeveloperMetadata",
         1,
         { publishedfileid: options.publishedFileId, appid: options.appId, metadata: options.metadata },
-        options
+        options, "publisher-only"
       );
     },
     updateAppUgcBan<T = unknown>(
@@ -26574,7 +26754,7 @@ function createSteamWebApiPublishedFileServiceFacade(
           expiration_time: options.expirationTime,
           reason: options.reason
         },
-        options
+        options, "publisher-only"
       );
     },
     updateBanStatus<T = unknown>(
@@ -26591,7 +26771,7 @@ function createSteamWebApiPublishedFileServiceFacade(
           banned: options.banned,
           reason: options.reason
         },
-        options
+        options, "publisher-only"
       );
     },
     updateIncompatibleStatus<T = unknown>(
@@ -26607,7 +26787,7 @@ function createSteamWebApiPublishedFileServiceFacade(
           appid: options.appId,
           incompatible: options.incompatible
         },
-        options
+        options, "publisher-only"
       );
     },
     updateTags<T = unknown>(options: SteamWebApiPublishedFileTagsOptions): Promise<SteamWebApiResponse<T>> {
@@ -26622,7 +26802,7 @@ function createSteamWebApiPublishedFileServiceFacade(
           add_tags: options.addTags,
           remove_tags: options.removeTags
         },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26641,7 +26821,7 @@ function createSteamWebApiPublishedItemSearchFacade(
         "RankedByPublicationOrder",
         1,
         steamWebApiPublishedItemSearchBody(options, true),
-        options
+        options, "publisher-only"
       );
     },
     rankedByTrend<T = unknown>(
@@ -26649,7 +26829,7 @@ function createSteamWebApiPublishedItemSearchFacade(
     ): Promise<SteamWebApiResponse<T>> {
       const body = steamWebApiPublishedItemSearchBody(options, true);
       body.days = options.days;
-      return steamWebApiPost<T>(clientOptions, "ISteamPublishedItemSearch", "RankedByTrend", 1, body, options);
+      return steamWebApiPost<T>(clientOptions, "ISteamPublishedItemSearch", "RankedByTrend", 1, body, options, "publisher-only");
     },
     rankedByVote<T = unknown>(options: SteamWebApiPublishedItemSearchOptions): Promise<SteamWebApiResponse<T>> {
       return steamWebApiPost<T>(
@@ -26658,7 +26838,7 @@ function createSteamWebApiPublishedItemSearchFacade(
         "RankedByVote",
         1,
         steamWebApiPublishedItemSearchBody(options, true),
-        options
+        options, "publisher-only"
       );
     },
     resultSetSummary<T = unknown>(
@@ -26670,7 +26850,7 @@ function createSteamWebApiPublishedItemSearchFacade(
         "ResultSetSummary",
         1,
         steamWebApiPublishedItemSearchBody(options, false),
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26687,7 +26867,7 @@ function createSteamWebApiPublishedItemVotingFacade(
         "ItemVoteSummary",
         1,
         steamWebApiPublishedItemVoteBody(options, options.appId),
-        options
+        options, "publisher-only"
       );
     },
     userVoteSummary<T = unknown>(options: SteamWebApiUserVoteSummaryOptions): Promise<SteamWebApiResponse<T>> {
@@ -26697,7 +26877,7 @@ function createSteamWebApiPublishedItemVotingFacade(
         "UserVoteSummary",
         1,
         steamWebApiPublishedItemVoteBody(options),
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26726,7 +26906,7 @@ function createSteamWebApiWishlistServiceFacade(
           share_token: options.shareToken
         },
         options,
-        false
+        "public"
       );
     },
     getWishlist<T = unknown>(
@@ -26740,7 +26920,7 @@ function createSteamWebApiWishlistServiceFacade(
         1,
         { steamid: steamId64 },
         options,
-        false
+        "public"
       );
     },
     getWishlistItemCount<T = unknown>(
@@ -26754,7 +26934,7 @@ function createSteamWebApiWishlistServiceFacade(
         1,
         { steamid: steamId64 },
         options,
-        false
+        "public"
       );
     }
   };
@@ -26780,7 +26960,7 @@ function createSteamWebApiWorkshopServiceFacade(
           validate_only: options.validateOnly,
           make_workshop_files_subscribable: options.makeWorkshopFilesSubscribable
         },
-        options
+        options, "publisher-only"
       );
     },
     getFinalizedContributors<T = unknown>(
@@ -26792,7 +26972,7 @@ function createSteamWebApiWorkshopServiceFacade(
         "GetFinalizedContributors",
         1,
         { appid: options.appId, gameitemid: options.gameItemId },
-        options
+        options, "publisher-only"
       );
     },
     getItemDailyRevenue<T = unknown>(
@@ -26809,7 +26989,7 @@ function createSteamWebApiWorkshopServiceFacade(
           date_start: options.dateStart,
           date_end: options.dateEnd
         },
-        options
+        options, "publisher-only"
       );
     },
     populateItemDescriptions<T = unknown>(
@@ -26821,7 +27001,7 @@ function createSteamWebApiWorkshopServiceFacade(
         "PopulateItemDescriptions",
         1,
         { appid: options.appId, languages: options.languages },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26830,7 +27010,12 @@ function createSteamWebApiWorkshopServiceFacade(
 function createSteamWebApiUserAuthFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUserAuthFacade {
   return {
     authenticateUser<T = unknown>(options: SteamWebApiAuthenticateUserOptions): Promise<SteamWebApiResponse<T>> {
-      const requestOptions = steamWebApiEndpointRequestOptions(options, clientOptions, true);
+      const requestOptions = steamWebApiEndpointRequestOptions(
+        options,
+        clientOptions,
+        "public",
+        "partner"
+      );
       requestOptions.key = options.key ?? null;
       return requestSteamWebApiWithClient<T>(
         {
@@ -26857,7 +27042,7 @@ function createSteamWebApiUserAuthFacade(clientOptions: SteamWebApiClientOptions
         "AuthenticateUserTicket",
         1,
         { appid: options.appId, ticket: steamWebApiBinaryString(options.ticket), identity: options.identity },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26898,7 +27083,7 @@ function createSteamWebApiCommunityFacade(clientOptions: SteamWebApiClientOption
           description: options.description,
           gid: options.gid
         },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -26907,10 +27092,22 @@ function createSteamWebApiCommunityFacade(clientOptions: SteamWebApiClientOption
 function createSteamWebApiUtilFacade(clientOptions: SteamWebApiClientOptions): SteamWebApiUtilFacade {
   return {
     getServerInfo<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamWebAPIUtil", "GetServerInfo", 1, {}, options, false);
+      return steamWebApiGet<T>(clientOptions, "ISteamWebAPIUtil", "GetServerInfo", 1, {}, options, "public");
     },
     getSupportedApiList<T = unknown>(options?: SteamWebApiEndpointOptions | null): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamWebAPIUtil", "GetSupportedAPIList", 1, {}, options, false);
+      const endpointAccess =
+        typeof options?.key === "string" && options.key.trim().length > 0
+          ? "user-key"
+          : "public";
+      return steamWebApiGet<T>(
+        clientOptions,
+        "ISteamWebAPIUtil",
+        "GetSupportedAPIList",
+        1,
+        {},
+        options,
+        endpointAccess
+      );
     }
   };
 }
@@ -26927,7 +27124,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
         "GetGlobalAchievementPercentagesForApp",
         2,
         { gameid: gameId },
-        options
+        options, "public"
       );
     },
     getGlobalStatsForGame<T = unknown>(
@@ -26938,7 +27135,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
       params.count = options.names.length;
       params.startdate = options.startDate;
       params.enddate = options.endDate;
-      return steamWebApiGet<T>(clientOptions, "ISteamUserStats", "GetGlobalStatsForGame", 1, params, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamUserStats", "GetGlobalStatsForGame", 1, params, options, "publisher-only");
     },
     getNumberOfCurrentPlayers<T = unknown>(
       appId: number,
@@ -26950,7 +27147,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
         "GetNumberOfCurrentPlayers",
         1,
         { appid: appId },
-        options
+        options, "public"
       );
     },
     getPlayerAchievements<T = unknown>(
@@ -26962,7 +27159,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
         "GetPlayerAchievements",
         1,
         { appid: options.appId, steamid: options.steamId64, l: options.language },
-        options
+        options, "user-key"
       );
     },
     getSchemaForGame<T = unknown>(options: SteamWebApiGameSchemaOptions): Promise<SteamWebApiResponse<T>> {
@@ -26972,7 +27169,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
         "GetSchemaForGame",
         2,
         { appid: options.appId, l: options.language },
-        options
+        options, "user-key"
       );
     },
     getUserStatsForGame<T = unknown>(
@@ -26984,7 +27181,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
         "GetUserStatsForGame",
         2,
         { appid: options.appId, steamid: options.steamId64 },
-        options
+        options, "user-key"
       );
     },
     setUserStatsForGame<T = unknown>(
@@ -26998,7 +27195,7 @@ function createSteamWebApiUserStatsFacade(clientOptions: SteamWebApiClientOption
       body.appid = options.appId;
       body.steamid = options.steamId64;
       body.count = stats.length;
-      return steamWebApiPost<T>(clientOptions, "ISteamUserStats", "SetUserStatsForGame", 1, body, options);
+      return steamWebApiPost<T>(clientOptions, "ISteamUserStats", "SetUserStatsForGame", 1, body, options, "publisher-only");
     }
   };
 }
@@ -27012,7 +27209,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "CheckAppOwnership",
         4,
         { appid: options.appId, steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     getAppPriceInfo<T = unknown>(options: SteamWebApiAppPriceInfoOptions): Promise<SteamWebApiResponse<T>> {
@@ -27022,7 +27219,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "GetAppPriceInfo",
         1,
         { appids: options.appIds.join(","), steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     getDeletedSteamIds<T = unknown>(options: SteamWebApiDeletedSteamIdsOptions): Promise<SteamWebApiResponse<T>> {
@@ -27032,7 +27229,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "GetDeletedSteamIDs",
         1,
         { rowversion: options.rowVersion },
-        options
+        options, "publisher-only"
       );
     },
     getFriendList<T = unknown>(options: SteamWebApiFriendListOptions): Promise<SteamWebApiResponse<T>> {
@@ -27042,7 +27239,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "GetFriendList",
         1,
         { steamid: options.steamId64, relationship: options.relationship },
-        options
+        options, "user-key"
       );
     },
     getPlayerBans<T = unknown>(
@@ -27055,7 +27252,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "GetPlayerBans",
         1,
         { steamids: commaList(steamIds) },
-        options
+        options, "user-key"
       );
     },
     getPlayerSummaries<T = unknown>(
@@ -27068,7 +27265,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "GetPlayerSummaries",
         2,
         { steamids: commaList(steamIds) },
-        options
+        options, "user-key"
       );
     },
     getPublisherAppOwnership<T = unknown>(
@@ -27081,14 +27278,14 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "GetPublisherAppOwnership",
         4,
         { steamid: steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     getUserGroupList<T = unknown>(
       steamId64: bigint | number | string,
       options?: SteamWebApiEndpointOptions | null
     ): Promise<SteamWebApiResponse<T>> {
-      return steamWebApiGet<T>(clientOptions, "ISteamUser", "GetUserGroupList", 1, { steamid: steamId64 }, options);
+      return steamWebApiGet<T>(clientOptions, "ISteamUser", "GetUserGroupList", 1, { steamid: steamId64 }, options, "publisher-only");
     },
     resolveVanityUrl<T = unknown>(
       vanityUrl: string,
@@ -27100,7 +27297,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "ResolveVanityURL",
         1,
         { vanityurl: vanityUrl, url_type: options?.urlType },
-        options
+        options, "user-key"
       );
     }
   };
@@ -27117,7 +27314,7 @@ function createSteamWebApiMicroTxnFacade(
       "InitTxn",
       3,
       steamWebApiInitTxnBody(options),
-      options
+      options, "publisher-only"
     );
 
   return {
@@ -27134,7 +27331,7 @@ function createSteamWebApiMicroTxnFacade(
           nextprocessdate: options.nextProcessDate,
           oldnextprocessdate: options.oldNextProcessDate
         },
-        options
+        options, "publisher-only"
       );
     },
     cancelAgreement<T = unknown>(options: SteamWebApiAgreementOptions): Promise<SteamWebApiResponse<T>> {
@@ -27144,7 +27341,7 @@ function createSteamWebApiMicroTxnFacade(
         "CancelAgreement",
         1,
         { appid: options.appId, steamid: options.steamId64, agreementid: options.agreementId },
-        options
+        options, "publisher-only"
       );
     },
     finalizeTxn<T = unknown>(options: SteamWebApiFinalizeTxnOptions): Promise<SteamWebApiResponse<T>> {
@@ -27154,7 +27351,7 @@ function createSteamWebApiMicroTxnFacade(
         "FinalizeTxn",
         2,
         { appid: options.appId, orderid: options.orderId },
-        options
+        options, "publisher-only"
       );
     },
     getReport<T = unknown>(options: SteamWebApiMicroTxnReportOptions): Promise<SteamWebApiResponse<T>> {
@@ -27164,7 +27361,7 @@ function createSteamWebApiMicroTxnFacade(
         "GetReport",
         5,
         { appid: options.appId, type: options.type, time: options.time, maxresults: options.maxResults },
-        options
+        options, "publisher-only"
       );
     },
     getUserAgreementInfo<T = unknown>(
@@ -27176,7 +27373,7 @@ function createSteamWebApiMicroTxnFacade(
         "GetUserAgreementInfo",
         1,
         { appid: options.appId, steamid: options.steamId64 },
-        options
+        options, "publisher-only"
       );
     },
     getUserInfo<T = unknown>(options: SteamWebApiMicroTxnUserInfoOptions): Promise<SteamWebApiResponse<T>> {
@@ -27186,7 +27383,7 @@ function createSteamWebApiMicroTxnFacade(
         "GetUserInfo",
         2,
         { appid: options.appId, steamid: options.steamId64, ipaddress: options.ipAddress },
-        options
+        options, "publisher-only"
       );
     },
     initClientTxn<T = unknown>(
@@ -27212,7 +27409,7 @@ function createSteamWebApiMicroTxnFacade(
           amount: options.amount,
           currency: options.currency
         },
-        options
+        options, "publisher-only"
       );
     },
     queryTxn<T = unknown>(options: SteamWebApiQueryTxnOptions): Promise<SteamWebApiResponse<T>> {
@@ -27222,7 +27419,7 @@ function createSteamWebApiMicroTxnFacade(
         "QueryTxn",
         3,
         { appid: options.appId, orderid: options.orderId, transid: options.transactionId },
-        options
+        options, "publisher-only"
       );
     },
     refundTxn<T = unknown>(options: SteamWebApiRefundTxnOptions): Promise<SteamWebApiResponse<T>> {
@@ -27232,7 +27429,7 @@ function createSteamWebApiMicroTxnFacade(
         "RefundTxn",
         2,
         { appid: options.appId, orderid: options.orderId },
-        options
+        options, "publisher-only"
       );
     }
   };
@@ -27244,12 +27441,13 @@ function steamWebApiGet<T>(
   methodName: string,
   version: number,
   params: SteamWebApiParams,
-  options?: SteamWebApiEndpointOptions | null,
-  preferPartnerBaseUrl = true
+  options: SteamWebApiEndpointOptions | null | undefined,
+  endpointAccess: SteamWebApiEndpointAccess,
+  endpointHost?: SteamWebApiEndpointHost
 ): Promise<SteamWebApiResponse<T>> {
   return requestSteamWebApiWithClient<T>(
     {
-      ...steamWebApiEndpointRequestOptions(options, clientOptions, preferPartnerBaseUrl),
+      ...steamWebApiEndpointRequestOptions(options, clientOptions, endpointAccess, endpointHost),
       interfaceName,
       methodName,
       version,
@@ -27266,12 +27464,13 @@ function steamWebApiPost<T>(
   methodName: string,
   version: number,
   body: SteamWebApiParams,
-  options?: SteamWebApiEndpointOptions | null,
-  preferPartnerBaseUrl = true
+  options: SteamWebApiEndpointOptions | null | undefined,
+  endpointAccess: SteamWebApiEndpointAccess,
+  endpointHost?: SteamWebApiEndpointHost
 ): Promise<SteamWebApiResponse<T>> {
   return requestSteamWebApiWithClient<T>(
     {
-      ...steamWebApiEndpointRequestOptions(options, clientOptions, preferPartnerBaseUrl),
+      ...steamWebApiEndpointRequestOptions(options, clientOptions, endpointAccess, endpointHost),
       interfaceName,
       methodName,
       version,
@@ -27293,8 +27492,9 @@ function steamWebApiServiceGet<T>(
   methodName: string,
   version: number,
   input: Record<string, SteamWebApiInputJsonValue>,
-  options?: SteamWebApiEndpointOptions | null,
-  preferPartnerBaseUrl = true
+  options: SteamWebApiEndpointOptions | null | undefined,
+  endpointAccess: SteamWebApiEndpointAccess,
+  endpointHost?: SteamWebApiEndpointHost
 ): Promise<SteamWebApiResponse<T>> {
   return steamWebApiGet<T>(
     clientOptions,
@@ -27303,7 +27503,8 @@ function steamWebApiServiceGet<T>(
     version,
     { input_json: steamWebApiInputJson(input) },
     options,
-    preferPartnerBaseUrl
+    endpointAccess,
+    endpointHost
   );
 }
 
@@ -27313,8 +27514,9 @@ function steamWebApiServicePost<T>(
   methodName: string,
   version: number,
   input: Record<string, SteamWebApiInputJsonValue>,
-  options?: SteamWebApiEndpointOptions | null,
-  preferPartnerBaseUrl = true
+  options: SteamWebApiEndpointOptions | null | undefined,
+  endpointAccess: SteamWebApiEndpointAccess,
+  endpointHost?: SteamWebApiEndpointHost
 ): Promise<SteamWebApiResponse<T>> {
   return steamWebApiPost<T>(
     clientOptions,
@@ -27323,7 +27525,8 @@ function steamWebApiServicePost<T>(
     version,
     { input_json: steamWebApiInputJson(input) },
     options,
-    preferPartnerBaseUrl
+    endpointAccess,
+    endpointHost
   );
 }
 
@@ -27474,13 +27677,24 @@ function steamWebApiKeylessEndpointOptions(
 function steamWebApiEndpointRequestOptions(
   options: SteamWebApiEndpointOptions | null | undefined,
   clientOptions: SteamWebApiClientOptions,
-  preferPartnerBaseUrl: boolean
-): SteamWebApiEndpointOptions {
+  endpointAccess: SteamWebApiEndpointAccess,
+  endpointHost: SteamWebApiEndpointHost =
+    endpointAccess === "publisher-only" ? "partner" : "api"
+): SteamWebApiEndpointOptions & {
+  endpointAccess: SteamWebApiEndpointAccess;
+  endpointHost: SteamWebApiEndpointHost;
+} {
   return {
-    key: options?.key,
+    key: endpointAccess === "public" ? null : options?.key,
+    endpointAccess,
+    endpointHost,
     format: options?.format,
     baseUrl:
-      options?.baseUrl ?? clientOptions.baseUrl ?? (preferPartnerBaseUrl ? DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL : undefined),
+      options?.baseUrl ??
+      clientOptions.baseUrl ??
+      (endpointHost === "partner"
+        ? DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL
+        : DEFAULT_STEAM_WEB_API_BASE_URL),
     headers: options?.headers,
     signal: options?.signal
   };
@@ -27489,9 +27703,10 @@ function steamWebApiEndpointRequestOptions(
 function steamWebApiOAuthEndpointRequestOptions(
   options: SteamWebApiOAuthEndpointOptions | null | undefined,
   clientOptions: SteamWebApiClientOptions
-): SteamWebApiEndpointOptions {
+): SteamWebApiEndpointOptions & { endpointAccess: "public" } {
   return {
     key: null,
+    endpointAccess: "public",
     format: options?.format,
     baseUrl: options?.baseUrl ?? clientOptions.baseUrl,
     headers: options?.headers,
@@ -27597,16 +27812,504 @@ function steamWebApiInitTxnBody(options: SteamWebApiInitTxnOptions): SteamWebApi
   return body;
 }
 
+type SteamWebApiKeySource = "request" | "client" | "environment";
+
+interface InternalSteamWebApiClientOptions extends SteamWebApiClientOptions {
+  serverEnvironmentApiKey?: string | null;
+}
+
+interface ResolvedSteamWebApiRequestOptions extends SteamWebApiRequestOptions {
+  endpointAccess: SteamWebApiEndpointAccess;
+  endpointHost: SteamWebApiEndpointHost;
+  keySource?: SteamWebApiKeySource;
+}
+
+interface SteamWebApiBodyCredentialInspection {
+  sensitiveValues: string[];
+  hasCredentialKeyField: boolean;
+  rawText?: string;
+  redactedText?: string;
+}
+
+function assertSteamWebApiHeadersDoNotContainKey(headers: Record<string, string>): void {
+  if (Object.keys(headers).some((name) => name.toLowerCase() === "x-webapi-key")) {
+    throw new Error(
+      "Steam Web API keys must be passed with apiKey, publisherApiKey, or the endpoint key option; " +
+        "Steam Bridge sets x-webapi-key itself."
+    );
+  }
+}
+
+function assertSteamWebApiRequestSecurity(
+  options: ResolvedSteamWebApiRequestOptions,
+  clientOptions: SteamWebApiClientOptions,
+  urlValue: string,
+  bodyInspection: SteamWebApiBodyCredentialInspection
+): void {
+  const url = new URL(urlValue);
+  if (url.username || url.password) {
+    throw new Error("Steam Web API base URLs must not contain credentials.");
+  }
+  if (steamWebApiUrlContainsCredentialKeyFields(url) || bodyInspection.hasCredentialKeyField) {
+    throw new Error("Steam Web API keys must use x-webapi-key, not request URLs or bodies.");
+  }
+
+  const apiKey = options.key?.trim();
+  if (options.endpointAccess !== "public" && !apiKey) {
+    throw new Error(
+      `Steam Web API endpoint ${options.interfaceName}.${options.methodName} requires a ` +
+        `${options.endpointAccess === "publisher-only" ? "publisher" : "user or publisher"} key. ` +
+        "Create the client from steam-bridge/server."
+    );
+  }
+  const sensitiveUrl = steamWebApiUrlContainsCredentials(url, options);
+  const sensitiveBody = bodyInspection.sensitiveValues.some((value) => value.length > 0);
+  const securitySensitiveEndpoint = steamWebApiEndpointRequiresSecureTransport(options);
+  if (!apiKey && !sensitiveUrl && !sensitiveBody && !securitySensitiveEndpoint) {
+    return;
+  }
+  if (apiKey) {
+    assertSteamPublisherServerRuntime(clientOptions);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error("Security-sensitive Steam Web API requests require HTTPS.");
+  }
+  if (
+    options.keySource === "environment" &&
+    url.origin !== new URL(DEFAULT_STEAM_WEB_API_BASE_URL).origin &&
+    url.origin !== new URL(DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL).origin
+  ) {
+    throw new Error("Environment-provided Steam Web API keys may only be sent to official Steam API hosts.");
+  }
+}
+
+function steamWebApiUrlContainsCredentials(
+  url: URL,
+  options: Pick<SteamWebApiRequestOptions, "interfaceName" | "methodName">
+): boolean {
+  return steamWebApiSensitiveUrlValues(url, options).length > 0;
+}
+
+function steamWebApiEndpointRequiresSecureTransport(
+  options: Pick<ResolvedSteamWebApiRequestOptions, "interfaceName">
+): boolean {
+  return ["iauthenticationservice", "isteamuserauth", "isteamuseroauth"].includes(
+    options.interfaceName.trim().toLowerCase()
+  );
+}
+
+function steamWebApiSensitiveFieldName(name: string): boolean {
+  const segments = steamWebApiFieldSegments(name);
+  const segmented = segments.join("_");
+  return (
+    /(?:^|_)(?:key|token|ticket|secret|password|auth)(?:$|_)/i.test(segmented) ||
+    segments.some((segment) =>
+      /^(?:api|webapi|access|auth|login|session|publisher|encrypted|share)(?:key|token|ticket|secret|password)$/i.test(
+        segment
+      )
+    )
+  );
+}
+
+function steamWebApiCredentialKeyFieldName(name: string, allowBareKey: boolean): boolean {
+  const segments = steamWebApiFieldSegments(name);
+  const keyIndex = segments.lastIndexOf("key");
+  if (segments.length === 1 && keyIndex === 0) {
+    return allowBareKey;
+  }
+  if (
+    keyIndex > 0 &&
+    segments
+      .slice(0, keyIndex)
+      .some((segment) => ["api", "web", "webapi", "steam", "publisher", "auth", "access", "secret"].includes(segment))
+  ) {
+    return true;
+  }
+  return segments.some((segment) =>
+    /^(?:api|webapi|steamwebapi|publisher|auth|access|secret)key$/i.test(segment)
+  );
+}
+
+function steamWebApiFieldSegments(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean)
+    .map((segment) => segment.toLowerCase());
+}
+
+function redactSteamWebApiUrl(
+  urlValue: string,
+  options: Pick<SteamWebApiRequestOptions, "interfaceName" | "methodName">
+): string {
+  const url = new URL(urlValue);
+  const additionalSensitiveFieldNames = steamWebApiMethodSensitiveFieldNames(options);
+  url.username = "";
+  url.password = "";
+  const entries = Array.from(url.searchParams.entries());
+  url.search = "";
+  for (const [name, value] of entries) {
+    if (
+      steamWebApiSensitiveFieldName(name) ||
+      steamWebApiAdditionalSensitiveFieldName(name, additionalSensitiveFieldNames)
+    ) {
+      url.searchParams.append(name, "[REDACTED]");
+      continue;
+    }
+    const nested = redactSteamWebApiJsonText(value, additionalSensitiveFieldNames);
+    url.searchParams.append(name, nested.redactedText);
+  }
+  return url.toString();
+}
+
+interface SteamWebApiJsonRedaction {
+  value: unknown;
+  sensitiveValues: string[];
+  changed: boolean;
+  hasCredentialKeyField: boolean;
+}
+
+function redactSteamWebApiJsonText(
+  value: string,
+  additionalSensitiveFieldNames?: ReadonlySet<string>
+): {
+  redactedText: string;
+  sensitiveValues: string[];
+  hasCredentialKeyField: boolean;
+} {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return { redactedText: value, sensitiveValues: [], hasCredentialKeyField: false };
+  }
+
+  try {
+    const redaction = redactSteamWebApiJsonValue(
+      JSON.parse(value),
+      0,
+      additionalSensitiveFieldNames
+    );
+    return {
+      redactedText: redaction.changed ? JSON.stringify(redaction.value) : value,
+      sensitiveValues: redaction.sensitiveValues,
+      hasCredentialKeyField: redaction.hasCredentialKeyField
+    };
+  } catch {
+    return { redactedText: value, sensitiveValues: [], hasCredentialKeyField: false };
+  }
+}
+
+function redactSteamWebApiJsonValue(
+  value: unknown,
+  depth: number,
+  additionalSensitiveFieldNames?: ReadonlySet<string>
+): SteamWebApiJsonRedaction {
+  if (Array.isArray(value)) {
+    const entries = value.map((entry) =>
+      redactSteamWebApiJsonValue(entry, depth + 1, additionalSensitiveFieldNames)
+    );
+    const changed = entries.some((entry) => entry.changed);
+    return {
+      value: changed ? entries.map((entry) => entry.value) : value,
+      sensitiveValues: entries.flatMap((entry) => entry.sensitiveValues),
+      changed,
+      hasCredentialKeyField: entries.some((entry) => entry.hasCredentialKeyField)
+    };
+  }
+  if (value === null || typeof value !== "object") {
+    return { value, sensitiveValues: [], changed: false, hasCredentialKeyField: false };
+  }
+
+  let changed = false;
+  let hasCredentialKeyField = false;
+  const sensitiveValues: string[] = [];
+  const output: Record<string, unknown> = {};
+  for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+    hasCredentialKeyField ||= steamWebApiCredentialKeyFieldName(name, depth === 0);
+    if (
+      steamWebApiSensitiveFieldName(name) ||
+      steamWebApiAdditionalSensitiveFieldName(name, additionalSensitiveFieldNames)
+    ) {
+      output[name] = "[REDACTED]";
+      sensitiveValues.push(...steamWebApiSecretScalarValues(entry));
+      changed = true;
+      continue;
+    }
+    const nested = redactSteamWebApiJsonValue(
+      entry,
+      depth + 1,
+      additionalSensitiveFieldNames
+    );
+    output[name] = nested.value;
+    sensitiveValues.push(...nested.sensitiveValues);
+    changed ||= nested.changed;
+    hasCredentialKeyField ||= nested.hasCredentialKeyField;
+  }
+  return { value: changed ? output : value, sensitiveValues, changed, hasCredentialKeyField };
+}
+
+function steamWebApiSecretScalarValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(steamWebApiSecretScalarValues);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap(steamWebApiSecretScalarValues);
+  }
+  return value === undefined || value === null ? [] : [String(value)];
+}
+
+function steamWebApiSensitiveUrlValues(
+  url: URL,
+  options: Pick<SteamWebApiRequestOptions, "interfaceName" | "methodName">
+): string[] {
+  const values: string[] = [];
+  const additionalSensitiveFieldNames = steamWebApiMethodSensitiveFieldNames(options);
+  if (url.username) {
+    values.push(url.username);
+  }
+  if (url.password) {
+    values.push(url.password);
+  }
+  for (const [name, value] of url.searchParams.entries()) {
+    if (
+      steamWebApiSensitiveFieldName(name) ||
+      steamWebApiAdditionalSensitiveFieldName(name, additionalSensitiveFieldNames)
+    ) {
+      values.push(value);
+    } else {
+      values.push(
+        ...redactSteamWebApiJsonText(value, additionalSensitiveFieldNames).sensitiveValues
+      );
+    }
+  }
+  return values;
+}
+
+function steamWebApiUrlContainsCredentialKeyFields(url: URL): boolean {
+  for (const [name, value] of url.searchParams.entries()) {
+    if (steamWebApiCredentialKeyFieldName(name, true)) {
+      return true;
+    }
+    if (redactSteamWebApiJsonText(value).hasCredentialKeyField) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function inspectSteamWebApiBodyCredentials(
+  body: string | Buffer | Uint8Array | undefined,
+  headers: Record<string, string>,
+  options: ResolvedSteamWebApiRequestOptions
+): SteamWebApiBodyCredentialInspection {
+  if (body === undefined) {
+    return { sensitiveValues: [], hasCredentialKeyField: false };
+  }
+
+  const contentType =
+    Object.entries(headers).find(([name]) => name.toLowerCase() === "content-type")?.[1] ?? "";
+  let text: string;
+  if (typeof body === "string") {
+    text = body;
+  } else if (/(?:json|x-www-form-urlencoded|text)/i.test(contentType)) {
+    text = Buffer.from(body).toString("utf8");
+  } else {
+    return { sensitiveValues: [], hasCredentialKeyField: false };
+  }
+
+  const additionalSensitiveFieldNames = steamWebApiMethodSensitiveFieldNames(options);
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const json = redactSteamWebApiJsonText(text, additionalSensitiveFieldNames);
+    return {
+      sensitiveValues: json.sensitiveValues,
+      hasCredentialKeyField: json.hasCredentialKeyField,
+      rawText: text,
+      redactedText: json.redactedText
+    };
+  }
+
+  const looksFormEncoded =
+    /application\/x-www-form-urlencoded/i.test(contentType) || /(?:^|&)[^=&]+=[^&]*/.test(text);
+  if (!looksFormEncoded) {
+    return { sensitiveValues: [], hasCredentialKeyField: false };
+  }
+
+  const sensitiveValues: string[] = [];
+  let hasCredentialKeyField = false;
+  let changed = false;
+  const redacted = new URLSearchParams();
+  for (const [name, value] of new URLSearchParams(text).entries()) {
+    hasCredentialKeyField ||= steamWebApiCredentialKeyFieldName(name, true);
+    if (
+      steamWebApiSensitiveFieldName(name) ||
+      steamWebApiAdditionalSensitiveFieldName(name, additionalSensitiveFieldNames)
+    ) {
+      sensitiveValues.push(value);
+      redacted.append(name, "[REDACTED]");
+      changed = true;
+      continue;
+    }
+    const nested = redactSteamWebApiJsonText(value, additionalSensitiveFieldNames);
+    sensitiveValues.push(...nested.sensitiveValues);
+    hasCredentialKeyField ||= nested.hasCredentialKeyField;
+    redacted.append(name, nested.redactedText);
+    changed ||= nested.redactedText !== value;
+  }
+  return {
+    sensitiveValues,
+    hasCredentialKeyField,
+    rawText: text,
+    redactedText: changed ? redacted.toString() : text
+  };
+}
+
+function steamWebApiMethodSensitiveFieldNames(
+  options: Pick<SteamWebApiRequestOptions, "interfaceName" | "methodName">
+): ReadonlySet<string> {
+  if (options.interfaceName.trim().toLowerCase() !== "iauthenticationservice") {
+    return EMPTY_STEAM_WEB_API_SENSITIVE_FIELD_NAMES;
+  }
+
+  switch (options.methodName.trim().toLowerCase()) {
+    case "pollauthsessionstatus":
+      return STEAM_WEB_API_POLL_AUTH_SESSION_SENSITIVE_FIELD_NAMES;
+    case "beginauthsessionviacredentials":
+      return STEAM_WEB_API_CREDENTIAL_AUTH_SESSION_SENSITIVE_FIELD_NAMES;
+    case "updateauthsessionwithsteamguardcode":
+      return STEAM_WEB_API_STEAM_GUARD_SENSITIVE_FIELD_NAMES;
+    case "updateauthsessionwithmobileconfirmation":
+      return STEAM_WEB_API_MOBILE_CONFIRMATION_SENSITIVE_FIELD_NAMES;
+    default:
+      return EMPTY_STEAM_WEB_API_SENSITIVE_FIELD_NAMES;
+  }
+}
+
+const EMPTY_STEAM_WEB_API_SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set();
+const STEAM_WEB_API_POLL_AUTH_SESSION_SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
+  "request_id"
+]);
+const STEAM_WEB_API_CREDENTIAL_AUTH_SESSION_SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
+  "guard_data"
+]);
+const STEAM_WEB_API_STEAM_GUARD_SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set(["code"]);
+const STEAM_WEB_API_MOBILE_CONFIRMATION_SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
+  "signature"
+]);
+
+function steamWebApiAdditionalSensitiveFieldName(
+  name: string,
+  additionalSensitiveFieldNames?: ReadonlySet<string>
+): boolean {
+  return additionalSensitiveFieldNames?.has(steamWebApiFieldSegments(name).join("_")) ?? false;
+}
+
+function sanitizeSteamWebApiRequestError(
+  error: unknown,
+  options: ResolvedSteamWebApiRequestOptions,
+  urlValue: string,
+  bodyInspection: SteamWebApiBodyCredentialInspection
+): Error {
+  const url = new URL(urlValue);
+  const sensitiveValues = [
+    options.key,
+    ...steamWebApiSensitiveUrlValues(url, options),
+    ...bodyInspection.sensitiveValues
+  ];
+  const redactErrorText = (original: string): string => {
+    let redacted = replaceSteamWebApiText(
+      original,
+      urlValue,
+      redactSteamWebApiUrl(urlValue, options)
+    );
+    if (
+      bodyInspection.rawText &&
+      bodyInspection.redactedText &&
+      bodyInspection.rawText !== bodyInspection.redactedText
+    ) {
+      redacted = replaceSteamWebApiText(
+        redacted,
+        bodyInspection.rawText,
+        bodyInspection.redactedText
+      );
+    }
+    for (const value of sensitiveValues) {
+      if (!value) {
+        continue;
+      }
+      redacted = replaceSteamWebApiText(redacted, value, "[REDACTED]");
+      redacted = replaceSteamWebApiText(
+        redacted,
+        encodeURIComponent(value),
+        "%5BREDACTED%5D"
+      );
+      redacted = replaceSteamWebApiText(
+        redacted,
+        new URLSearchParams({ value }).toString().slice("value=".length),
+        "%5BREDACTED%5D"
+      );
+    }
+    return redacted;
+  };
+  const sanitized = new Error(
+    redactErrorText(error instanceof Error ? error.message : String(error))
+  );
+  if (error instanceof Error) {
+    sanitized.name = redactErrorText(error.name);
+  }
+  return sanitized;
+}
+
+function replaceSteamWebApiText(value: string, search: string, replacement: string): string {
+  return search ? value.split(search).join(replacement) : value;
+}
+
 function requestSteamWebApiWithDefaults(
   request: SteamWebApiRequestOptions,
   options: SteamWebApiClientOptions
-): SteamWebApiRequestOptions {
-  const envApiKey = process.env.STEAM_WEB_API_KEY ?? process.env.STEAM_API_KEY;
-  const apiKey =
-    request.key !== undefined ? request.key : options.apiKey !== undefined ? options.apiKey : envApiKey;
+): ResolvedSteamWebApiRequestOptions {
+  assertSteamWebApiEndpointMetadata(request);
+  const internalOptions = options as InternalSteamWebApiClientOptions;
+  const hasImplicitKey =
+    request.key !== null &&
+    [request.key, options.publisherApiKey, options.apiKey, internalOptions.serverEnvironmentApiKey].some(
+      (value) => typeof value === "string" && value.trim().length > 0
+    );
+  if (request.endpointAccess === undefined && hasImplicitKey) {
+    throw new Error(
+      `Steam Web API request ${request.interfaceName}.${request.methodName} must declare ` +
+        'endpointAccess as "public", "user-key", or "publisher-only" before a configured key can be used.'
+    );
+  }
+  const endpointAccess = request.endpointAccess ?? "public";
+  const endpointHost =
+    request.endpointHost ?? (endpointAccess === "publisher-only" ? "partner" : "api");
+  let keySource: SteamWebApiKeySource | undefined;
+  let apiKey: string | null | undefined;
+  if (endpointAccess !== "public") {
+    if (request.key !== undefined) {
+      apiKey = request.key;
+      keySource = request.key == null ? undefined : "request";
+    } else if (endpointAccess === "publisher-only" && options.publisherApiKey !== undefined) {
+      apiKey = options.publisherApiKey;
+      keySource = options.publisherApiKey == null ? undefined : "client";
+    } else if (options.apiKey !== undefined) {
+      apiKey = options.apiKey;
+      keySource = options.apiKey == null ? undefined : "client";
+    } else if (options.publisherApiKey !== undefined) {
+      apiKey = options.publisherApiKey;
+      keySource = options.publisherApiKey == null ? undefined : "client";
+    } else if (internalOptions.serverEnvironmentApiKey !== undefined) {
+      apiKey = internalOptions.serverEnvironmentApiKey;
+      keySource = internalOptions.serverEnvironmentApiKey == null ? undefined : "environment";
+    }
+  }
+  const normalizedApiKey = typeof apiKey === "string" ? apiKey.trim() : apiKey;
   return {
     ...request,
-    key: apiKey,
+    key: normalizedApiKey,
+    keySource,
+    endpointAccess,
+    endpointHost,
     baseUrl: request.baseUrl ?? options.baseUrl,
     format: request.format === undefined ? options.defaultFormat ?? "json" : request.format,
     headers: {
@@ -27614,6 +28317,25 @@ function requestSteamWebApiWithDefaults(
       ...request.headers
     }
   };
+}
+
+function assertSteamWebApiEndpointMetadata(
+  request: Pick<SteamWebApiRequestOptions, "endpointAccess" | "endpointHost">
+): void {
+  if (
+    request.endpointAccess !== undefined &&
+    !["public", "user-key", "publisher-only"].includes(request.endpointAccess)
+  ) {
+    throw new Error(
+      'Steam Web API endpointAccess must be "public", "user-key", or "publisher-only".'
+    );
+  }
+  if (
+    request.endpointHost !== undefined &&
+    !["api", "partner"].includes(request.endpointHost)
+  ) {
+    throw new Error('Steam Web API endpointHost must be "api" or "partner".');
+  }
 }
 
 async function requestSteamWebApiWithClient<T = unknown>(
@@ -27627,25 +28349,46 @@ async function requestSteamWebApiWithClient<T = unknown>(
   }
 
   const headers = { ...(options.headers ?? {}) };
+  assertSteamWebApiHeadersDoNotContainKey(headers);
   const body = serializeSteamWebApiBody(options.body, headers);
-  const url = buildSteamWebApiUrl(options);
+  const bodyInspection = inspectSteamWebApiBodyCredentials(body, headers, options);
+  const url = buildSteamWebApiRequestUrl(options);
+  assertSteamWebApiRequestSecurity(options, clientOptions, url, bodyInspection);
+  if (options.key) {
+    headers["x-webapi-key"] = options.key;
+  }
   const method = options.method ?? (body == null ? "GET" : "POST");
-  const response = await fetchImpl(url, {
-    method,
-    headers,
-    body,
-    signal: options.signal
-  });
-  const text = await response.text();
-  const responseHeaders = steamWebApiHeadersToRecord(response.headers);
-  return {
-    ok: response.ok,
-    status: response.status,
-    url,
-    headers: responseHeaders,
-    data: parseSteamWebApiResponse<T>(text, responseHeaders, options.format),
-    text
-  };
+  const rejectCredentialRedirects =
+    Boolean(options.key?.trim()) ||
+    steamWebApiUrlContainsCredentials(new URL(url), options) ||
+    bodyInspection.sensitiveValues.some((value) => value.length > 0) ||
+    steamWebApiEndpointRequiresSecureTransport(options);
+  let response: SteamWebApiFetchResponse;
+  try {
+    response = await fetchImpl(url, {
+      method,
+      headers,
+      body,
+      signal: options.signal,
+      ...(rejectCredentialRedirects ? { redirect: "error" } : {})
+    });
+  } catch (error) {
+    throw sanitizeSteamWebApiRequestError(error, options, url, bodyInspection);
+  }
+  try {
+    const text = await response.text();
+    const responseHeaders = steamWebApiHeadersToRecord(response.headers);
+    return {
+      ok: response.ok,
+      status: response.status,
+      url: redactSteamWebApiUrl(url, options),
+      headers: responseHeaders,
+      data: parseSteamWebApiResponse<T>(text, responseHeaders, options.format),
+      text
+    };
+  } catch (error) {
+    throw sanitizeSteamWebApiRequestError(error, options, url, bodyInspection);
+  }
 }
 
 function baseUrlWithTrailingSlash(value: string): string {
@@ -27769,7 +28512,10 @@ function parseSteamWebApiResponse<T>(
 
 function normalizeInitOptions(options?: InitOptions | number | null): Required<InitOptions> {
   if (typeof options === "number") {
-    return { appId: options, callbackIntervalMs: activeCallbackIntervalMs };
+    return {
+      appId: options,
+      callbackIntervalMs: steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+    };
   }
 
   if (options == null) {
@@ -27777,7 +28523,10 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
     if (!Number.isInteger(appId) || appId <= 0) {
       throw new Error("Steam Bridge init requires an appId or STEAM_APP_ID/SteamAppId environment variable");
     }
-    return { appId, callbackIntervalMs: activeCallbackIntervalMs };
+    return {
+      appId,
+      callbackIntervalMs: steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+    };
   }
 
   if (!Number.isInteger(options.appId) || options.appId <= 0) {
@@ -27786,32 +28535,58 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
 
   return {
     appId: options.appId,
-    callbackIntervalMs: options.callbackIntervalMs ?? activeCallbackIntervalMs
+    callbackIntervalMs:
+      options.callbackIntervalMs ?? steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
   };
 }
 
 function startCallbackPump(intervalMs: number): void {
-  activeCallbackIntervalMs = intervalMs;
+  const registry = steamOverlayProcessOwnershipRegistry();
+  registry.activeCallbackIntervalMs = intervalMs;
 
-  if (callbackTimer) {
-    clearInterval(callbackTimer);
+  if (registry.callbackTimer) {
+    clearInterval(registry.callbackTimer);
   }
 
-  callbackTimer = setInterval(() => {
+  const timer = setInterval(() => {
     try {
       native().runCallbacks();
     } catch {
-      stopCallbackPump();
+      stopCallbackPump(timer);
     }
   }, intervalMs);
 
-  callbackTimer.unref?.();
+  timer.unref?.();
+  registry.callbackTimer = timer;
 }
 
-function stopCallbackPump(): void {
-  if (callbackTimer) {
-    clearInterval(callbackTimer);
-    callbackTimer = undefined;
+interface SteamCallbackPumpSnapshot {
+  running: boolean;
+  intervalMs: number;
+}
+
+function snapshotCallbackPump(): SteamCallbackPumpSnapshot {
+  const registry = steamOverlayProcessOwnershipRegistry();
+  return {
+    running: registry.callbackTimer !== undefined,
+    intervalMs: registry.activeCallbackIntervalMs
+  };
+}
+
+function restoreCallbackPump(snapshot: SteamCallbackPumpSnapshot): void {
+  if (snapshot.running) {
+    startCallbackPump(snapshot.intervalMs);
+  }
+}
+
+function stopCallbackPump(expectedTimer?: NodeJS.Timeout): void {
+  const registry = steamOverlayProcessOwnershipRegistry();
+  if (expectedTimer && registry.callbackTimer !== expectedTimer) {
+    return;
+  }
+  if (registry.callbackTimer) {
+    clearInterval(registry.callbackTimer);
+    registry.callbackTimer = undefined;
   }
 }
 

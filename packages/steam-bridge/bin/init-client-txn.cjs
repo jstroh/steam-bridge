@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const DEFAULT_API_KEY_ENVS = ["STEAM_WEB_API_KEY", "STEAM_API_KEY"];
+const DEFAULT_API_KEY_ENVS = ["STEAM_PUBLISHER_WEB_API_KEY", "STEAM_WEB_API_KEY"];
 
 async function main(args = process.argv.slice(2)) {
   const status = await runCli(args);
@@ -172,7 +172,7 @@ Options:
   --sandbox         Use ISteamMicroTxnSandbox.
   --production      Use ISteamMicroTxn.
   --api-key-env ENV Read the publisher key from ENV. Defaults to
-                    STEAM_WEB_API_KEY or STEAM_API_KEY.
+                    STEAM_PUBLISHER_WEB_API_KEY or STEAM_WEB_API_KEY.
   --allow-test-app-id
                     Allow App ID 480 for dry plumbing experiments. Real
                     purchase proof should use a configured app/product.
@@ -213,8 +213,12 @@ async function captureInitTxn(options, deps = {}) {
   }
 
   const steamBridge = deps.steamBridge ?? require(path.join(__dirname, "..", "dist", "index.js"));
-  const client = steamBridge.createSteamWebApiClient({
-    apiKey,
+  const steamBridgeServer =
+    deps.steamBridgeServer ??
+    deps.steamBridge ??
+    require(path.join(__dirname, "..", "dist", "server.js"));
+  const client = steamBridgeServer.createPublisherWebApiClient({
+    publisherApiKey: apiKey,
     fetch: deps.fetch
   });
   const sandbox = typeof options.sandbox === "boolean" ? options.sandbox : request.sandbox !== false;
@@ -514,6 +518,8 @@ async function runSelfTest() {
     assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).clientSession, true);
     assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).data.response.params.transid, "123456789");
     assert.match(calls[0].url, /ISteamMicroTxnSandbox\/InitTxn/);
+    assert.equal(calls[0].url.includes("publisher-secret"), false);
+    assert.equal(calls[0].init.headers["x-webapi-key"], "publisher-secret");
     assert.match(String(calls[0].init.body), /usersession=client/);
 
     const defaultClientOutputFile = path.join(tempDir, "default-client-response.json");

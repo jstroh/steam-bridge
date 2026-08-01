@@ -33,6 +33,12 @@ client.callback.register("GameOverlayActivated", ({ active }) => {
 client.overlay.activateToStore(480, client.overlay.StoreFlag.None);
 ```
 
+Public Steam Web API calls use the main package. Publisher keys,
+microtransactions, and encrypted-ticket decryption use the trusted
+`steam-bridge/server` entrypoint; Steam Bridge never reads publisher-key
+environment variables from the main entrypoint or puts keys in request URLs.
+See the [package Web API guide](packages/steam-bridge/README.md#steam-web-api).
+
 App ID `480` is Valve's SpaceWar test application. Use your own Steam app ID for
 production and for app-specific inventory or commerce. When running outside
 Steam during development, put `steam_appid.txt` beside the executable or in its

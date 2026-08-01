@@ -35,7 +35,7 @@ lower-level host should feature-detect Electron's offscreen texture event.
 - A compatibility-style grouped client for familiar JavaScript call patterns.
 - Managed Electron overlays for store, web, checkout, Friends/chat, profiles,
   community, achievements, stats, and other Steam surfaces.
-- A Steam Web API client for public and publisher endpoints.
+- A Steam Web API client with separate public and trusted-server entrypoints.
 - Prebuilt native addons and Valve Steam runtime libraries.
 
 See the [Steam API coverage](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-api-coverage.md)
@@ -543,8 +543,8 @@ reports the baseline and adoption state for troubleshooting.
 
 ## Steam Web API
 
-Set `STEAM_WEB_API_KEY` for endpoints that require a publisher key, or provide
-an explicit key when creating or calling the client:
+Public, keyless endpoints are available from the main package and never inherit
+an API key from the environment:
 
 ```ts
 import steamworks from "steam-bridge";
@@ -560,8 +560,53 @@ const news = await steamworks.webApi.news.getNewsForApp({
 console.log({ players, news });
 ```
 
-Keep publisher keys and private app, product, account, and transaction data out
-of source control and logs.
+Authenticated and publisher-only endpoints belong on a trusted Node.js server.
+Import them from the explicit server entrypoint:
+
+```ts
+import { createPublisherWebApiClient } from "steam-bridge/server";
+
+const steamWebApi = createPublisherWebApiClient();
+const transaction = await steamWebApi.microTxn.initClientTxn(request);
+```
+
+Every generic `request()`, `get()`, or `post()` call must declare
+`endpointAccess: "public" | "user-key" | "publisher-only"`. Omitted metadata
+is treated as public and never inherits a configured key; an otherwise
+ambiguous configured-key call fails before fetch. The typed facades already
+carry this classification for every endpoint. Access and host routing are
+independent: `endpointHost: "api" | "partner"` selects an exceptional default
+host when needed. Otherwise public/user-key calls default to
+`api.steampowered.com` and publisher-only calls default to
+`partner.steam-api.com`. For example, Valve's keyless
+`ISteamUserAuth.AuthenticateUser` route is explicitly partner-hosted without
+being misclassified as publisher-only; SiteLicense, Inventory price-sheet, and
+PublishedFile deletion keep publisher-only access while explicitly using the
+API host. `util.getSupportedApiList()` remains anonymous unless that call is
+given its optional key explicitly.
+
+`createPublisherWebApiClient()` reads `STEAM_PUBLISHER_WEB_API_KEY`, with
+`STEAM_WEB_API_KEY` retained as a server-only compatibility alias. An explicit
+`publisherApiKey` takes precedence. Steam Bridge sends the key through the
+`x-webapi-key` header, requires HTTPS, keeps credentials out of built and
+returned URLs, and rejects publisher-key operations in browsers and Electron.
+[Valve's Web API authentication guidance](https://partner.steamgames.com/doc/webapi_overview/auth?language=english)
+requires publisher keys to remain on secure publisher servers.
+Sensitive token/ticket fields in supported structured URLs and bodies also
+require HTTPS, reject redirects, and are scrubbed from surfaced fetch errors.
+AuthenticationService, UserAuth, and UserOAuth calls enforce those transport
+rules even when a particular request currently contains no recognized secret.
+The dangerous client-runtime override exists only for exceptional migration
+diagnostics; never use it in a shipped game.
+
+The main package's explicit-key client and encrypted-ticket decryptors remain
+as deprecated compatibility shims for plain Node.js servers. Move those calls
+to `steam-bridge/server`. Client-side encrypted-ticket request/retrieval stays
+in the main package; symmetric-key decryption and inspection belong on the
+server, matching
+[Valve's encrypted application ticket guidance](https://partner.steamgames.com/doc/features/auth?language=english).
+Keep publisher keys, encrypted-ticket keys, and private app, product, account,
+and transaction data out of source control and logs.
 
 ## Packaging
 

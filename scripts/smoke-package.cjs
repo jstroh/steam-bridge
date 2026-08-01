@@ -221,6 +221,12 @@ function runMacosPackageSigningStaticChecks() {
     "./dist/electron-builder.js",
     "steam-bridge package must expose the electron-builder helper subpath"
   );
+  assert.equal(
+    packageJson.exports?.["./server"]?.default,
+    "./dist/server.js",
+    "steam-bridge package must expose the trusted server subpath"
+  );
+  assert.equal(packageJson.exports?.["./server"]?.types, "./dist/server.d.ts");
   assertExecutableFile(path.join(packageRoot, "bin", "prepare-macos-app.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "validate-checkout-target.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
@@ -235,6 +241,8 @@ function runMacosPackageSigningStaticChecks() {
   for (const expected of [
     "steam-bridge-init-client-txn",
     "publisher Web API key",
+    "server.js",
+    "createPublisherWebApiClient",
     "initClientTxn",
     "client-default",
     "checkoutTargetFromResult",
@@ -4611,6 +4619,8 @@ function runConsumerChecks() {
   assertNonEmptyFile(macosPrepareApp);
   assertNonEmptyFile(macosSigningVerifier);
   assertNonEmptyFile(checkoutTargetValidator);
+  assertNonEmptyFile(path.join(installedPackageRoot, "dist", "server.js"));
+  assertNonEmptyFile(path.join(installedPackageRoot, "dist", "server.d.ts"));
   assertNonEmptyFile(macosLauncherTemplate);
   assertNonEmptyFile(macosEntitlementsTemplate);
   assertExecutableFile(initTxnCapture);
@@ -4627,6 +4637,7 @@ function runConsumerChecks() {
     `
 const assert = require("node:assert/strict");
 const steam = require("steam-bridge");
+const steamServer = require("steam-bridge/server");
 const electron = require("steam-bridge/electron");
 const electronBuilder = require("steam-bridge/electron-builder");
 
@@ -4640,6 +4651,8 @@ assert.equal(typeof steam.default.openDialogEquivalentOverlay, "function");
 assert.equal(typeof steam.default.openSteamOverlay, "function");
 assert.equal(typeof steam.default.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.createSteamWebApiClient, "function");
+assert.equal(typeof steamServer.createPublisherWebApiClient, "function");
+assert.equal(typeof steamServer.encryptedAppTicket.decrypt, "function");
 assert.equal(typeof steam.isOverlayNeedsPresentPollingEnabled, "function");
 assert.equal(typeof steam.overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof steam.overlay.activateDialogWithNativeSession, "function");
@@ -4717,6 +4730,7 @@ import steam, {
 } from "steam-bridge";
 import * as electron from "steam-bridge/electron";
 import * as electronBuilder from "steam-bridge/electron-builder";
+import * as steamServer from "steam-bridge/server";
 
 assert.equal(typeof steam.init, "function");
 assert.equal(typeof steam.openCommunityOverlay, "function");
@@ -4728,6 +4742,8 @@ assert.equal(typeof openDialogEquivalentOverlay, "function");
 assert.equal(typeof isOverlayNeedsPresentPollingEnabled, "function");
 assert.equal(typeof steam.createElectronSteamOverlay, "function");
 assert.equal(typeof createSteamWebApiClient, "function");
+assert.equal(typeof steamServer.createPublisherWebApiClient, "function");
+assert.equal(typeof steamServer.encryptedAppTicket.decrypt, "function");
 assert.equal(typeof overlay.openNativeOverlayProbeWindow, "function");
 assert.equal(typeof overlay.activateDialogWithNativeSession, "function");
 assert.equal(typeof overlay.activateToWebPageWithNativeSession, "function");
@@ -4821,9 +4837,15 @@ import {
   type ElectronBuilderAfterPackContext,
   type PrepareMacosSteamAppAfterPackResult
 } from "steam-bridge/electron-builder";
+import {
+  createPublisherWebApiClient,
+  type SteamWebApiServerClientOptions
+} from "steam-bridge/server";
 
 const client = steam.init(480);
 const web = createSteamWebApiClient({ apiKey: "test" });
+const serverOptions: SteamWebApiServerClientOptions = { publisherApiKey: "test" };
+const publisherWeb = createPublisherWebApiClient(serverOptions);
 const enumValue: number = SteamworksEnums.EResult.k_EResultOK;
 const needsPresentPollingFn: () => boolean = isOverlayNeedsPresentPollingEnabled;
 const needsPresentPollingUtilsFn: () => boolean = steam.utils.isOverlayNeedsPresentPollingEnabled;
@@ -4986,6 +5008,7 @@ const steamId: SteamId | undefined = undefined;
 
 void client;
 void web;
+void publisherWeb;
 void enumValue;
 void needsPresentPollingFn;
 void needsPresentPollingUtilsFn;

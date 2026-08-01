@@ -36,6 +36,65 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
+### 2026-08-01 Web API boundary and JavaScript lifecycle checkpoint
+
+The Web API facade no longer guesses that an unclassified helper belongs on
+Steam's partner host. All 193 audited facade call sites now carry explicit
+`public`, `user-key`, or `publisher-only` access metadata. Host routing is a
+separate decision: public and ordinary user-key traffic defaults to
+`api.steampowered.com`, publisher-only traffic defaults to
+`partner.steam-api.com`, and Valve's keyless
+`ISteamUserAuth.AuthenticateUser` exception explicitly selects the partner
+host. Conversely, SiteLicense, Inventory price-sheet, and PublishedFile delete
+operations retain publisher-only access on Valve's API host. The supported-API
+catalog stays anonymous by default but honors a key supplied explicitly to that
+call. Generic `request()`, `get()`, and `post()` callers must supply the same
+access metadata for authenticated operations and may select an exceptional
+host independently; invalid JavaScript metadata fails before fetch. Omitted
+access is deliberately keyless/public. This closes the known UserStats
+misroutes and makes future helper access omissions a TypeScript error.
+
+Publisher credentials now have a canonical `steam-bridge/server` boundary.
+Only that entrypoint discovers `STEAM_PUBLISHER_WEB_API_KEY` or the server-only
+`STEAM_WEB_API_KEY` compatibility alias. Keys travel in `x-webapi-key`, never
+in generated or returned URLs; authenticated requests require HTTPS,
+environment-derived keys cannot leave Valve's official API origins, and
+credential-bearing errors and URLs are redacted. Browser and Electron
+publisher-secret use fails closed unless a deliberately dangerous migration
+override is supplied. Nested `input_json`, form/JSON bodies, camel-case
+credential fields, and AuthenticationService's method-specific request IDs,
+guard data, codes, and signatures are also inspected and redacted;
+credential-bearing fetches require HTTPS and reject redirects so a key or token
+cannot cross origins. Fetch and response-body-read failures share that same
+sanitizer, and AuthenticationService, UserAuth, and UserOAuth routes enforce
+secure, non-redirecting transport independent of field detection.
+Root explicit-key and encrypted-ticket-decryption APIs
+remain deprecated plain-Node compatibility shims, while encrypted-ticket
+symmetric-key inspection is guarded from client runtimes.
+The configured-product Electron smoke app retains one deliberately loud,
+repository-only exception for its private `InitTxn`/`QueryTxn` ordering proof;
+it imports `steam-bridge/server`, opts into the dangerous override in one
+central factory, and accepts only the explicit publisher-key environment name
+plus the documented compatibility alias. This exception must not migrate into
+a shipped Electron client; production commerce calls belong on its backend.
+
+Steam Bridge's callback timer, managed Electron controller, native
+session/presenter/raw-surface lease, notification-presenter registrations,
+listeners, waits, and timers now share the existing process-global ownership
+registry. `shutdown()` and every repeat-init path close these JavaScript
+resources before native teardown/reinitialization, including after module
+reload, and pending managed waits reject with the established closed error.
+Managed-controller setup is rollback-protected from the first fallible
+post-presenter display-rate synchronization, so a failed construction cannot
+strand the native surface or block an immediate retry.
+Successful `initSafe()` and anonymous re-init preserve a previously running
+callback pump, while stale timer failures cannot stop a replacement pump.
+P1.3's required Linux Steam launch flags are unchanged. Focused unit coverage
+passes 361/361, and the packed CJS, ESM, TypeScript, CLI, and export-map consumer
+smoke passes with the repository's documented real-Python Windows adapter.
+The final local gate also passes supported-target policy, the complete npm test
+command, native formatting and compilation, API coverage, and diff checks.
+
 ### 2026-08-01 callback-dispatch correctness checkpoint
 
 The next release includes a focused Steam callback repair. Client and

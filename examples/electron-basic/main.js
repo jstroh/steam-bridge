@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
+const { createPublisherWebApiClient } = require("steam-bridge/server");
 const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 const { serializeSmokeError } = require("./smoke-error.cjs");
 const {
@@ -3508,8 +3509,8 @@ function prepareInitTxnCheckout(activeClient) {
   if (APP_ID === 480) {
     throw new Error("Private InitTxn checkout proof requires a configured Steam app/product.");
   }
-  const apiKeyEnv = INIT_TXN_API_KEY_ENV || "STEAM_WEB_API_KEY";
-  const apiKey = process.env[apiKeyEnv] || (!INIT_TXN_API_KEY_ENV ? process.env.STEAM_API_KEY : "");
+  const apiKeyEnv = INIT_TXN_API_KEY_ENV || "STEAM_PUBLISHER_WEB_API_KEY";
+  const apiKey = process.env[apiKeyEnv] || (!INIT_TXN_API_KEY_ENV ? process.env.STEAM_WEB_API_KEY : "");
   if (!apiKey) {
     throw new Error("Missing Steam publisher Web API key environment variable for private InitTxn checkout.");
   }
@@ -3531,7 +3532,7 @@ function prepareInitTxnCheckout(activeClient) {
   };
   const endpoint = normalizeInitTxnEndpoint(INIT_TXN_ENDPOINT || (request.sandbox === false ? "production" : "sandbox"));
   const requestShape = initTxnRequestShape(initTxnRequest, session);
-  const webClient = steamworks.createSteamWebApiClient({ apiKey });
+  const webClient = createPrivateInitTxnPublisherClient(apiKey);
   const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
   return {
     apiKey,
@@ -3636,7 +3637,7 @@ function createClientSessionQueryStatusProbe({ endpoint, apiKey, transactionId, 
       return clientSessionQuerySkippedDiagnostic("missing-query-id", diagnosticContext);
     }
 
-    const webClient = steamworks.createSteamWebApiClient({ apiKey });
+    const webClient = createPrivateInitTxnPublisherClient(apiKey);
     const facade = endpoint === "production" ? webClient.microTxn : webClient.microTxnSandbox;
     const response = await facade.queryTxn({
       appId: APP_ID,
@@ -3649,6 +3650,15 @@ function createClientSessionQueryStatusProbe({ endpoint, apiKey, transactionId, 
   };
   queryClientSessionStatus.diagnosticContext = diagnosticContext;
   return queryClientSessionStatus;
+}
+
+function createPrivateInitTxnPublisherClient(publisherApiKey) {
+  // Repository-only configured-product QA exception. Production Electron apps
+  // must keep publisher credentials on their backend.
+  return createPublisherWebApiClient({
+    publisherApiKey,
+    dangerouslyAllowClientSidePublisherSecrets: true
+  });
 }
 
 async function queryClientSessionPromptMissingStatus(queryClientSessionStatus) {

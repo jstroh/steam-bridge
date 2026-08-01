@@ -23,7 +23,15 @@ function readSourceFile(...pathSegments) {
 }
 
 function clearSteamBridgeCache() {
-  for (const fileName of ["index.js", "native.js", "electron.js", "electron-builder.js", "kwin.js"]) {
+  for (const fileName of [
+    "index.js",
+    "native.js",
+    "electron.js",
+    "electron-builder.js",
+    "kwin.js",
+    "publisher-security.js",
+    "server.js"
+  ]) {
     try {
       delete require.cache[require.resolve(distFile(fileName))];
     } catch {
@@ -1867,6 +1875,8 @@ test("InitTxn capture CLI writes private checkout JSON with redacted output", as
   assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).clientSession, true);
   assert.equal(JSON.parse(fs.readFileSync(outputFile, "utf8")).data.response.params.transid, rawTransactionId);
   assert.match(fetchCalls[0].url, /ISteamMicroTxnSandbox\/InitTxn/);
+  assert.equal(fetchCalls[0].url.includes("publisher-secret"), false);
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "publisher-secret");
   assert.match(String(fetchCalls[0].init.body), /usersession=client/);
 
   const defaultClientOutputFile = path.join(tempDir, "default-client-response.json");
@@ -2015,8 +2025,23 @@ test("electron smoke native-host-unavailable action errors keep sanitized target
   );
   assert.match(
     exampleMain,
-    /createSteamWebApiClient\(\{\s*apiKey\s*\}\)/,
-    "private InitTxn smoke proof should use the public Steam Web API client"
+    /require\("steam-bridge\/server"\)/,
+    "private InitTxn smoke proof should import the server-only Steam Web API boundary"
+  );
+  assert.match(
+    exampleMain,
+    /function createPrivateInitTxnPublisherClient\(publisherApiKey\)[\s\S]*createPublisherWebApiClient\(\{[\s\S]*publisherApiKey,[\s\S]*dangerouslyAllowClientSidePublisherSecrets:\s*true/,
+    "the repository-only private InitTxn proof should make its dangerous Electron exception explicit"
+  );
+  assert.equal(
+    (exampleMain.match(/createPrivateInitTxnPublisherClient\(apiKey\)/g) || []).length,
+    2,
+    "private InitTxn and QueryTxn proof should share one explicit publisher-client factory"
+  );
+  assert.doesNotMatch(
+    exampleMain,
+    /process\.env\.STEAM_API_KEY/,
+    "the private InitTxn proof should not guess the ambiguous legacy STEAM_API_KEY name"
   );
   assert.match(
     exampleMain,
@@ -3825,6 +3850,10 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.ok(packageJson.files.includes("libsteam_api.*"));
   assert.ok(packageJson.files.includes("steam_api*.dll"));
   assert.equal(packageJson.bin?.["steam-bridge-init-client-txn"], "bin/init-client-txn.cjs");
+  assert.equal(packageJson.exports?.["./server"]?.default, "./dist/server.js");
+  assert.equal(packageJson.exports?.["./server"]?.types, "./dist/server.d.ts");
+  assert.match(initClientTxnScript, /dist["', ]+,?[\s\S]*server\.js/);
+  assert.match(initClientTxnScript, /createPublisherWebApiClient/);
   assert.match(rootPackageJson.scripts["native:build"], /scripts\/build-native\.cjs/);
   assert.match(rootPackageJson.scripts["native:check"], /scripts\/check-native\.cjs/);
   assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
@@ -5408,6 +5437,80 @@ test("init reads the Steam app ID from the environment and returns the grouped c
     { method: "useBreakpadCrashHandler", args: ["1.0.0", "Jan 01 2026", "00:00:00", false] },
     { method: "setBreakpadAppId", args: [480] }
   ]);
+});
+
+test("a stale callback tick cannot stop a reentrant replacement pump", async (t) => {
+  let steam;
+  let reinitialized = false;
+  let callbackCount = 0;
+  const fake = createFakeNative({
+    runCallbacks() {
+      callbackCount += 1;
+      this.calls.push({ method: "runCallbacks", args: [] });
+      if (!reinitialized) {
+        reinitialized = true;
+        steam.init({ appId: 481, callbackIntervalMs: 2 });
+        throw new Error("stale callback failure");
+      }
+    }
+  });
+  steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    try {
+      steam.shutdown();
+    } finally {
+      clearSteamBridgeCache();
+    }
+  });
+
+  steam.init({ appId: 480, callbackIntervalMs: 1 });
+  const deadline = Date.now() + 1000;
+  while (callbackCount <= 1 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(reinitialized, true);
+  assert.ok(callbackCount > 1, "the replacement callback pump must survive the stale tick failure");
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "init").map((call) => call.args[0]),
+    [480, 481]
+  );
+});
+
+test("successful alternate init paths preserve an existing callback pump", async (t) => {
+  let callbackCount = 0;
+  const fake = createFakeNative({
+    runCallbacks() {
+      callbackCount += 1;
+      this.calls.push({ method: "runCallbacks", args: [] });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    try {
+      steam.shutdown();
+    } finally {
+      clearSteamBridgeCache();
+    }
+  });
+
+  const waitForNextCallback = async (previousCount) => {
+    const deadline = Date.now() + 1000;
+    while (callbackCount <= previousCount && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(callbackCount > previousCount, "the pre-existing callback pump must resume");
+  };
+
+  steam.init({ appId: 480, callbackIntervalMs: 2 });
+  await waitForNextCallback(0);
+  let previousCount = callbackCount;
+  assert.equal(steam.initSafe(), true);
+  await waitForNextCallback(previousCount);
+  previousCount = callbackCount;
+  assert.equal(steam.initAnonymousUser(), true);
+  await waitForNextCallback(previousCount);
 });
 
 test("init rejects missing app IDs with an actionable error", (t) => {
@@ -22619,6 +22722,196 @@ test("overlay ownership registry spans module reloads and rejects stale owners",
   secondController.close();
 });
 
+test("shutdown and repeat init close process-wide raw surfaces across module reloads", (t) => {
+  let probeOpen = false;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const firstSteam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    try {
+      firstSteam.shutdown();
+    } catch {
+      // The test may already have completed process-wide shutdown.
+    }
+    clearSteamBridgeCache();
+  });
+
+  firstSteam.init(480);
+  firstSteam.openNativeOverlayProbeWindow("first");
+  assert.equal(probeOpen, true);
+
+  const secondSteam = loadSteamWithFakeNative(fake);
+  secondSteam.shutdown();
+  assert.equal(probeOpen, false);
+  const firstCloseIndex = fake.calls.findIndex((call) => call.method === "closeNativeOverlayProbeWindow");
+  const firstShutdownIndex = fake.calls.findIndex((call) => call.method === "shutdown");
+  assert.ok(firstCloseIndex >= 0 && firstCloseIndex < firstShutdownIndex);
+
+  secondSteam.init(481);
+  secondSteam.openNativeOverlayProbeWindow("second");
+  assert.equal(probeOpen, true);
+  firstSteam.closeNativeOverlayProbeWindow();
+  assert.equal(probeOpen, false);
+  secondSteam.openNativeOverlayProbeWindow("replacement");
+  assert.equal(probeOpen, true);
+
+  const callsBeforeRepeatInit = fake.calls.length;
+  secondSteam.init(482);
+  const repeatCalls = fake.calls.slice(callsBeforeRepeatInit).map((call) => call.method);
+  assert.deepEqual(repeatCalls.slice(0, 2), ["closeNativeOverlayProbeWindow", "init"]);
+  assert.equal(probeOpen, false);
+});
+
+test("repeat init preserves a fail-closed raw lease when native cleanup fails", (t) => {
+  let probeOpen = false;
+  let closeFails = true;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    closeNativeOverlayProbeWindow() {
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+      if (closeFails) {
+        throw new Error("native close failed");
+      }
+      probeOpen = false;
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    closeFails = false;
+    try {
+      steam.shutdown();
+    } catch {
+      // Preserve the original assertion if cleanup has already completed.
+    }
+    clearSteamBridgeCache();
+  });
+
+  steam.init(480);
+  steam.openNativeOverlayProbeWindow("fail-closed");
+  assert.throws(
+    () => steam.init(481),
+    /could not close its raw native surface/
+  );
+  assert.equal(probeOpen, true);
+  assert.equal(fake.calls.filter((call) => call.method === "init").length, 1);
+  assert.throws(
+    () => steam.openNativeOverlayProbeWindow("must-not-replace"),
+    (error) => error?.code === "STEAM_OVERLAY_NATIVE_SURFACE_OWNED"
+  );
+
+  closeFails = false;
+  steam.shutdown();
+  assert.equal(probeOpen, false);
+});
+
+test("shutdown closes managed Electron resources and rejects pending waits before native shutdown", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+  let hostOpen = false;
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {},
+    showNativeOverlayHostView() {},
+    hideNativeOverlayHostView() {},
+    setNativeOverlayHostInputPassthrough() {},
+    setNativeOverlayHostOpacity() {},
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const removedListeners = [];
+  const createWindow = (handle) => ({
+    isDestroyed() {
+      return false;
+    },
+    getNativeWindowHandle() {
+      return handle;
+    },
+    once() {},
+    on() {},
+    off(name) {
+      removedListeners.push(`window:${name}`);
+    },
+    webContents: {
+      once() {},
+      on() {},
+      off(name) {
+        removedListeners.push(`webContents:${name}`);
+      },
+      invalidate() {},
+      send() {}
+    }
+  });
+
+  t.after(() => {
+    try {
+      steam.shutdown();
+    } catch {
+      // The test may already have completed process-wide shutdown.
+    }
+    clearSteamBridgeCache();
+  });
+
+  steam.init(480);
+  const controller = steam.createElectronSteamOverlay(createWindow(Buffer.from([7, 7, 7, 7])), {
+    pollIntervalMs: 10000
+  });
+  controller.presenter.prepareForOverlay(0);
+  const pendingWait = controller.waitForOverlayShown({ timeoutMs: 5000 });
+  assert.equal(hostOpen, true);
+
+  steam.shutdown();
+  await assert.rejects(pendingWait, (error) => error?.code === "STEAM_OVERLAY_WAIT_CLOSED");
+  assert.equal(controller.isOpen(), false);
+  assert.equal(hostOpen, false);
+  assert.ok(removedListeners.length > 0);
+  const detachIndex = fake.calls.findIndex((call) => call.method === "detachNativeOverlayHostView");
+  const shutdownIndex = fake.calls.findIndex((call) => call.method === "shutdown");
+  assert.ok(detachIndex >= 0 && detachIndex < shutdownIndex);
+
+  steam.init(481);
+  const replacement = steam.createElectronSteamOverlay(createWindow(Buffer.from([8, 8, 8, 8])), {
+    pollIntervalMs: 10000
+  });
+  assert.equal(replacement.isOpen(), true);
+  replacement.close();
+});
+
 test("overlay ownership rejects worker-thread isolates before side effects", (t) => {
   setProcessPlatformForTest(t, "linux");
   setProcessEnvForTest(t, {
@@ -23047,6 +23340,12 @@ test("managed controller construction rolls back every partially installed resou
     getNativeWindowHandle() {
       return Buffer.from([6, 6, 6, 6]);
     },
+    getBounds() {
+      if (failureStage === "display-sync" && hostOpen) {
+        throw new Error("display frame-rate synchronization failed");
+      }
+      return { x: 0, y: 0, width: 1280, height: 720 };
+    },
     once(event) {
       calls.push(`window:once:${event}`);
       if (failureStage === "closed") {
@@ -23078,16 +23377,21 @@ test("managed controller construction rolls back every partially installed resou
     }
   });
 
-  for (const failureStage of ["geometry", "shortcut", "closed"]) {
+  for (const failureStage of ["display-sync", "geometry", "shortcut", "closed"]) {
     const calls = [];
     assert.throws(
       () =>
         steam.overlay.createElectronSteamOverlay(createWindow(failureStage, calls), {
           pollIntervalMs: 10000
         }),
-      new RegExp(`${failureStage} listener registration failed`)
+      failureStage === "display-sync"
+        ? /display frame-rate synchronization failed/
+        : new RegExp(`${failureStage} listener registration failed`)
     );
-    assert.equal(calls.some((call) => call.startsWith("window:off:")), true);
+    assert.equal(hostOpen, false);
+    if (failureStage !== "display-sync") {
+      assert.equal(calls.some((call) => call.startsWith("window:off:")), true);
+    }
     if (failureStage === "shortcut") {
       assert.equal(calls.includes("web:off:before-input-event"), true);
     }
@@ -34869,6 +35173,7 @@ test("web API client builds generic Steam Web API URLs and parses JSON responses
   const request = {
     interfaceName: "ISteamUserStats",
     methodName: "GetNumberOfCurrentPlayers",
+    endpointAccess: "public",
     version: 1,
     params: {
       appid: 480,
@@ -34882,7 +35187,7 @@ test("web API client builds generic Steam Web API URLs and parses JSON responses
 
   assert.equal(
     client.buildUrl(request),
-    "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v0001/?key=secret&format=json&appid=480&include_appinfo=0&ids=1&ids=2"
+    "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v0001/?format=json&appid=480&include_appinfo=0&ids=1&ids=2"
   );
 
   const response = await client.get(request);
@@ -34892,6 +35197,717 @@ test("web API client builds generic Steam Web API URLs and parses JSON responses
   assert.equal(response.headers["content-type"], "application/json; charset=utf-8");
   assert.equal(fetchCalls[0].url, client.buildUrl(request));
   assert.equal(fetchCalls[0].init.method, "GET");
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], undefined);
+  assert.equal(fetchCalls[0].init.redirect, undefined);
+});
+
+test("web API access metadata routes hosts and keeps credentials out of URLs", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const server = require(distFile("server.js"));
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: { forEach() {} },
+      async text() {
+        return "{}";
+      }
+    };
+  };
+  const client = server.createPublisherWebApiClient({
+    publisherApiKey: "publisher-secret",
+    fetch: fetchImpl
+  });
+
+  t.after(clearSteamBridgeCache);
+
+  const responses = await Promise.all([
+    client.userStats.getGlobalAchievementPercentagesForApp(480),
+    client.userStats.getNumberOfCurrentPlayers(480),
+    client.userStats.getPlayerAchievements({ appId: 480, steamId64: 76561198000000000n }),
+    client.userStats.getSchemaForGame({ appId: 480 }),
+    client.userStats.getUserStatsForGame({ appId: 480, steamId64: 76561198000000000n }),
+    client.user.checkAppOwnership({ appId: 480, steamId64: 76561198000000000n })
+  ]);
+
+  assert.deepEqual(
+    fetchCalls.map(({ url }) => new URL(url).origin),
+    [
+      "https://api.steampowered.com",
+      "https://api.steampowered.com",
+      "https://api.steampowered.com",
+      "https://api.steampowered.com",
+      "https://api.steampowered.com",
+      "https://partner.steam-api.com"
+    ]
+  );
+  assert.deepEqual(
+    fetchCalls.map(({ init }) => init.headers["x-webapi-key"]),
+    [undefined, undefined, "publisher-secret", "publisher-secret", "publisher-secret", "publisher-secret"]
+  );
+  assert.deepEqual(
+    fetchCalls.map(({ init }) => init.redirect),
+    [undefined, undefined, "error", "error", "error", "error"]
+  );
+  for (const call of fetchCalls) {
+    assert.equal(call.url.includes("publisher-secret"), false);
+    assert.equal(new URL(call.url).searchParams.has("key"), false);
+  }
+  for (const response of responses) {
+    assert.equal(response.url.includes("publisher-secret"), false);
+    assert.equal(response.url.includes("key="), false);
+  }
+  assert.equal(
+    steam.buildSteamWebApiUrl({
+      interfaceName: "ICloudService",
+      methodName: "EnumerateUserFiles",
+      key: "must-not-appear",
+      params: { access_token: "oauth-secret" }
+    }).includes("must-not-appear"),
+    false
+  );
+  assert.match(
+    steam.buildSteamWebApiUrl({
+      interfaceName: "ICloudService",
+      methodName: "EnumerateUserFiles",
+      params: { access_token: "oauth-secret" }
+    }),
+    /access_token=%5BREDACTED%5D/
+  );
+  const basicAuthUrl = steam.buildSteamWebApiUrl({
+    interfaceName: "ITest",
+    methodName: "Public",
+    baseUrl: "https://user:password@example.invalid"
+  });
+  assert.equal(basicAuthUrl.includes("user"), false);
+  assert.equal(basicAuthUrl.includes("password"), false);
+  assert.equal(new URL(basicAuthUrl).origin, "https://example.invalid");
+  const invalidBaseSecret = "invalid-base-secret";
+  assert.throws(
+    () => steam.buildSteamWebApiUrl({
+      interfaceName: "ITest",
+      methodName: "InvalidBase",
+      baseUrl: `https://user:${invalidBaseSecret}@%`
+    }),
+    (error) => {
+      assert.equal(error.message.includes(invalidBaseSecret), false);
+      assert.equal(JSON.stringify(error).includes(invalidBaseSecret), false);
+      assert.match(error.message, /valid absolute URL/);
+      return true;
+    }
+  );
+  assert.equal(
+    new URL(client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "Publisher",
+      endpointAccess: "publisher-only"
+    })).origin,
+    "https://partner.steam-api.com"
+  );
+  assert.equal(
+    new URL(client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "User",
+      endpointAccess: "user-key"
+    })).origin,
+    "https://api.steampowered.com"
+  );
+  assert.equal(
+    new URL(client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "KeylessPartner",
+      endpointAccess: "public",
+      endpointHost: "partner"
+    })).origin,
+    "https://partner.steam-api.com"
+  );
+  assert.equal(
+    new URL(client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "PublisherOnApiHost",
+      endpointAccess: "publisher-only",
+      endpointHost: "api"
+    })).origin,
+    "https://api.steampowered.com"
+  );
+  assert.throws(
+    () => client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "InvalidAccess",
+      endpointAccess: "publisher"
+    }),
+    /endpointAccess must be/
+  );
+  assert.throws(
+    () => client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "InvalidHost",
+      endpointAccess: "public",
+      endpointHost: "store"
+    }),
+    /endpointHost must be/
+  );
+  assert.throws(
+    () => steam.buildSteamWebApiUrl({
+      interfaceName: "ITest",
+      methodName: "InvalidDirectAccess",
+      endpointAccess: "publisher"
+    }),
+    /endpointAccess must be/
+  );
+  const nestedUrl = steam.buildSteamWebApiUrl({
+    interfaceName: "ITest",
+    methodName: "NestedCredentials",
+    params: {
+      input_json: JSON.stringify({
+        login_token: "nested-secret",
+        nested: { accessToken: "camel-secret", safe: "visible" }
+      })
+    }
+  });
+  assert.equal(nestedUrl.includes("nested-secret"), false);
+  assert.equal(nestedUrl.includes("camel-secret"), false);
+  assert.deepEqual(JSON.parse(new URL(nestedUrl).searchParams.get("input_json")), {
+    login_token: "[REDACTED]",
+    nested: { accessToken: "[REDACTED]", safe: "visible" }
+  });
+  const authQueryUrl = steam.buildSteamWebApiUrl({
+    interfaceName: " iauthenticationservice ",
+    methodName: " pollauthsessionstatus ",
+    endpointAccess: "public",
+    params: { requestId: "query-request-secret" }
+  });
+  assert.equal(authQueryUrl.includes("query-request-secret"), false);
+  assert.equal(new URL(authQueryUrl).searchParams.get("requestId"), "[REDACTED]");
+});
+
+test("server Web API entry owns environment keys and enforces transport boundaries", async (t) => {
+  const previousPublisherKey = process.env.STEAM_PUBLISHER_WEB_API_KEY;
+  const previousWebApiKey = process.env.STEAM_WEB_API_KEY;
+  const previousLegacyKey = process.env.STEAM_API_KEY;
+  process.env.STEAM_PUBLISHER_WEB_API_KEY = "environment-secret";
+  process.env.STEAM_WEB_API_KEY = "compatibility-secret";
+  process.env.STEAM_API_KEY = "legacy-secret";
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const server = require(distFile("server.js"));
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      headers: { forEach() {} },
+      async text() {
+        return "{}";
+      }
+    };
+  };
+
+  t.after(() => {
+    clearSteamBridgeCache();
+    for (const [name, value] of [
+      ["STEAM_PUBLISHER_WEB_API_KEY", previousPublisherKey],
+      ["STEAM_WEB_API_KEY", previousWebApiKey],
+      ["STEAM_API_KEY", previousLegacyKey]
+    ]) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  });
+
+  await assert.rejects(
+    steam.createSteamWebApiClient({ fetch: fetchImpl }).userStats.getPlayerAchievements({
+      appId: 480,
+      steamId64: 76561198000000000n
+    }),
+    /requires a user or publisher key/
+  );
+  assert.equal(fetchCalls.length, 0, "the root entrypoint must not read API-key environment variables");
+
+  const client = server.createPublisherWebApiClient({ fetch: fetchImpl });
+  const response = await client.userStats.getPlayerAchievements({
+    appId: 480,
+    steamId64: 76561198000000000n
+  });
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "environment-secret");
+  assert.equal(fetchCalls[0].init.redirect, "error");
+  assert.equal(fetchCalls[0].url.includes("environment-secret"), false);
+  assert.equal(response.url.includes("environment-secret"), false);
+  assert.throws(
+    () => client.buildUrl({ interfaceName: "ITest", methodName: "Ambiguous" }),
+    /must declare endpointAccess/
+  );
+
+  await assert.rejects(
+    server.createPublisherWebApiClient({
+      publisherApiKey: "explicit-secret",
+      fetch: fetchImpl
+    }).request({
+      interfaceName: "ISteamUserStats",
+      methodName: "GetPlayerAchievements",
+      endpointAccess: "user-key",
+      baseUrl: "http://api.steampowered.com"
+    }),
+    /require HTTPS/
+  );
+  await assert.rejects(
+    server.createPublisherWebApiClient({ fetch: fetchImpl }).request({
+      interfaceName: "ITest",
+      methodName: "Private",
+      endpointAccess: "publisher-only",
+      baseUrl: "https://example.invalid"
+    }),
+    /official Steam API hosts/
+  );
+  await assert.rejects(
+    server.createPublisherWebApiClient({
+      publisherApiKey: "explicit-secret",
+      headers: { "X-WebAPI-Key": "caller-secret" },
+      fetch: fetchImpl
+    }).request({
+      interfaceName: "ITest",
+      methodName: "Private",
+      endpointAccess: "publisher-only"
+    }),
+    /sets x-webapi-key itself/
+  );
+  await assert.rejects(
+    server.createPublisherWebApiClient({
+      publisherApiKey: "explicit-secret",
+      fetch: fetchImpl
+    }).request({
+      interfaceName: "ITest",
+      methodName: "Private",
+      endpointAccess: "publisher-only",
+      baseUrl: "https://user:password@example.invalid"
+    }),
+    /must not contain credentials/
+  );
+  await assert.rejects(
+    steam.createSteamWebApiClient({ fetch: fetchImpl }).request({
+      interfaceName: "ITest",
+      methodName: "QueryKey",
+      endpointAccess: "public",
+      params: { apiKey: "query-secret" }
+    }),
+    /must use x-webapi-key/
+  );
+  await assert.rejects(
+    steam.createSteamWebApiClient({ fetch: fetchImpl }).request({
+      interfaceName: "ITest",
+      methodName: "BodyKey",
+      endpointAccess: "public",
+      method: "POST",
+      body: { publisherKey: "body-key-secret" }
+    }),
+    /must use x-webapi-key/
+  );
+  await assert.rejects(
+    steam.createSteamWebApiClient({ fetch: fetchImpl }).cloudService.beginAppUploadBatch({
+      accessToken: "oauth-body-secret",
+      appId: 480,
+      machineName: "unsafe transport",
+      filesToUpload: ["save.sav"],
+      filesToDelete: [],
+      baseUrl: "http://api.steampowered.com"
+    }),
+    /require HTTPS/
+  );
+  assert.equal(fetchCalls.length, 1, "invalid credential transports must fail before fetch");
+
+  const fetchErrorClient = steam.createSteamWebApiClient({
+    fetch: async () => {
+      throw new Error("request failed with nested-secret and camel-secret");
+    }
+  });
+  await assert.rejects(
+    fetchErrorClient.request({
+      interfaceName: "ICloudService",
+      methodName: "EnumerateUserFiles",
+      params: {
+        input_json: JSON.stringify({
+          login_token: "nested-secret",
+          nested: { accessToken: "camel-secret" }
+        })
+      }
+    }),
+    (error) => {
+      assert.equal(error.message.includes("nested-secret"), false);
+      assert.equal(error.message.includes("camel-secret"), false);
+      assert.match(error.message, /REDACTED/);
+      return true;
+    }
+  );
+
+  let bodyErrorInit;
+  const bodyErrorClient = steam.createSteamWebApiClient({
+    fetch: async (_url, init) => {
+      bodyErrorInit = init;
+      throw new Error(`request failed for body ${init.body}`);
+    }
+  });
+  await assert.rejects(
+    bodyErrorClient.cloudService.beginAppUploadBatch({
+      accessToken: "oauth-body-secret",
+      appId: 480,
+      machineName: "error redaction",
+      filesToUpload: ["save.sav"],
+      filesToDelete: []
+    }),
+    (error) => {
+      assert.equal(error.message.includes("oauth-body-secret"), false);
+      assert.match(error.message, /REDACTED/);
+      return true;
+    }
+  );
+  assert.equal(bodyErrorInit.redirect, "error");
+
+  let paddedKeyHeader;
+  const paddedKeyClient = server.createPublisherWebApiClient({
+    publisherApiKey: "  padded-key-secret  ",
+    fetch: async (_url, init) => {
+      paddedKeyHeader = init.headers["x-webapi-key"];
+      throw new Error(`adapter normalized ${paddedKeyHeader.trim()}`);
+    }
+  });
+  await assert.rejects(
+    paddedKeyClient.user.checkAppOwnership({ appId: 480, steamId64: 1n }),
+    (error) => {
+      assert.equal(error.message.includes("padded-key-secret"), false);
+      assert.match(error.message, /REDACTED/);
+      return true;
+    }
+  );
+  assert.equal(paddedKeyHeader, "padded-key-secret");
+});
+
+test("authentication service protects method-specific request secrets", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const authenticationRequests = [
+    {
+      secret: "poll-request-secret",
+      invoke(client, baseUrl) {
+        return client.authenticationService.pollAuthSessionStatus({
+          clientId: 111n,
+          requestId: this.secret,
+          tokenToRevoke: 0n,
+          baseUrl
+        });
+      }
+    },
+    {
+      secret: "guard-data-secret",
+      invoke(client, baseUrl) {
+        return client.authenticationService.beginAuthSessionViaCredentials({
+          deviceFriendlyName: "Steam Bridge Test",
+          accountName: "player",
+          encryptedPassword: "encrypted-password-secret",
+          encryptionTimestamp: 222n,
+          rememberLogin: false,
+          platformType: 2,
+          deviceDetails: { device_id: "device-1" },
+          guardData: this.secret,
+          language: 0,
+          baseUrl
+        });
+      }
+    },
+    {
+      secret: "ABCDE",
+      invoke(client, baseUrl) {
+        return client.authenticationService.updateAuthSessionWithSteamGuardCode({
+          clientId: 111n,
+          steamId64: 76561198000000000n,
+          code: this.secret,
+          codeType: 2,
+          baseUrl
+        });
+      }
+    },
+    {
+      secret: "sig ~ value",
+      invoke(client, baseUrl) {
+        return client.authenticationService.updateAuthSessionWithMobileConfirmation({
+          version: 1,
+          clientId: 111n,
+          steamId64: 76561198000000000n,
+          signature: this.secret,
+          confirm: true,
+          baseUrl
+        });
+      }
+    }
+  ];
+
+  t.after(clearSteamBridgeCache);
+
+  const insecureClient = steam.createSteamWebApiClient({
+    fetch: async (url, init) => {
+      fetchCalls.push({ url, init });
+      throw new Error("insecure fetch should not run");
+    }
+  });
+  for (const request of authenticationRequests) {
+    await assert.rejects(
+      request.invoke(insecureClient, "http://api.steampowered.com"),
+      /require HTTPS/
+    );
+  }
+  const otherSecuritySensitiveRequests = [
+    (client, baseUrl) => client.authenticationService.getAuthSessionInfo(111n, { baseUrl }),
+    (client, baseUrl) => client.authenticationService.getAuthSessionRiskInfo({
+      clientId: 111n,
+      language: 0,
+      baseUrl
+    }),
+    (client, baseUrl) => client.authenticationService.notifyRiskQuizResults({
+      clientId: 111n,
+      results: { questions: [] },
+      selectedAction: "approve",
+      didConfirmLogin: true,
+      baseUrl
+    }),
+    (client, baseUrl) => client.authenticationService.getPasswordRsaPublicKey("player", { baseUrl }),
+    (client, baseUrl) => client.authenticationService.beginAuthSessionViaQr({
+      deviceFriendlyName: "Steam Bridge QR",
+      platformType: 2,
+      deviceDetails: { device_id: "device-qr" },
+      baseUrl
+    }),
+    (client, baseUrl) => client.userAuth.authenticateUser({
+      steamId64: 76561198000000000n,
+      sessionKey: Buffer.from([1, 2, 3]),
+      encryptedLoginKey: Buffer.from([4, 5, 6]),
+      baseUrl
+    }),
+    (client, baseUrl) => client.request({
+      interfaceName: " iauthenticationservice ",
+      methodName: " getauthsessioninfo ",
+      endpointAccess: "public",
+      method: "POST",
+      body: { input_json: JSON.stringify({ client_id: "111" }) },
+      baseUrl
+    })
+  ];
+  for (const request of otherSecuritySensitiveRequests) {
+    await assert.rejects(
+      request(insecureClient, "http://api.steampowered.com"),
+      /require HTTPS/
+    );
+  }
+  const insecurePublisherClient = steam.createSteamWebApiClient({
+    publisherApiKey: "publisher-test-key",
+    fetch: async (url, init) => {
+      fetchCalls.push({ url, init });
+      throw new Error("insecure fetch should not run");
+    }
+  });
+  await assert.rejects(
+    insecurePublisherClient.userAuth.authenticateUserTicket({
+      appId: 480,
+      ticket: Buffer.from([10, 11, 12]),
+      baseUrl: "http://api.steampowered.com"
+    }),
+    /require HTTPS/
+  );
+  assert.equal(fetchCalls.length, 0, "security-sensitive endpoints must fail before insecure fetch");
+
+  const throwingClient = steam.createSteamWebApiClient({
+    fetch: async (url, init) => {
+      fetchCalls.push({ url, init });
+      throw new Error(`transport echoed ${init.body}`);
+    }
+  });
+  for (const request of authenticationRequests) {
+    await assert.rejects(request.invoke(throwingClient), (error) => {
+      assert.equal(error.message.includes(request.secret), false);
+      assert.match(error.message, /REDACTED/);
+      return true;
+    });
+    assert.equal(fetchCalls.at(-1).init.redirect, "error");
+  }
+  for (const genericRequest of [
+    {
+      methodName: "PollAuthSessionStatus",
+      fieldName: "requestId",
+      secret: "camel-request-secret"
+    },
+    {
+      methodName: "BeginAuthSessionViaCredentials",
+      fieldName: "guard-data",
+      secret: "dash-guard-secret"
+    },
+    {
+      interfaceName: " iauthenticationservice ",
+      methodName: " pollauthsessionstatus ",
+      fieldName: "requestId",
+      secret: "normalized-request-secret"
+    }
+  ]) {
+    await assert.rejects(
+      throwingClient.request({
+        interfaceName: genericRequest.interfaceName ?? "IAuthenticationService",
+        methodName: genericRequest.methodName,
+        endpointAccess: "public",
+        method: "POST",
+        body: {
+          input_json: JSON.stringify({ [genericRequest.fieldName]: genericRequest.secret })
+        }
+      }),
+      (error) => {
+        assert.equal(error.message.includes(genericRequest.secret), false);
+        assert.match(error.message, /REDACTED/);
+        return true;
+      }
+    );
+    assert.equal(fetchCalls.at(-1).init.redirect, "error");
+  }
+
+  const querySecret = "query-request-secret";
+  let queryErrorInit;
+  const queryErrorClient = steam.createSteamWebApiClient({
+    fetch: async (url, init) => {
+      queryErrorInit = init;
+      throw new Error(`transport echoed ${url}`);
+    }
+  });
+  await assert.rejects(
+    queryErrorClient.get({
+      interfaceName: " iauthenticationservice ",
+      methodName: " pollauthsessionstatus ",
+      endpointAccess: "public",
+      params: { requestId: querySecret }
+    }),
+    (error) => {
+      assert.equal(error.message.includes(querySecret), false);
+      assert.match(error.message, /REDACTED/);
+      return true;
+    }
+  );
+  assert.equal(queryErrorInit.redirect, "error");
+
+  const queryResponseClient = steam.createSteamWebApiClient({
+    fetch: async () => ({
+      ok: true,
+      status: 200,
+      headers: { forEach() {} },
+      async text() {
+        return "{}";
+      }
+    })
+  });
+  const queryResponse = await queryResponseClient.get({
+    interfaceName: "IAuthenticationService",
+    methodName: "PollAuthSessionStatus",
+    endpointAccess: "public",
+    params: { request_id: querySecret }
+  });
+  assert.equal(queryResponse.url.includes(querySecret), false);
+  assert.equal(new URL(queryResponse.url).searchParams.get("request_id"), "[REDACTED]");
+
+  let bodyReadInit;
+  const bodyReadFailureClient = steam.createSteamWebApiClient({
+    fetch: async (url, init) => {
+      bodyReadInit = init;
+      return {
+        ok: false,
+        status: 500,
+        headers: { forEach() {} },
+        async text() {
+          const error = new Error(`response read echoed ${encodedResponseSecret}`);
+          error.name = responseReadRequest.secret;
+          throw error;
+        }
+      };
+    }
+  });
+  const responseReadRequest = authenticationRequests.at(-1);
+  const encodedResponseSecret = new URLSearchParams({
+    value: responseReadRequest.secret
+  }).toString().slice("value=".length);
+  await assert.rejects(responseReadRequest.invoke(bodyReadFailureClient), (error) => {
+    assert.equal(error.message.includes(responseReadRequest.secret), false);
+    assert.equal(error.message.includes(encodedResponseSecret), false);
+    assert.equal(error.name.includes(responseReadRequest.secret), false);
+    assert.equal(String(error).includes(responseReadRequest.secret), false);
+    assert.equal(error.stack?.includes(responseReadRequest.secret) ?? false, false);
+    assert.match(error.message, /REDACTED/);
+    return true;
+  });
+  assert.equal(bodyReadInit.redirect, "error");
+
+  let headerReadInit;
+  const headerReadFailureClient = steam.createSteamWebApiClient({
+    fetch: async (_url, init) => {
+      headerReadInit = init;
+      return {
+        ok: false,
+        status: 500,
+        headers: {
+          forEach() {
+            throw new Error(`header read echoed ${init.body}`);
+          }
+        },
+        async text() {
+          return "{}";
+        }
+      };
+    }
+  });
+  const headerReadRequest = authenticationRequests[2];
+  await assert.rejects(headerReadRequest.invoke(headerReadFailureClient), (error) => {
+    assert.equal(error.message.includes(headerReadRequest.secret), false);
+    assert.match(error.message, /REDACTED/);
+    return true;
+  });
+  assert.equal(headerReadInit.redirect, "error");
+});
+
+test("publisher Web API and encrypted tickets reject Electron unless explicitly overridden", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const server = require(distFile("server.js"));
+  const previousElectron = Object.getOwnPropertyDescriptor(process.versions, "electron");
+  Object.defineProperty(process.versions, "electron", {
+    configurable: true,
+    enumerable: previousElectron?.enumerable ?? true,
+    value: "43.2.0"
+  });
+  const fetchCalls = [];
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url, init });
+    return { ok: true, status: 200, headers: { forEach() {} }, async text() { return "{}"; } };
+  };
+
+  t.after(() => {
+    if (previousElectron) {
+      Object.defineProperty(process.versions, "electron", previousElectron);
+    } else {
+      Reflect.deleteProperty(process.versions, "electron");
+    }
+    clearSteamBridgeCache();
+  });
+
+  assert.throws(
+    () => server.createPublisherWebApiClient({ publisherApiKey: "publisher-secret", fetch: fetchImpl }),
+    (error) => error?.code === "STEAM_PUBLISHER_SECRETS_CLIENT_RUNTIME"
+  );
+  assert.throws(
+    () => steam.encryptedAppTicket.decrypt(Buffer.from([1]), Buffer.alloc(32)),
+    (error) => error?.code === "STEAM_PUBLISHER_SECRETS_CLIENT_RUNTIME"
+  );
+  const dangerousClient = server.createPublisherWebApiClient({
+    publisherApiKey: "publisher-secret",
+    dangerouslyAllowClientSidePublisherSecrets: true,
+    fetch: fetchImpl
+  });
+  await dangerousClient.userStats.getPlayerAchievements({ appId: 480, steamId64: 1n });
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "publisher-secret");
 });
 
 test("web API post helper sends form fields and supports partner base URLs", async (t) => {
@@ -34915,7 +35931,7 @@ test("web API post helper sends form fields and supports partner base URLs", asy
     };
   };
   const client = steam.createSteamWebApiClient({
-    apiKey: null,
+    publisherApiKey: "explicit-secret",
     baseUrl: "https://partner.steam-api.com",
     headers: { "x-default": "1" },
     fetch: fetchImpl
@@ -34934,6 +35950,7 @@ test("web API post helper sends form fields and supports partner base URLs", asy
     interfaceName: "IEconService",
     methodName: "GetTradeOffers",
     version: "v1",
+    endpointAccess: "publisher-only",
     params: {
       get_sent_offers: true,
       appid: 480
@@ -34950,6 +35967,7 @@ test("web API post helper sends form fields and supports partner base URLs", asy
   assert.equal(fetchCalls[0].init.headers["content-type"], "application/x-www-form-urlencoded");
   assert.equal(fetchCalls[0].init.headers["x-default"], "1");
   assert.equal(fetchCalls[0].init.headers["x-request"], "2");
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "explicit-secret");
   assert.deepEqual(response.data, { response: { trade_offers_sent: [] } });
   assert.equal(typeof steam.webApi.buildUrl, "function");
   assert.equal(
@@ -34997,14 +36015,15 @@ test("web API endpoint facades cover util, user stats, and user helpers", async 
   await client.user.getPlayerSummaries([76561198000000000n, 76561198000000001n]);
   await client.user.resolveVanityUrl("spacewar", { urlType: 3 });
   await client.user.checkAppOwnership({ appId: 480, steamId64: 76561198000000000n });
+  await client.util.getSupportedApiList({ key: "catalog-secret" });
 
   assert.equal(
     fetchCalls[0].url,
-    "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v0001/?key=secret&format=json"
+    "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamUserStats/GetNumberOfCurrentPlayers/v0001/?key=secret&format=json&appid=480"
+    "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v0001/?format=json&appid=480"
   );
   assert.match(fetchCalls[2].url, /ISteamUserStats\/GetGlobalStatsForGame\/v0001/);
   assert.match(fetchCalls[2].url, /name%5B0%5D=global_wins/);
@@ -35014,12 +36033,22 @@ test("web API endpoint facades cover util, user stats, and user helpers", async 
   assert.match(fetchCalls[3].url, /steamids=76561198000000000%2C76561198000000001/);
   assert.equal(
     fetchCalls[4].url,
-    "https://partner.steam-api.com/ISteamUser/ResolveVanityURL/v0001/?key=secret&format=json&vanityurl=spacewar&url_type=3"
+    "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?format=json&vanityurl=spacewar&url_type=3"
   );
   assert.equal(
     fetchCalls[5].url,
-    "https://partner.steam-api.com/ISteamUser/CheckAppOwnership/v0004/?key=secret&format=json&appid=480&steamid=76561198000000000"
+    "https://partner.steam-api.com/ISteamUser/CheckAppOwnership/v0004/?format=json&appid=480&steamid=76561198000000000"
   );
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], undefined);
+  assert.equal(fetchCalls[1].init.headers["x-webapi-key"], undefined);
+  assert.equal(fetchCalls[4].init.headers["x-webapi-key"], "secret");
+  assert.equal(fetchCalls[5].init.headers["x-webapi-key"], "secret");
+  assert.equal(
+    fetchCalls[6].url,
+    "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v0001/?format=json"
+  );
+  assert.equal(fetchCalls[6].init.headers["x-webapi-key"], "catalog-secret");
+  assert.equal(fetchCalls[6].init.redirect, "error");
 });
 
 test("web API microtransaction facades map economy fields and sandbox endpoints", async (t) => {
@@ -35078,7 +36107,7 @@ test("web API microtransaction facades map economy fields and sandbox endpoints"
 
   assert.equal(
     fetchCalls[0].url,
-    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?format=json"
   );
   assert.equal(fetchCalls[0].init.method, "POST");
   assert.match(fetchCalls[0].init.body, /orderid=9001/);
@@ -35091,12 +36120,12 @@ test("web API microtransaction facades map economy fields and sandbox endpoints"
   assert.match(fetchCalls[0].init.body, /bundleid%5B0%5D=500/);
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamMicroTxn/FinalizeTxn/v0002/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamMicroTxn/FinalizeTxn/v0002/?format=json"
   );
   assert.equal(fetchCalls[1].init.body, "appid=480&orderid=9001");
   assert.equal(
     fetchCalls[2].url,
-    "https://partner.steam-api.com/ISteamMicroTxn/QueryTxn/v0003/?key=publisher-secret&format=json&appid=480&transid=123456789"
+    "https://partner.steam-api.com/ISteamMicroTxn/QueryTxn/v0003/?format=json&appid=480&transid=123456789"
   );
   assert.equal(fetchCalls[3].init.body, "appid=480&orderid=9001");
   assert.equal(typeof steam.webApi.microTxn.cancelAgreement, "function");
@@ -35145,19 +36174,19 @@ test("web API microtransaction InitTxn session helpers set client, web, and defa
 
   assert.equal(
     fetchCalls[0].url,
-    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?format=json"
   );
   assert.match(fetchCalls[0].init.body, /orderid=9002/);
   assert.equal(/usersession=/.test(fetchCalls[0].init.body), false);
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?format=json"
   );
   assert.match(fetchCalls[1].init.body, /orderid=9003/);
   assert.match(fetchCalls[1].init.body, /usersession=client/);
   assert.equal(
     fetchCalls[2].url,
-    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamMicroTxnSandbox/InitTxn/v0003/?format=json"
   );
   assert.match(fetchCalls[2].init.body, /orderid=9004/);
   assert.match(fetchCalls[2].init.body, /usersession=web/);
@@ -35211,23 +36240,23 @@ test("web API app and news facades map public and partner endpoints", async (t) 
 
   assert.equal(
     fetchCalls[0].url,
-    "https://api.steampowered.com/ISteamApps/GetAppList/v0002/?key=secret&format=json"
+    "https://api.steampowered.com/ISteamApps/GetAppList/v0002/?format=json"
   );
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamApps/GetAppBetas/v0001/?key=secret&format=json&appid=480"
+    "https://partner.steam-api.com/ISteamApps/GetAppBetas/v0001/?format=json&appid=480"
   );
   assert.equal(
     fetchCalls[2].url,
-    "https://partner.steam-api.com/ISteamApps/GetPartnerAppListForWebAPIKey/v0002/?key=secret&format=json&type_filter=game%2Cdlc"
+    "https://partner.steam-api.com/ISteamApps/GetPartnerAppListForWebAPIKey/v0002/?format=json&type_filter=game%2Cdlc"
   );
   assert.equal(
     fetchCalls[3].url,
-    "https://api.steampowered.com/ISteamApps/GetServersAtAddress/v0001/?key=secret&format=json&addr=127.0.0.1%3A27015"
+    "https://api.steampowered.com/ISteamApps/GetServersAtAddress/v0001/?format=json&addr=127.0.0.1%3A27015"
   );
   assert.equal(
     fetchCalls[4].url,
-    "https://partner.steam-api.com/ISteamApps/SetAppBuildLive/v0002/?key=secret&format=json"
+    "https://partner.steam-api.com/ISteamApps/SetAppBuildLive/v0002/?format=json"
   );
   assert.equal(
     fetchCalls[4].init.body,
@@ -35235,31 +36264,31 @@ test("web API app and news facades map public and partner endpoints", async (t) 
   );
   assert.equal(
     fetchCalls[5].url,
-    "https://api.steampowered.com/ISteamApps/UpToDateCheck/v0001/?key=secret&format=json&appid=480&version=100"
+    "https://api.steampowered.com/ISteamApps/UpToDateCheck/v0001/?format=json&appid=480&version=100"
   );
   assert.equal(
     fetchCalls[6].url,
-    "https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/?key=secret&format=json&appid=480&maxlength=300&count=2&feeds=steam_community_announcements%2Csteam_updates"
+    "https://api.steampowered.com/ISteamNews/GetNewsForApp/v0002/?format=json&appid=480&maxlength=300&count=2&feeds=steam_community_announcements%2Csteam_updates"
   );
   assert.equal(
     fetchCalls[7].url,
-    "https://partner.steam-api.com/ISteamNews/GetNewsForAppAuthed/v0002/?key=secret&format=json&appid=480&enddate=1700000000"
+    "https://partner.steam-api.com/ISteamNews/GetNewsForAppAuthed/v0002/?format=json&appid=480&enddate=1700000000"
   );
   assert.equal(
     fetchCalls[8].url,
-    "https://partner.steam-api.com/ISteamApps/GetAppBuilds/v0001/?key=secret&format=json&appid=480&count=3"
+    "https://partner.steam-api.com/ISteamApps/GetAppBuilds/v0001/?format=json&appid=480&count=3"
   );
   assert.equal(
     fetchCalls[9].url,
-    "https://partner.steam-api.com/ISteamApps/GetAppDepotVersions/v0001/?key=secret&format=json&appid=480"
+    "https://partner.steam-api.com/ISteamApps/GetAppDepotVersions/v0001/?format=json&appid=480"
   );
   assert.equal(
     fetchCalls[10].url,
-    "https://partner.steam-api.com/ISteamApps/GetPlayersBanned/v0001/?key=secret&format=json&appid=480"
+    "https://partner.steam-api.com/ISteamApps/GetPlayersBanned/v0001/?format=json&appid=480"
   );
   assert.equal(
     fetchCalls[11].url,
-    "https://partner.steam-api.com/ISteamApps/GetServerList/v0001/?key=secret&format=json&filter=%5Cappid%5C480&limit=5"
+    "https://partner.steam-api.com/ISteamApps/GetServerList/v0001/?format=json&filter=%5Cappid%5C480&limit=5"
   );
 });
 
@@ -35305,28 +36334,28 @@ test("web API public app, broadcast, and directory facades map Valve endpoints",
 
   assert.equal(
     fetchCalls[0].url,
-    "https://api.steampowered.com/ISteamApps/GetSDRConfig/v0001/?key=secret&format=json&appid=480"
+    "https://api.steampowered.com/ISteamApps/GetSDRConfig/v0001/?format=json&appid=480"
   );
   assert.equal(
     fetchCalls[1].url,
-    "https://api.steampowered.com/ISteamBroadcast/PlayerStats/v0001/?key=secret&format=json"
+    "https://api.steampowered.com/ISteamBroadcast/PlayerStats/v0001/?format=json"
   );
   assert.equal(fetchCalls[1].init.method, "POST");
   assert.equal(
     fetchCalls[2].url,
-    "https://api.steampowered.com/ISteamBroadcast/ViewerHeartbeat/v0001/?key=secret&format=json&steamid=76561198000000000&sessionid=123&token=456&stream=1"
+    "https://api.steampowered.com/ISteamBroadcast/ViewerHeartbeat/v0001/?format=json&steamid=76561198000000000&sessionid=123&token=456&stream=1"
   );
   assert.equal(
     fetchCalls[3].url,
-    "https://api.steampowered.com/ISteamDirectory/GetCMList/v0001/?key=secret&format=json&cellid=0&maxcount=4"
+    "https://api.steampowered.com/ISteamDirectory/GetCMList/v0001/?format=json&cellid=0&maxcount=4"
   );
   assert.equal(
     fetchCalls[4].url,
-    "https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v0001/?key=secret&format=json&cellid=1&cmtype=websockets&realm=public&maxcount=8&qoslevel=2"
+    "https://api.steampowered.com/ISteamDirectory/GetCMListForConnect/v0001/?format=json&cellid=1&cmtype=websockets&realm=public&maxcount=8&qoslevel=2"
   );
   assert.equal(
     fetchCalls[5].url,
-    "https://api.steampowered.com/ISteamDirectory/GetSteamPipeDomains/v0001/?key=secret&format=json"
+    "https://api.steampowered.com/ISteamDirectory/GetSteamPipeDomains/v0001/?format=json"
   );
   assert.equal(typeof steam.webApi.broadcast.viewerHeartbeat, "function");
   assert.equal(typeof steam.webApi.directory.getSteamPipeDomains, "function");
@@ -35402,7 +36431,8 @@ test("web API app-specific public facades map Valve endpoints", async (t) => {
 
   const portalUrl = new URL(fetchCalls[14].url);
   assert.equal(portalUrl.searchParams.get("leaderboardName"), "challenge_portal");
-  assert.equal(portalUrl.searchParams.get("key"), "secret");
+  assert.equal(portalUrl.searchParams.get("key"), null);
+  assert.equal(fetchCalls[14].init.headers["x-webapi-key"], undefined);
   assert.equal(typeof steam.webApi.clientStats1046930.reportEvent, "function");
   assert.equal(typeof steam.webApi.gameCoordinatorVersion.dota2.getServerVersion, "function");
   assert.equal(typeof steam.webApi.portal2Leaderboards.getBucketizedData, "function");
@@ -35500,35 +36530,35 @@ test("web API remote storage and economy facades map indexed fields", async (t) 
 
   assert.equal(
     fetchCalls[0].url,
-    "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v0001/?key=publisher-secret&format=json"
+    "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v0001/?format=json"
   );
   assert.equal(fetchCalls[0].init.body, "publishedfileids%5B0%5D=111&publishedfileids%5B1%5D=222&itemcount=2");
   assert.equal(
     fetchCalls[1].url,
-    "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v0001/?key=publisher-secret&format=json"
+    "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v0001/?format=json"
   );
   assert.equal(fetchCalls[1].init.body, "publishedfileids%5B0%5D=333&collectioncount=1");
   assert.equal(
     fetchCalls[2].url,
-    "https://api.steampowered.com/ISteamRemoteStorage/GetUGCFileDetails/v0001/?key=publisher-secret&format=json&ugcid=444&appid=480&steamid=76561198000000000"
+    "https://api.steampowered.com/ISteamRemoteStorage/GetUGCFileDetails/v0001/?format=json&ugcid=444&appid=480&steamid=76561198000000000"
   );
   assert.equal(fetchCalls[3].init.body, "steamid=76561198000000000&appid=480&listtype=1");
   assert.equal(
     fetchCalls[4].url,
-    "https://partner.steam-api.com/ISteamRemoteStorage/SubscribePublishedFile/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamRemoteStorage/SubscribePublishedFile/v0001/?format=json"
   );
   assert.equal(fetchCalls[4].init.body, "steamid=76561198000000000&appid=480&publishedfileid=555");
   assert.equal(
     fetchCalls[5].url,
-    "https://api.steampowered.com/ISteamEconomy/GetAssetClassInfo/v0001/?key=publisher-secret&format=json&classid0=1000&instanceid0=2000&appid=480&class_count=1&language=en"
+    "https://api.steampowered.com/ISteamEconomy/GetAssetClassInfo/v0001/?format=json&classid0=1000&instanceid0=2000&appid=480&class_count=1&language=en"
   );
   assert.equal(
     fetchCalls[6].url,
-    "https://api.steampowered.com/ISteamEconomy/GetAssetPrices/v0001/?key=publisher-secret&format=json&appid=480&currency=USD&language=en"
+    "https://api.steampowered.com/ISteamEconomy/GetAssetPrices/v0001/?format=json&appid=480&currency=USD&language=en"
   );
   assert.equal(
     fetchCalls[7].url,
-    "https://partner.steam-api.com/ISteamEconomy/StartAssetTransaction/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamEconomy/StartAssetTransaction/v0001/?format=json"
   );
   assert.match(fetchCalls[7].init.body, /assetid0=sku-1/);
   assert.match(fetchCalls[7].init.body, /assetquantity0=2/);
@@ -35536,29 +36566,29 @@ test("web API remote storage and economy facades map indexed fields", async (t) 
   assert.equal(fetchCalls[8].init.body, "appid=480&steamid=76561198000000000&txnid=txn-1&language=en");
   assert.equal(
     fetchCalls[9].url,
-    "https://partner.steam-api.com/ISteamEconomy/CanTrade/v0001/?key=publisher-secret&format=json&appid=480&steamid=76561198000000000&targetid=76561198000000001"
+    "https://partner.steam-api.com/ISteamEconomy/CanTrade/v0001/?format=json&appid=480&steamid=76561198000000000&targetid=76561198000000001"
   );
   assert.equal(
     fetchCalls[10].url,
-    "https://partner.steam-api.com/ISteamRemoteStorage/SetUGCUsedByGC/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamRemoteStorage/SetUGCUsedByGC/v0001/?format=json"
   );
   assert.equal(fetchCalls[10].init.body, "steamid=76561198000000000&ugcid=444&appid=480&used=0");
   assert.equal(
     fetchCalls[11].url,
-    "https://partner.steam-api.com/ISteamRemoteStorage/UnsubscribePublishedFile/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamRemoteStorage/UnsubscribePublishedFile/v0001/?format=json"
   );
   assert.equal(fetchCalls[11].init.body, "steamid=76561198000000000&appid=480&publishedfileid=555");
   assert.equal(
     fetchCalls[12].url,
-    "https://partner.steam-api.com/ISteamEconomy/GetExportedAssetsForUser/v0001/?key=publisher-secret&format=json&steamid=76561198000000000&appid=480&contextid=2"
+    "https://partner.steam-api.com/ISteamEconomy/GetExportedAssetsForUser/v0001/?format=json&steamid=76561198000000000&appid=480&contextid=2"
   );
   assert.equal(
     fetchCalls[13].url,
-    "https://partner.steam-api.com/ISteamEconomy/GetMarketPrices/v0001/?key=publisher-secret&format=json&appid=480"
+    "https://partner.steam-api.com/ISteamEconomy/GetMarketPrices/v0001/?format=json&appid=480"
   );
   assert.equal(
     fetchCalls[14].url,
-    "https://partner.steam-api.com/ISteamEconomy/StartTrade/v0001/?key=publisher-secret&format=json&appid=480&partya=76561198000000000&partyb=76561198000000001"
+    "https://partner.steam-api.com/ISteamEconomy/StartTrade/v0001/?format=json&appid=480&partya=76561198000000000&partyb=76561198000000001"
   );
 });
 
@@ -35655,6 +36685,7 @@ test("web API cloud service facade maps OAuth file operations", async (t) => {
     assert.equal(fetchCalls[index].init.method, "POST");
     assert.equal(fetchCalls[index].init.headers["content-type"], "application/x-www-form-urlencoded");
     assert.equal(bodyParams(index).get("access_token"), "oauth-token");
+    assert.equal(fetchCalls[index].init.redirect, "error");
   }
 
   assert.deepEqual(bodyInputJson(1), {
@@ -35757,7 +36788,8 @@ test("web API cheat reporting service facade maps anti-cheat methods", async (t)
     "https://partner.steam-api.com/ICheatReportingService/ReportPlayerCheating/v0001/"
   );
   assert.equal(fetchCalls[0].init.method, "POST");
-  assert.equal(requestUrl(0).searchParams.get("key"), "anti-cheat-secret");
+  assert.equal(requestUrl(0).searchParams.get("key"), null);
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "anti-cheat-secret");
   assert.deepEqual(bodyInputJson(0), {
     steamid: "76561198000000000",
     appid: 480,
@@ -35863,7 +36895,8 @@ test("web API broadcast and market service facades map partner methods", async (
     "https://partner.steam-api.com/IBroadcastService/PostGameDataFrame/v0001/"
   );
   assert.equal(fetchCalls[0].init.method, "POST");
-  assert.equal(requestUrl(0).searchParams.get("key"), "market-secret");
+  assert.equal(requestUrl(0).searchParams.get("key"), null);
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "market-secret");
   assert.deepEqual(bodyInputJson(0), {
     appid: 480,
     steamid: "76561198000000000",
@@ -35908,7 +36941,7 @@ test("web API broadcast and market service facades map partner methods", async (
   });
   assert.equal(
     requestUrl(5).origin + requestUrl(5).pathname,
-    "https://partner.steam-api.com/IBroadcastService/PostGameDataFrameRTMP/v0001/"
+    "https://api.steampowered.com/IBroadcastService/PostGameDataFrameRTMP/v0001/"
   );
   assert.equal(fetchCalls[5].init.method, "POST");
   assert.deepEqual(bodyInputJson(5), {
@@ -35981,7 +37014,8 @@ test("web API econ service facade maps trade and cache service methods", async (
     "https://api.steampowered.com/IEconService/GetTradeHistory/v0001/"
   );
   assert.equal(fetchCalls[0].init.method, "GET");
-  assert.equal(requestUrl(0).searchParams.get("key"), "trader-secret");
+  assert.equal(requestUrl(0).searchParams.get("key"), null);
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "trader-secret");
   assert.deepEqual(queryInputJson(0), {
     max_trades: 25,
     start_after_time: 1700000000,
@@ -36315,7 +37349,8 @@ test("web API game inventory facade maps history and item definition methods", a
     "https://partner.steam-api.com/IGameInventory/GetHistoryCommandDetails/v0001/"
   );
   assert.equal(fetchCalls[0].init.method, "GET");
-  assert.equal(requestUrl(0).searchParams.get("key"), "game-inventory-secret");
+  assert.equal(requestUrl(0).searchParams.get("key"), null);
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "game-inventory-secret");
   assert.equal(requestUrl(0).searchParams.get("appid"), "480");
   assert.equal(requestUrl(0).searchParams.get("steamid"), "76561198000000000");
   assert.equal(requestUrl(0).searchParams.get("command"), "grant");
@@ -36644,7 +37679,7 @@ test("web API game notifications service facade maps session methods", async (t)
   assert.deepEqual(bodyInputJson(6), { sessionid: ["12", "13"], appid: 480 });
   assert.equal(
     requestUrl(7).origin + requestUrl(7).pathname,
-    "https://partner.steam-api.com/IGameNotificationsService/UserCreateSession/v0001/"
+    "https://api.steampowered.com/IGameNotificationsService/UserCreateSession/v0001/"
   );
   assert.deepEqual(bodyInputJson(7), {
     appid: 480,
@@ -36671,7 +37706,7 @@ test("web API game notifications service facade maps session methods", async (t)
   });
   assert.equal(
     requestUrl(8).origin + requestUrl(8).pathname,
-    "https://partner.steam-api.com/IGameNotificationsService/UserUpdateSession/v0001/"
+    "https://api.steampowered.com/IGameNotificationsService/UserUpdateSession/v0001/"
   );
   assert.deepEqual(bodyInputJson(8), {
     sessionid: "14",
@@ -36698,7 +37733,7 @@ test("web API game notifications service facade maps session methods", async (t)
   });
   assert.equal(
     requestUrl(9).origin + requestUrl(9).pathname,
-    "https://partner.steam-api.com/IGameNotificationsService/UserDeleteSession/v0001/"
+    "https://api.steampowered.com/IGameNotificationsService/UserDeleteSession/v0001/"
   );
   assert.deepEqual(bodyInputJson(9), {
     sessionid: "14",
@@ -36802,6 +37837,8 @@ test("web API published file service facade maps workshop service methods", asyn
     "https://api.steampowered.com/IPublishedFileService/Delete/v0001/"
   );
   assert.equal(fetchCalls[0].init.method, "GET");
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "workshop-secret");
+  assert.equal(fetchCalls[0].init.redirect, "error");
   assert.deepEqual(queryInputJson(0), { publishedfileid: "111", appid: 480 });
   assert.equal(
     requestUrl(1).origin + requestUrl(1).pathname,
@@ -37063,7 +38100,7 @@ test("web API player and store service facades use input_json payloads", async (
     favorRarerTags: true
   });
 
-  assert.match(fetchCalls[0].url, /^https:\/\/partner\.steam-api\.com\/IPlayerService\/GetRecentlyPlayedGames\/v0001\//);
+  assert.match(fetchCalls[0].url, /^https:\/\/api\.steampowered\.com\/IPlayerService\/GetRecentlyPlayedGames\/v0001\//);
   assert.deepEqual(inputJson(0), { steamid: "76561198000000000", count: 3 });
   assert.match(fetchCalls[1].url, /IPlayerService\/GetSingleGamePlaytime\/v0001/);
   assert.deepEqual(inputJson(1), { steamid: "76561198000000000", appid: 480 });
@@ -37077,14 +38114,14 @@ test("web API player and store service facades use input_json payloads", async (
   assert.deepEqual(inputJson(3), { steamid: "76561198000000000" });
   assert.match(fetchCalls[4].url, /IPlayerService\/GetBadges\/v0001/);
   assert.deepEqual(inputJson(5), { steamid: "76561198000000000", badgeid: 2 });
-  assert.match(fetchCalls[6].url, /^https:\/\/partner\.steam-api\.com\/IPlayerService\/RecordOfflinePlaytime\/v0001\//);
+  assert.match(fetchCalls[6].url, /^https:\/\/api\.steampowered\.com\/IPlayerService\/RecordOfflinePlaytime\/v0001\//);
   assert.equal(fetchCalls[6].init.method, "POST");
   assert.deepEqual(bodyInputJson(6), {
     steamid: "76561198000000000",
     ticket: "ticket",
     play_sessions: [{ appid: 480, playtime_seconds: "60" }]
   });
-  assert.match(fetchCalls[7].url, /^https:\/\/partner\.steam-api\.com\/IStoreService\/GetAppList\/v0001\//);
+  assert.match(fetchCalls[7].url, /^https:\/\/api\.steampowered\.com\/IStoreService\/GetAppList\/v0001\//);
   assert.deepEqual(inputJson(7), {
     if_modified_since: 1700000000,
     have_description_language: "en",
@@ -37096,7 +38133,8 @@ test("web API player and store service facades use input_json payloads", async (
     last_appid: 480,
     max_results: 100
   });
-  assert.equal(new URL(fetchCalls[7].url).searchParams.get("key"), "user-secret");
+  assert.equal(new URL(fetchCalls[7].url).searchParams.get("key"), null);
+  assert.equal(fetchCalls[7].init.headers["x-webapi-key"], "user-secret");
   assert.match(fetchCalls[8].url, /IStoreService\/GetGamesFollowed\/v0001/);
   assert.deepEqual(inputJson(8), { steamid: "76561198000000000" });
   assert.match(fetchCalls[9].url, /IStoreService\/GetGamesFollowedCount\/v0001/);
@@ -37219,7 +38257,7 @@ test("web API directory, help logs, and wishlist service facades use input_json 
   });
   assert.equal(
     requestUrl(5).origin + requestUrl(5).pathname,
-    "https://partner.steam-api.com/IHelpRequestLogsService/UploadUserApplicationLog/v0001/"
+    "https://api.steampowered.com/IHelpRequestLogsService/UploadUserApplicationLog/v0001/"
   );
   assert.equal(fetchCalls[5].init.method, "POST");
   assert.deepEqual(bodyInputJson(5), {
@@ -37231,7 +38269,7 @@ test("web API directory, help logs, and wishlist service facades use input_json 
   });
   assert.equal(
     requestUrl(6).origin + requestUrl(6).pathname,
-    "https://partner.steam-api.com/IHelpRequestLogsService/GetApplicationLogDemand/v0001/"
+    "https://api.steampowered.com/IHelpRequestLogsService/GetApplicationLogDemand/v0001/"
   );
   assert.deepEqual(bodyInputJson(6), { appid: 480 });
   assert.equal(
@@ -37290,7 +38328,8 @@ test("web API site license service facade maps cafe service methods", async (t) 
     "https://api.steampowered.com/ISiteLicenseService/GetCurrentClientConnections/v0001/"
   );
   assert.equal(fetchCalls[0].init.method, "GET");
-  assert.equal(requestUrl(0).searchParams.get("key"), "site-license-secret");
+  assert.equal(requestUrl(0).searchParams.get("key"), null);
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], "site-license-secret");
   assert.equal(requestUrl(0).searchParams.get("format"), "json");
   assert.equal(requestUrl(0).searchParams.get("siteid"), "0");
   assert.equal(requestUrl(0).searchParams.has("input_json"), false);
@@ -37300,7 +38339,8 @@ test("web API site license service facade maps cafe service methods", async (t) 
     "https://api.steampowered.com/ISiteLicenseService/GetTotalPlaytime/v0001/"
   );
   assert.equal(fetchCalls[1].init.method, "GET");
-  assert.equal(requestUrl(1).searchParams.get("key"), "site-license-secret");
+  assert.equal(requestUrl(1).searchParams.get("key"), null);
+  assert.equal(fetchCalls[1].init.headers["x-webapi-key"], "site-license-secret");
   assert.equal(requestUrl(1).searchParams.get("format"), "json");
   assert.equal(requestUrl(1).searchParams.get("start_time"), "2026-06-01T00:00:00Z");
   assert.equal(requestUrl(1).searchParams.get("end_time"), "2026-06-02T00:00:00Z");
@@ -37452,6 +38492,7 @@ test("web API authentication service and OAuth facades map auth transport fields
     "https://api.steampowered.com/ISteamUserOAuth/GetTokenDetails/v0001/?format=json&access_token=oauth-token"
   );
   assert.equal(requestUrl(9).searchParams.has("key"), false);
+  assert.deepEqual(fetchCalls.map(({ init }) => init.redirect), Array(10).fill("error"));
   assert.equal(typeof steam.webApi.authenticationService.beginAuthSessionViaQr, "function");
   assert.equal(typeof steam.webApi.userOAuth.getTokenDetails, "function");
 });
@@ -37503,13 +38544,15 @@ test("web API user auth and community facades map ticket and moderation fields",
     "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUser/v0001/?format=json"
   );
   assert.equal(fetchCalls[0].init.body, "steamid=76561198000000000&sessionkey=010203&encrypted_loginkey=040506");
+  assert.equal(fetchCalls[0].init.headers["x-webapi-key"], undefined);
+  assert.equal(fetchCalls[0].init.redirect, "error");
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v0001/?key=publisher-secret&format=json&appid=480&ticket=0a0b0c&identity=steam-bridge-example"
+    "https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v0001/?format=json&appid=480&ticket=0a0b0c&identity=steam-bridge-example"
   );
   assert.equal(
     fetchCalls[2].url,
-    "https://partner.steam-api.com/ISteamCommunity/ReportAbuse/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamCommunity/ReportAbuse/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[2].init.body,
@@ -37580,7 +38623,7 @@ test("web API published item search and voting facades map workshop fields", asy
 
   assert.equal(
     fetchCalls[0].url,
-    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByPublicationOrder/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByPublicationOrder/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[0].init.body,
@@ -37588,7 +38631,7 @@ test("web API published item search and voting facades map workshop fields", asy
   );
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByTrend/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByTrend/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[1].init.body,
@@ -37596,7 +38639,7 @@ test("web API published item search and voting facades map workshop fields", asy
   );
   assert.equal(
     fetchCalls[2].url,
-    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByVote/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/RankedByVote/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[2].init.body,
@@ -37604,7 +38647,7 @@ test("web API published item search and voting facades map workshop fields", asy
   );
   assert.equal(
     fetchCalls[3].url,
-    "https://partner.steam-api.com/ISteamPublishedItemSearch/ResultSetSummary/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamPublishedItemSearch/ResultSetSummary/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[3].init.body,
@@ -37612,7 +38655,7 @@ test("web API published item search and voting facades map workshop fields", asy
   );
   assert.equal(
     fetchCalls[4].url,
-    "https://partner.steam-api.com/ISteamPublishedItemVoting/ItemVoteSummary/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamPublishedItemVoting/ItemVoteSummary/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[4].init.body,
@@ -37620,7 +38663,7 @@ test("web API published item search and voting facades map workshop fields", asy
   );
   assert.equal(
     fetchCalls[5].url,
-    "https://partner.steam-api.com/ISteamPublishedItemVoting/UserVoteSummary/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamPublishedItemVoting/UserVoteSummary/v0001/?format=json"
   );
   assert.equal(fetchCalls[5].init.body, "steamid=76561198000000000&count=1&publishedfileid%5B0%5D=333");
 });
@@ -37690,17 +38733,17 @@ test("web API leaderboard and game server stats facades map ranking fields", asy
 
   assert.equal(
     fetchCalls[0].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/DeleteLeaderboard/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamLeaderboards/DeleteLeaderboard/v0001/?format=json"
   );
   assert.equal(fetchCalls[0].init.body, "appid=480&name=Daily+Score");
   assert.equal(
     fetchCalls[1].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/DeleteLeaderboardScore/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamLeaderboards/DeleteLeaderboardScore/v0001/?format=json"
   );
   assert.equal(fetchCalls[1].init.body, "appid=480&leaderboardid=123&steamid=76561198000000000");
   assert.equal(
     fetchCalls[2].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/FindOrCreateLeaderboard/v0002/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamLeaderboards/FindOrCreateLeaderboard/v0002/?format=json"
   );
   assert.equal(
     fetchCalls[2].init.body,
@@ -37708,20 +38751,20 @@ test("web API leaderboard and game server stats facades map ranking fields", asy
   );
   assert.equal(
     fetchCalls[3].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/GetLeaderboardEntries/v0001/?key=publisher-secret&format=json&appid=480&rangestart=1&rangeend=10&steamid=76561198000000000&leaderboardid=123&datarequest=0"
+    "https://partner.steam-api.com/ISteamLeaderboards/GetLeaderboardEntries/v0001/?format=json&appid=480&rangestart=1&rangeend=10&steamid=76561198000000000&leaderboardid=123&datarequest=0"
   );
   assert.equal(
     fetchCalls[4].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/GetLeaderboardsForGame/v0002/?key=publisher-secret&format=json&appid=480"
+    "https://partner.steam-api.com/ISteamLeaderboards/GetLeaderboardsForGame/v0002/?format=json&appid=480"
   );
   assert.equal(
     fetchCalls[5].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/ResetLeaderboard/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamLeaderboards/ResetLeaderboard/v0001/?format=json"
   );
   assert.equal(fetchCalls[5].init.body, "appid=480&leaderboardid=123");
   assert.equal(
     fetchCalls[6].url,
-    "https://partner.steam-api.com/ISteamLeaderboards/SetLeaderboardScore/v0001/?key=publisher-secret&format=json"
+    "https://partner.steam-api.com/ISteamLeaderboards/SetLeaderboardScore/v0001/?format=json"
   );
   assert.equal(
     fetchCalls[6].init.body,
@@ -37729,6 +38772,6 @@ test("web API leaderboard and game server stats facades map ranking fields", asy
   );
   assert.equal(
     fetchCalls[7].url,
-    "https://partner.steam-api.com/ISteamGameServerStats/GetGameServerPlayerStatsForGame/v0001/?key=publisher-secret&format=json&gameid=480&appid=480&rangestart=2026-06-01+00%3A00%3A00&rangeend=2026-06-02+00%3A00%3A00&maxresults=100"
+    "https://partner.steam-api.com/ISteamGameServerStats/GetGameServerPlayerStatsForGame/v0001/?format=json&gameid=480&appid=480&rangestart=2026-06-01+00%3A00%3A00&rangeend=2026-06-02+00%3A00%3A00&maxresults=100"
   );
 });

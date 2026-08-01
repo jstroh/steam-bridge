@@ -86,7 +86,19 @@ covered.
   detail, enumeration, subscription, vote, action, and video flows,
   local-change enumeration and notifications, file write batch controls, and
   typed Remote Storage callback helpers.
-- Steam Web API: generic URL building and JSON/text fetch helpers for any
+- Steam Web API: independent access and host metadata, with explicit public,
+  ordinary user-key, and publisher-only access plus `api.steampowered.com` or
+  `partner.steam-api.com` routing; public/user traffic defaults to the API host,
+  publisher traffic defaults to the partner host, and documented exceptions
+  can independently select either host without changing access requirements;
+  this includes keyless `ISteamUserAuth.AuthenticateUser` on the partner host
+  and publisher-only SiteLicense, Inventory price-sheet, and PublishedFile
+  deletion calls on the API host;
+  keyless helpers on the main
+  entrypoint; trusted publisher, MicroTxn, and encrypted-ticket operations on
+  `steam-bridge/server`; header-only key transport, HTTPS enforcement,
+  client-runtime rejection, and redacted response URLs; generic URL building
+  and JSON/text fetch helpers for any
   `interface/method/version` path, supported-API discovery helpers, user stats
   and achievement endpoint helpers, user/profile/license endpoint helpers,
   app/build/server-list/SDR-config helpers, news helpers, directory and content

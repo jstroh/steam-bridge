@@ -1299,7 +1299,7 @@ arguments file so PowerShell invocation style does not affect array binding:
   "-AppId", "<configured-app-id>",
   "-Suite", "checkout",
   "-InitTxnRequestFile", "C:\\path\\to\\private-init-txn-request.json",
-  "-InitTxnApiKeyEnv", "STEAM_WEB_API_KEY",
+  "-InitTxnApiKeyEnv", "STEAM_PUBLISHER_WEB_API_KEY",
   "-InitTxnEndpoint", "sandbox",
   "-RequireMicroTxnCallback",
   "-LaunchMode", "steam-app",
@@ -1319,6 +1319,11 @@ arguments file so PowerShell invocation style does not affect array binding:
 
 The private env file is a local `NAME=VALUE` file for publisher credentials; it
 is not committed, and the wrapper reports only how many values were imported.
+The example's configured-product `InitTxn` and follow-up `QueryTxn` path is a
+repository-only diagnostic exception that explicitly permits a publisher key
+inside Electron so the managed callback ordering can be proved. Never copy
+that exception into a shipped game: production Electron clients must ask their
+trusted backend to perform publisher Web API calls.
 `-MatrixArgs @(...)` is still supported from an interactive PowerShell session,
 but `-MatrixArgsFile` is safer for SSH, `powershell.exe -File`, and saved
 commands.
@@ -2096,8 +2101,9 @@ app-specific proof outside the committed examples:
    authorization.
    If you want a generic CLI to create that private response file, run
    `steam-bridge-init-client-txn --file <private-init-txn-request.json> --out <private-init-txn-response.json> --production`
-   with `STEAM_WEB_API_KEY` or `STEAM_API_KEY` set; the CLI prints only
-   sanitized presence flags and never accepts publisher keys as command-line
+   with `STEAM_PUBLISHER_WEB_API_KEY` set (`STEAM_WEB_API_KEY` remains a
+   compatibility alias); the CLI prints only sanitized presence flags and
+   never accepts publisher keys as command-line
    arguments. Client-session captures stay wrapped as `clientSession: true`;
    use `--session web` for browser checkout captures or `--session
    client-default` to omit `usersession` for request-shape diagnostics. On
