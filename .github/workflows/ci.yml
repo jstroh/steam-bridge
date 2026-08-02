@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.13.0
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,8 +46,33 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.13.0
           cache: npm
       - run: npm ci
-      - run: npm run check:electron:latest
+      - if: github.ref_type != 'tag'
+        run: npm run check:electron:latest
       - run: npm run package:smoke
+      - run: mkdir -p dist/node-runtime-compat && npm pack --workspace steam-bridge --pack-destination dist/node-runtime-compat
+      - uses: actions/upload-artifact@v6
+        with:
+          name: steam-bridge-node-runtime-package
+          path: dist/node-runtime-compat/*.tgz
+
+  node-runtime-compat:
+    name: Node runtime ${{ matrix.node-version }}
+    needs: package-smoke
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18.20.8, 20.19.5, 22.13.0, 24]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: steam-bridge-node-runtime-package
+          path: dist/node-runtime-compat
+      - run: node scripts/smoke-node-runtime.cjs dist/node-runtime-compat/*.tgz

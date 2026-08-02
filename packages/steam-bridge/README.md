@@ -128,6 +128,13 @@ events with `client.callback.register(...)` and game-server events with
 the manual client pump. Raw `CCallbackBase` and `CCallResult` registration is
 not compatible with this model and throws with guidance to the safe facade.
 
+`callbackIntervalMs` must be a positive integer between 1 and 2,147,483,647
+milliseconds. A native dispatch failure stops only the timer that failed and
+emits a `SteamBridgeCallbackPumpWarning` with code
+`STEAM_BRIDGE_CALLBACK_PUMP_FAILED`; it is never swallowed silently. Repeating
+`initSafe()` after successful initialization is idempotent and preserves the
+existing callback pump, managed controller, presenter, and native surface.
+
 ## Electron overlay
 
 On Linux and macOS, configure Electron before `app.ready`, then create one
@@ -599,10 +606,13 @@ given its optional key explicitly.
 
 `userAuth.authenticateUserTicket()` defaults to Valve's publisher-key route on
 `partner.steam-api.com`. Valve also supports a rate-limited user authentication
-key on `api.steampowered.com`; select that documented route explicitly:
+key on `api.steampowered.com`; select that documented route explicitly from the
+same trusted server process:
 
 ```ts
-const userKeyClient = steamworks.createSteamWebApiClient({
+import { createPublisherWebApiClient } from "steam-bridge/server";
+
+const userKeyClient = createPublisherWebApiClient({
   apiKey: userAuthenticationKey
 });
 
@@ -615,6 +625,11 @@ const authenticated = await userKeyClient.userAuth.authenticateUserTicket({
 ```
 
 Omitting `keyType` preserves the publisher-key/partner-host behavior.
+
+Do not put either kind of Web API key in Electron, a browser bundle, or a game
+client. Valve describes protected Web API methods as trusted-backend calls; the
+user-key route changes authentication and rate limits, not the client/server
+trust boundary.
 
 `createPublisherWebApiClient()` reads `STEAM_PUBLISHER_WEB_API_KEY`, with
 `STEAM_WEB_API_KEY` retained as a server-only compatibility alias. An explicit

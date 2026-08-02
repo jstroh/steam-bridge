@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.13.0
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -63,14 +63,14 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.13.0
           cache: npm
       - uses: actions/download-artifact@v8
         with:
           pattern: steam-bridge-*
           path: release-artifacts
       - run: npm ci
-      - run: npm run check:electron:latest
+      - run: npm run check:electron
       - run: npm run release:assemble -- --artifacts-dir release-artifacts
       - name: Restore proved runtime payload for documentation-only v0.1.6
         if: github.event_name == 'push' && github.ref_name == 'v0.1.6'

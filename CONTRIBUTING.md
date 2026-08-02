@@ -8,7 +8,9 @@ SpaceWar sample App ID `480` unless a test explicitly needs another ID.
 
 Use Node.js 22.13 or newer for repository development. The published package
 keeps a lower runtime engine where possible, but the current Electron and
-N-API tooling expect modern Node during install/build.
+N-API tooling expect modern Node during install/build. CI builds with the exact
+22.13 development floor and separately installs the packed package under the
+supported Node 18, 20, 22, and 24 runtime lines.
 
 ```sh
 npm install

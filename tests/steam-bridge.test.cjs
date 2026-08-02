@@ -3867,6 +3867,13 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
     assert.match(workflow, /node scripts\/assert-supported-targets\.cjs/);
   }
   assert.match(ciWorkflow, /npm run api:check/);
+  assert.equal(packageJson.engines.node, ">=18");
+  for (const nodeVersion of ["18.20.8", "20.19.5", "22.13.0", "24"]) {
+    assert.ok(ciWorkflow.includes(nodeVersion), `CI must exercise packed runtime support on Node ${nodeVersion}`);
+  }
+  assert.match(ciWorkflow, /if: github\.ref_type != 'tag'\s+run: npm run check:electron:latest/);
+  assert.doesNotMatch(releaseWorkflow, /check:electron:latest/);
+  assert.match(releaseWorkflow, /npm run check:electron/);
 
   for (const source of [ciWorkflow, releaseWorkflow, loader, linkScript, packagerScript, prepareMacosScript]) {
     assert.doesNotMatch(source, /x86_64-apple-darwin|darwin-x64|macos-13/);
@@ -5477,6 +5484,95 @@ test("a stale callback tick cannot stop a reentrant replacement pump", async (t)
   );
 });
 
+test("init rejects unsafe callback intervals before native calls or resource cleanup", (t) => {
+  let probeOpen = false;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    try {
+      steam.shutdown();
+    } finally {
+      clearSteamBridgeCache();
+    }
+  });
+
+  steam.init({ appId: 480, callbackIntervalMs: 10 });
+  steam.openNativeOverlayProbeWindow("callback interval validation");
+  const callsBeforeValidation = fake.calls.length;
+
+  for (const callbackIntervalMs of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648, "10"]) {
+    assert.throws(
+      () => steam.init({ appId: 481, callbackIntervalMs }),
+      /callbackIntervalMs must be a positive integer no greater than 2147483647/
+    );
+  }
+
+  assert.deepEqual(fake.calls.slice(callsBeforeValidation), []);
+  assert.equal(probeOpen, true);
+  assert.throws(
+    () => steam.openNativeOverlayProbeWindow("must retain the existing lease"),
+    (error) => error.code === "STEAM_OVERLAY_NATIVE_SURFACE_OWNED"
+  );
+});
+
+test("callback pump failures emit one actionable warning and stop the failed timer", async (t) => {
+  let callbackCount = 0;
+  const warnings = [];
+  const previousEmitWarning = process.emitWarning;
+  process.emitWarning = function emitWarningForTest(warning, options) {
+    warnings.push({ warning, options });
+  };
+  const fake = createFakeNative({
+    runCallbacks() {
+      callbackCount += 1;
+      this.calls.push({ method: "runCallbacks", args: [] });
+      throw new Error("callback dispatch failed for test");
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    process.emitWarning = previousEmitWarning;
+    try {
+      steam.shutdown();
+    } finally {
+      clearSteamBridgeCache();
+    }
+  });
+
+  steam.init({ appId: 480, callbackIntervalMs: 1 });
+  assert.equal(await waitForCondition(() => callbackCount === 1, 500), true);
+  await new Promise((resolve) => setTimeout(resolve, 25));
+
+  assert.equal(callbackCount, 1);
+  assert.deepEqual(warnings, [
+    {
+      warning: "Steam Bridge stopped its callback pump after runCallbacks() failed.",
+      options: {
+        type: "SteamBridgeCallbackPumpWarning",
+        code: "STEAM_BRIDGE_CALLBACK_PUMP_FAILED",
+        detail: "Error: callback dispatch failed for test"
+      }
+    }
+  ]);
+});
+
 test("successful alternate init paths preserve an existing callback pump", async (t) => {
   let callbackCount = 0;
   const fake = createFakeNative({
@@ -5511,6 +5607,47 @@ test("successful alternate init paths preserve an existing callback pump", async
   previousCount = callbackCount;
   assert.equal(steam.initAnonymousUser(), true);
   await waitForNextCallback(previousCount);
+});
+
+test("idempotent initSafe preserves JavaScript-owned native resources", (t) => {
+  let probeOpen = false;
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(title) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args: [title] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    try {
+      steam.shutdown();
+    } finally {
+      clearSteamBridgeCache();
+    }
+  });
+
+  steam.init(480);
+  steam.openNativeOverlayProbeWindow("initSafe ownership");
+  const callsBeforeInitSafe = fake.calls.length;
+
+  assert.equal(steam.initSafe(), true);
+  assert.deepEqual(fake.calls.slice(callsBeforeInitSafe), [{ method: "initSafe", args: [] }]);
+  assert.equal(probeOpen, true);
+  assert.throws(
+    () => steam.openNativeOverlayProbeWindow("must not replace"),
+    (error) => error.code === "STEAM_OVERLAY_NATIVE_SURFACE_OWNED"
+  );
 });
 
 test("init rejects missing app IDs with an actionable error", (t) => {
@@ -5595,6 +5732,20 @@ test("client facade covers low-level Steam client helpers", (t) => {
     method: "disconnectClientWarningMessageHook",
     args: []
   });
+});
+
+test("game server replacement validates options before locking or shutdown", () => {
+  const source = readSourceFile("crates", "native", "src", "compat.rs");
+  const start = source.indexOf('pub fn game_server_init(options: GameServerInitOptions)');
+  const end = source.indexOf('#[napi(js_name = "gameServerInitGameServer")]', start);
+  assert.ok(start >= 0 && end > start);
+  const implementation = source.slice(start, end);
+  const validationIndex = implementation.indexOf("validate_game_server_init_options(options)?");
+  const lifecycleLockIndex = implementation.indexOf("lock_manual_dispatch");
+  const shutdownIndex = implementation.indexOf("game_server_shutdown_locked()");
+  assert.ok(validationIndex >= 0);
+  assert.ok(validationIndex < lifecycleLockIndex);
+  assert.ok(lifecycleLockIndex < shutdownIndex);
 });
 
 test("Steam IDs and diagnostics are normalized for JavaScript callers", (t) => {
@@ -35278,6 +35429,54 @@ test("web API credential inspection rejects JSON beyond its safe depth", async (
     }),
     /maximum inspection depth/
   );
+});
+
+test("web API versions are canonical positive path components", (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  t.after(clearSteamBridgeCache);
+
+  for (const [version, expected] of [
+    [undefined, "v0001"],
+    [1, "v0001"],
+    [42, "v0042"],
+    ["2", "v0002"],
+    ["V0003", "v0003"]
+  ]) {
+    assert.equal(
+      new URL(steam.buildSteamWebApiUrl({
+        interfaceName: "ITest",
+        methodName: "Version",
+        version
+      })).pathname,
+      `/ITest/Version/${expected}/`
+    );
+  }
+
+  for (const version of [
+    "",
+    "../Admin",
+    "v0001/../../Admin",
+    "v0",
+    "v-1",
+    "1.5",
+    "9007199254740992",
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    null,
+    true
+  ]) {
+    assert.throws(
+      () => steam.buildSteamWebApiUrl({
+        interfaceName: "ITest",
+        methodName: "Version",
+        version
+      }),
+      /version must be a positive integer or a v-prefixed positive integer/
+    );
+  }
 });
 
 test("web API access metadata routes hosts and keeps credentials out of URLs", async (t) => {

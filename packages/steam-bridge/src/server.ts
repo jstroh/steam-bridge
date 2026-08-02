@@ -26,7 +26,7 @@ export type {
   SteamWebApiRequestOptions,
   SteamWebApiResponse
 } from "./index";
-// Assign re-exported values explicitly so Node 18/20/22 ESM consumers can
+// Assign re-exported values explicitly so supported Node ESM consumers can
 // discover every named export through their CommonJS lexer.
 export const buildSteamWebApiUrl = buildSteamWebApiUrlImpl;
 export const encryptedAppTicket = encryptedAppTicketImpl;

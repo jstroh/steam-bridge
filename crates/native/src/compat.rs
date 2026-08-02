@@ -1099,6 +1099,14 @@ pub struct GameServerInitOptions {
     pub version: String,
 }
 
+struct ValidatedGameServerInitOptions {
+    ip: u32,
+    game_port: u16,
+    query_port: u16,
+    server_mode: sys::EServerMode,
+    version: CString,
+}
+
 #[derive(Debug)]
 #[napi(object)]
 pub struct GameServerInterfaceInitOptions {
@@ -10405,19 +10413,19 @@ pub fn overlay_activate_to_store(app_id: u32, flag: u32) -> Result<(), Error> {
 
 #[napi(js_name = "gameServerInit")]
 pub fn game_server_init(options: GameServerInitOptions) -> Result<(), Error> {
+    let options = validate_game_server_init_options(options)?;
     let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::GameServer);
     if crate::state::is_game_server_initialized() {
         game_server_shutdown_locked();
     }
-    let version = cstring(options.version, "game server version")?;
     let mut err_msg: sys::SteamErrMsg = [0; 1024];
     let result = unsafe {
         sys::SteamInternal_GameServer_Init_V2(
-            options.ip.unwrap_or(0),
-            port_to_u16(options.game_port, "game server game port")?,
-            port_to_u16(options.query_port, "game server query port")?,
-            game_server_mode(options.server_mode)?,
-            version.as_ptr(),
+            options.ip,
+            options.game_port,
+            options.query_port,
+            options.server_mode,
+            options.version.as_ptr(),
             STEAM_GAME_SERVER_INTERFACE_VERSIONS
                 .as_ptr()
                 .cast::<c_char>(),
@@ -20417,6 +20425,18 @@ fn game_server_mode(value: u32) -> Result<sys::EServerMode, Error> {
     }
 }
 
+fn validate_game_server_init_options(
+    options: GameServerInitOptions,
+) -> Result<ValidatedGameServerInitOptions, Error> {
+    Ok(ValidatedGameServerInitOptions {
+        ip: options.ip.unwrap_or(0),
+        game_port: port_to_u16(options.game_port, "game server game port")?,
+        query_port: port_to_u16(options.query_port, "game server query port")?,
+        server_mode: game_server_mode(options.server_mode)?,
+        version: cstring(options.version, "game server version")?,
+    })
+}
+
 fn game_server_init_error_message(
     result: sys::ESteamAPIInitResult,
     err_msg: &sys::SteamErrMsg,
@@ -25809,5 +25829,54 @@ mod lifecycle_resource_tests {
             .unwrap()
             .is_empty());
         assert!(ACTIVE_MATCHMAKING_SERVER_QUERIES.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn game_server_reinit_options_are_fully_validated_before_lifecycle_mutation() {
+        for options in [
+            GameServerInitOptions {
+                ip: None,
+                game_port: 65_536,
+                query_port: 27_015,
+                server_mode: sys::EServerMode::eServerModeAuthentication as u32,
+                version: "1.0".to_owned(),
+            },
+            GameServerInitOptions {
+                ip: None,
+                game_port: 27_015,
+                query_port: 65_536,
+                server_mode: sys::EServerMode::eServerModeAuthentication as u32,
+                version: "1.0".to_owned(),
+            },
+            GameServerInitOptions {
+                ip: None,
+                game_port: 27_015,
+                query_port: 27_015,
+                server_mode: u32::MAX,
+                version: "1.0".to_owned(),
+            },
+            GameServerInitOptions {
+                ip: None,
+                game_port: 27_015,
+                query_port: 27_015,
+                server_mode: sys::EServerMode::eServerModeAuthentication as u32,
+                version: "invalid\0version".to_owned(),
+            },
+        ] {
+            assert!(validate_game_server_init_options(options).is_err());
+        }
+
+        let validated = validate_game_server_init_options(GameServerInitOptions {
+            ip: Some(0x7f000001),
+            game_port: 27_015,
+            query_port: 27_016,
+            server_mode: sys::EServerMode::eServerModeAuthenticationAndSecure as u32,
+            version: "1.0".to_owned(),
+        })
+        .expect("valid game server replacement options");
+        assert_eq!(validated.ip, 0x7f000001);
+        assert_eq!(validated.game_port, 27_015);
+        assert_eq!(validated.query_port, 27_016);
+        assert_eq!(validated.version.to_bytes(), b"1.0");
     }
 }

@@ -67,7 +67,10 @@ callback pump for initialized clients. If your application uses a custom pump,
 call `runCallbacks()`. Register client callbacks with
 `client.callback.register(...)` and game-server callbacks with
 `client.gameServer.onCallback(...)`; the two domains are isolated. Do not mix
-Steam Bridge with raw `CCallbackBase` or `CCallResult` registration.
+Steam Bridge with raw `CCallbackBase` or `CCallResult` registration. A custom
+`callbackIntervalMs` must be a positive integer timer delay. If native callback
+dispatch fails, the pump stops and emits warning code
+`STEAM_BRIDGE_CALLBACK_PUMP_FAILED` instead of failing silently.
 
 ## Choose the correct Electron window model
 
@@ -156,7 +159,7 @@ Keep publisher credentials out of Electron and browser processes.
 | Import | Use it for |
 | --- | --- |
 | `steam-bridge` | Native Steam client/game-server APIs and public, keyless Web API calls |
-| `steam-bridge/server` | Publisher-key Web API calls, MicroTxn operations, and encrypted-ticket decryption on a trusted Node.js server |
+| `steam-bridge/server` | Authenticated/user-key and publisher-key Web API calls, MicroTxn operations, and encrypted-ticket decryption on a trusted Node.js server |
 | `steam-bridge/electron-builder` | Linux and macOS packaging preparation |
 
 ```ts

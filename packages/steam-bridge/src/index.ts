@@ -212,6 +212,7 @@ export type { SteamworksEnumName, SteamworksEnumValue, SteamworksEnumValueName }
 
 export interface InitOptions {
   appId: number;
+  /** Positive integer delay in milliseconds, up to Node.js's maximum timer delay. */
   callbackIntervalMs?: number;
 }
 
@@ -7830,22 +7831,7 @@ export function initAnonymousUser(): boolean {
 }
 
 export function initSafe(): boolean {
-  const previousCallbackPump = snapshotCallbackPump();
-  const cleanupError = closeSteamBridgeJsResources();
-  if (cleanupError !== undefined) {
-    restoreCallbackPump(previousCallbackPump);
-    throw cleanupError;
-  }
-  let initialized: boolean;
-  try {
-    initialized = native().initSafe();
-  } finally {
-    resetSteamBridgeProcessOwnership();
-  }
-  if (initialized) {
-    restoreCallbackPump(previousCallbackPump);
-  }
-  return initialized;
+  return native().initSafe();
 }
 
 /** @deprecated Steam Bridge always uses manual dispatch; use runCallbacks(). */
@@ -28445,17 +28431,21 @@ function normalizeSteamWebApiVersion(version: string | number | undefined): stri
   if (version === undefined) {
     return "v0001";
   }
-
-  if (typeof version === "number") {
-    return `v${Math.trunc(version).toString().padStart(4, "0")}`;
+  if (typeof version !== "string" && typeof version !== "number") {
+    throw new Error("Steam Web API version must be a positive integer or a v-prefixed positive integer.");
   }
 
-  const trimmed = version.trim();
-  const numeric = trimmed.match(/^v?(\d+)$/i);
-  if (numeric) {
-    return `v${numeric[1].padStart(4, "0")}`;
+  const numericVersion =
+    typeof version === "number"
+      ? version
+      : (() => {
+          const numeric = version.trim().match(/^v?(\d+)$/i);
+          return numeric ? Number(numeric[1]) : Number.NaN;
+        })();
+  if (!Number.isSafeInteger(numericVersion) || numericVersion <= 0) {
+    throw new Error("Steam Web API version must be a positive integer or a v-prefixed positive integer.");
   }
-  return trimmed;
+  return `v${numericVersion.toString().padStart(4, "0")}`;
 }
 
 function appendSteamWebApiParams(searchParams: URLSearchParams, params: SteamWebApiParams | undefined): void {
@@ -28552,7 +28542,9 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
   if (typeof options === "number") {
     return {
       appId: options,
-      callbackIntervalMs: steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+      callbackIntervalMs: normalizeCallbackIntervalMs(
+        steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+      )
     };
   }
 
@@ -28563,7 +28555,9 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
     }
     return {
       appId,
-      callbackIntervalMs: steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+      callbackIntervalMs: normalizeCallbackIntervalMs(
+        steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+      )
     };
   }
 
@@ -28573,12 +28567,14 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
 
   return {
     appId: options.appId,
-    callbackIntervalMs:
+    callbackIntervalMs: normalizeCallbackIntervalMs(
       options.callbackIntervalMs ?? steamOverlayProcessOwnershipRegistry().activeCallbackIntervalMs
+    )
   };
 }
 
 function startCallbackPump(intervalMs: number): void {
+  intervalMs = normalizeCallbackIntervalMs(intervalMs);
   const registry = steamOverlayProcessOwnershipRegistry();
   registry.activeCallbackIntervalMs = intervalMs;
 
@@ -28589,8 +28585,14 @@ function startCallbackPump(intervalMs: number): void {
   const timer = setInterval(() => {
     try {
       native().runCallbacks();
-    } catch {
-      stopCallbackPump(timer);
+    } catch (error) {
+      if (stopCallbackPump(timer)) {
+        process.emitWarning("Steam Bridge stopped its callback pump after runCallbacks() failed.", {
+          type: "SteamBridgeCallbackPumpWarning",
+          code: "STEAM_BRIDGE_CALLBACK_PUMP_FAILED",
+          detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+        });
+      }
     }
   }, intervalMs);
 
@@ -28617,15 +28619,26 @@ function restoreCallbackPump(snapshot: SteamCallbackPumpSnapshot): void {
   }
 }
 
-function stopCallbackPump(expectedTimer?: NodeJS.Timeout): void {
+function normalizeCallbackIntervalMs(intervalMs: number): number {
+  if (!Number.isSafeInteger(intervalMs) || intervalMs < 1 || intervalMs > 2_147_483_647) {
+    throw new Error(
+      "Steam Bridge callbackIntervalMs must be a positive integer no greater than 2147483647."
+    );
+  }
+  return intervalMs;
+}
+
+function stopCallbackPump(expectedTimer?: NodeJS.Timeout): boolean {
   const registry = steamOverlayProcessOwnershipRegistry();
   if (expectedTimer && registry.callbackTimer !== expectedTimer) {
-    return;
+    return false;
   }
   if (registry.callbackTimer) {
     clearInterval(registry.callbackTimer);
     registry.callbackTimer = undefined;
+    return true;
   }
+  return false;
 }
 
 function normalizeSteamId(steamId: NativeSteamId): SteamId {

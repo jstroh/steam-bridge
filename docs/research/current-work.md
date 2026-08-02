@@ -38,6 +38,47 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
+### 2026-08-01 post-0.3.12 adversarial-finding repair checkpoint
+
+The current reviewed slice is based on pushed main commit `42fdf82` and closes
+the remaining findings from the `0.3.12` post-release review. Callback timer
+intervals now require a positive safe integer within Node's maximum timer
+delay before any native call or JavaScript resource cleanup. A failure in the
+active callback timer stops that exact timer and emits
+`STEAM_BRIDGE_CALLBACK_PUMP_FAILED`; a stale timer cannot warn about or stop a
+reentrant replacement. `initSafe()` now preserves the callback pump, managed
+controller, presenter, and native-surface ownership when native initialization
+is already successful, matching the native operation's idempotent contract.
+
+Steam Web API versions now accept only positive integer or `v`-prefixed
+positive-integer values and canonicalize them before URL construction; empty,
+fractional, non-finite, zero, negative, oversized, and path-shaped values fail
+before fetch. Game-server replacement validates its version, both ports, and
+server mode before acquiring the lifecycle lock or shutting down a healthy
+server. Focused JavaScript ownership, warning, URL, workflow-policy, and Rust
+validation tests pass.
+
+The package retains its documented Node 18 runtime floor. CI now creates one
+packed package under the exact Node 22.13 development floor and installs/tests
+that same tarball under Node 18, 20, 22, and 24 in both CommonJS and ESM modes.
+Tag CI and Release assembly use only the repository-pinned stable Electron;
+the mutable npm-latest check remains a branch/PR maintenance signal and cannot
+invalidate an immutable historical tag. The Web API guide now keeps both user
+and publisher keys in the explicit trusted-server entrypoint, consistent with
+Valve's protected-method guidance.
+
+The complete local gate passes: 368/368 JavaScript tests, 31/31 Rust tests,
+TypeScript/build, supported-target policy, stable-Electron pin, native format
+and compilation, API coverage, Windows release self-tests, diff checks, a
+direct packed-runtime CommonJS/ESM smoke on Node 24, and the full packed
+consumer/platform matrix. The first package-matrix invocation selected the
+Windows Store Python alias and failed before its POSIX fixtures; the unchanged
+rerun passed through the documented `STEAM_BRIDGE_PYTHON` hook using the
+desktop workspace's real Python runtime. Final diff/privacy review, commit,
+push, and GitHub CI are still pending. No release tag or live-runtime claim
+exists for this working slice; a later publication still requires a new
+immutable version and the normal exact-candidate proof.
+
 ### 2026-08-01 0.3.12 security and lifecycle release checkpoint
 
 The `0.3.12` candidate replaces rejected `v0.3.11`. Caller-provided Web API
