@@ -1586,8 +1586,8 @@ mod windows {
         DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, GetCapture, ReleaseCapture, SetActiveWindow, SetCapture, SetFocus,
-        VK_LBUTTON, VK_RBUTTON,
+        ActivateKeyboardLayout, GetAsyncKeyState, GetCapture, GetKeyState, GetKeyboardLayout,
+        ReleaseCapture, SetActiveWindow, SetCapture, SetFocus, VK_LBUTTON, VK_RBUTTON,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
@@ -1636,6 +1636,8 @@ mod windows {
     const VK_SHIFT_CODE: i32 = 0x10;
     const VK_CONTROL_CODE: i32 = 0x11;
     const VK_ALT_CODE: i32 = 0x12;
+    const VK_CAPS_LOCK_CODE: i32 = 0x14;
+    const VK_NUM_LOCK_CODE: i32 = 0x90;
     const VK_LEFT_SHIFT_CODE: i32 = 0xA0;
     const VK_RIGHT_SHIFT_CODE: i32 = 0xA1;
     const VK_LEFT_CONTROL_CODE: i32 = 0xA2;
@@ -1834,6 +1836,8 @@ mod windows {
         shift: bool,
         control: bool,
         alt: bool,
+        caps_lock: bool,
+        num_lock: bool,
         x: Option<i32>,
         y: Option<i32>,
         delta_y: Option<i32>,
@@ -2558,6 +2562,18 @@ mod windows {
 
         unsafe {
             let foreground = GetForegroundWindow();
+            let foreground_thread = if foreground.is_null() {
+                0
+            } else {
+                GetWindowThreadProcessId(foreground, ptr::null_mut())
+            };
+            let foreground_keyboard_layout = if foreground_thread == 0 {
+                None
+            } else {
+                let layout = GetKeyboardLayout(foreground_thread);
+                (!layout.is_null()).then_some(format!("0x{:016X}", layout as usize))
+            };
+            let keyboard_layout = format!("0x{:016X}", GetKeyboardLayout(0) as usize);
             let rect = read_window_rect(surface.hwnd).map(window_rect_json);
             let client_rect = read_client_rect_in_screen(surface.hwnd);
             let capture = GetCapture();
@@ -2691,6 +2707,11 @@ mod windows {
                     "displayWorkAreaClamped".to_owned(),
                     json!(STANDALONE_DISPLAY_CLAMPED.load(Ordering::Relaxed)),
                 );
+                object.insert("keyboardLayout".to_owned(), json!(keyboard_layout));
+                object.insert(
+                    "foregroundKeyboardLayout".to_owned(),
+                    json!(foreground_keyboard_layout),
+                );
                 object.insert("pointer".to_string(), pointer);
                 object.insert(
                     "dpiAwareness".to_owned(),
@@ -2739,6 +2760,7 @@ mod windows {
         standalone_min_client_size: Option<(i32, i32)>,
     ) -> Result<NativeSurface, Error> {
         let _dpi_awareness = ThreadDpiAwarenessGuard::per_monitor_v2();
+        inherit_foreground_keyboard_layout();
         ensure_window_class()?;
         reset_window_message_diagnostics();
         let title = wide_string(title);
@@ -3489,6 +3511,26 @@ mod windows {
         SetFocus(surface.hwnd);
     }
 
+    unsafe fn inherit_foreground_keyboard_layout() {
+        let foreground = GetForegroundWindow();
+        if foreground.is_null() {
+            return;
+        }
+        let foreground_thread = GetWindowThreadProcessId(foreground, ptr::null_mut());
+        if foreground_thread == 0 {
+            return;
+        }
+        let foreground_layout = GetKeyboardLayout(foreground_thread);
+        if foreground_layout.is_null() || foreground_layout == GetKeyboardLayout(0) {
+            return;
+        }
+        // Keyboard layouts are thread-local on Windows. The standalone Steam
+        // host becomes the application's focused window, so inherit the layout
+        // that was active immediately before the host is created instead of
+        // silently reverting players to this process thread's default layout.
+        ActivateKeyboardLayout(foreground_layout, 0);
+    }
+
     unsafe fn destroy_surface(mut surface: NativeSurface) {
         restore_adopted_steam_dialog(&mut surface);
         if surface.cursor_suppressed {
@@ -4164,6 +4206,8 @@ mod windows {
             shift: true,
             control: false,
             alt: false,
+            caps_lock: unsafe { lock_key_toggled(VK_CAPS_LOCK_CODE) },
+            num_lock: unsafe { lock_key_toggled(VK_NUM_LOCK_CODE) },
             x: None,
             y: None,
             delta_y: None,
@@ -4250,6 +4294,8 @@ mod windows {
                 modifier_key_down(&[VK_CONTROL_CODE, VK_LEFT_CONTROL_CODE, VK_RIGHT_CONTROL_CODE])
             },
             alt: unsafe { modifier_key_down(&[VK_ALT_CODE, VK_LEFT_ALT_CODE, VK_RIGHT_ALT_CODE]) },
+            caps_lock: unsafe { lock_key_toggled(VK_CAPS_LOCK_CODE) },
+            num_lock: unsafe { lock_key_toggled(VK_NUM_LOCK_CODE) },
             x,
             y,
             delta_y: (message == WM_MOUSEWHEEL)
@@ -4450,6 +4496,10 @@ mod windows {
         virtual_keys
             .iter()
             .any(|virtual_key| async_key_state(*virtual_key) & 0x8000 != 0)
+    }
+
+    unsafe fn lock_key_toggled(virtual_key: i32) -> bool {
+        GetKeyState(virtual_key) as u16 & 0x0001 != 0
     }
 
     fn minimum_menu_dpi(scale: f64) -> Result<u32, Error> {

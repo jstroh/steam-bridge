@@ -573,6 +573,14 @@ time. If input is correlated with Steam activation callbacks, compare callback
 transitions with `capturedAtMs`; a callback can arrive first while the Node
 event loop is busy.
 
+Windows input events also include optional `capsLock` and `numLock` toggle
+state. When forwarding keyboard input with Electron's `sendInputEvent`, use
+those values as its documented `capslock` and `numlock` modifiers, and add
+`iskeypad` for the `num0`-`num9`, `numdec`, `numadd`, `numsub`, `nummult`, and
+`numdiv` accelerator key codes. Continue forwarding native `char` events for
+layout-aware text; do not derive localized text directly from Win32 virtual-key
+numbers.
+
 The optional `menu` tree creates a real Windows menu bar on a standalone host.
 Leaf `commandId` values are returned as `menuCommand` input events. The menu is
 removed in fullscreen, restored when returning to windowed mode, and changing

@@ -1000,6 +1000,17 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /WM_COMMAND => "menuCommand"/);
   assert.match(source, /i32::from\(!GetMenu\(hwnd\)\.is_null\(\)\)/);
   assert.match(source, /SetThreadDpiAwarenessContext\(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2\)/);
+  assert.match(source, /unsafe fn inherit_foreground_keyboard_layout\(\)/);
+  assert.match(source, /GetWindowThreadProcessId\(foreground, ptr::null_mut\(\)\)/);
+  assert.match(source, /ActivateKeyboardLayout\(foreground_layout, 0\)/);
+  assert.match(
+    source,
+    /let _dpi_awareness = ThreadDpiAwarenessGuard::per_monitor_v2\(\);\s*inherit_foreground_keyboard_layout\(\);\s*ensure_window_class\(\)\?;/
+  );
+  assert.match(source, /let keyboard_layout = format!\("0x\{:016X\}", GetKeyboardLayout\(0\) as usize\)/);
+  assert.match(source, /object\.insert\("keyboardLayout"\.to_owned\(\), json!\(keyboard_layout\)\)/);
+  assert.match(source, /"foregroundKeyboardLayout"\.to_owned\(\)/);
+  assert.match(source, /json!\(foreground_keyboard_layout\)/);
   assert.match(source, /AreDpiAwarenessContextsEqual\(/);
   assert.match(source, /message == WM_DPICHANGED/);
   assert.match(source, /matches!\(message, WM_DISPLAYCHANGE \| WM_SETTINGCHANGE\)/);
@@ -1070,6 +1081,11 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /0X887A0007/);
   assert.match(source, /poll_overlay_shortcut\(surface\)/);
   assert.match(source, /GetAsyncKeyState\(virtual_key\)/);
+  assert.match(source, /caps_lock: bool/);
+  assert.match(source, /num_lock: bool/);
+  assert.match(source, /GetKeyState\(virtual_key\) as u16 & 0x0001 != 0/);
+  assert.match(source, /caps_lock: unsafe \{ lock_key_toggled\(VK_CAPS_LOCK_CODE\) \}/);
+  assert.match(source, /num_lock: unsafe \{ lock_key_toggled\(VK_NUM_LOCK_CODE\) \}/);
   assert.match(source, /tab_state & 0x8001/);
   assert.match(source, /kind: "overlayShortcut"/);
   assert.match(source, /"captureHwnd": \(!capture\.is_null\(\)\)\.then\(\|\| hwnd_hex\(capture\)\)/);
@@ -24659,6 +24675,8 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     shift: true,
     control: false,
     alt: false,
+    capsLock: true,
+    numLock: true,
     x: 10,
     y: 20,
     clientWidth: 960,
@@ -24778,6 +24796,8 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
       shift: true,
       control: false,
       alt: false,
+      capsLock: true,
+      numLock: true,
       x: 10,
       y: 20,
       clientWidth: 960,

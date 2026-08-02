@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-01
+Last reviewed: 2026-08-02
 
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
@@ -42,6 +42,113 @@ close FPS against the authoritative display rate, crash/orphan cleanup, and
 exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
+
+### 2026-08-02 Windows keyboard-layout and movement-cadence checkpoint
+
+A focused source-linked Windows pass addressed two new configured-consumer
+reports without reopening any retired popup or child-host architecture. The
+standalone host now inherits the foreground thread's active Windows keyboard
+layout before it creates its HWND, and diagnostics expose both the host-thread
+and foreground-thread layout handles. This ownership belongs in Steam Bridge:
+the native standalone window becomes the focused input owner, while the
+consumer remains layout-agnostic. On the development host, the installed
+English layout matched exactly across creation and a browser-to-game focus
+round trip, and `/` opened the in-game command suggestions. No second physical
+keyboard layout is installed, so this is not yet a live Hungarian-layout proof;
+do not change Windows language settings merely to manufacture one.
+
+The same report exposed a separate configured-consumer translation defect:
+Win32 numpad and lock virtual-key values were falling through to
+`String.fromCharCode`, so values such as `VK_SUBTRACT` and `VK_CAPITAL` became
+ordinary letters or control characters before `webContents.sendInputEvent`.
+The consumer now maps the complete Electron-supported numpad family and lock
+keys to their documented accelerator names, marks numpad key events with
+`iskeypad`, and drops unsupported virtual keys instead of inventing characters.
+Steam Bridge now carries the Windows `capsLock` and `numLock` toggle state as
+optional native-input metadata; the consumer forwards those documented
+Electron modifiers. Text remains owned by the native layout-aware `WM_CHAR`
+path rather than a US-layout translation table.
+
+The repaired local native build and configured consumer were then exercised
+inside the actual game. Numpad `8` arrived in Chromium as `key=8`,
+`code=Numpad8`, `location=3`; numpad multiply arrived as `key=*`,
+`code=NumpadMultiply`, `location=3`. Caps Lock changed the captured native
+toggle and the next letter arrived as uppercase `A` with `capslock`; Num Lock
+likewise set and cleared `numlock`. Both lock keys were restored to their
+original off state. This closes the reported numpad/lock translation defect;
+it does not manufacture evidence for the still-unavailable Hungarian layout.
+
+The movement-cadence retest first discarded an invalid synthetic sample after
+proving its movement letters had remained in the chat input. With chat empty
+and unfocused, repeated far-field game clicks visibly moved the character and
+camera while telemetry sampled the real game surface. Twenty-four one-second
+samples at 60 Hz held renderer rAF at 60.000-60.006 FPS, paint at or above
+59.5 FPS, and native presentation at 58.7-61.0 FPS; the largest renderer
+interval was 16.8 ms. Twenty-four one-second samples at 165 Hz held renderer
+rAF at 164.016-165.033 FPS, paint at or above 163.9 FPS, and native
+presentation at 162.9-165.1 FPS; the largest renderer interval was 12.1 ms.
+Both runs retained zero device loss/recovery, zero slow shared-texture copies,
+and exact host/foreground keyboard-layout agreement. No two-to-three-second
+hitch reproduced. This clears the local D3D/presentation path but does not
+close the external stutter report without its distinct machine/display/input
+conditions or a new reproducible signal.
+
+One earlier explicit QA-menu activation was deliberately invoked after the
+game had already been backgrounded and produced an Electron hang. The
+configured consumer now refuses that QA-only command unless its native host is
+focused and, on Windows, diagnostics confirm the host is foreground. Focused
+and backgrounded retests passed the gate. Product checkout, subscription, and
+ordinary shortcut routes are unchanged. No crash or hang event occurred during
+the fresh post-repair process that supplied the keyboard and movement evidence.
+
+The configured consumer passes its complete 337/337 test suite, ESLint, and
+TypeScript. Steam Bridge passes its complete 376/376 JavaScript and 37/37 Rust
+test gates plus native formatting. The machine was restored to 1920x1200 at
+60 Hz and the recommended 125% scale. This source-linked repair is not a new
+package or release candidate.
+
+### 2026-08-02 configured-consumer Bugdesk and external-link checkpoint
+
+A review of the configured consumer's Steam-tagged player reports found two
+additional shell-integration defects. Bugdesk's native HTML choice popups were
+created outside the offscreen renderer surface, so the report type, severity,
+and category controls could not be selected through the standalone native game
+host. The client now paints those choices as keyboard-accessible listboxes
+inside the game surface. Their accessible names include both label and current
+value, and asynchronous option hydration preserves an open list and valid
+keyboard focus. A focused actual-game Windows check selected values in all
+three controls, scrolled the longer category list, closed only an open list
+with the first Escape, and closed the unsent dialog with the second Escape. No
+report was submitted.
+
+The complete production outbound-link inventory is four user actions: the
+shell TOS-decline YouTube video, the client's HUD Database root, Character
+Build's generated canonical database URL, and Welcome's Bluesky profile. The
+website-only Stripe navigation is not selected on Steam, logout/recovery stays
+inside the shell, and `PxWindowManager`'s similarly named calls operate game
+windows rather than browser popups. All four user actions now cross the
+explicit Steam preload bridge. The configured shell accepts only the three
+exact HTTPS hosts those routes require and opens them through Electron's
+system-browser API on Windows, macOS, Linux Desktop, and Steam Deck Desktop
+Mode. Steam Deck Game Mode returns `false` before browser dispatch and opens
+nothing. The client awaits that result, so Character Open Build reports a
+denial instead of false success. The TOS route consumes a system-browser
+rejection rather than creating an unhandled Promise rejection. A focused
+Windows actual-game check opened the database in a separate Chrome tab while
+the game remained in its native host, then closed only that QA-opened tab. The
+generated Open Build URL, awaited success, malicious-URL rejection, and Game
+Mode denial are source/unit proven rather than browser-launch experiments on
+this host.
+
+The diagnostic review also removed per-keystroke renderer logging from the
+shell's optional FPS mode; it could capture chat or login input and was not
+needed for cadence evidence. The configured shell passes 339/339 tests, ESLint,
+and TypeScript. The client passes TypeScript, the focused Bugdesk,
+native-bridge, Build-share, and Welcome-link smokes, and a 632-module production
+Vite build. Steam Bridge passes its full 376/376 JavaScript and 37/37 Rust
+tests, supported-platform, native formatting/check, API audit, packed-package
+smoke, and diff check. This source slice was explicitly authorized for commit
+and push; publishing a package or release candidate remains a separate action.
 
 ## Non-negotiable Linux/Steam sandbox decision
 

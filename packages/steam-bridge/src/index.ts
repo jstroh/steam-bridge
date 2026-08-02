@@ -1756,6 +1756,9 @@ export interface NativeOverlayInputEvent {
   shift: boolean;
   control: boolean;
   alt: boolean;
+  /** Lock-key toggle state when supplied by the native host. */
+  capsLock?: boolean;
+  numLock?: boolean;
   x?: number;
   y?: number;
   deltaY?: number;
@@ -11019,6 +11022,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         shift: source.shift === true,
         control: source.control === true,
         alt: source.alt === true,
+        ...(typeof source.capsLock === "boolean" ? { capsLock: source.capsLock } : {}),
+        ...(typeof source.numLock === "boolean" ? { numLock: source.numLock } : {}),
         clientWidth: Math.max(1, Number(source.clientWidth) || 1),
         clientHeight: Math.max(1, Number(source.clientHeight) || 1),
         ...(typeof source.minimized === "boolean" ? { minimized: source.minimized } : {}),
