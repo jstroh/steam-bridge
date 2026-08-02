@@ -364,12 +364,16 @@ ipcMain.handle("steam-smoke:renderer-frame-rate", () => measureRendererFrameRate
 ipcMain.handle("steam-smoke:auth-ticket", async () => {
   const activeClient = requireClient();
   const ticket = await activeClient.auth.getAuthTicketForWebApi(AUTH_IDENTITY);
-  const bytes = ticket.getBytes();
-  return sanitize({
-    identity: AUTH_IDENTITY,
-    byteLength: bytes.length,
-    prefixHex: bytes.subarray(0, 12).toString("hex")
-  });
+  try {
+    const bytes = ticket.getBytes();
+    return sanitize({
+      identity: AUTH_IDENTITY,
+      byteLength: bytes.length,
+      prefixHex: bytes.subarray(0, 12).toString("hex")
+    });
+  } finally {
+    ticket.cancel();
+  }
 });
 ipcMain.handle("steam-smoke:overlay-store", () => openStoreOverlay());
 ipcMain.handle("steam-smoke:overlay-web", () => openWebOverlay());

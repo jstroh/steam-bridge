@@ -90,6 +90,12 @@ for the complete implemented surface and known gaps.
 | Linux x64 and Steam Deck | `x86_64-unknown-linux-gnu` |
 | macOS Apple Silicon | `aarch64-apple-darwin` |
 
+The Linux x64 artifact is built and tested in CI. Physical overlay qualification
+currently covers Steam Deck Game Mode and Steam Deck Desktop Mode. A general
+non-Deck Linux desktop is a separate release-evidence lane and is **not green**
+until the documented X11/Wayland matrix has run on a real non-Deck x64 host.
+Do not treat CI, WSL, a VM, or a Deck receipt as that physical attestation.
+
 ### macOS Apple Silicon Only
 
 Intel macOS, Rosetta, and universal macOS builds are not supported. Build and
@@ -111,6 +117,12 @@ opt-in native-menu command for the ordinary Friends overlay, and the receipt
 requires its `qa-menu` marker plus real Steam active/inactive callbacks. A human
 Shift+Tab is a one-time qualification only when shortcut routing changes, not a
 recurring candidate or publication requirement.
+
+For non-Deck Linux, use the `linux-desktop` target in the repository's actual-
+game QA runner. Record the physical distribution, desktop/window manager,
+X11/Wayland session, GPU/driver, resolution, scale, and refresh rate. Until that
+receipt exists, describe Linux x64 as distributed and CI-tested—not physically
+qualified outside Steam Deck.
 
 ## Callback dispatch ownership
 
@@ -134,6 +146,28 @@ emits a `SteamBridgeCallbackPumpWarning` with code
 `STEAM_BRIDGE_CALLBACK_PUMP_FAILED`; it is never swallowed silently. Repeating
 `initSafe()` after successful initialization is idempotent and preserves the
 existing callback pump, managed controller, presenter, and native surface.
+Successful first-time `initSafe()` and `initAnonymousUser()` calls start the
+same automatic callback pump as `init()`; applications do not need a separate
+timer for these initialization paths.
+
+## Authentication-ticket ownership
+
+Steam authentication tickets are live native resources. Always cancel a ticket
+as soon as its bytes have been sent to the trusted verifier:
+
+```ts
+const ticket = await client.auth.getAuthTicketForWebApi("my-service");
+try {
+  await sendTicketToServer(ticket.getBytes());
+} finally {
+  ticket.cancel();
+}
+```
+
+`cancel()` is idempotent. Steam Bridge also cancels an unclosed ticket when its
+native object is collected, but garbage collection is only a safety net and is
+not a timely resource-lifecycle mechanism. Never retain or reuse ticket bytes
+after cancellation; request a fresh ticket for the next authentication attempt.
 
 ## Electron overlay
 

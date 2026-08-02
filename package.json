@@ -43,8 +43,9 @@
     "native:build": "node scripts/build-native.cjs",
     "native:check": "node scripts/check-native.cjs",
     "native:fmt": "cargo fmt --all --check",
+    "native:test": "node scripts/run-native-tests.cjs",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run test:unit",
+    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run test:unit && npm run native:test",
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
   },
   "devDependencies": {

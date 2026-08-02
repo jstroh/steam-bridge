@@ -40,6 +40,11 @@ npm run native:check
 npm run api:check
 ```
 
+`npm test` includes the Rust native unit tests and supplies the packaged Valve
+runtime-library directory on Windows, Linux, and macOS. Do not replace that gate
+with `cargo check`; `cargo check` cannot exercise resource cleanup or lifecycle
+tests.
+
 Use `STEAM_BRIDGE_APP_ID=480 npm start -w steam-bridge-electron-example` for a
 local Electron smoke test. Use your own Steam app ID for app-specific
 achievements, stats, inventory, UGC, and economy behavior.
@@ -79,6 +84,13 @@ matrix scripts intentionally fail and must never be substituted for this proof.
 The workflow must not fabricate the post-live record or run `--publish`
 automatically. See the Windows standalone release-proof section in
 `examples/electron-basic/README.md` for the exact procedure.
+
+The Linux x64 binary is CI-tested, while physical non-Deck Linux is tracked as
+its own X11/Wayland qualification lane. A Deck Desktop receipt cannot satisfy
+that lane. Do not label general Linux desktop physically green without a receipt
+from a real non-Deck x64 host containing the distribution, window manager,
+display server, GPU/driver, display-mode transitions, overlay transitions,
+pacing, cleanup, and restoration evidence.
 
 Before any live Windows candidate launch from a user-writable deployment root,
 use the combined deployment helper. It performs source and staged fingerprints,

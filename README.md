@@ -34,6 +34,10 @@ You need:
 | Linux x64 and Steam Deck | `x86_64-unknown-linux-gnu` |
 | Apple Silicon macOS | `aarch64-apple-darwin` |
 
+The Linux artifact is CI-tested and physically qualified on Steam Deck. General
+non-Deck Linux remains a separate physical X11/Wayland qualification lane; do
+not claim that lane green from CI, WSL, a VM, or a Steam Deck receipt.
+
 ### macOS Apple Silicon Only
 
 Intel macOS, Rosetta, universal macOS packages, Windows ARM, and Linux ARM are
@@ -71,6 +75,11 @@ Steam Bridge with raw `CCallbackBase` or `CCallResult` registration. A custom
 `callbackIntervalMs` must be a positive integer timer delay. If native callback
 dispatch fails, the pump stops and emits warning code
 `STEAM_BRIDGE_CALLBACK_PUMP_FAILED` instead of failing silently.
+Successful first-time `initSafe()` and `initAnonymousUser()` calls start this
+same automatic pump. Authentication tickets are live native resources: use
+`try`/`finally` and call `ticket.cancel()` immediately after the trusted verifier
+has consumed the bytes. Native finalization is a last-resort cleanup, not a
+substitute for explicit cancellation.
 
 ## Choose the correct Electron window model
 

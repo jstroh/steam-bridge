@@ -25,12 +25,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
 
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.13.0
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           targets: ${{ matrix.target }}
       - if: matrix.target == 'aarch64-apple-darwin'
@@ -45,7 +45,7 @@ jobs:
       - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
       - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ matrix.target }}
       - run: node scripts/verify-release-artifacts.cjs --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: steam-bridge-${{ matrix.target }}
           path: |
@@ -60,12 +60,12 @@ jobs:
     needs: prebuild
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.13.0
           cache: npm
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: steam-bridge-*
           path: release-artifacts
@@ -146,7 +146,7 @@ jobs:
               --bundle-archive $bundleArchives[0].FullName `
               --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json"
           }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: steam-bridge-windows-publish-package-gate
           path: |

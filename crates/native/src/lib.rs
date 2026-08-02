@@ -1,4 +1,10 @@
 #![allow(unexpected_cfgs)]
+// napi-rs removes exported wrappers from the Rust unit-test build, which makes
+// the compatibility facade appear unused even though the cdylib exports it.
+#![cfg_attr(test, allow(dead_code))]
+// The flat Steamworks/N-API compatibility surface intentionally preserves
+// upstream positional call shapes instead of wrapping them in breaking structs.
+#![allow(clippy::too_many_arguments)]
 
 use napi::bindgen_prelude::{BigInt, Buffer, Error, Function, Status};
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
@@ -15,6 +21,7 @@ mod compat;
 #[cfg(target_os = "linux")]
 mod kwin_dbus;
 mod native_surface;
+mod resource;
 mod state;
 #[cfg(target_os = "windows")]
 mod windows_d3d11;
@@ -179,15 +186,14 @@ pub struct MacOverlayEnvironment {
 #[napi]
 pub struct AuthTicket {
     pub(crate) data: Vec<u8>,
-    pub(crate) handle: sys::HAuthTicket,
+    handle: resource::NativeResourceHandle<sys::HAuthTicket, ()>,
 }
 
 #[napi]
 impl AuthTicket {
     #[napi]
     pub fn cancel(&mut self) {
-        cancel_auth_ticket(self.handle);
-        self.handle = H_AUTH_TICKET_INVALID;
+        self.handle.release();
     }
 
     #[napi(js_name = "getBytes")]
@@ -1624,10 +1630,7 @@ pub async fn get_auth_ticket_for_web_api(
     let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_seconds), rx).await;
 
     match result {
-        Ok(Ok(Ok(data))) => Ok(AuthTicket {
-            data,
-            handle: ticket_handle,
-        }),
+        Ok(Ok(Ok(data))) => Ok(make_auth_ticket(data, ticket_handle)),
         Ok(Ok(Err(message))) => {
             cancel_auth_ticket(ticket_handle);
             Err(Error::from_reason(message))
@@ -1748,7 +1751,15 @@ pub(crate) fn cstring(value: String, label: &str) -> Result<CString, Error> {
 }
 
 pub(crate) fn make_auth_ticket(data: Vec<u8>, handle: sys::HAuthTicket) -> AuthTicket {
-    AuthTicket { data, handle }
+    AuthTicket {
+        data,
+        handle: resource::NativeResourceHandle::new(
+            handle,
+            H_AUTH_TICKET_INVALID,
+            (),
+            |(), handle| cancel_auth_ticket(handle),
+        ),
+    }
 }
 
 pub(crate) fn steam_id_to_player(steam_id: u64) -> PlayerSteamId {

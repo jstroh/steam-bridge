@@ -7825,13 +7825,22 @@ export function initAnonymousUser(): boolean {
     resetSteamBridgeProcessOwnership();
   }
   if (initialized) {
-    restoreCallbackPump(previousCallbackPump);
+    if (previousCallbackPump.running) {
+      restoreCallbackPump(previousCallbackPump);
+    } else {
+      startCallbackPump(previousCallbackPump.intervalMs);
+    }
   }
   return initialized;
 }
 
 export function initSafe(): boolean {
-  return native().initSafe();
+  const previousCallbackPump = snapshotCallbackPump();
+  const initialized = native().initSafe();
+  if (initialized && !previousCallbackPump.running) {
+    startCallbackPump(previousCallbackPump.intervalMs);
+  }
+  return initialized;
 }
 
 /** @deprecated Steam Bridge always uses manual dispatch; use runCallbacks(). */

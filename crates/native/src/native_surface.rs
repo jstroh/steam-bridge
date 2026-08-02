@@ -1724,6 +1724,7 @@ mod windows {
         last_host_client_rect: RECT,
     }
 
+    #[allow(clippy::large_enum_variant)] // One process-global surface; boxing D3D state adds no useful density.
     enum WindowsSurfaceRenderer {
         OpenGl {
             hdc: HDC,
@@ -4252,8 +4253,8 @@ mod windows {
             x,
             y,
             delta_y: (message == WM_MOUSEWHEEL)
-                .then(|| ((wparam as u32 >> 16) as u16 as i16) as i32),
-            command_id: (message == WM_COMMAND).then(|| wparam as u32 & u16::MAX as u32),
+                .then_some(((wparam as u32 >> 16) as u16 as i16) as i32),
+            command_id: (message == WM_COMMAND).then_some(wparam as u32 & u16::MAX as u32),
             client_width: (client.right - client.left).max(1),
             client_height: (client.bottom - client.top).max(1),
             minimized: (message == WM_SIZE && wparam == SIZE_MINIMIZED as usize)
@@ -4978,6 +4979,7 @@ mod windows {
     }
 
     #[cfg(test)]
+    #[allow(clippy::items_after_test_module)]
     mod tests {
         use super::{
             centered_window_rect, clamp_client_size_to_minimum, logical_pixels_to_physical,

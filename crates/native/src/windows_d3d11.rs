@@ -1035,7 +1035,7 @@ unsafe fn compile_shader(source: &[u8], target: &'static [u8]) -> Result<Vec<u8>
         PCSTR::null(),
         None,
         None::<&ID3DInclude>,
-        PCSTR(b"main\0".as_ptr()),
+        PCSTR(c"main".as_ptr().cast()),
         PCSTR(target.as_ptr()),
         0,
         0,

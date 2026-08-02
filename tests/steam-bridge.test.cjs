@@ -2088,6 +2088,16 @@ test("electron smoke initializes Steam before Electron readiness and display ser
   assert.equal(initIndex < displayServicesIndex, true, "Steam initialization must precede display services");
 });
 
+test("electron smoke always cancels authentication tickets after use", () => {
+  const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
+  const handlerStart = exampleMain.indexOf('ipcMain.handle("steam-smoke:auth-ticket"');
+  const handlerEnd = exampleMain.indexOf('ipcMain.handle("steam-smoke:overlay-store"', handlerStart);
+  assert.notEqual(handlerStart, -1, "auth-ticket smoke handler should exist");
+  assert.notEqual(handlerEnd, -1, "auth-ticket smoke handler should have a stable boundary");
+  const handlerSource = exampleMain.slice(handlerStart, handlerEnd);
+  assert.match(handlerSource, /try\s*\{[\s\S]*\}\s*finally\s*\{\s*ticket\.cancel\(\);\s*\}/);
+});
+
 test("electron smoke resets achievement progress before every repeatable toast probe", () => {
   const exampleMain = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "main.js"), "utf8");
   const setupStart = exampleMain.indexOf("async function prepareAchievementProgressTarget");
@@ -3803,10 +3813,13 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   const exampleReadme = fs.readFileSync(path.join(repoRoot, "examples", "electron-basic", "README.md"), "utf8");
   const ciWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
   const releaseWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+  const publishWorkflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "publish.yml"), "utf8");
+  const dependabotConfig = fs.readFileSync(path.join(repoRoot, ".github", "dependabot.yml"), "utf8");
   const targetScript = fs.readFileSync(path.join(repoRoot, "scripts", "assert-supported-targets.cjs"), "utf8");
   const packagerScript = fs.readFileSync(path.join(repoRoot, "scripts", "package-electron-example.cjs"), "utf8");
   const buildNativeScript = fs.readFileSync(path.join(repoRoot, "scripts", "build-native.cjs"), "utf8");
   const checkNativeScript = fs.readFileSync(path.join(repoRoot, "scripts", "check-native.cjs"), "utf8");
+  const testNativeScript = fs.readFileSync(path.join(repoRoot, "scripts", "run-native-tests.cjs"), "utf8");
   const apiAuditScript = fs.readFileSync(path.join(repoRoot, "scripts", "audit-steam-api-coverage.cjs"), "utf8");
   const enumGeneratorScript = fs.readFileSync(
     path.join(repoRoot, "scripts", "generate-steamworks-enums.cjs"),
@@ -3856,6 +3869,8 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(initClientTxnScript, /createPublisherWebApiClient/);
   assert.match(rootPackageJson.scripts["native:build"], /scripts\/build-native\.cjs/);
   assert.match(rootPackageJson.scripts["native:check"], /scripts\/check-native\.cjs/);
+  assert.match(rootPackageJson.scripts["native:test"], /scripts\/run-native-tests\.cjs/);
+  assert.match(rootPackageJson.scripts.test, /npm run native:test/);
   assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
   assert.match(rootPackageJson.scripts["api:check"], /audit-steam-api-coverage\.cjs/);
   assert.match(rootPackageJson.scripts["steamworks-enums:generate"], /generate-steamworks-enums\.cjs/);
@@ -3874,6 +3889,14 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(ciWorkflow, /if: github\.ref_type != 'tag'\s+run: npm run check:electron:latest/);
   assert.doesNotMatch(releaseWorkflow, /check:electron:latest/);
   assert.match(releaseWorkflow, /npm run check:electron/);
+  for (const workflow of [ciWorkflow, releaseWorkflow, publishWorkflow]) {
+    const actionReferences = [...workflow.matchAll(/^\s*- uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
+    assert.ok(actionReferences.length > 0, "workflow must use at least one action");
+    for (const reference of actionReferences) {
+      assert.match(reference, /^[^@\s]+@[0-9a-f]{40}$/i, `workflow action must use an immutable SHA: ${reference}`);
+    }
+  }
+  assert.match(dependabotConfig, /package-ecosystem:\s*github-actions/);
 
   for (const source of [ciWorkflow, releaseWorkflow, loader, linkScript, packagerScript, prepareMacosScript]) {
     assert.doesNotMatch(source, /x86_64-apple-darwin|darwin-x64|macos-13/);
@@ -3882,6 +3905,8 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(loader, /Intel macOS is not supported/);
   assert.match(rootReadme, /Do not package, launch, or verify macOS smoke apps through Rosetta/);
   assert.match(packageReadme, /Do not package, launch, or verify macOS smoke\s+apps through Rosetta/);
+  assert.match(packageReadme, /general\s+non-Deck Linux desktop is a separate release-evidence lane and is \*\*not green\*\*/i);
+  assert.match(rootReadme, /General\s+non-Deck Linux remains a separate physical X11\/Wayland qualification lane/i);
   assert.match(exampleReadme, /Do not\s+launch these macOS smoke apps through Rosetta/);
   assert.match(
     packagerScript,
@@ -3892,7 +3917,7 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(packagerScript, /command: process\.execPath, args: \[npmCli, \.\.\.args\]/);
   assert.match(packagerScript, /shell: false/);
   assert.doesNotMatch(packagerScript, /shell: process\.platform === "win32"/);
-  for (const script of [buildNativeScript, checkNativeScript, apiAuditScript, enumGeneratorScript]) {
+  for (const script of [buildNativeScript, checkNativeScript, testNativeScript, apiAuditScript, enumGeneratorScript]) {
     assert.match(script, /shell: false/);
     assert.doesNotMatch(script, /shell: process\.platform === "win32"/);
   }
@@ -3925,6 +3950,36 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.doesNotMatch(launcherTemplate, /SteamBridgeSmoke/);
   assert.match(linkScript, /path\.join\(dir, "deps", config\.nativeLibrary\)/);
   assert.match(linkScript, /mtimeMs/);
+});
+
+test("native test runner preserves platform runtime-library lookup", () => {
+  const {
+    parseTarget,
+    runtimeLibraryEnvironment,
+    steamworksRuntimeDirectoryFromMetadata
+  } = require(path.join(repoRoot, "scripts", "run-native-tests.cjs"));
+  assert.equal(parseTarget([]), undefined);
+  assert.equal(parseTarget(["--target", "x86_64-pc-windows-msvc"]), "x86_64-pc-windows-msvc");
+  assert.throws(() => parseTarget(["--target", "x86_64-apple-darwin"]), /--target must be one of/);
+
+  const windows = runtimeLibraryEnvironment("C:\\repo", "win32", { Path: "C:\\Rust\\bin" });
+  assert.match(windows.Path, /packages[\\/]steam-bridge;C:\\Rust\\bin$/);
+  assert.equal(windows.PATH, undefined, "Windows environment-key casing must be preserved");
+
+  const linux = runtimeLibraryEnvironment(
+    "/repo",
+    "linux",
+    { LD_LIBRARY_PATH: "/usr/lib" },
+    ["/cargo/steamworks-sys/lib/steam/redistributable_bin/linux64"]
+  );
+  assert.match(linux.LD_LIBRARY_PATH, /steamworks-sys[\s\S]*linux64:[\s\S]*packages[\\/]steam-bridge:\/usr\/lib$/);
+  const metadata = {
+    packages: [{ name: "steamworks-sys", manifest_path: "/cargo/steamworks-sys/Cargo.toml" }]
+  };
+  assert.match(
+    steamworksRuntimeDirectoryFromMetadata(metadata, "darwin"),
+    /steamworks-sys[\\/]lib[\\/]steam[\\/]redistributable_bin[\\/]osx$/
+  );
 });
 
 test("example packager prefers the current host build over a stale target-native artifact", (t) => {
@@ -5607,6 +5662,30 @@ test("successful alternate init paths preserve an existing callback pump", async
   previousCount = callbackCount;
   assert.equal(steam.initAnonymousUser(), true);
   await waitForNextCallback(previousCount);
+});
+
+test("successful first-time alternate init paths start the callback pump", async (t) => {
+  for (const method of ["initSafe", "initAnonymousUser"]) {
+    let callbackCount = 0;
+    const fake = createFakeNative({
+      runCallbacks() {
+        callbackCount += 1;
+        this.calls.push({ method: "runCallbacks", args: [] });
+      }
+    });
+    const steam = loadSteamWithFakeNative(fake);
+    try {
+      assert.equal(steam[method](), true);
+      assert.equal(
+        await waitForCondition(() => callbackCount > 0, 500),
+        true,
+        `${method} must start callback dispatch after first-time initialization`
+      );
+    } finally {
+      steam.shutdown();
+      clearSteamBridgeCache();
+    }
+  }
 });
 
 test("idempotent initSafe preserves JavaScript-owned native resources", (t) => {

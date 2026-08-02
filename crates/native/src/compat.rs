@@ -367,15 +367,16 @@ struct NetworkingFakeUdpPortEntry {
 }
 static NETWORKING_FAKE_UDP_PORTS: Lazy<Mutex<HashMap<u32, NetworkingFakeUdpPortEntry>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+type GenerationHandler = (u64, FatalThreadsafeFunction<Value>);
+type GenerationCallbackHandler = (u64, FatalThreadsafeFunction<Value>, u32);
 static NEXT_INPUT_ACTION_EVENT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
-static INPUT_ACTION_EVENT_HANDLER: Lazy<Mutex<Option<(u64, FatalThreadsafeFunction<Value>)>>> =
+static INPUT_ACTION_EVENT_HANDLER: Lazy<Mutex<Option<GenerationHandler>>> =
     Lazy::new(|| Mutex::new(None));
 static NEXT_CLIENT_PROCESS_HOOK_REGISTRATION: AtomicU64 = AtomicU64::new(1);
-static CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER: Lazy<
-    Mutex<Option<(u64, FatalThreadsafeFunction<Value>)>>,
-> = Lazy::new(|| Mutex::new(None));
+static CLIENT_POST_API_RESULT_IN_PROCESS_HANDLER: Lazy<Mutex<Option<GenerationHandler>>> =
+    Lazy::new(|| Mutex::new(None));
 static CLIENT_CHECK_CALLBACK_REGISTERED_IN_PROCESS_HANDLER: Lazy<
-    Mutex<Option<(u64, FatalThreadsafeFunction<Value>, u32)>>,
+    Mutex<Option<GenerationCallbackHandler>>,
 > = Lazy::new(|| Mutex::new(None));
 static NEXT_MATCHMAKING_SERVER_LIST_HANDLE: AtomicU64 = AtomicU64::new(1);
 static MATCHMAKING_SERVER_LIST_REQUESTS: Lazy<
@@ -13840,11 +13841,11 @@ pub fn networking_utils_set_config_value_struct(
     scope: u32,
     scope_obj: i64,
 ) -> Result<bool, Error> {
-    let (mut option, _string_storage) = networking_config_value_struct(option)?;
+    let (option, _string_storage) = networking_config_value_struct(option)?;
     Ok(unsafe {
         sys::SteamAPI_ISteamNetworkingUtils_SetConfigValueStruct(
             steam_networking_utils()?,
-            &mut option,
+            &option,
             networking_config_scope(scope)?,
             networking_config_scope_obj(scope_obj)?,
         )
@@ -17581,20 +17582,22 @@ pub async fn workshop_get_items(
     item_ids: Vec<BigInt>,
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
+    validate_workshop_query_item_count(item_ids.len())?;
     let mut ids: Vec<u64> = item_ids
         .into_iter()
         .map(|id| bigint_to_u64(id, "item id"))
         .collect::<Result<_, _>>()?;
-    let handle;
+    let query;
     let call = {
         let ugc = steam_ugc()?;
-        handle = unsafe {
+        let handle = unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryUGCDetailsRequest(
                 ugc,
                 ids.as_mut_ptr(),
                 ids.len() as u32,
             )
         };
+        query = new_ugc_query_handle(handle)?;
         apply_query_config(ugc, handle, query_config.as_ref())?;
         unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
     };
@@ -17605,8 +17608,7 @@ pub async fn workshop_get_items(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
-    unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -17619,10 +17621,10 @@ pub async fn workshop_get_all_items(
     consumer_app_id: u32,
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
-    let handle;
+    let query;
     let call = {
         let ugc = steam_ugc()?;
-        handle = unsafe {
+        let handle = unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryAllUGCRequestPage(
                 ugc,
                 ugc_query_from_u32(query_type)?,
@@ -17632,6 +17634,7 @@ pub async fn workshop_get_all_items(
                 page,
             )
         };
+        query = new_ugc_query_handle(handle)?;
         apply_query_config(ugc, handle, query_config.as_ref())?;
         unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
     };
@@ -17642,8 +17645,7 @@ pub async fn workshop_get_all_items(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
-    unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -17657,10 +17659,10 @@ pub async fn workshop_get_all_items_by_cursor(
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
     let cursor = cstring(cursor, "workshop query cursor")?;
-    let handle;
+    let query;
     let call = {
         let ugc = steam_ugc()?;
-        handle = unsafe {
+        let handle = unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryAllUGCRequestCursor(
                 ugc,
                 ugc_query_from_u32(query_type)?,
@@ -17670,6 +17672,7 @@ pub async fn workshop_get_all_items_by_cursor(
                 cursor.as_ptr(),
             )
         };
+        query = new_ugc_query_handle(handle)?;
         apply_query_config(ugc, handle, query_config.as_ref())?;
         unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
     };
@@ -17680,8 +17683,7 @@ pub async fn workshop_get_all_items_by_cursor(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
-    unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -17696,10 +17698,10 @@ pub async fn workshop_get_user_items(
     consumer_app_id: u32,
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
-    let handle;
+    let query;
     let call = {
         let ugc = steam_ugc()?;
-        handle = unsafe {
+        let handle = unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryUserUGCRequest(
                 ugc,
                 account_id,
@@ -17711,6 +17713,7 @@ pub async fn workshop_get_user_items(
                 page,
             )
         };
+        query = new_ugc_query_handle(handle)?;
         apply_query_config(ugc, handle, query_config.as_ref())?;
         unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
     };
@@ -17721,8 +17724,7 @@ pub async fn workshop_get_user_items(
     )
     .await?;
     let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, handle, &result, query_config.as_ref())?;
-    unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -18154,7 +18156,7 @@ enum InventoryInterfaceContext {
 
 thread_local! {
     static INVENTORY_INTERFACE_CONTEXT: Cell<InventoryInterfaceContext> =
-        Cell::new(InventoryInterfaceContext::Client);
+        const { Cell::new(InventoryInterfaceContext::Client) };
 }
 
 struct InventoryInterfaceContextGuard {
@@ -18255,7 +18257,7 @@ enum NetworkingInterfaceContext {
 
 thread_local! {
     static NETWORKING_INTERFACE_CONTEXT: Cell<NetworkingInterfaceContext> =
-        Cell::new(NetworkingInterfaceContext::Client);
+        const { Cell::new(NetworkingInterfaceContext::Client) };
 }
 
 struct NetworkingInterfaceContextGuard {
@@ -18667,9 +18669,47 @@ enum UgcInterfaceContext {
     GameServer,
 }
 
+const MAX_WORKSHOP_QUERY_ITEM_IDS: usize = 1_000;
+
+fn validate_workshop_query_item_count(item_count: usize) -> Result<(), Error> {
+    if !(1..=MAX_WORKSHOP_QUERY_ITEM_IDS).contains(&item_count) {
+        return Err(Error::from_reason(format!(
+            "workshop item query requires between 1 and {MAX_WORKSHOP_QUERY_ITEM_IDS} item IDs"
+        )));
+    }
+    Ok(())
+}
+
+type UgcQueryHandleGuard =
+    crate::resource::NativeResourceHandle<sys::UGCQueryHandle_t, UgcInterfaceContext>;
+
+fn new_ugc_query_handle(handle: sys::UGCQueryHandle_t) -> Result<UgcQueryHandleGuard, Error> {
+    if handle == sys::k_UGCQueryHandleInvalid {
+        return Err(Error::from_reason(
+            "Steam returned an invalid workshop query handle",
+        ));
+    }
+    Ok(UgcQueryHandleGuard::new(
+        handle,
+        sys::k_UGCQueryHandleInvalid,
+        ugc_interface_context(),
+        release_ugc_query_handle,
+    ))
+}
+
+fn release_ugc_query_handle(context: UgcInterfaceContext, handle: sys::UGCQueryHandle_t) {
+    if handle == sys::k_UGCQueryHandleInvalid {
+        return;
+    }
+    let _context = set_ugc_interface_context(context);
+    if let Ok(ugc) = steam_ugc() {
+        unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+    }
+}
+
 thread_local! {
     static UGC_INTERFACE_CONTEXT: Cell<UgcInterfaceContext> =
-        Cell::new(UgcInterfaceContext::Client);
+        const { Cell::new(UgcInterfaceContext::Client) };
 }
 
 struct UgcInterfaceContextGuard {
@@ -19994,16 +20034,15 @@ fn networking_config_value_result(
     output
 }
 
+type NetworkingConfigValues = (
+    i32,
+    Vec<sys::SteamNetworkingConfigValue_t>,
+    Vec<Option<CString>>,
+);
+
 fn networking_config_values(
     options: Option<Vec<NetworkingConfigValue>>,
-) -> Result<
-    (
-        i32,
-        Vec<sys::SteamNetworkingConfigValue_t>,
-        Vec<Option<CString>>,
-    ),
-    Error,
-> {
+) -> Result<NetworkingConfigValues, Error> {
     let options = options.unwrap_or_default();
     let option_count = i32::try_from(options.len())
         .map_err(|_| Error::from_reason("networking config option count exceeds i32"))?;
@@ -24326,6 +24365,7 @@ fn matchmaking_server_list_response() -> Box<MatchmakingServerListResponseRaw> {
     })
 }
 
+#[allow(clippy::boxed_local)] // Consumes the Box that owns Valve's callback vtable object.
 fn drop_matchmaking_server_list_response(response: Box<MatchmakingServerListResponseRaw>) {
     unsafe { drop(Box::from_raw(response.state)) };
 }
@@ -24339,6 +24379,7 @@ fn matchmaking_ping_response() -> Box<MatchmakingPingResponseRaw> {
     })
 }
 
+#[allow(clippy::boxed_local)] // Consumes the Box that owns Valve's callback vtable object.
 fn drop_matchmaking_ping_response(response: Box<MatchmakingPingResponseRaw>) {
     unsafe { drop(Box::from_raw(response.state)) };
 }
@@ -24352,6 +24393,7 @@ fn matchmaking_players_response() -> Box<MatchmakingPlayersResponseRaw> {
     })
 }
 
+#[allow(clippy::boxed_local)] // Consumes the Box that owns Valve's callback vtable object.
 fn drop_matchmaking_players_response(response: Box<MatchmakingPlayersResponseRaw>) {
     unsafe { drop(Box::from_raw(response.state)) };
 }
@@ -24365,6 +24407,7 @@ fn matchmaking_rules_response() -> Box<MatchmakingRulesResponseRaw> {
     })
 }
 
+#[allow(clippy::boxed_local)] // Consumes the Box that owns Valve's callback vtable object.
 fn drop_matchmaking_rules_response(response: Box<MatchmakingRulesResponseRaw>) {
     unsafe { drop(Box::from_raw(response.state)) };
 }
@@ -25762,6 +25805,46 @@ fn query_stat(
 #[cfg(test)]
 mod lifecycle_resource_tests {
     use super::*;
+
+    static RELEASED_UGC_QUERY_HANDLE: std::sync::atomic::AtomicU64 =
+        std::sync::atomic::AtomicU64::new(sys::k_UGCQueryHandleInvalid);
+
+    fn record_released_ugc_query_handle(
+        _context: UgcInterfaceContext,
+        handle: sys::UGCQueryHandle_t,
+    ) {
+        RELEASED_UGC_QUERY_HANDLE.store(handle, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn workshop_query_item_count_matches_steam_contract() {
+        assert!(validate_workshop_query_item_count(0).is_err());
+        assert!(validate_workshop_query_item_count(1).is_ok());
+        assert!(validate_workshop_query_item_count(1_000).is_ok());
+        assert!(validate_workshop_query_item_count(1_001).is_err());
+    }
+
+    #[test]
+    fn workshop_query_handle_guard_releases_on_every_exit_path() {
+        RELEASED_UGC_QUERY_HANDLE.store(
+            sys::k_UGCQueryHandleInvalid,
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        {
+            let guard = UgcQueryHandleGuard::new(
+                42,
+                sys::k_UGCQueryHandleInvalid,
+                UgcInterfaceContext::Client,
+                record_released_ugc_query_handle,
+            );
+            assert_eq!(guard.get(), 42);
+        }
+        assert_eq!(
+            RELEASED_UGC_QUERY_HANDLE.load(std::sync::atomic::Ordering::SeqCst),
+            42
+        );
+        assert!(new_ugc_query_handle(sys::k_UGCQueryHandleInvalid).is_err());
+    }
 
     #[test]
     fn fake_udp_cleanup_is_scoped_to_its_owning_domain() {

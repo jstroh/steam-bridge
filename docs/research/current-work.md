@@ -38,6 +38,47 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
+### 2026-08-01 post-review resource and release-gate repair checkpoint
+
+The reviewed working slice closes the actionable findings from the
+deep post-`0.3.12` review without changing any proven overlay host architecture.
+All four client/game-server Workshop query paths now validate Steam's 1-1000 ID
+contract where applicable, reject `k_UGCQueryHandleInvalid`, and own every
+created `UGCQueryHandle_t` through a reusable native resource guard. The guard
+releases on success, configuration rejection, send failure, timeout, decode
+failure, future cancellation, or ordinary unwinding while the owning Steam
+lifecycle remains live. Authentication-ticket objects use the same idempotent
+resource owner, so explicit `cancel()` releases once and native finalization is
+a last-resort cleanup. The public smoke example and README use `try`/`finally`
+for timely cancellation.
+
+Successful first-time `initSafe()` and `initAnonymousUser()` calls now start the
+same automatic callback pump as `init()`. Existing pumps retain their interval,
+and repeated idempotent `initSafe()` still preserves JavaScript-owned overlay
+resources. A new cross-platform native-test runner discovers the exact
+`steamworks-sys` redistributable directory from Cargo metadata and prepends it
+without losing the caller's platform library path. `npm test` now includes the
+native suite, so CI and Release execute native lifecycle/resource tests on
+Windows x64, Linux x64, and macOS arm64 instead of relying on `cargo check`.
+All workflow actions, including the OIDC npm publisher, are pinned to immutable
+40-character commits; Dependabot owns weekly GitHub Actions pin updates.
+
+The final local slice passes 371/371 JavaScript tests, 34/34 Rust tests, exact
+stable Electron 43.2.0, TypeScript/build, Windows release self-tests, supported-
+target and API audits, native format/check, zero-warning all-target Clippy, a fresh
+optimized Windows addon build/link, zero production npm audit findings, and the
+complete packed-package consumer/platform smoke matrix. The package remains
+version `0.3.12`; this slice does not create a release tag or publish to npm. Physical
+non-Deck Linux remains explicitly not green because no real non-Deck x64 host is
+configured. CI, WSL, VMs, and Deck receipts cannot satisfy that separate
+X11/Wayland qualification lane. Package and contributor READMEs now state this
+instead of allowing CI-tested Linux to be mistaken for physical qualification.
+A focused live App ID 480 native smoke then initialized through first-time
+`initSafe()`, received a 234-byte Web API authentication ticket through the new
+automatic callback pump, cancelled it twice safely, rejected a NUL-bearing
+Workshop query option after handle creation, completed a separate 50-item
+Workshop query, and shut down cleanly. No ticket bytes were printed or retained.
+
 ### 2026-08-01 post-0.3.12 adversarial-finding repair checkpoint
 
 The current reviewed slice is based on pushed main commit `f2698a8` and closes
