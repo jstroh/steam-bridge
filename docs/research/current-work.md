@@ -28,6 +28,16 @@ review found Web API credential fail-open paths and native lifecycle/resource
 ownership defects, so it must never be moved, reused, or published. Never move,
 reuse, or publish any rejected tag.
 
+Exact `v0.3.13` is also immutable and unpublished. Its three native prebuilds
+passed, but the final Windows package gate failed before candidate assembly:
+the Node `22.13.0` runner's bundled npm consumed `--artifacts-dir` while
+forwarding an internal `npm run` command and left only the option value. No npm
+package or GitHub Release was published. Internal assembly now invokes the Node
+script directly, the parser accepts only the explicit flag/equal form or the
+single unambiguous legacy-npm positional form, and a self-test permanently
+covers all accepted and rejected shapes. The corrected release must use a new
+version and tag; never move or reuse `v0.3.13`.
+
 ## Active Goal: Cross-platform exhaustive actual-game QA
 
 Build and retain one auditable, platform-neutral actual-game QA contract with

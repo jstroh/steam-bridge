@@ -642,7 +642,7 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   assert.ok(
     releaseWorkflow.includes("windows-package-gate:") &&
-      releaseWorkflow.includes("npm run release:assemble") &&
+      releaseWorkflow.includes("node scripts/assemble-release-artifacts.cjs --artifacts-dir release-artifacts") &&
       releaseWorkflow.includes("npm run windows:package-gate") &&
       releaseWorkflow.includes("npm run release:publish-candidate") &&
       releaseWorkflow.includes("--require-publishable") &&

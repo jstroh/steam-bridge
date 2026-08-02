@@ -71,7 +71,7 @@ jobs:
           path: release-artifacts
       - run: npm ci
       - run: npm run check:electron
-      - run: npm run release:assemble -- --artifacts-dir release-artifacts
+      - run: node scripts/assemble-release-artifacts.cjs --artifacts-dir release-artifacts
       - name: Restore proved runtime payload for documentation-only v0.1.6
         if: github.event_name == 'push' && github.ref_name == 'v0.1.6'
         shell: pwsh

@@ -92,7 +92,11 @@ async function main() {
       throw new Error("--package-tarball cannot be combined with --artifacts-dir.");
     }
     if (artifactsDir) {
-      run("npm", ["run", "release:assemble", "--", "--artifacts-dir", artifactsDir], repoRoot);
+      run(process.execPath, [
+        path.join(repoRoot, "scripts", "assemble-release-artifacts.cjs"),
+        "--artifacts-dir",
+        artifactsDir
+      ], repoRoot);
     }
 
     const packageArtifactSources = packageTarball

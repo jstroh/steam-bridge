@@ -1,10 +1,18 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const assert = require("node:assert/strict");
 
 const repoRoot = path.resolve(__dirname, "..");
 const packageDir = path.join(repoRoot, "packages", "steam-bridge");
-const artifactsDirArg = readArg("--artifacts-dir");
+const cliArgs = process.argv.slice(2);
+
+if (cliArgs.length === 1 && cliArgs[0] === "--self-test") {
+  runArgumentSelfTest();
+  process.exit(0);
+}
+
+const artifactsDirArg = readArtifactsDirectoryArg(cliArgs);
 
 if (!artifactsDirArg) {
   throw new Error("Usage: node scripts/assemble-release-artifacts.cjs --artifacts-dir <downloaded-artifacts-dir>");
@@ -99,9 +107,37 @@ function assertFile(filePath) {
   }
 }
 
-function readArg(name) {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
+function readArtifactsDirectoryArg(args) {
+  if (args.length === 2 && args[0] === "--artifacts-dir" && args[1]) {
+    return args[1];
+  }
+
+  if (args.length === 1 && args[0].startsWith("--artifacts-dir=")) {
+    return args[0].slice("--artifacts-dir=".length) || undefined;
+  }
+
+  // npm 10.9.2, bundled with the pinned Node 22.13.0 release runner, consumes
+  // the unknown option when forwarding `npm run ... -- --artifacts-dir dir`
+  // but leaves its value as the sole positional argument. Accept only that
+  // exact unambiguous shape; internal callers use the explicit flag directly.
+  if (args.length === 1 && !args[0].startsWith("-")) {
+    return args[0];
+  }
+
+  return undefined;
+}
+
+function runArgumentSelfTest() {
+  assert.equal(readArtifactsDirectoryArg(["--artifacts-dir", "release-artifacts"]), "release-artifacts");
+  assert.equal(readArtifactsDirectoryArg(["--artifacts-dir=release-artifacts"]), "release-artifacts");
+  assert.equal(readArtifactsDirectoryArg(["release-artifacts"]), "release-artifacts");
+  assert.equal(readArtifactsDirectoryArg([]), undefined);
+  assert.equal(readArtifactsDirectoryArg(["--artifacts-dir"]), undefined);
+  assert.equal(readArtifactsDirectoryArg(["--artifacts-dir="]), undefined);
+  assert.equal(readArtifactsDirectoryArg(["--artifacts-dir", "first", "second"]), undefined);
+  assert.equal(readArtifactsDirectoryArg(["first", "second"]), undefined);
+  assert.equal(readArtifactsDirectoryArg(["--other", "release-artifacts"]), undefined);
+  console.log("Release artifact argument self-test passed.");
 }
 
 function run(command, args) {

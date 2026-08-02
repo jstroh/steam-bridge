@@ -1,7 +1,7 @@
 {
   "name": "steam-bridge-monorepo",
   "private": true,
-  "version": "0.3.13",
+  "version": "0.3.14",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -27,6 +27,7 @@
     "macos:steam-client-health": "bash scripts/macos-overlay-matrix.sh --mode steam-health",
     "macos:verify-signing": "node scripts/verify-macos-steam-signing.cjs",
     "release:assemble": "node scripts/assemble-release-artifacts.cjs",
+    "release:assemble:check": "node scripts/assemble-release-artifacts.cjs --self-test",
     "release:configure-publish-proof": "node scripts/configure-npm-publish-proof.cjs",
     "release:publish-candidate": "node scripts/publish-release-candidate.cjs",
     "release:verify": "node scripts/verify-release-artifacts.cjs",
@@ -45,7 +46,7 @@
     "native:fmt": "cargo fmt --all --check",
     "native:test": "node scripts/run-native-tests.cjs",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run test:unit && npm run native:test",
+    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
   },
   "devDependencies": {
