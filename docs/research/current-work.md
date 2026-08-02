@@ -43,6 +43,54 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
+## Non-negotiable Linux/Steam sandbox decision
+
+Linux and Steam Deck Electron packages **must** start with both `--no-zygote`
+and `--no-sandbox`. Steam injects its overlay into Chromium's zygote and child
+processes unless zygote creation is disabled; Electron couples that mode to the
+no-sandbox startup path. The resulting competing overlay targets have already
+caused startup crashes and broken presentation in the real game. This is a
+known, consciously accepted security tradeoff required by the proven Linux
+Steam integration.
+
+`prepareLinuxSteamAppAfterPack()` therefore adds both switches by default, and
+`electronConfigureSteamOverlay()` keeps Linux child-process isolation enabled
+by default. Do not make these switches optional, remove them as a generic
+security hardening, or ask the consumer to opt in again. Reconsider this closed
+decision only after a replacement is proven in the actual Steam-launched game
+on Linux Desktop, Steam Deck Desktop, and Steam Deck Game Mode with child
+processes, overlay presentation, input, transitions, and shutdown all passing.
+
+### 2026-08-01 lifecycle, serialization, repaint, and audit remediation
+
+The current post-review slice leaves the required Linux sandbox decision above
+unchanged and closes the other actionable findings. All supported client and
+game-server native calls now fail closed outside Node's main thread. Every
+native Promise is counted until settlement, and client/game-server lifecycle
+mutation is rejected before JavaScript resource cleanup while any such work is
+pending. Trusted server-side encrypted-ticket inspection uses a deliberately
+separate binding path so publisher workers remain supported.
+
+Steam Web API query, form, comma-list, and nested `input_json` serialization
+now reject non-finite numbers and integer numbers outside JavaScript's safe
+range; 64-bit values remain lossless through `bigint` or decimal strings.
+Community URL helpers apply the same safe-integer rule to numeric Steam IDs.
+Electron repaint configuration validates timer bounds, replaces an existing
+timer when the interval changes, and stops it when the effective interval is
+zero or the profile is off.
+
+The direct `tar` advisory and vulnerable transitive npm lock entries are
+updated to audited versions. RustSec also exposed `event-listener` 5.4.1's
+`StackSlot` cross-thread unsoundness in the Linux `zbus` chain; `Cargo.lock` is
+pinned to patched 5.4.2. CI now runs npm and RustSec dependency audits, and
+Dependabot monitors npm, Cargo, and pinned GitHub Actions weekly. Focused
+regressions cover main-thread enforcement, async-shutdown exclusion, all Web
+API serialization routes, and repaint replacement/disable behavior. A fresh
+full local gate passed 376/376 JavaScript tests, 37/37 Rust tests, stable
+Electron 43.2.0 validation, typecheck/build, package-gate self-tests, and a
+zero-finding npm/RustSec audit; this remains unreleased work until reviewed,
+committed, pushed, and proven by CI.
+
 ### 2026-08-01 deep-review remediation checkpoint
 
 The post-`f23dc31` adversarial pass reproduced a public native crash before

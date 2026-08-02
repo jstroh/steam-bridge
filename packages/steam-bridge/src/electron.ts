@@ -163,6 +163,7 @@ interface ElectronApi {
 }
 
 let repaintTimer: NodeJS.Timeout | undefined;
+let activeRepaintIntervalMs = 0;
 let browserWindowCreatedListenerInstalled = false;
 const appendedSwitches = new Set<string>();
 let macosBrowserDisplayLinkStartupDecision:
@@ -214,10 +215,11 @@ export function electronConfigureSteamOverlay(
     disableBackgroundThrottling = true,
     ignoreGpuBlocklist = true,
     enableMacosBrowserDisplayLink = false,
-    repaintIntervalMs = repaintMode ? 33 : 0,
+    repaintIntervalMs: requestedRepaintIntervalMs = repaintMode ? 33 : 0,
     scrubSteamOverlayChildProcessEnv = true,
     isolateSteamOverlayChildProcesses = scrubSteamOverlayChildProcessEnv && process.platform === "linux"
   } = options;
+  const repaintIntervalMs = normalizeElectronRepaintIntervalMs(requestedRepaintIntervalMs);
 
   const electron = require("electron") as ElectronApi;
   const switches: string[] = [];
@@ -268,6 +270,10 @@ export function electronConfigureSteamOverlay(
     browserWindowCreatedListenerInstalled = true;
   }
 
+  if (repaintTimer && activeRepaintIntervalMs !== repaintIntervalMs) {
+    electronDisableSteamOverlayRepaintLoop();
+  }
+
   if (!repaintTimer && repaintIntervalMs > 0) {
     repaintTimer = setInterval(() => {
       for (const window of electron.BrowserWindow.getAllWindows()) {
@@ -278,6 +284,7 @@ export function electronConfigureSteamOverlay(
     }, repaintIntervalMs);
 
     repaintTimer.unref?.();
+    activeRepaintIntervalMs = repaintIntervalMs;
   }
 
   return {
@@ -301,6 +308,16 @@ export function electronDisableSteamOverlayRepaintLoop(): void {
     clearInterval(repaintTimer);
     repaintTimer = undefined;
   }
+  activeRepaintIntervalMs = 0;
+}
+
+function normalizeElectronRepaintIntervalMs(intervalMs: number): number {
+  if (!Number.isSafeInteger(intervalMs) || intervalMs < 0 || intervalMs > 2_147_483_647) {
+    throw new Error(
+      "Steam Bridge repaintIntervalMs must be a non-negative integer no greater than 2147483647."
+    );
+  }
+  return intervalMs;
 }
 
 export function electronScrubSteamOverlayChildProcessEnv(env: NodeJS.ProcessEnv = process.env): string[] {

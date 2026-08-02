@@ -82,6 +82,13 @@ same automatic pump. Authentication tickets are live native resources: use
 has consumed the bytes. Native finalization is a last-resort cleanup, not a
 substitute for explicit cancellation.
 
+Run client and game-server native APIs on Node's main thread, and await every
+native Promise before calling `init()`, `initSafe()`, `initAnonymousUser()`, or
+`shutdown()`. Steam Bridge rejects native client calls from `worker_threads`
+and rejects lifecycle changes while an async native operation is pending. Pure
+URL/Web API helpers and the trusted `steam-bridge/server` publisher-ticket
+utilities remain available in server workers.
+
 Steam Networking custom-signaling and non-null pointer-valued config escape
 hatches are also unavailable. JavaScript cannot prove ownership, layout, or
 lifetime for those C++ interface pointers, so Steam Bridge rejects them instead
@@ -208,16 +215,22 @@ const {
 } = require("steam-bridge/electron-builder");
 
 exports.afterPack = async (context) => {
+  // Required on Linux/Steam: installs the --no-zygote --no-sandbox launcher.
   prepareLinuxSteamAppAfterPack(context);
   prepareMacosSteamAppAfterPack(context);
 };
 ```
 
 The Linux helper installs the Steam-safe launcher before Chromium creates its
-zygote. The macOS helper installs the native launcher and Steam-compatible
-entitlements; run your normal Apple signing and notarization pipeline after
-it. Windows application signing remains the application distributor's
-responsibility.
+zygote. Its `--no-zygote --no-sandbox` switches are an intentional,
+non-optional requirement: Steam otherwise injects into Chromium children and
+creates competing overlay targets that have crashed or presented incorrectly
+in the actual game. This disables Chromium's process sandbox for the Linux
+package; do not remove it unless a replacement passes actual-game QA on Linux
+Desktop and both Steam Deck modes. The macOS helper installs the native
+launcher and Steam-compatible entitlements; run your normal Apple signing and
+notarization pipeline after it. Windows application signing remains the
+application distributor's responsibility.
 
 ## Steam Deck Game Mode
 

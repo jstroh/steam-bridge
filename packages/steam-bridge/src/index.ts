@@ -7757,6 +7757,8 @@ export class Lobby {
 }
 
 export function init(options?: InitOptions | number | null): SteamBridgeClient {
+  assertSteamClientMainThread();
+  assertNoPendingSteamClientNativeOperations("init");
   const normalized = normalizeInitOptions(options);
   const previousCallbackPump = snapshotCallbackPump();
   const cleanupError = closeSteamBridgeJsResources();
@@ -7774,6 +7776,8 @@ export function init(options?: InitOptions | number | null): SteamBridgeClient {
 }
 
 export function shutdown(): void {
+  assertSteamClientMainThread();
+  assertNoPendingSteamClientNativeOperations("shutdown");
   const cleanupError = closeSteamBridgeJsResources();
   try {
     native().shutdown();
@@ -7813,6 +7817,8 @@ export function runCallbacks(): void {
 }
 
 export function initAnonymousUser(): boolean {
+  assertSteamClientMainThread();
+  assertNoPendingSteamClientNativeOperations("initAnonymousUser");
   const previousCallbackPump = snapshotCallbackPump();
   const cleanupError = closeSteamBridgeJsResources();
   if (cleanupError !== undefined) {
@@ -7836,6 +7842,8 @@ export function initAnonymousUser(): boolean {
 }
 
 export function initSafe(): boolean {
+  assertSteamClientMainThread();
+  assertNoPendingSteamClientNativeOperations("initSafe");
   const previousCallbackPump = snapshotCallbackPump();
   const initialized = native().initSafe();
   if (initialized && !previousCallbackPump.running) {
@@ -18992,7 +19000,7 @@ export const encryptedAppTicket = {
     maxBytes?: number | null
   ): Buffer | null {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketDecrypt(
+    return publisherNative().encryptedAppTicketDecrypt(
       Buffer.from(ticket),
       Buffer.from(key),
       maxBytes ?? undefined
@@ -19000,47 +19008,47 @@ export const encryptedAppTicket = {
   },
   isTicketForApp(ticket: Buffer | Uint8Array, appId: number): boolean {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketIsTicketForApp(Buffer.from(ticket), appId);
+    return publisherNative().encryptedAppTicketIsTicketForApp(Buffer.from(ticket), appId);
   },
   getTicketIssueTime(ticket: Buffer | Uint8Array): number {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketGetTicketIssueTime(Buffer.from(ticket));
+    return publisherNative().encryptedAppTicketGetTicketIssueTime(Buffer.from(ticket));
   },
   getTicketSteamId(ticket: Buffer | Uint8Array): SteamId {
     assertSteamPublisherServerRuntime();
-    return normalizeSteamId(native().encryptedAppTicketGetTicketSteamId(Buffer.from(ticket)));
+    return normalizeSteamId(publisherNative().encryptedAppTicketGetTicketSteamId(Buffer.from(ticket)));
   },
   getTicketAppId(ticket: Buffer | Uint8Array): number {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketGetTicketAppId(Buffer.from(ticket));
+    return publisherNative().encryptedAppTicketGetTicketAppId(Buffer.from(ticket));
   },
   userOwnsAppInTicket(ticket: Buffer | Uint8Array, appId: number): boolean {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketUserOwnsAppInTicket(Buffer.from(ticket), appId);
+    return publisherNative().encryptedAppTicketUserOwnsAppInTicket(Buffer.from(ticket), appId);
   },
   userIsVacBanned(ticket: Buffer | Uint8Array): boolean {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketUserIsVacBanned(Buffer.from(ticket));
+    return publisherNative().encryptedAppTicketUserIsVacBanned(Buffer.from(ticket));
   },
   getAppDefinedValue(ticket: Buffer | Uint8Array): number | null {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketGetAppDefinedValue(Buffer.from(ticket)) ?? null;
+    return publisherNative().encryptedAppTicketGetAppDefinedValue(Buffer.from(ticket)) ?? null;
   },
   getUserVariableData(ticket: Buffer | Uint8Array): Buffer | null {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketGetUserVariableData(Buffer.from(ticket)) ?? null;
+    return publisherNative().encryptedAppTicketGetUserVariableData(Buffer.from(ticket)) ?? null;
   },
   isTicketSigned(ticket: Buffer | Uint8Array, rsaKey: Buffer | Uint8Array): boolean {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketIsTicketSigned(Buffer.from(ticket), Buffer.from(rsaKey));
+    return publisherNative().encryptedAppTicketIsTicketSigned(Buffer.from(ticket), Buffer.from(rsaKey));
   },
   isLicenseBorrowed(ticket: Buffer | Uint8Array): boolean {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketIsLicenseBorrowed(Buffer.from(ticket));
+    return publisherNative().encryptedAppTicketIsLicenseBorrowed(Buffer.from(ticket));
   },
   isLicenseTemporary(ticket: Buffer | Uint8Array): boolean {
     assertSteamPublisherServerRuntime();
-    return native().encryptedAppTicketIsLicenseTemporary(Buffer.from(ticket));
+    return publisherNative().encryptedAppTicketIsLicenseTemporary(Buffer.from(ticket));
   }
 };
 
@@ -24548,7 +24556,139 @@ export function createCompatibilityClient(): SteamBridgeClient {
   };
 }
 
+const STEAM_CLIENT_LIFECYCLE_NATIVE_METHODS = new Set<PropertyKey>([
+  "init",
+  "initAnonymousUser",
+  "initSafe",
+  "shutdown",
+  "gameServerInit",
+  "gameServerInitGameServer",
+  "gameServerShutdown"
+]);
+
+let steamClientNativeBindingSource: NativeBinding | undefined;
+let steamClientNativeBindingProxy: NativeBinding | undefined;
+const STEAM_CLIENT_PROCESS_LIFECYCLE_STATE = Symbol.for(
+  "steam-bridge.client-process-lifecycle-state.v1"
+);
+
+interface SteamClientProcessLifecycleState {
+  pendingNativeOperations: number;
+}
+
+export class SteamClientMainThreadRequiredError extends Error {
+  readonly code = "STEAM_CLIENT_MAIN_THREAD_REQUIRED";
+
+  constructor() {
+    super(
+      "Steam Bridge client and game-server native APIs must be controlled from the Node.js " +
+        "main thread. Use worker_threads only for pure JavaScript helpers or the trusted " +
+        "steam-bridge/server publisher-ticket APIs."
+    );
+    this.name = "SteamClientMainThreadRequiredError";
+  }
+}
+
+export class SteamClientAsyncOperationsPendingError extends Error {
+  readonly code = "STEAM_CLIENT_ASYNC_OPERATIONS_PENDING";
+
+  constructor(
+    readonly operation: string,
+    readonly pendingOperationCount: number
+  ) {
+    super(
+      `Steam Bridge cannot run ${operation} while ${pendingOperationCount} native async ` +
+        `operation${pendingOperationCount === 1 ? " is" : "s are"} still pending. ` +
+        "Await those operations before changing the Steam lifecycle."
+    );
+    this.name = "SteamClientAsyncOperationsPendingError";
+  }
+}
+
+function assertSteamClientMainThread(): void {
+  if (!isMainThread) {
+    throw new SteamClientMainThreadRequiredError();
+  }
+}
+
+function assertNoPendingSteamClientNativeOperations(operation: string): void {
+  const pendingOperationCount = getSteamClientProcessLifecycleState().pendingNativeOperations;
+  if (pendingOperationCount > 0) {
+    throw new SteamClientAsyncOperationsPendingError(operation, pendingOperationCount);
+  }
+}
+
+function getSteamClientProcessLifecycleState(): SteamClientProcessLifecycleState {
+  const stateHost = process as unknown as Record<PropertyKey, unknown>;
+  const existing = stateHost[STEAM_CLIENT_PROCESS_LIFECYCLE_STATE];
+  if (existing) {
+    return existing as SteamClientProcessLifecycleState;
+  }
+
+  const state: SteamClientProcessLifecycleState = { pendingNativeOperations: 0 };
+  Object.defineProperty(stateHost, STEAM_CLIENT_PROCESS_LIFECYCLE_STATE, {
+    configurable: false,
+    enumerable: false,
+    value: state,
+    writable: false
+  });
+  return state;
+}
+
 function native(): NativeBinding {
+  assertSteamClientMainThread();
+  const binding = loadNativeBinding();
+  if (steamClientNativeBindingSource === binding && steamClientNativeBindingProxy) {
+    return steamClientNativeBindingProxy;
+  }
+
+  const wrappedMethods = new Map<PropertyKey, (...args: unknown[]) => unknown>();
+  steamClientNativeBindingSource = binding;
+  steamClientNativeBindingProxy = new Proxy(binding, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as unknown;
+      if (typeof value !== "function") {
+        return value;
+      }
+
+      const existing = wrappedMethods.get(property);
+      if (existing) {
+        return existing;
+      }
+
+      const wrapped = (...args: unknown[]): unknown => {
+        if (STEAM_CLIENT_LIFECYCLE_NATIVE_METHODS.has(property)) {
+          assertNoPendingSteamClientNativeOperations(String(property));
+        }
+
+        const currentValue = Reflect.get(target, property, target) as unknown;
+        if (typeof currentValue !== "function") {
+          throw new TypeError(`Steam Bridge native binding method ${String(property)} is no longer callable.`);
+        }
+        const result = Reflect.apply(currentValue, target, args) as unknown;
+        if (!result || (typeof result !== "object" && typeof result !== "function")) {
+          return result;
+        }
+        const then = (result as { then?: unknown }).then;
+        if (typeof then !== "function") {
+          return result;
+        }
+
+        const lifecycleState = getSteamClientProcessLifecycleState();
+        const promise = Promise.resolve(result);
+        lifecycleState.pendingNativeOperations += 1;
+        return promise.finally(() => {
+          lifecycleState.pendingNativeOperations -= 1;
+        });
+      };
+      wrappedMethods.set(property, wrapped);
+      return wrapped;
+    }
+  });
+  return steamClientNativeBindingProxy;
+}
+
+function publisherNative(): NativeBinding {
   return loadNativeBinding();
 }
 
@@ -27231,7 +27371,7 @@ function createSteamWebApiUserFacade(clientOptions: SteamWebApiClientOptions): S
         "ISteamUser",
         "GetAppPriceInfo",
         1,
-        { appids: options.appIds.join(","), steamid: options.steamId64 },
+        { appids: commaList(options.appIds), steamid: options.steamId64 },
         options, "publisher-only"
       );
     },
@@ -27748,7 +27888,7 @@ function commaString(value: string | string[] | undefined): string | undefined {
 }
 
 function commaList(values: Array<bigint | number | string>): string {
-  return values.map(String).join(",");
+  return values.map((value) => serializeSteamWebApiValue(value)).join(",");
 }
 
 function steamWebApiBinaryString(value: SteamWebApiBinaryValue): string {
@@ -27772,6 +27912,9 @@ function steamWebApiJsonReady(value: SteamWebApiInputJsonValue): unknown {
   }
   if (typeof value === "bigint") {
     return value.toString();
+  }
+  if (typeof value === "number") {
+    assertLosslessSteamWebApiNumber(value);
   }
   if (Array.isArray(value)) {
     return value.map(steamWebApiJsonReady);
@@ -28497,7 +28640,22 @@ function serializeSteamWebApiValue(value: Exclude<SteamWebApiParamValue, null | 
   if (typeof value === "boolean") {
     return value ? "1" : "0";
   }
+  if (typeof value === "number") {
+    assertLosslessSteamWebApiNumber(value);
+  }
   return String(value);
+}
+
+function assertLosslessSteamWebApiNumber(value: number): void {
+  if (!Number.isFinite(value)) {
+    throw new Error("Steam Web API numeric values must be finite.");
+  }
+  if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    throw new Error(
+      `Steam Web API integer ${value} cannot be represented losslessly as a JavaScript number; ` +
+        "pass it as a bigint or decimal string."
+    );
+  }
 }
 
 function serializeSteamWebApiBody(
@@ -29586,6 +29744,12 @@ function normalizeSteamAppId(appId: number): number {
 }
 
 function normalizeSteamId64(steamId64: bigint | number | string): string {
+  if (typeof steamId64 === "number" && !Number.isSafeInteger(steamId64)) {
+    throw new Error(
+      `Invalid Steam ID: ${steamId64}. Steam IDs passed as numbers must be safe integers; ` +
+        "use a bigint or decimal string for 64-bit IDs."
+    );
+  }
   let normalized: bigint;
   try {
     normalized = BigInt(steamId64);
@@ -31521,6 +31685,8 @@ const defaultExport = {
   createElectronSteamOverlay,
   startNativeOverlaySession,
   SteamOverlayMainThreadRequiredError,
+  SteamClientMainThreadRequiredError,
+  SteamClientAsyncOperationsPendingError,
   SteamOverlayNativeSurfaceOwnershipError,
   SteamOverlayElectronControllerOwnershipError,
   activateDialogWithNativeSession,

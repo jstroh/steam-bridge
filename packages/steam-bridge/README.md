@@ -151,6 +151,16 @@ Successful first-time `initSafe()` and `initAnonymousUser()` calls start the
 same automatic callback pump as `init()`; applications do not need a separate
 timer for these initialization paths.
 
+Client and game-server native APIs are process-global and must be called from
+Node's main thread. Native client calls from `worker_threads` throw
+`SteamClientMainThreadRequiredError`. Pure JavaScript URL/Web API helpers and
+trusted `steam-bridge/server` publisher-ticket inspection remain worker-safe.
+Await every native Promise before `init()`, `initSafe()`,
+`initAnonymousUser()`, game-server init/shutdown, or `shutdown()`; lifecycle
+changes made while native async work is pending throw
+`SteamClientAsyncOperationsPendingError` without tearing down callback pumps
+or owned resources.
+
 Steam Networking custom-signaling and non-null pointer-valued config escape
 hatches are unavailable for the same ownership reason. JavaScript cannot prove
 the provenance or lifetime of a C++ interface pointer, so the compatibility
@@ -645,6 +655,11 @@ PublishedFile deletion keep publisher-only access while explicitly using the
 API host. `util.getSupportedApiList()` remains anonymous unless that call is
 given its optional key explicitly.
 
+Steam IDs, transaction IDs, published-file IDs, and other 64-bit integers
+should be passed as `bigint` or decimal strings. JavaScript numbers are accepted
+only when they are finite and lossless safe integers; unsafe integer values are
+rejected before URL, form, comma-list, or nested `input_json` serialization.
+
 `userAuth.authenticateUserTicket()` defaults to Valve's publisher-key route on
 `partner.steam-api.com`. Valve also supports a rate-limited user authentication
 key on `api.steampowered.com`; select that documented route explicitly from the
@@ -739,6 +754,14 @@ exports.afterPack = async (context) => {
   prepareLinuxSteamAppAfterPack(context);
 };
 ```
+
+This is a non-optional requirement for the supported Linux/Steam Electron
+route, not a troubleshooting toggle. It intentionally disables Chromium's
+process sandbox because Steam otherwise injects into the zygote/children and
+creates competing overlay targets that have caused real-game crashes and
+broken presentation. Do not remove or make these switches opt-in unless a
+replacement has passed actual-game QA on Linux Desktop, Steam Deck Desktop,
+and Steam Deck Game Mode.
 
 This is process-start infrastructure, not application window policy. The game
 still owns its BrowserWindow size, minimum size, fullscreen behavior, cursor

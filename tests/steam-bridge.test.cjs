@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
+const { Worker } = require("node:worker_threads");
 
 const repoRoot = path.resolve(__dirname, "..");
 const distRoot = path.join(repoRoot, "packages", "steam-bridge", "dist");
@@ -392,6 +393,60 @@ test("electron overlay diagnostic profile does not force Windows in-process GPU"
   assert.equal(result.switches.includes("disable-direct-composition"), false);
   assert.equal(result.switches.includes("force_high_performance_gpu"), true);
   assert.equal(result.switches.includes("ignore-gpu-blocklist"), true);
+});
+
+test("electron overlay repaint loop replaces changed intervals and can be disabled", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const started = [];
+  const cleared = [];
+  const previousSetInterval = global.setInterval;
+  const previousClearInterval = global.clearInterval;
+  global.setInterval = (callback, intervalMs) => {
+    const timer = { callback, intervalMs, unref() {} };
+    started.push(timer);
+    return timer;
+  };
+  global.clearInterval = (timer) => {
+    cleared.push(timer);
+  };
+  t.after(() => {
+    global.setInterval = previousSetInterval;
+    global.clearInterval = previousClearInterval;
+  });
+
+  const { electron } = loadElectronOverlayConfigHarness(t);
+  assert.equal(
+    electron.electronConfigureSteamOverlay({ profile: "repaint", repaintIntervalMs: 33 }).repaintIntervalMs,
+    33
+  );
+  assert.equal(
+    electron.electronConfigureSteamOverlay({ profile: "repaint", repaintIntervalMs: 16 }).repaintIntervalMs,
+    16
+  );
+  assert.equal(
+    electron.electronConfigureSteamOverlay({ profile: "diagnostic", repaintIntervalMs: 0 }).repaintIntervalMs,
+    0
+  );
+  assert.equal(
+    electron.electronConfigureSteamOverlay({ profile: "repaint", repaintIntervalMs: 20 }).repaintIntervalMs,
+    20
+  );
+  assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).repaintIntervalMs, 0);
+
+  assert.deepEqual(started.map((timer) => timer.intervalMs), [33, 16, 20]);
+  assert.deepEqual(cleared.map((timer) => timer.intervalMs), [33, 16, 20]);
+});
+
+test("electron overlay repaint interval rejects invalid timer values", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { electron } = loadElectronOverlayConfigHarness(t);
+
+  for (const repaintIntervalMs of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648]) {
+    assert.throws(
+      () => electron.electronConfigureSteamOverlay({ repaintIntervalMs }),
+      /repaintIntervalMs must be a non-negative integer/
+    );
+  }
 });
 
 test("electron overlay Linux isolation pairs no-zygote with no-sandbox", (t) => {
@@ -6055,6 +6110,122 @@ test("auth facade forwards Steam ID and IP session ticket requests", async (t) =
   ]);
 });
 
+test("Steam lifecycle changes fail closed while a native async operation is pending", async (t) => {
+  let resolveTicket;
+  const fake = createFakeNative({
+    getAuthTicketForWebApi(identity, timeoutSeconds) {
+      this.calls.push({ method: "getAuthTicketForWebApi", args: [identity, timeoutSeconds] });
+      return new Promise((resolve) => {
+        resolveTicket = resolve;
+      });
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    try {
+      steam.shutdown();
+    } catch {
+      // Preserve the primary assertion if the lifecycle is already closed.
+    }
+    clearSteamBridgeCache();
+  });
+
+  steam.init(480);
+  const pendingTicket = steam.auth.getAuthTicketForWebApi("pending", 5);
+  assert.throws(
+    () => steam.shutdown(),
+    (error) => {
+      assert.equal(error instanceof steam.SteamClientAsyncOperationsPendingError, true);
+      assert.equal(error.code, "STEAM_CLIENT_ASYNC_OPERATIONS_PENDING");
+      assert.equal(error.operation, "shutdown");
+      assert.equal(error.pendingOperationCount, 1);
+      return true;
+    }
+  );
+  assert.equal(fake.calls.some((call) => call.method === "shutdown"), false);
+
+  const reloadedSteam = loadSteamWithFakeNative(fake);
+  assert.throws(
+    () => reloadedSteam.shutdown(),
+    (error) =>
+      error instanceof reloadedSteam.SteamClientAsyncOperationsPendingError &&
+      error.pendingOperationCount === 1
+  );
+  assert.equal(fake.calls.some((call) => call.method === "shutdown"), false);
+
+  resolveTicket(fakeTicket("pending", fake.calls));
+  const ticket = await pendingTicket;
+  ticket.cancel();
+  reloadedSteam.shutdown();
+  assert.equal(fake.calls.filter((call) => call.method === "shutdown").length, 1);
+});
+
+test("Steam client native APIs fail closed in worker_threads while pure helpers remain available", async () => {
+  const entryPath = distFile("index.js");
+  const message = await new Promise((resolve, reject) => {
+    const worker = new Worker(
+      `
+        const { parentPort } = require("node:worker_threads");
+        const steam = require(${JSON.stringify(entryPath)});
+        const profileUrl = steam.steamCommunityProfileUrl(76561198000000000n);
+        const errors = [];
+        for (const [operation, invoke] of [
+          ["isSteamRunning", () => steam.isSteamRunning()],
+          ["shutdown", () => steam.shutdown()]
+        ]) {
+          try {
+            invoke();
+          } catch (error) {
+            errors.push({
+              operation,
+              errorName: error.name,
+              errorCode: error.code,
+              typed: error instanceof steam.SteamClientMainThreadRequiredError
+            });
+          }
+        }
+        const nativeModule = require(${JSON.stringify(distFile("native.js"))});
+        nativeModule.loadNativeBinding = () => ({
+          encryptedAppTicketIsTicketForApp() {
+            return true;
+          }
+        });
+        const server = require(${JSON.stringify(distFile("server.js"))});
+        const publisherWorkerSafe = server.encryptedAppTicket.isTicketForApp(Buffer.alloc(1), 480);
+        parentPort.postMessage({ profileUrl, errors, publisherWorkerSafe });
+      `,
+      { eval: true }
+    );
+    worker.once("message", resolve);
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code !== 0) {
+        reject(new Error(`worker exited with status ${code}`));
+      }
+    });
+  });
+
+  assert.deepEqual(message, {
+    profileUrl: "https://steamcommunity.com/profiles/76561198000000000/",
+    publisherWorkerSafe: true,
+    errors: [
+      {
+        operation: "isSteamRunning",
+        errorName: "SteamClientMainThreadRequiredError",
+        errorCode: "STEAM_CLIENT_MAIN_THREAD_REQUIRED",
+        typed: true
+      },
+      {
+        operation: "shutdown",
+        errorName: "SteamClientMainThreadRequiredError",
+        errorCode: "STEAM_CLIENT_MAIN_THREAD_REQUIRED",
+        typed: true
+      }
+    ]
+  });
+});
+
 test("app ticket facade normalizes ownership ticket data", (t) => {
   const ticket = Buffer.from([1, 2, 3, 4, 5, 6]);
   const fake = createFakeNative({
@@ -9258,6 +9429,10 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
   assert.throws(() => steam.steamCommunityAchievementsUrl(0), /Invalid Steam App ID/);
   assert.throws(() => steam.steamCommunityProfileUrl("not-a-steam-id"), /Invalid Steam ID/);
+  assert.throws(
+    () => steam.steamCommunityProfileUrl(Number.MAX_SAFE_INTEGER + 1),
+    /Steam IDs passed as numbers must be safe integers/
+  );
   assert.throws(() => steam.steamCommunityPlayersUrl("not-a-steam-id"), /Invalid Steam ID/);
   assert.throws(() => steam.steamCommunityAchievementsUrl(480, "not-a-steam-id"), /Invalid Steam ID/);
   assert.throws(() => steam.steamCheckoutTransactionUrl(0), /Invalid Steam transaction ID/);
@@ -35460,6 +35635,63 @@ test("web API client builds generic Steam Web API URLs and parses JSON responses
   assert.equal(fetchCalls[0].init.method, "GET");
   assert.equal(fetchCalls[0].init.headers["x-webapi-key"], undefined);
   assert.equal(fetchCalls[0].init.redirect, undefined);
+});
+
+test("web API serialization rejects lossy integers across query, list, and input_json routes", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const client = steam.createSteamWebApiClient({
+    apiKey: "user-secret",
+    fetch: async (url, init = {}) => {
+      fetchCalls.push({ url, init });
+      return { ok: true, status: 200, headers: { forEach() {} }, async text() { return "{}"; } };
+    }
+  });
+  const unsafeInteger = Number.MAX_SAFE_INTEGER + 1;
+
+  t.after(clearSteamBridgeCache);
+
+  assert.throws(
+    () => client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "LossyQuery",
+      endpointAccess: "public",
+      params: { steamid: unsafeInteger }
+    }),
+    /cannot be represented losslessly/
+  );
+  assert.throws(
+    () => client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "NonFiniteQuery",
+      endpointAccess: "public",
+      params: { value: Number.POSITIVE_INFINITY }
+    }),
+    /numeric values must be finite/
+  );
+  await assert.rejects(
+    async () => client.user.getPlayerSummaries([unsafeInteger]),
+    /cannot be represented losslessly/
+  );
+  await assert.rejects(
+    async () => client.player.getSteamLevel(unsafeInteger),
+    /cannot be represented losslessly/
+  );
+  await assert.rejects(
+    async () => client.user.getAppPriceInfo({ appIds: [unsafeInteger], steamId64: 1n }),
+    /cannot be represented losslessly/
+  );
+  assert.equal(fetchCalls.length, 0);
+
+  assert.match(
+    client.buildUrl({
+      interfaceName: "ITest",
+      methodName: "LosslessQuery",
+      endpointAccess: "public",
+      params: { steamid: 76561198073424621n }
+    }),
+    /steamid=76561198073424621/
+  );
 });
 
 test("web API client protects and redacts caller-provided headers", async (t) => {
