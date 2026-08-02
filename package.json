@@ -55,7 +55,7 @@
     "@napi-rs/cli": "3.7.2",
     "electron-builder": "26.15.3",
     "tar": "7.5.22",
-    "terser": "^5.48.0",
+    "terser": "^5.49.0",
     "typescript": "6.0.3"
   },
   "engines": {
