@@ -38,6 +38,15 @@ single unambiguous legacy-npm positional form, and a self-test permanently
 covers all accepted and rejected shapes. The corrected release must use a new
 version and tag; never move or reuse `v0.3.13`.
 
+Exact `v0.3.14` is likewise immutable and unpublished. It proved the corrected
+artifact assembly and completed the exact Windows Electron/ASAR/native-load
+package gate, then exposed the same pinned-npm argument stripping in the later
+candidate-verifier invocation. It produced no npm package or GitHub Release.
+All argument-bearing release and trusted-publication workflow calls now invoke
+their Node CLIs directly, and package smoke rejects either workflow if that npm
+forwarding pattern returns. The replacement must use a new version and tag;
+never move, reuse, or publish `v0.3.14`.
+
 ## Active Goal: Cross-platform exhaustive actual-game QA
 
 Build and retain one auditable, platform-neutral actual-game QA contract with

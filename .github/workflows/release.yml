@@ -124,7 +124,7 @@ jobs:
             throw "Expected exactly one retained Windows bundle archive, found $($bundleArchives.Count)."
           }
           if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -eq "v0.1.6") {
-            npm run release:publish-candidate -- `
+            node scripts/publish-release-candidate.cjs `
               --tarball $tarballs[0].FullName `
               --bundle-archive $bundleArchives[0].FullName `
               --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json" `
@@ -134,14 +134,14 @@ jobs:
               --require-publishable `
               --release-tag "${{ github.ref_name }}"
           } elseif ("${{ github.event_name }}" -eq "push") {
-            npm run release:publish-candidate -- `
+            node scripts/publish-release-candidate.cjs `
               --tarball $tarballs[0].FullName `
               --bundle-archive $bundleArchives[0].FullName `
               --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json" `
               --require-publishable `
               --release-tag "${{ github.ref_name }}"
           } else {
-            npm run release:publish-candidate -- `
+            node scripts/publish-release-candidate.cjs `
               --tarball $tarballs[0].FullName `
               --bundle-archive $bundleArchives[0].FullName `
               --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json"

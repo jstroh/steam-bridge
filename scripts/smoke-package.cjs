@@ -644,7 +644,7 @@ function runWindowsSmokeHelperStaticChecks() {
     releaseWorkflow.includes("windows-package-gate:") &&
       releaseWorkflow.includes("node scripts/assemble-release-artifacts.cjs --artifacts-dir release-artifacts") &&
       releaseWorkflow.includes("npm run windows:package-gate") &&
-      releaseWorkflow.includes("npm run release:publish-candidate") &&
+      releaseWorkflow.includes("node scripts/publish-release-candidate.cjs") &&
       releaseWorkflow.includes("--require-publishable") &&
       releaseWorkflow.includes("*-win-unpacked.tar") &&
       releaseWorkflow.includes("--bundle-archive"),
@@ -700,7 +700,7 @@ function runWindowsSmokeHelperStaticChecks() {
     'run.event === "push"',
     'run.status === "completed"',
     'run.conclusion === "success"',
-    "npm run release:publish-candidate",
+    "node scripts/publish-release-candidate.cjs",
     "--live-proof-receipt windows-live-proof-receipt.json",
     "previous_release_tag",
     "--previous-tarball",
@@ -710,6 +710,11 @@ function runWindowsSmokeHelperStaticChecks() {
   ]) {
     assert.ok(publishWorkflow.includes(expected), `Publish workflow missing ${expected}`);
   }
+  assert.ok(
+    !releaseWorkflow.includes("npm run release:publish-candidate") &&
+      !publishWorkflow.includes("npm run release:publish-candidate"),
+    "Release workflows must invoke argument-bearing Node CLIs directly instead of relying on npm argument forwarding"
+  );
   const matchingCiGateIndex = publishWorkflow.indexOf("- name: Verify exact tag commit passed CI");
   const candidateDownloadIndex = publishWorkflow.indexOf("- name: Download exact audited candidate");
   const npmPublishIndex = publishWorkflow.indexOf("- name: Publish exact verified bytes");

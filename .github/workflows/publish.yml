@@ -152,4 +152,4 @@ jobs:
           if [[ -n "$NPM_TAG" ]]; then
             args+=(--tag "$NPM_TAG")
           fi
-          npm run release:publish-candidate -- "${args[@]}"
+          node scripts/publish-release-candidate.cjs "${args[@]}"
