@@ -598,6 +598,36 @@ function validatePublishTag(packageVersion, tag) {
 }
 
 function selfTest() {
+  const pathStatsWithoutWindowsIdentifiers = {
+    dev: 0n,
+    ino: 0n,
+    size: 5n,
+    nlink: 1n,
+    mtimeNs: 10n,
+    ctimeNs: 11n
+  };
+  const handleStatsWithWindowsIdentifiers = {
+    ...pathStatsWithoutWindowsIdentifiers,
+    dev: 123n,
+    ino: 456n
+  };
+  assert.doesNotThrow(() =>
+    assertStableFileStats(pathStatsWithoutWindowsIdentifiers, handleStatsWithWindowsIdentifiers, "portable file")
+  );
+  assert.throws(() =>
+    assertStableFileStats(
+      handleStatsWithWindowsIdentifiers,
+      { ...handleStatsWithWindowsIdentifiers, ino: 457n },
+      "replaced file"
+    )
+  );
+  assert.throws(() =>
+    assertStableFileStats(
+      pathStatsWithoutWindowsIdentifiers,
+      { ...handleStatsWithWindowsIdentifiers, mtimeNs: 12n },
+      "changed file"
+    )
+  );
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-release-candidate-self-test-"));
   try {
     const tarball = path.join(tempRoot, "steam-bridge-0.1.0.tgz");
@@ -1033,7 +1063,15 @@ function hashStableRegularFile(filePath, label) {
 }
 
 function assertStableFileStats(before, after, label) {
-  for (const field of ["dev", "ino", "size", "nlink", "mtimeNs", "ctimeNs"]) {
+  // Node can expose an unavailable zero device or inode from a path stat on
+  // Windows even when fstat on the opened handle exposes the real identifier.
+  // Handle-to-handle comparisons still require exact identifiers.
+  for (const field of ["dev", "ino"]) {
+    if (before[field] !== 0n && after[field] !== 0n) {
+      assert.equal(after[field], before[field], `${label} changed while being inspected`);
+    }
+  }
+  for (const field of ["size", "nlink", "mtimeNs", "ctimeNs"]) {
     assert.equal(after[field], before[field], `${label} changed while being inspected`);
   }
 }
