@@ -70,11 +70,12 @@ Valve's protected-method guidance.
 GitHub's Windows runner exposed a filesystem portability defect in both
 release-candidate file guards: on that runner a path stat can report zero for
 an unavailable device identifier while `fstat` on the opened handle reports
-the real value. Both guards now treat zero as unavailable only for that
-path-to-handle identifier comparison. Nonzero device/inode comparisons,
-handle-to-handle comparisons, size, link count, modification time, and change
-time remain strict. Self-tests reproduce the zero-identifier case and still
-reject real identifier and timestamp changes.
+the real value. Both guards now treat zero as unavailable only at explicitly
+marked path-to-handle identifier call sites; the default helper mode and every
+handle-to-handle comparison remain strict. Nonzero device/inode comparisons,
+size, link count, modification time, and change time also remain strict.
+Self-tests reproduce the zero-identifier case and still reject unmarked,
+changed-identifier, and changed-timestamp comparisons.
 
 The complete local gate passes: 368/368 JavaScript tests, 31/31 Rust tests,
 TypeScript/build, supported-target policy, stable-Electron pin, native format

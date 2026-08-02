@@ -344,7 +344,7 @@ function createStableSnapshot(source, label, expectedSize) {
     sourceDescriptor = fs.openSync(source, "r");
     destinationDescriptor = fs.openSync(file, "wx", 0o400);
     const before = fs.fstatSync(sourceDescriptor, { bigint: true });
-    assertStableFileStats(initial, before, label);
+    assertStableFileStats(initial, before, label, true);
     const buffer = Buffer.allocUnsafe(1024 * 1024);
     let total = 0n;
     for (;;) {
@@ -363,7 +363,7 @@ function createStableSnapshot(source, label, expectedSize) {
     const after = fs.fstatSync(sourceDescriptor, { bigint: true });
     const finalPathStats = fs.lstatSync(source, { bigint: true });
     assertStableFileStats(before, after, label);
-    assertStableFileStats(after, finalPathStats, label);
+    assertStableFileStats(after, finalPathStats, label, true);
     assert.equal(total, BigInt(expectedSize), `${label} changed size while being copied`);
     const destinationStats = fs.fstatSync(destinationDescriptor, { bigint: true });
     assert.equal(destinationStats.size, total, `${label} snapshot has the wrong size`);
@@ -612,7 +612,15 @@ function selfTest() {
     ino: 456n
   };
   assert.doesNotThrow(() =>
-    assertStableFileStats(pathStatsWithoutWindowsIdentifiers, handleStatsWithWindowsIdentifiers, "portable file")
+    assertStableFileStats(
+      pathStatsWithoutWindowsIdentifiers,
+      handleStatsWithWindowsIdentifiers,
+      "portable file",
+      true
+    )
+  );
+  assert.throws(() =>
+    assertStableFileStats(pathStatsWithoutWindowsIdentifiers, handleStatsWithWindowsIdentifiers, "strict file")
   );
   assert.throws(() =>
     assertStableFileStats(
@@ -1062,12 +1070,13 @@ function hashStableRegularFile(filePath, label) {
   }
 }
 
-function assertStableFileStats(before, after, label) {
+function assertStableFileStats(before, after, label, allowUnavailablePathIdentifiers = false) {
   // Node can expose an unavailable zero device or inode from a path stat on
   // Windows even when fstat on the opened handle exposes the real identifier.
-  // Handle-to-handle comparisons still require exact identifiers.
+  // Only explicitly identified path-to-handle comparisons may skip an
+  // unavailable identifier; handle-to-handle comparisons remain strict.
   for (const field of ["dev", "ino"]) {
-    if (before[field] !== 0n && after[field] !== 0n) {
+    if (!allowUnavailablePathIdentifiers || (before[field] !== 0n && after[field] !== 0n)) {
       assert.equal(after[field], before[field], `${label} changed while being inspected`);
     }
   }

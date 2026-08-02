@@ -388,7 +388,7 @@ function hashStableFile(filePath, expectedStats, relativePath) {
   const descriptor = fs.openSync(filePath, "r");
   try {
     const before = fs.fstatSync(descriptor, { bigint: true });
-    assertStableFileIdentity(expectedStats, before, relativePath);
+    assertStableFileIdentity(expectedStats, before, relativePath, true);
     assert.ok(before.size <= BigInt(Number.MAX_SAFE_INTEGER), `Candidate file is too large: ${relativePath}`);
     const digest = crypto.createHash("sha256");
     const buffer = Buffer.allocUnsafe(1024 * 1024);
@@ -413,13 +413,14 @@ function hashStableFile(filePath, expectedStats, relativePath) {
   }
 }
 
-function assertStableFileIdentity(expected, actual, relativePath) {
+function assertStableFileIdentity(expected, actual, relativePath, allowUnavailablePathIdentifiers = false) {
   // On some Windows filesystems Node reports a zero device or inode for a
   // path-based stat while fstat on the opened handle reports the real value.
-  // Treat zero as "identifier unavailable" for that one path-to-handle
-  // comparison. The before/after handle comparison still checks both fields.
+  // Treat zero as "identifier unavailable" only when the caller explicitly
+  // identifies a path-to-handle comparison. Handle-to-handle comparisons
+  // remain strict even if either side unexpectedly reports zero.
   for (const field of ["dev", "ino"]) {
-    if (expected[field] !== 0n && actual[field] !== 0n) {
+    if (!allowUnavailablePathIdentifiers || (expected[field] !== 0n && actual[field] !== 0n)) {
       assert.equal(actual[field], expected[field], `Candidate file changed while hashing: ${relativePath}`);
     }
   }
@@ -517,7 +518,15 @@ function selfTest() {
     ino: 456n
   };
   assert.doesNotThrow(() =>
-    assertStableFileIdentity(pathStatsWithoutWindowsIdentifiers, handleStatsWithWindowsIdentifiers, "portable.txt")
+    assertStableFileIdentity(
+      pathStatsWithoutWindowsIdentifiers,
+      handleStatsWithWindowsIdentifiers,
+      "portable.txt",
+      true
+    )
+  );
+  assert.throws(() =>
+    assertStableFileIdentity(pathStatsWithoutWindowsIdentifiers, handleStatsWithWindowsIdentifiers, "strict.txt")
   );
   assert.throws(() =>
     assertStableFileIdentity(
