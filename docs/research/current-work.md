@@ -40,7 +40,7 @@ refresh-rate, input, fullscreen, host, and presentation evidence.
 
 ### 2026-08-01 post-0.3.12 adversarial-finding repair checkpoint
 
-The current reviewed slice is based on pushed main commit `42fdf82` and closes
+The current reviewed slice is based on pushed main commit `f2698a8` and closes
 the remaining findings from the `0.3.12` post-release review. Callback timer
 intervals now require a positive safe integer within Node's maximum timer
 delay before any native call or JavaScript resource cleanup. A failure in the
@@ -67,6 +67,15 @@ invalidate an immutable historical tag. The Web API guide now keeps both user
 and publisher keys in the explicit trusted-server entrypoint, consistent with
 Valve's protected-method guidance.
 
+GitHub's Windows runner exposed a filesystem portability defect in both
+release-candidate file guards: on that runner a path stat can report zero for
+an unavailable device identifier while `fstat` on the opened handle reports
+the real value. Both guards now treat zero as unavailable only for that
+path-to-handle identifier comparison. Nonzero device/inode comparisons,
+handle-to-handle comparisons, size, link count, modification time, and change
+time remain strict. Self-tests reproduce the zero-identifier case and still
+reject real identifier and timestamp changes.
+
 The complete local gate passes: 368/368 JavaScript tests, 31/31 Rust tests,
 TypeScript/build, supported-target policy, stable-Electron pin, native format
 and compilation, API coverage, Windows release self-tests, diff checks, a
@@ -74,10 +83,13 @@ direct packed-runtime CommonJS/ESM smoke on Node 24, and the full packed
 consumer/platform matrix. The first package-matrix invocation selected the
 Windows Store Python alias and failed before its POSIX fixtures; the unchanged
 rerun passed through the documented `STEAM_BRIDGE_PYTHON` hook using the
-desktop workspace's real Python runtime. Final diff/privacy review, commit,
-push, and GitHub CI are still pending. No release tag or live-runtime claim
-exists for this working slice; a later publication still requires a new
-immutable version and the normal exact-candidate proof.
+desktop workspace's real Python runtime. Final diff/privacy review passed and
+the fixes were committed and pushed in `725ece0`, `efb981b`, and `f2698a8`.
+Exact-head GitHub CI run `30724974937` passed Windows x64, Linux x64, macOS
+arm64, package smoke, and packed-package runtime installs on Node 18, 20, 22,
+and 24. No release tag or live-runtime claim exists for this working slice; a
+later publication still requires a new immutable version and the normal
+exact-candidate proof.
 
 ### 2026-08-01 0.3.12 security and lifecycle release checkpoint
 
