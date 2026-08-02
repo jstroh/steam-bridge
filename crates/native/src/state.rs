@@ -29,6 +29,18 @@ pub enum CallbackDomain {
     GameServer,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LifecycleToken {
+    domain: CallbackDomain,
+    generation: u64,
+}
+
+impl LifecycleToken {
+    pub fn domain(self) -> CallbackDomain {
+        self.domain
+    }
+}
+
 #[derive(Debug)]
 pub struct CompletedApiCall {
     pub callback_id: i32,
@@ -105,6 +117,16 @@ pub fn lifecycle_generation(domain: CallbackDomain) -> u64 {
         CallbackDomain::Client => CLIENT_GENERATION.load(Ordering::SeqCst),
         CallbackDomain::GameServer => GAME_SERVER_GENERATION.load(Ordering::SeqCst),
     }
+}
+
+pub fn current_lifecycle_token(domain: CallbackDomain) -> Result<LifecycleToken, Error> {
+    let generation = lifecycle_generation(domain);
+    ensure_lifecycle_generation(domain, generation)?;
+    Ok(LifecycleToken { domain, generation })
+}
+
+pub fn ensure_current_lifecycle_token(token: LifecycleToken) -> Result<(), Error> {
+    ensure_lifecycle_generation(token.domain, token.generation)
 }
 
 pub fn invalidate_lifecycle_generation(domain: CallbackDomain) {
@@ -515,17 +537,24 @@ mod tests {
         mark_game_server_initialized(true);
         let client_generation = lifecycle_generation(CallbackDomain::Client);
         let server_generation = lifecycle_generation(CallbackDomain::GameServer);
+        let client_token = current_lifecycle_token(CallbackDomain::Client).unwrap();
+        let server_token = current_lifecycle_token(CallbackDomain::GameServer).unwrap();
         assert!(ensure_lifecycle_generation(CallbackDomain::Client, client_generation).is_ok());
         assert!(ensure_lifecycle_generation(CallbackDomain::GameServer, server_generation).is_ok());
+        assert!(ensure_current_lifecycle_token(client_token).is_ok());
+        assert!(ensure_current_lifecycle_token(server_token).is_ok());
 
         invalidate_lifecycle_generation(CallbackDomain::Client);
         assert!(ensure_lifecycle_generation(CallbackDomain::Client, client_generation).is_err());
         assert!(ensure_lifecycle_generation(CallbackDomain::GameServer, server_generation).is_ok());
+        assert!(ensure_current_lifecycle_token(client_token).is_err());
+        assert!(ensure_current_lifecycle_token(server_token).is_ok());
 
         invalidate_lifecycle_generation(CallbackDomain::GameServer);
         assert!(
             ensure_lifecycle_generation(CallbackDomain::GameServer, server_generation).is_err()
         );
+        assert!(ensure_current_lifecycle_token(server_token).is_err());
         mark_initialized(false);
         mark_game_server_initialized(false);
     }

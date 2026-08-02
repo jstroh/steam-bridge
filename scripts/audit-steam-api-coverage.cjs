@@ -60,11 +60,24 @@ const intentionallyInternalSdkExports = [
   "SteamInternal_FindOrCreateGameServerInterface",
   "SteamInternal_SteamAPI_Init"
 ];
+const intentionallyUnsupportedFlatApiFunctions = new Map([
+  [
+    "SteamAPI_ISteamNetworkingSockets_ConnectP2PCustomSignaling",
+    "Steam Bridge never accepts a JS-supplied native signaling pointer"
+  ],
+  [
+    "SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal",
+    "Steam Bridge never accepts a JS-supplied native receive-context pointer"
+  ]
+]);
 const intentionallyUnsupportedSdkExports = new Map([
+  ...intentionallyUnsupportedFlatApiFunctions,
   ["SteamAPI_RunCallbacks", "Steam Bridge exclusively uses Steam manual callback dispatch"],
   ["SteamGameServer_RunCallbacks", "Steam Bridge exclusively uses Steam manual callback dispatch"],
   ["SteamAPI_RegisterCallback", "CCallbackBase registration cannot be mixed with manual dispatch"],
-  ["SteamAPI_RegisterCallResult", "CCallResult registration cannot be mixed with manual dispatch"]
+  ["SteamAPI_RegisterCallResult", "CCallResult registration cannot be mixed with manual dispatch"],
+  ["SteamAPI_UnregisterCallback", "Steam Bridge never owns a JS-supplied CCallbackBase pointer"],
+  ["SteamAPI_UnregisterCallResult", "Steam Bridge never owns a JS-supplied CCallResult pointer"]
 ]);
 assertNapiExportScannerSelfTest();
 assertFlatApiCoverage();
@@ -106,7 +119,9 @@ function assertFlatApiCoverage() {
   const flatFunctions = unique([...flat.matchAll(/\b(SteamAPI_[A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1]));
   const nativeSource = readNativeSource();
 
-  const missing = flatFunctions.filter((fnName) => !nativeSource.includes(fnName));
+  const missing = flatFunctions.filter(
+    (fnName) => !intentionallyUnsupportedFlatApiFunctions.has(fnName) && !nativeSource.includes(fnName)
+  );
   if (missing.length > 0) {
     throw new Error(
       [

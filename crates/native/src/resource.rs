@@ -27,12 +27,17 @@ where
         self.handle
     }
 
+    pub(crate) fn context(&self) -> C {
+        self.context
+    }
+
     pub(crate) fn release(&mut self) {
         if self.handle == self.invalid {
             return;
         }
-        (self.release)(self.context, self.handle);
+        let handle = self.handle;
         self.handle = self.invalid;
+        (self.release)(self.context, handle);
     }
 }
 
@@ -52,9 +57,15 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static RELEASED: AtomicU64 = AtomicU64::new(0);
+    static PANICKED_RELEASES: AtomicU64 = AtomicU64::new(0);
 
     fn record_release(context: u64, handle: u64) {
         RELEASED.store(context + handle, Ordering::SeqCst);
+    }
+
+    fn panic_after_recording_release(_context: u64, _handle: u64) {
+        PANICKED_RELEASES.fetch_add(1, Ordering::SeqCst);
+        panic!("release failed");
     }
 
     #[test]
@@ -72,5 +83,17 @@ mod tests {
         RELEASED.store(0, Ordering::SeqCst);
         drop(NativeResourceHandle::new(41, 0, 1, record_release));
         assert_eq!(RELEASED.load(Ordering::SeqCst), 42);
+    }
+
+    #[test]
+    fn native_resource_consumes_ownership_before_a_panicking_release() {
+        PANICKED_RELEASES.store(0, Ordering::SeqCst);
+        let mut resource = NativeResourceHandle::new(42, 0, 1, panic_after_recording_release);
+        let release = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            resource.release();
+        }));
+        assert!(release.is_err());
+        drop(resource);
+        assert_eq!(PANICKED_RELEASES.load(Ordering::SeqCst), 1);
     }
 }

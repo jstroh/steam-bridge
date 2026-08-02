@@ -2,6 +2,11 @@
 
 Last reviewed: 2026-08-01
 
+Only the release status and checkpoints above `Historical Release Ledger` are
+authoritative current state. Everything below that boundary is retained solely
+as dated evidence and must not override the current stable version, review
+anchor, architecture decisions, or validation results stated here.
+
 Review anchor: `9c1f1a8a46d5a2bd2c634e56907faa25c4757830`
 (`Fix Web API and native lifecycle safety`). npm `latest` and the stable GitHub
 Release are `0.3.12`; the review anchor is bound to immutable tag `v0.3.12`.
@@ -37,6 +42,56 @@ close FPS against the authoritative display rate, crash/orphan cleanup, and
 exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
+
+### 2026-08-01 deep-review remediation checkpoint
+
+The post-`f23dc31` adversarial pass reproduced a public native crash before
+changing code: `callback.unregisterRawCallbackBase(0x1234n)` reached Valve with
+an untrusted pointer and the isolated Windows child exited with access violation
+`0xC0000005`. All raw callback/call-result register and unregister compatibility
+methods now fail closed; JavaScript-supplied native pointers are never
+dereferenced. The SDK coverage audit records the four raw manual-dispatch
+exports as deliberately unsupported, and native regression coverage calls the
+previous crashing values directly.
+
+The same sweep reproduced a second `0xC0000005` child-process crash through
+`networking.sockets.connectP2PCustomSignaling(0x1234n)`. Custom-signaling,
+custom-signal receipt, and non-null pointer-valued networking config inputs now
+fail closed as well. Null pointer config remains available only to clear a
+value; the SDK coverage audit records the two intentionally unavailable flat
+custom-signaling entrypoints instead of treating dangerous pointer plumbing as
+coverage.
+
+Authentication tickets and Workshop query handles now carry the exact client
+or game-server lifecycle generation that issued them. Release is serialized
+with shutdown and occurs only while that same generation is current, so an old
+numeric handle cannot cancel or release an unrelated resource after reinit.
+Ticket promises also reject rather than return already-invalid bytes if their
+issuing generation ended before the Promise resumed. Workshop query creation,
+configuration, send, collection, and release use the same lifecycle lock; a
+configuration error releases the newly created query before returning.
+The reusable resource guard consumes ownership before calling its release
+function, so a panicking cleanup path cannot trigger a second native release
+when the guard is subsequently dropped.
+
+The native-test runner now rejects stray arguments and foreign targets instead
+of combining one target with another platform's runtime path. The first CI run
+that executed Rust tests on every host exposed one test-only unaligned reference
+to packed `SteamAPICallCompleted_t` data on macOS and Linux; it now performs an
+explicit unaligned copy. Windows package smoke now discovers a real Python
+interpreter and supplies stable `python`/`python3` shims to Git Bash instead of
+falling into the Microsoft Store alias when no override variable is set.
+
+Focused verification passes: the rebuilt real addon rejects the former crash
+input, a live App ID 480 Workshop configuration-error path releases cleanly, a
+separate query completes, a Web API ticket arrives, shutdown/reinit succeeds,
+and cancelling the stale ticket is safe without printing ticket bytes. The
+full local gate passes stable Electron 43.2.0, 371/371 JavaScript tests, 37/37
+Rust tests, typecheck/build, Windows release self-tests, format, zero-warning
+all-target Clippy, SDK/API coverage, the complete packed-package smoke matrix,
+and production audit with zero vulnerabilities. The current worktree is not a
+release until it is reviewed, committed, pushed, and passes fresh macOS/Linux/
+Windows CI from the resulting commit.
 
 ### 2026-08-01 post-review resource and release-gate repair checkpoint
 
@@ -1869,7 +1924,14 @@ presentation should be repaired with another popup or child-window experiment.
   platform release matrix once after the implementation is stable and directly
   before publication.
 
-## Completed Goal
+## Historical Release Ledger
+
+The remainder of this file is archival evidence from earlier candidates and
+releases. Version-specific headings deliberately say `Historical`; none of the
+older `latest`, `stable`, `current`, or verification statements below this line
+describe today's package state.
+
+### Historical Completed Goal
 
 Steam Bridge and the FOV4 port now use the proven standalone native-host
 architecture. The release permanently closes failed Windows attached
@@ -1880,7 +1942,7 @@ review through documentation, version, commit, push, tag, GitHub Release, npm
 publication, and registry verification. That sequence completed for `v0.3.10`;
 do not reopen it without a new code change and a new version.
 
-## Current State
+### Historical v0.3.10 State
 
 `steam-bridge@0.3.10` is published to npm and is the stable GitHub Release:
 <https://github.com/jstroh/steam-bridge/releases/tag/v0.3.10>. Source commit
@@ -2430,7 +2492,7 @@ clean cases, 27 active Steam routes, one unchanged protected candidate and
 Steam identity, and zero crashes. The exact npm tarball and five GitHub Release
 assets were independently verified before and after trusted publication.
 
-## Consumer Evidence
+### Historical Consumer Evidence
 
 FOV4 commit `04769fd` (`Port native host to Steam Bridge 0.3.8`) is pushed to
 `master`. Its manifest, lockfile, and ordinary non-link install resolve exact
@@ -2505,7 +2567,7 @@ Steam composite only into the visible host. A repeat at the exact minimum
 showed one centered checkout surface; Escape returned to a fresh game frame and
 authorized no transaction. Consumer commit `44b8928` is pushed to `master`.
 
-## Historical `v0.2.14` Release Evidence
+### Historical `v0.2.14` Release Evidence
 
 Source and automation:
 
@@ -2552,7 +2614,7 @@ consumer-wide `npm audit signatures` verifies 705 registry signatures and 132
 attestations. All five GitHub Release asset digests match their retained local
 files. The release-scoped GitHub proof secret was deleted after publication.
 
-## Verification
+### Historical v0.3.8 Verification
 
 Current `v0.3.8` verification is complete: 203/203 Steam Bridge tests pass with
 zero skips, the full cross-platform package smoke and exact Windows packaged
@@ -2608,7 +2670,7 @@ Consumer gates on registry `0.2.14` passed:
   maximize/restore, aspect-fit fullscreen, exact 640 by 480 minimum sizing,
   single-surface checkout at default and minimum size, and clean cancel return.
 
-## Operational Notes
+### Historical Operational Notes
 
 - Windows production invariant: use one standalone top-level native D3D game
   host with Electron offscreen. Attached `popup-layered`, the unparented
@@ -2663,7 +2725,7 @@ Consumer gates on registry `0.2.14` passed:
 - The checkout contains unrelated user-owned `AGENTS.md`, `.codex`, and input
   probe files. They must remain unstaged and untouched.
 
-## 2026-07-22 Windows actual-game exhaustive QA update
+### 2026-07-22 Windows actual-game exhaustive QA update
 
 An actual FOV4 game pass was run from
 `C:\Users\admin\source\fov4-steam` with Steam Bridge QA overlay and FPS
@@ -2723,7 +2785,7 @@ Going forward, if a QA item fails, fix and focused-retest only that item until
 it is green. Run the full exhaustive Windows actual-game pass only after every
 known individual failure is green and immediately before a release decision.
 
-## 2026-07-26 Windows Steam-modal capture finding
+### 2026-07-26 Windows Steam-modal capture finding
 
 A source-linked actual FOV4 checkout probe at the active 165 Hz display rate
 resolved the ambiguity around window management while Steam's Windows overlay
@@ -2746,7 +2808,7 @@ DPI changes remain required active-overlay stress where applicable. Do not
 release Steam's capture, inject non-client messages, enter a synthetic
 `DefWindowProc` move loop, or revisit popup/`WS_CHILD` architectures.
 
-## 2026-07-28 Windows final source-linked QA
+### 2026-07-28 Windows final source-linked QA
 
 After the Deck Game Mode orientation repair, Windows received focused coverage
 only for the two affected native surfaces. A full pass followed after both were

@@ -3873,6 +3873,22 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(rootPackageJson.scripts.test, /npm run native:test/);
   assert.match(rootPackageJson.scripts["check:platform"], /assert-supported-targets\.cjs/);
   assert.match(rootPackageJson.scripts["api:check"], /audit-steam-api-coverage\.cjs/);
+  assert.match(
+    apiAuditScript,
+    /SteamAPI_UnregisterCallback[^\r\n]*never owns a JS-supplied CCallbackBase pointer/
+  );
+  assert.match(
+    apiAuditScript,
+    /SteamAPI_UnregisterCallResult[^\r\n]*never owns a JS-supplied CCallResult pointer/
+  );
+  assert.match(
+    apiAuditScript,
+    /SteamAPI_ISteamNetworkingSockets_ConnectP2PCustomSignaling[\s\S]*never accepts a JS-supplied native signaling pointer/
+  );
+  assert.match(
+    apiAuditScript,
+    /SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal[\s\S]*never accepts a JS-supplied native receive-context pointer/
+  );
   assert.match(rootPackageJson.scripts["steamworks-enums:generate"], /generate-steamworks-enums\.cjs/);
 
   for (const workflow of [ciWorkflow, releaseWorkflow]) {
@@ -3956,11 +3972,26 @@ test("native test runner preserves platform runtime-library lookup", () => {
   const {
     parseTarget,
     runtimeLibraryEnvironment,
-    steamworksRuntimeDirectoryFromMetadata
+    steamworksRuntimeDirectoryFromMetadata,
+    targetForHost
   } = require(path.join(repoRoot, "scripts", "run-native-tests.cjs"));
+  const hostTarget = targetForHost(process.platform, process.arch);
   assert.equal(parseTarget([]), undefined);
-  assert.equal(parseTarget(["--target", "x86_64-pc-windows-msvc"]), "x86_64-pc-windows-msvc");
+  assert.equal(parseTarget(["--target", hostTarget]), hostTarget);
   assert.throws(() => parseTarget(["--target", "x86_64-apple-darwin"]), /--target must be one of/);
+  assert.throws(
+    () => parseTarget(["junk", "--target", hostTarget]),
+    /accepts only an optional/
+  );
+  const foreignTarget = [...new Set([
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu"
+  ])].find((target) => target !== hostTarget);
+  assert.throws(
+    () => parseTarget(["--target", foreignTarget]),
+    /cannot run on this host/
+  );
 
   const windows = runtimeLibraryEnvironment("C:\\repo", "win32", { Path: "C:\\Rust\\bin" });
   assert.match(windows.Path, /packages[\\/]steam-bridge;C:\\Rust\\bin$/);

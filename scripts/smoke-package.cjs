@@ -5140,15 +5140,35 @@ function run(command, args, options = {}) {
 function windowsBashEnvironment() {
   const configuredPython =
     process.env.STEAM_BRIDGE_PYTHON || process.env.PYTHON || process.env.npm_config_python;
-  if (!configuredPython) {
-    return process.env;
+  let pythonPath;
+  if (configuredPython) {
+    pythonPath = path.resolve(configuredPython);
+    assert.ok(
+      fs.existsSync(pythonPath),
+      `Configured package-smoke Python does not exist: ${pythonPath}`
+    );
+  } else {
+    const probes = [
+      ["python", ["-c", "import sys; print(sys.executable)"]],
+      ["py", ["-3", "-c", "import sys; print(sys.executable)"]]
+    ];
+    for (const [command, args] of probes) {
+      const result = spawnSync(command, args, {
+        encoding: "utf8",
+        env: process.env,
+        shell: false,
+        windowsHide: true
+      });
+      const candidate = result.status === 0 ? result.stdout.trim() : "";
+      if (candidate && fs.existsSync(candidate)) {
+        pythonPath = candidate;
+        break;
+      }
+    }
+    if (!pythonPath) {
+      return process.env;
+    }
   }
-
-  const pythonPath = path.resolve(configuredPython);
-  assert.ok(
-    fs.existsSync(pythonPath),
-    `Configured package-smoke Python does not exist: ${pythonPath}`
-  );
 
   const shimDirectory = path.join(tempRoot, "windows-bash-bin");
   fs.mkdirSync(shimDirectory, { recursive: true });

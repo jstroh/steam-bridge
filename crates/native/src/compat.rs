@@ -12193,28 +12193,15 @@ pub fn networking_sockets_connect_p2p_custom_signaling(
     remote_virtual_port: Option<i32>,
     options: Option<Vec<NetworkingConfigValue>>,
 ) -> Result<u32, Error> {
-    let signaling = required_networking_pointer::<sys::ISteamNetworkingConnectionSignaling>(
+    let _ = (
         signaling_pointer,
-        "custom signaling pointer",
-    )?;
-    let peer_identity = peer_identity
-        .map(networking_identity_from_input)
-        .transpose()?;
-    let peer_identity_ptr = peer_identity
-        .as_ref()
-        .map_or(ptr::null(), |identity| identity as *const _);
-    let (option_count, options, _strings) = networking_config_values(options)?;
-    let option_ptr = networking_config_value_ptr(&options);
-    Ok(unsafe {
-        sys::SteamAPI_ISteamNetworkingSockets_ConnectP2PCustomSignaling(
-            steam_networking_sockets()?,
-            signaling,
-            peer_identity_ptr,
-            networking_virtual_port(remote_virtual_port)?,
-            option_count,
-            option_ptr,
-        )
-    })
+        peer_identity,
+        remote_virtual_port,
+        options,
+    );
+    Err(Error::from_reason(
+        "Custom Steam Networking signaling is unavailable because Steam Bridge cannot safely validate or own a JS-supplied native signaling pointer",
+    ))
 }
 
 #[napi(js_name = "networkingSocketsReceivedP2pCustomSignal")]
@@ -12222,19 +12209,10 @@ pub fn networking_sockets_received_p2p_custom_signal(
     message: Buffer,
     context_pointer: BigInt,
 ) -> Result<bool, Error> {
-    let context = required_networking_pointer::<sys::ISteamNetworkingSignalingRecvContext>(
-        context_pointer,
-        "custom signaling receive context pointer",
-    )?;
-    let size = len_to_i32(message.len(), "custom signaling message")?;
-    Ok(unsafe {
-        sys::SteamAPI_ISteamNetworkingSockets_ReceivedP2PCustomSignal(
-            steam_networking_sockets()?,
-            message.as_ptr().cast(),
-            size,
-            context,
-        )
-    })
+    let _ = (message, context_pointer);
+    Err(Error::from_reason(
+        "Custom Steam Networking signal receipt is unavailable because Steam Bridge cannot safely validate or own a JS-supplied native receive-context pointer",
+    ))
 }
 
 #[napi(js_name = "networkingSocketsAcceptConnection")]
@@ -15486,9 +15464,10 @@ pub fn register_raw_steam_callback(
 
 #[napi(js_name = "unregisterRawSteamCallback")]
 pub fn unregister_raw_steam_callback(callback_base_pointer: BigInt) -> Result<(), Error> {
-    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
-    unsafe { sys::SteamAPI_UnregisterCallback(callback_base) };
-    Ok(())
+    let _ = callback_base_pointer;
+    Err(Error::from_reason(
+        "Raw Steam callback-base unregistration is unavailable because Steam Bridge cannot safely validate or own a JS-supplied native pointer; use the handle returned by callback.register()",
+    ))
 }
 
 #[napi(js_name = "registerRawSteamCallResult")]
@@ -15506,10 +15485,10 @@ pub fn unregister_raw_steam_call_result(
     callback_base_pointer: BigInt,
     api_call: BigInt,
 ) -> Result<(), Error> {
-    let callback_base = required_callback_base_pointer(callback_base_pointer)?;
-    let api_call = bigint_to_u64(api_call, "Steam API call handle")?;
-    unsafe { sys::SteamAPI_UnregisterCallResult(callback_base, api_call) };
-    Ok(())
+    let _ = (callback_base_pointer, api_call);
+    Err(Error::from_reason(
+        "Raw Steam call-result unregistration is unavailable because Steam Bridge cannot safely validate or own a JS-supplied native pointer; use managed manual-dispatch call results",
+    ))
 }
 
 #[napi(js_name = "matchmakingGetFavoriteGameCount")]
@@ -17587,28 +17566,22 @@ pub async fn workshop_get_items(
         .into_iter()
         .map(|id| bigint_to_u64(id, "item id"))
         .collect::<Result<_, _>>()?;
-    let query;
-    let call = {
-        let ugc = steam_ugc()?;
-        let handle = unsafe {
+    let (query, call) = create_and_send_ugc_query(query_config.as_ref(), |ugc| {
+        Ok(unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryUGCDetailsRequest(
                 ugc,
                 ids.as_mut_ptr(),
                 ids.len() as u32,
             )
-        };
-        query = new_ugc_query_handle(handle)?;
-        apply_query_config(ugc, handle, query_config.as_ref())?;
-        unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
-    };
+        })
+    })?;
     let result: sys::SteamUGCQueryCompleted_t = wait_for_api_call(
         call,
         sys::SteamUGCQueryCompleted_t_k_iCallback as i32,
         DEFAULT_ASYNC_TIMEOUT_SECONDS,
     )
     .await?;
-    let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
+    let items = collect_guarded_query_items(&query, &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -17621,10 +17594,8 @@ pub async fn workshop_get_all_items(
     consumer_app_id: u32,
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
-    let query;
-    let call = {
-        let ugc = steam_ugc()?;
-        let handle = unsafe {
+    let (query, call) = create_and_send_ugc_query(query_config.as_ref(), |ugc| {
+        Ok(unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryAllUGCRequestPage(
                 ugc,
                 ugc_query_from_u32(query_type)?,
@@ -17633,19 +17604,15 @@ pub async fn workshop_get_all_items(
                 consumer_app_id,
                 page,
             )
-        };
-        query = new_ugc_query_handle(handle)?;
-        apply_query_config(ugc, handle, query_config.as_ref())?;
-        unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
-    };
+        })
+    })?;
     let result: sys::SteamUGCQueryCompleted_t = wait_for_api_call(
         call,
         sys::SteamUGCQueryCompleted_t_k_iCallback as i32,
         DEFAULT_ASYNC_TIMEOUT_SECONDS,
     )
     .await?;
-    let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
+    let items = collect_guarded_query_items(&query, &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -17659,10 +17626,8 @@ pub async fn workshop_get_all_items_by_cursor(
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
     let cursor = cstring(cursor, "workshop query cursor")?;
-    let query;
-    let call = {
-        let ugc = steam_ugc()?;
-        let handle = unsafe {
+    let (query, call) = create_and_send_ugc_query(query_config.as_ref(), |ugc| {
+        Ok(unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryAllUGCRequestCursor(
                 ugc,
                 ugc_query_from_u32(query_type)?,
@@ -17671,19 +17636,15 @@ pub async fn workshop_get_all_items_by_cursor(
                 consumer_app_id,
                 cursor.as_ptr(),
             )
-        };
-        query = new_ugc_query_handle(handle)?;
-        apply_query_config(ugc, handle, query_config.as_ref())?;
-        unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
-    };
+        })
+    })?;
     let result: sys::SteamUGCQueryCompleted_t = wait_for_api_call(
         call,
         sys::SteamUGCQueryCompleted_t_k_iCallback as i32,
         DEFAULT_ASYNC_TIMEOUT_SECONDS,
     )
     .await?;
-    let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
+    let items = collect_guarded_query_items(&query, &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -17698,10 +17659,8 @@ pub async fn workshop_get_user_items(
     consumer_app_id: u32,
     query_config: Option<Value>,
 ) -> Result<WorkshopItemsResult, Error> {
-    let query;
-    let call = {
-        let ugc = steam_ugc()?;
-        let handle = unsafe {
+    let (query, call) = create_and_send_ugc_query(query_config.as_ref(), |ugc| {
+        Ok(unsafe {
             sys::SteamAPI_ISteamUGC_CreateQueryUserUGCRequest(
                 ugc,
                 account_id,
@@ -17712,19 +17671,15 @@ pub async fn workshop_get_user_items(
                 consumer_app_id,
                 page,
             )
-        };
-        query = new_ugc_query_handle(handle)?;
-        apply_query_config(ugc, handle, query_config.as_ref())?;
-        unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) }
-    };
+        })
+    })?;
     let result: sys::SteamUGCQueryCompleted_t = wait_for_api_call(
         call,
         sys::SteamUGCQueryCompleted_t_k_iCallback as i32,
         DEFAULT_ASYNC_TIMEOUT_SECONDS,
     )
     .await?;
-    let ugc = steam_ugc()?;
-    let items = collect_query_items(ugc, query.get(), &result, query_config.as_ref())?;
+    let items = collect_guarded_query_items(&query, &result, query_config.as_ref())?;
     Ok(items)
 }
 
@@ -18669,6 +18624,21 @@ enum UgcInterfaceContext {
     GameServer,
 }
 
+impl UgcInterfaceContext {
+    fn callback_domain(self) -> crate::state::CallbackDomain {
+        match self {
+            Self::Client => crate::state::CallbackDomain::Client,
+            Self::GameServer => crate::state::CallbackDomain::GameServer,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct UgcResourceContext {
+    interface: UgcInterfaceContext,
+    lifecycle: crate::state::LifecycleToken,
+}
+
 const MAX_WORKSHOP_QUERY_ITEM_IDS: usize = 1_000;
 
 fn validate_workshop_query_item_count(item_count: usize) -> Result<(), Error> {
@@ -18681,9 +18651,12 @@ fn validate_workshop_query_item_count(item_count: usize) -> Result<(), Error> {
 }
 
 type UgcQueryHandleGuard =
-    crate::resource::NativeResourceHandle<sys::UGCQueryHandle_t, UgcInterfaceContext>;
+    crate::resource::NativeResourceHandle<sys::UGCQueryHandle_t, UgcResourceContext>;
 
-fn new_ugc_query_handle(handle: sys::UGCQueryHandle_t) -> Result<UgcQueryHandleGuard, Error> {
+fn new_ugc_query_handle(
+    handle: sys::UGCQueryHandle_t,
+    context: UgcResourceContext,
+) -> Result<UgcQueryHandleGuard, Error> {
     if handle == sys::k_UGCQueryHandleInvalid {
         return Err(Error::from_reason(
             "Steam returned an invalid workshop query handle",
@@ -18692,19 +18665,65 @@ fn new_ugc_query_handle(handle: sys::UGCQueryHandle_t) -> Result<UgcQueryHandleG
     Ok(UgcQueryHandleGuard::new(
         handle,
         sys::k_UGCQueryHandleInvalid,
-        ugc_interface_context(),
+        context,
         release_ugc_query_handle,
     ))
 }
 
-fn release_ugc_query_handle(context: UgcInterfaceContext, handle: sys::UGCQueryHandle_t) {
+fn release_ugc_query_handle(context: UgcResourceContext, handle: sys::UGCQueryHandle_t) {
     if handle == sys::k_UGCQueryHandleInvalid {
         return;
     }
-    let _context = set_ugc_interface_context(context);
+
+    let _dispatch = crate::state::lock_manual_dispatch(context.lifecycle.domain());
+    if crate::state::ensure_current_lifecycle_token(context.lifecycle).is_err() {
+        return;
+    }
+    let _context = set_ugc_interface_context(context.interface);
     if let Ok(ugc) = steam_ugc() {
         unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
     }
+}
+
+fn create_and_send_ugc_query(
+    query_config: Option<&Value>,
+    create: impl FnOnce(*mut sys::ISteamUGC) -> Result<sys::UGCQueryHandle_t, Error>,
+) -> Result<(UgcQueryHandleGuard, sys::SteamAPICall_t), Error> {
+    let interface = ugc_interface_context();
+    let domain = interface.callback_domain();
+    let _dispatch = crate::state::lock_manual_dispatch(domain);
+    let lifecycle = crate::state::current_lifecycle_token(domain)?;
+    let ugc = steam_ugc()?;
+    let handle = create(ugc)?;
+    if handle == sys::k_UGCQueryHandleInvalid {
+        return Err(Error::from_reason(
+            "Steam returned an invalid workshop query handle",
+        ));
+    }
+
+    if let Err(error) = apply_query_config(ugc, handle, query_config) {
+        unsafe { sys::SteamAPI_ISteamUGC_ReleaseQueryUGCRequest(ugc, handle) };
+        return Err(error);
+    }
+    let call = unsafe { sys::SteamAPI_ISteamUGC_SendQueryUGCRequest(ugc, handle) };
+    let context = UgcResourceContext {
+        interface,
+        lifecycle,
+    };
+    Ok((new_ugc_query_handle(handle, context)?, call))
+}
+
+fn collect_guarded_query_items(
+    query: &UgcQueryHandleGuard,
+    result: &sys::SteamUGCQueryCompleted_t,
+    query_config: Option<&Value>,
+) -> Result<WorkshopItemsResult, Error> {
+    let context = query.context();
+    let _dispatch = crate::state::lock_manual_dispatch(context.lifecycle.domain());
+    crate::state::ensure_current_lifecycle_token(context.lifecycle)?;
+    let _context = set_ugc_interface_context(context.interface);
+    let ugc = steam_ugc()?;
+    collect_query_items(ugc, query.get(), result, query_config)
 }
 
 thread_local! {
@@ -19260,19 +19279,6 @@ fn bigint_to_u64(value: BigInt, label: &str) -> Result<u64, Error> {
 
 fn pointer_to_bigint<T>(ptr: *mut T) -> Option<BigInt> {
     (!ptr.is_null()).then(|| (ptr as usize as u64).into())
-}
-
-fn required_callback_base_pointer(value: BigInt) -> Result<*mut sys::CCallbackBase, Error> {
-    let pointer = bigint_to_u64(value, "Steam callback base pointer")?;
-    let pointer = usize::try_from(pointer)
-        .map_err(|_| Error::from_reason("Steam callback base pointer exceeds pointer size"))?;
-    if pointer == 0 {
-        Err(Error::from_reason(
-            "Steam callback base pointer cannot be null",
-        ))
-    } else {
-        Ok(pointer as *mut sys::CCallbackBase)
-    }
 }
 
 fn bigint_to_i64(value: BigInt, label: &str) -> Result<i64, Error> {
@@ -20173,17 +20179,12 @@ fn networking_pointer_value(value: Option<BigInt>, label: &str) -> Result<*mut c
         return Ok(ptr::null_mut());
     };
     let pointer = bigint_to_u64(value, label)?;
-    let pointer = usize::try_from(pointer)
-        .map_err(|_| Error::from_reason(format!("{label} exceeds pointer size")))?;
-    Ok(pointer as *mut c_void)
-}
-
-fn required_networking_pointer<T>(value: BigInt, label: &str) -> Result<*mut T, Error> {
-    let pointer = networking_pointer_value(Some(value), label)?;
-    if pointer.is_null() {
-        Err(Error::from_reason(format!("{label} cannot be null")))
+    if pointer == 0 {
+        Ok(ptr::null_mut())
     } else {
-        Ok(pointer.cast())
+        Err(Error::from_reason(format!(
+            "{label} must be null; Steam Bridge never dereferences JS-supplied native pointers"
+        )))
     }
 }
 
@@ -21105,9 +21106,11 @@ async fn get_session_ticket(
     let identity_ptr = identity
         .as_ref()
         .map_or(ptr::null(), |identity| identity as *const _);
-    let (_registration, ticket_handle) = {
+    let (_registration, ticket_handle, lifecycle) = {
         let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
         crate::state::ensure_initialized()?;
+        let lifecycle =
+            crate::state::current_lifecycle_token(crate::state::CallbackDomain::Client)?;
         let registration = crate::state::register_callback(
             CALLBACK_GET_AUTH_SESSION_TICKET_RESPONSE,
             move |param| {
@@ -21149,22 +21152,25 @@ async fn get_session_ticket(
             ));
         }
         expected_ticket.store(ticket_handle, Ordering::SeqCst);
-        (registration, ticket_handle)
+        (registration, ticket_handle, lifecycle)
     };
     data.truncate(data_len as usize);
     let timeout_seconds = u64::from(timeout_seconds.unwrap_or(10));
     match tokio::time::timeout(std::time::Duration::from_secs(timeout_seconds), rx).await {
-        Ok(Ok(Ok(()))) => Ok(make_auth_ticket(data, ticket_handle)),
+        Ok(Ok(Ok(()))) => {
+            crate::state::ensure_current_lifecycle_token(lifecycle)?;
+            Ok(make_auth_ticket(data, ticket_handle, lifecycle))
+        }
         Ok(Ok(Err(message))) => {
-            cancel_auth_ticket(ticket_handle);
+            cancel_auth_ticket(lifecycle, ticket_handle);
             Err(Error::from_reason(message))
         }
         Ok(Err(err)) => {
-            cancel_auth_ticket(ticket_handle);
+            cancel_auth_ticket(lifecycle, ticket_handle);
             Err(Error::from_reason(err.to_string()))
         }
         Err(_) => {
-            cancel_auth_ticket(ticket_handle);
+            cancel_auth_ticket(lifecycle, ticket_handle);
             Err(Error::from_reason(
                 "Steam did not validate the session ticket before the timeout",
             ))
@@ -25810,7 +25816,7 @@ mod lifecycle_resource_tests {
         std::sync::atomic::AtomicU64::new(sys::k_UGCQueryHandleInvalid);
 
     fn record_released_ugc_query_handle(
-        _context: UgcInterfaceContext,
+        _context: UgcResourceContext,
         handle: sys::UGCQueryHandle_t,
     ) {
         RELEASED_UGC_QUERY_HANDLE.store(handle, std::sync::atomic::Ordering::SeqCst);
@@ -25825,7 +25831,40 @@ mod lifecycle_resource_tests {
     }
 
     #[test]
+    fn raw_callback_unregistration_rejects_untrusted_native_pointers() {
+        assert!(unregister_raw_steam_callback(0x1234_u64.into()).is_err());
+        assert!(unregister_raw_steam_call_result(0x1234_u64.into(), 99_u64.into()).is_err());
+    }
+
+    #[test]
+    fn steam_networking_rejects_untrusted_native_pointers() {
+        assert!(networking_sockets_connect_p2p_custom_signaling(
+            0x1234_u64.into(),
+            None,
+            None,
+            None,
+        )
+        .is_err());
+        assert!(networking_sockets_received_p2p_custom_signal(
+            Vec::<u8>::new().into(),
+            0x1234_u64.into(),
+        )
+        .is_err());
+        assert!(networking_pointer_value(Some(0_u64.into()), "test pointer")
+            .unwrap()
+            .is_null());
+        assert!(networking_pointer_value(Some(0x1234_u64.into()), "test pointer").is_err());
+    }
+
+    #[test]
     fn workshop_query_handle_guard_releases_on_every_exit_path() {
+        let _test = crate::state::lock_test_state();
+        crate::state::mark_initialized(true);
+        let context = UgcResourceContext {
+            interface: UgcInterfaceContext::Client,
+            lifecycle: crate::state::current_lifecycle_token(crate::state::CallbackDomain::Client)
+                .unwrap(),
+        };
         RELEASED_UGC_QUERY_HANDLE.store(
             sys::k_UGCQueryHandleInvalid,
             std::sync::atomic::Ordering::SeqCst,
@@ -25834,7 +25873,7 @@ mod lifecycle_resource_tests {
             let guard = UgcQueryHandleGuard::new(
                 42,
                 sys::k_UGCQueryHandleInvalid,
-                UgcInterfaceContext::Client,
+                context,
                 record_released_ugc_query_handle,
             );
             assert_eq!(guard.get(), 42);
@@ -25843,7 +25882,8 @@ mod lifecycle_resource_tests {
             RELEASED_UGC_QUERY_HANDLE.load(std::sync::atomic::Ordering::SeqCst),
             42
         );
-        assert!(new_ugc_query_handle(sys::k_UGCQueryHandleInvalid).is_err());
+        assert!(new_ugc_query_handle(sys::k_UGCQueryHandleInvalid, context).is_err());
+        crate::state::mark_initialized(false);
     }
 
     #[test]

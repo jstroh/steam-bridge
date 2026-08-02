@@ -137,8 +137,9 @@ Client and game-server callbacks are separate domains. Register generic client
 events with `client.callback.register(...)` and game-server events with
 `client.gameServer.onCallback(...)`; identical callback IDs cannot cross-route.
 `runLegacyCallbacks()` is retained as a deprecated source-compatible alias to
-the manual client pump. Raw `CCallbackBase` and `CCallResult` registration is
-not compatible with this model and throws with guidance to the safe facade.
+the manual client pump. Raw `CCallbackBase` and `CCallResult` registration and
+unregistration are not compatible with this model and throw with guidance to
+the safe facade; JS-supplied native pointers are never dereferenced.
 
 `callbackIntervalMs` must be a positive integer between 1 and 2,147,483,647
 milliseconds. A native dispatch failure stops only the timer that failed and
@@ -149,6 +150,12 @@ existing callback pump, managed controller, presenter, and native surface.
 Successful first-time `initSafe()` and `initAnonymousUser()` calls start the
 same automatic callback pump as `init()`; applications do not need a separate
 timer for these initialization paths.
+
+Steam Networking custom-signaling and non-null pointer-valued config escape
+hatches are unavailable for the same ownership reason. JavaScript cannot prove
+the provenance or lifetime of a C++ interface pointer, so the compatibility
+methods fail closed instead of dereferencing it. Use the managed networking and
+callback facades; a null pointer config may be used only to clear a value.
 
 ## Authentication-ticket ownership
 

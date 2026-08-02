@@ -3551,6 +3551,7 @@ export interface NetworkingConfigOption {
   int64Value?: bigint | number | string | null;
   floatValue?: number | null;
   stringValue?: string | null;
+  /** Non-null JS-supplied native pointers are rejected; only null clears a pointer-valued option. */
   pointerValue?: bigint | number | string | null;
 }
 
@@ -19645,18 +19646,22 @@ export const callback = {
   ): CallbackHandle {
     return onSteamCallback(steamCallback, handler);
   },
+  /** @deprecated Raw callback-base pointers are incompatible with manual dispatch and always throw. */
   registerRawCallbackBase(
     callbackBasePointer: bigint,
     steamCallback: SteamCallbackName | SteamCallbackId | number
   ): void {
     native().registerRawSteamCallback(callbackBasePointer, resolveSteamCallbackId(steamCallback));
   },
+  /** @deprecated JS-supplied native pointers cannot be validated safely and always throw. */
   unregisterRawCallbackBase(callbackBasePointer: bigint): void {
     native().unregisterRawSteamCallback(callbackBasePointer);
   },
+  /** @deprecated Raw call-result pointers are incompatible with manual dispatch and always throw. */
   registerRawCallResult(callbackBasePointer: bigint, apiCall: bigint): void {
     native().registerRawSteamCallResult(callbackBasePointer, BigInt(apiCall));
   },
+  /** @deprecated JS-supplied native pointers cannot be validated safely and always throw. */
   unregisterRawCallResult(callbackBasePointer: bigint, apiCall: bigint): void {
     native().unregisterRawSteamCallResult(callbackBasePointer, BigInt(apiCall));
   }
@@ -22118,6 +22123,7 @@ export const networking = {
         nativeNetworkingConfigValues(options)
       );
     },
+    /** @deprecated JS-supplied native signaling pointers cannot be validated safely and always throw. */
     connectP2PCustomSignaling(
       signalingPointer: bigint,
       peerIdentity?: NetworkingIdentity | null,
@@ -22131,6 +22137,7 @@ export const networking = {
         nativeNetworkingConfigValues(options)
       );
     },
+    /** @deprecated JS-supplied native receive-context pointers cannot be validated safely and always throw. */
     receivedP2PCustomSignal(message: Buffer | Uint8Array, contextPointer: bigint): boolean {
       return native().networkingSocketsReceivedP2pCustomSignal(Buffer.from(message), contextPointer);
     },
@@ -22511,6 +22518,7 @@ export const networking = {
     setGlobalConfigValueString(value: number, data: string): boolean {
       return native().networkingUtilsSetGlobalConfigValueString(value, data);
     },
+    /** Non-null JS-supplied native pointers are rejected; omit the pointer only to clear the value. */
     setGlobalConfigValuePointer(value: number, pointer?: bigint | null): boolean {
       return native().networkingUtilsSetGlobalConfigValuePtr(value, pointer ?? null);
     },
@@ -22756,6 +22764,7 @@ export const gameServerNetworkingSockets = {
       nativeNetworkingConfigValues(options)
     );
   },
+  /** @deprecated JS-supplied native signaling pointers cannot be validated safely and always throw. */
   connectP2PCustomSignaling(
     signalingPointer: bigint,
     peerIdentity?: NetworkingIdentity | null,
@@ -22769,6 +22778,7 @@ export const gameServerNetworkingSockets = {
       nativeNetworkingConfigValues(options)
     );
   },
+  /** @deprecated JS-supplied native receive-context pointers cannot be validated safely and always throw. */
   receivedP2PCustomSignal(message: Buffer | Uint8Array, contextPointer: bigint): boolean {
     return native().gameServerNetworkingSocketsReceivedP2pCustomSignal(Buffer.from(message), contextPointer);
   },

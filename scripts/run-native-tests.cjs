@@ -10,17 +10,31 @@ const supportedTargets = new Set([
   "x86_64-unknown-linux-gnu"
 ]);
 
-function parseTarget(argv) {
-  const index = argv.indexOf("--target");
-  if (index === -1) {
+function targetForHost(platform, arch) {
+  const target = {
+    "darwin:arm64": "aarch64-apple-darwin",
+    "linux:x64": "x86_64-unknown-linux-gnu",
+    "win32:x64": "x86_64-pc-windows-msvc"
+  }[`${platform}:${arch}`];
+  if (!target) {
+    throw new Error(`native tests do not support host ${platform}/${arch}`);
+  }
+  return target;
+}
+
+function parseTarget(argv, hostTarget = targetForHost(process.platform, process.arch)) {
+  if (argv.length === 0) {
     return undefined;
   }
-  const target = argv[index + 1];
+  if (argv.length !== 2 || argv[0] !== "--target") {
+    throw new Error("run-native-tests accepts only an optional --target <target> argument");
+  }
+  const target = argv[1];
   if (!target || !supportedTargets.has(target)) {
     throw new Error(`--target must be one of: ${[...supportedTargets].join(", ")}`);
   }
-  if (argv.length !== index + 2) {
-    throw new Error("run-native-tests accepts only an optional --target <target> argument");
+  if (target !== hostTarget) {
+    throw new Error(`--target ${target} cannot run on this host; expected ${hostTarget}`);
   }
   return target;
 }
@@ -101,5 +115,6 @@ if (require.main === module) {
 module.exports = {
   parseTarget,
   runtimeLibraryEnvironment,
-  steamworksRuntimeDirectoryFromMetadata
+  steamworksRuntimeDirectoryFromMetadata,
+  targetForHost
 };

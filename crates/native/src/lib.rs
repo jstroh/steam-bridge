@@ -186,7 +186,7 @@ pub struct MacOverlayEnvironment {
 #[napi]
 pub struct AuthTicket {
     pub(crate) data: Vec<u8>,
-    handle: resource::NativeResourceHandle<sys::HAuthTicket, ()>,
+    handle: resource::NativeResourceHandle<sys::HAuthTicket, state::LifecycleToken>,
 }
 
 #[napi]
@@ -563,7 +563,9 @@ mod manual_dispatch_tests {
             else {
                 panic!("API result requested for a non-completion callback");
             };
-            assert_eq!(completion.m_hAsyncCall, api_call);
+            let completion_api_call =
+                unsafe { ptr::addr_of!(completion.m_hAsyncCall).read_unaligned() };
+            assert_eq!(completion_api_call, api_call);
             assert_eq!(completion.m_iCallback, expected_callback);
             assert_eq!(result.len(), byte_length as usize);
             *failed = *result_failed;
@@ -1580,9 +1582,10 @@ pub async fn get_auth_ticket_for_web_api(
     let expected_ticket = Arc::new(AtomicU32::new(H_AUTH_TICKET_INVALID));
 
     let expected_for_callback = expected_ticket.clone();
-    let (_registration, ticket_handle) = {
+    let (_registration, ticket_handle, lifecycle) = {
         let _dispatch = state::lock_manual_dispatch(state::CallbackDomain::Client);
         state::ensure_initialized()?;
+        let lifecycle = state::current_lifecycle_token(state::CallbackDomain::Client)?;
 
         let registration =
             state::register_callback(CALLBACK_GET_TICKET_FOR_WEB_API_RESPONSE, move |param| {
@@ -1623,24 +1626,27 @@ pub async fn get_auth_ticket_for_web_api(
             ));
         }
         expected_ticket.store(ticket_handle, Ordering::SeqCst);
-        (registration, ticket_handle)
+        (registration, ticket_handle, lifecycle)
     };
 
     let timeout_seconds = u64::from(timeout_seconds.unwrap_or(10));
     let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_seconds), rx).await;
 
     match result {
-        Ok(Ok(Ok(data))) => Ok(make_auth_ticket(data, ticket_handle)),
+        Ok(Ok(Ok(data))) => {
+            state::ensure_current_lifecycle_token(lifecycle)?;
+            Ok(make_auth_ticket(data, ticket_handle, lifecycle))
+        }
         Ok(Ok(Err(message))) => {
-            cancel_auth_ticket(ticket_handle);
+            cancel_auth_ticket(lifecycle, ticket_handle);
             Err(Error::from_reason(message))
         }
         Ok(Err(err)) => {
-            cancel_auth_ticket(ticket_handle);
+            cancel_auth_ticket(lifecycle, ticket_handle);
             Err(Error::from_reason(err.to_string()))
         }
         Err(_) => {
-            cancel_auth_ticket(ticket_handle);
+            cancel_auth_ticket(lifecycle, ticket_handle);
             Err(Error::from_reason(
                 "Steam did not validate the Web API ticket before the timeout",
             ))
@@ -1734,11 +1740,18 @@ pub(crate) fn non_null<T>(ptr: *mut T, interface_name: &str) -> Result<*mut T, E
     }
 }
 
-pub(crate) fn cancel_auth_ticket(ticket_handle: sys::HAuthTicket) {
-    if ticket_handle == H_AUTH_TICKET_INVALID || !state::is_initialized() {
+pub(crate) fn cancel_auth_ticket(
+    lifecycle: state::LifecycleToken,
+    ticket_handle: sys::HAuthTicket,
+) {
+    if ticket_handle == H_AUTH_TICKET_INVALID {
         return;
     }
 
+    let _dispatch = state::lock_manual_dispatch(lifecycle.domain());
+    if state::ensure_current_lifecycle_token(lifecycle).is_err() {
+        return;
+    }
     if let Ok(user) = steam_user() {
         unsafe {
             sys::SteamAPI_ISteamUser_CancelAuthTicket(user, ticket_handle);
@@ -1750,14 +1763,18 @@ pub(crate) fn cstring(value: String, label: &str) -> Result<CString, Error> {
     CString::new(value).map_err(|_| Error::from_reason(format!("{label} contains a NUL byte")))
 }
 
-pub(crate) fn make_auth_ticket(data: Vec<u8>, handle: sys::HAuthTicket) -> AuthTicket {
+pub(crate) fn make_auth_ticket(
+    data: Vec<u8>,
+    handle: sys::HAuthTicket,
+    lifecycle: state::LifecycleToken,
+) -> AuthTicket {
     AuthTicket {
         data,
         handle: resource::NativeResourceHandle::new(
             handle,
             H_AUTH_TICKET_INVALID,
-            (),
-            |(), handle| cancel_auth_ticket(handle),
+            lifecycle,
+            cancel_auth_ticket,
         ),
     }
 }

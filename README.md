@@ -71,7 +71,8 @@ callback pump for initialized clients. If your application uses a custom pump,
 call `runCallbacks()`. Register client callbacks with
 `client.callback.register(...)` and game-server callbacks with
 `client.gameServer.onCallback(...)`; the two domains are isolated. Do not mix
-Steam Bridge with raw `CCallbackBase` or `CCallResult` registration. A custom
+Steam Bridge with raw `CCallbackBase` or `CCallResult` registration or
+unregistration; JS-supplied native pointers are never dereferenced. A custom
 `callbackIntervalMs` must be a positive integer timer delay. If native callback
 dispatch fails, the pump stops and emits warning code
 `STEAM_BRIDGE_CALLBACK_PUMP_FAILED` instead of failing silently.
@@ -80,6 +81,12 @@ same automatic pump. Authentication tickets are live native resources: use
 `try`/`finally` and call `ticket.cancel()` immediately after the trusted verifier
 has consumed the bytes. Native finalization is a last-resort cleanup, not a
 substitute for explicit cancellation.
+
+Steam Networking custom-signaling and non-null pointer-valued config escape
+hatches are also unavailable. JavaScript cannot prove ownership, layout, or
+lifetime for those C++ interface pointers, so Steam Bridge rejects them instead
+of risking a native process crash. Use the managed networking/callback facades;
+null pointer config remains available only for clearing a value.
 
 ## Choose the correct Electron window model
 
