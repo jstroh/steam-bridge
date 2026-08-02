@@ -414,7 +414,16 @@ function hashStableFile(filePath, expectedStats, relativePath) {
 }
 
 function assertStableFileIdentity(expected, actual, relativePath) {
-  for (const field of ["dev", "ino", "size", "nlink", "mtimeNs", "ctimeNs"]) {
+  // On some Windows filesystems Node reports a zero device or inode for a
+  // path-based stat while fstat on the opened handle reports the real value.
+  // Treat zero as "identifier unavailable" for that one path-to-handle
+  // comparison. The before/after handle comparison still checks both fields.
+  for (const field of ["dev", "ino"]) {
+    if (expected[field] !== 0n && actual[field] !== 0n) {
+      assert.equal(actual[field], expected[field], `Candidate file changed while hashing: ${relativePath}`);
+    }
+  }
+  for (const field of ["size", "nlink", "mtimeNs", "ctimeNs"]) {
     assert.equal(actual[field], expected[field], `Candidate file changed while hashing: ${relativePath}`);
   }
   assert.ok(actual.isFile() && !actual.isSymbolicLink(), `Candidate file identity is invalid: ${relativePath}`);
@@ -492,6 +501,38 @@ function selfTest() {
   if (process.versions.electron) {
     assert.equal(process.noAsar, true);
   }
+  const pathStatsWithoutWindowsIdentifiers = {
+    dev: 0n,
+    ino: 0n,
+    size: 5n,
+    nlink: 1n,
+    mtimeNs: 10n,
+    ctimeNs: 11n,
+    isFile: () => true,
+    isSymbolicLink: () => false
+  };
+  const handleStatsWithWindowsIdentifiers = {
+    ...pathStatsWithoutWindowsIdentifiers,
+    dev: 123n,
+    ino: 456n
+  };
+  assert.doesNotThrow(() =>
+    assertStableFileIdentity(pathStatsWithoutWindowsIdentifiers, handleStatsWithWindowsIdentifiers, "portable.txt")
+  );
+  assert.throws(() =>
+    assertStableFileIdentity(
+      handleStatsWithWindowsIdentifiers,
+      { ...handleStatsWithWindowsIdentifiers, ino: 457n },
+      "replaced.txt"
+    )
+  );
+  assert.throws(() =>
+    assertStableFileIdentity(
+      pathStatsWithoutWindowsIdentifiers,
+      { ...handleStatsWithWindowsIdentifiers, mtimeNs: 12n },
+      "changed.txt"
+    )
+  );
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-candidate-fingerprint-self-test-"));
   try {
     const bundle = path.join(tempRoot, "bundle");
