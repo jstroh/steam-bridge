@@ -1535,7 +1535,7 @@ pub use macos::*;
 #[cfg(target_os = "windows")]
 mod windows {
     use super::{Buffer, Error};
-    use crate::windows_d3d11::{self, WindowsD3d11Renderer};
+    use crate::windows_d3d11::{self, FrameLatencyWaitHandle, WindowsD3d11Renderer};
     use once_cell::sync::Lazy;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -1644,6 +1644,27 @@ mod windows {
     const VK_RIGHT_CONTROL_CODE: i32 = 0xA3;
     const VK_LEFT_ALT_CODE: i32 = 0xA4;
     const VK_RIGHT_ALT_CODE: i32 = 0xA5;
+
+    pub struct FrameLatencyWaitRequest {
+        surface_generation: u64,
+        handle: FrameLatencyWaitHandle,
+    }
+
+    pub struct FrameLatencyReadyToken {
+        surface_generation: u64,
+        renderer_generation: u64,
+    }
+
+    impl FrameLatencyWaitRequest {
+        pub fn wait(self, timeout_ms: u32) -> Result<Option<FrameLatencyReadyToken>, String> {
+            let renderer_generation = self.handle.generation();
+            let ready = self.handle.wait(timeout_ms)?;
+            Ok(ready.then_some(FrameLatencyReadyToken {
+                surface_generation: self.surface_generation,
+                renderer_generation,
+            }))
+        }
+    }
     #[link(name = "opengl32")]
     extern "system" {
         fn glClear(mask: u32);
@@ -2336,6 +2357,65 @@ mod windows {
         Ok(())
     }
 
+    pub fn frame_pending() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| {
+                // Presentation readiness stays false until the first real
+                // source frame has been shown. It does not itself mean a frame
+                // exists to present. Restrict the async DXGI path to a D3D
+                // renderer that actually retains a source; otherwise an
+                // unavailable wait handle could resolve false in a microtask
+                // loop during startup or under the diagnostic OpenGL backend.
+                surface.source_frame_dirty
+                    && matches!(
+                        &surface.renderer,
+                        WindowsSurfaceRenderer::D3d11 { renderer, .. }
+                            if renderer.has_source() || surface.source_frame.is_some()
+                    )
+            })
+    }
+
+    pub fn begin_frame_latency_wait() -> Result<Option<FrameLatencyWaitRequest>, Error> {
+        let guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard.as_ref() else {
+            return Ok(None);
+        };
+        let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &surface.renderer else {
+            return Ok(None);
+        };
+        let Some(handle) = renderer
+            .duplicate_frame_latency_wait_handle()
+            .map_err(Error::from_reason)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(FrameLatencyWaitRequest {
+            surface_generation: surface.instance_generation,
+            handle,
+        }))
+    }
+
+    pub fn grant_frame_latency_ready(token: FrameLatencyReadyToken) -> bool {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard
+            .as_mut()
+            .filter(|surface| surface.instance_generation == token.surface_generation)
+        else {
+            return false;
+        };
+        let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer else {
+            return false;
+        };
+        renderer.grant_frame_latency_ready_permit(token.renderer_generation)
+    }
+
     pub fn update_frame(buffer: Buffer, width: u32, height: u32) -> Result<(), Error> {
         let width = width.max(1).min(i32::MAX as u32) as i32;
         let height = height.max(1).min(i32::MAX as u32) as i32;
@@ -2944,15 +3024,25 @@ mod windows {
                         }
                     }
                 }
-                if let Err(error) = renderer.render(color) {
-                    if windows_d3d11::is_device_lost_error(&error) {
-                        *device_lost = true;
-                        *device_lost_count = (*device_lost_count).saturating_add(1);
-                        *last_frame_upload = false;
+                match renderer.render(color) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        // DXGI is still presenting the previous frame. Retain
+                        // the newest source and let the JS scheduler retry
+                        // without blocking Electron's main process.
                         surface.source_frame_dirty = true;
                         return Ok(());
                     }
-                    return Err(Error::from_reason(error));
+                    Err(error) => {
+                        if windows_d3d11::is_device_lost_error(&error) {
+                            *device_lost = true;
+                            *device_lost_count = (*device_lost_count).saturating_add(1);
+                            *last_frame_upload = false;
+                            surface.source_frame_dirty = true;
+                            return Ok(());
+                        }
+                        return Err(Error::from_reason(error));
+                    }
                 }
             }
         }
@@ -3108,6 +3198,31 @@ mod windows {
                 "gdiCompatible": false,
                 "frameLatencyWaitable": renderer.frame_latency_waitable(),
                 "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),
+                "timing": {
+                    "asyncFrameLatencyReadyCount": renderer.async_frame_latency_ready_count(),
+                    "frameLatencyNotReadyCount": renderer.frame_latency_not_ready_count(),
+                    "lastRenderIntervalMs": renderer.last_render_interval_ms(),
+                    "maxRenderIntervalMs": renderer.max_render_interval_ms(),
+                    "renderIntervalOver25MsCount": renderer.render_interval_over_25_ms_count(),
+                    "renderIntervalOver50MsCount": renderer.render_interval_over_50_ms_count(),
+                    "renderIntervalOver100MsCount": renderer.render_interval_over_100_ms_count(),
+                    "lastFrameLatencyWaitDurationMs": renderer.last_frame_latency_wait_duration_ms(),
+                    "maxFrameLatencyWaitDurationMs": renderer.max_frame_latency_wait_duration_ms(),
+                    "frameLatencyWaitOver25MsCount": renderer.frame_latency_wait_over_25_ms_count(),
+                    "lastPresentDurationMs": renderer.last_present_duration_ms(),
+                    "maxPresentDurationMs": renderer.max_present_duration_ms(),
+                    "presentOver25MsCount": renderer.present_over_25_ms_count(),
+                    "lastRenderDurationMs": renderer.last_render_duration_ms(),
+                    "maxRenderDurationMs": renderer.max_render_duration_ms(),
+                    "renderOver25MsCount": renderer.render_over_25_ms_count(),
+                    "frameStatisticsAvailable": renderer.frame_statistics_available(),
+                    "frameStatisticsPresentCount": renderer.frame_statistics_present_count(),
+                    "frameStatisticsRefreshCount": renderer.frame_statistics_refresh_count(),
+                    "lastFrameStatisticsPresentDelta": renderer.last_frame_statistics_present_delta(),
+                    "lastFrameStatisticsRefreshDelta": renderer.last_frame_statistics_refresh_delta(),
+                    "repeatedRefreshCount": renderer.repeated_refresh_count(),
+                    "maxRepeatedRefreshesPerSample": renderer.max_repeated_refreshes_per_sample(),
+                },
                 "sharedTextureCopySlowCount": renderer.shared_texture_copy_slow_count(),
                 "sharedTextureFullCopyCount": renderer.shared_texture_full_copy_count(),
                 "sharedTexturePartialCopyCount": renderer.shared_texture_partial_copy_count(),

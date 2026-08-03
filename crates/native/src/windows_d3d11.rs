@@ -1,8 +1,11 @@
 use std::ffi::c_void;
 use std::slice;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use windows::core::{Interface, PCSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE, HWND, WAIT_FAILED, WAIT_OBJECT_0,
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE,
+    HWND, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
@@ -26,16 +29,60 @@ use windows::Win32::Graphics::Dxgi::Common::{
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory6,
     IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_CREATE_FACTORY_FLAGS,
-    DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT,
-    DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+    DXGI_FRAME_STATISTICS, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER,
+    DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
     DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
     DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
-use windows::Win32::System::Threading::WaitForSingleObjectEx;
+use windows::Win32::System::Threading::{GetCurrentProcess, WaitForSingleObjectEx};
 
-const FRAME_LATENCY_WAIT_TIMEOUT_MS: u32 = 50;
+const FRAME_LATENCY_WAIT_POLL_MS: u32 = 0;
 const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
 const SHARED_TEXTURE_COPY_TIMEOUT_MS: u128 = 500;
+static NEXT_FRAME_LATENCY_WAIT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+pub struct FrameLatencyWaitHandle {
+    handle: HANDLE,
+    generation: u64,
+}
+
+// Win32 kernel handles may be waited from any process thread. This wrapper
+// exclusively owns a duplicated handle, so moving it to napi-rs' blocking
+// worker cannot race the renderer's original handle lifetime.
+unsafe impl Send for FrameLatencyWaitHandle {}
+
+impl FrameLatencyWaitHandle {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn wait(&self, timeout_ms: u32) -> Result<bool, String> {
+        let wait_result = unsafe { WaitForSingleObjectEx(self.handle, timeout_ms, false) };
+        if wait_result == WAIT_FAILED {
+            return Err(
+                "WaitForSingleObjectEx for duplicated DXGI frame latency handle failed".to_owned(),
+            );
+        }
+        if wait_result == WAIT_OBJECT_0 {
+            return Ok(true);
+        }
+        if wait_result == WAIT_TIMEOUT {
+            return Ok(false);
+        }
+        Err("WaitForSingleObjectEx for duplicated DXGI frame latency handle returned an unexpected result".to_owned())
+    }
+}
+
+impl Drop for FrameLatencyWaitHandle {
+    fn drop(&mut self) {
+        if !self.handle.is_invalid() {
+            unsafe {
+                let _ = CloseHandle(self.handle);
+            }
+            self.handle = HANDLE::default();
+        }
+    }
+}
 
 pub fn is_device_lost_error(error: &str) -> bool {
     // DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_HUNG, and
@@ -107,7 +154,33 @@ pub struct WindowsD3d11Renderer {
     adapter_name: String,
     last_present: i32,
     frame_latency_waitable_object: HANDLE,
+    frame_latency_wait_generation: u64,
+    frame_latency_ready_permits: u32,
+    async_frame_latency_ready_count: u64,
     frame_latency_wait_timeout_count: u64,
+    frame_latency_not_ready_count: u64,
+    last_render_started_at: Option<Instant>,
+    last_render_interval_ms: f64,
+    max_render_interval_ms: f64,
+    render_interval_over_25_ms_count: u64,
+    render_interval_over_50_ms_count: u64,
+    render_interval_over_100_ms_count: u64,
+    last_frame_latency_wait_duration_ms: f64,
+    max_frame_latency_wait_duration_ms: f64,
+    frame_latency_wait_over_25_ms_count: u64,
+    last_present_duration_ms: f64,
+    max_present_duration_ms: f64,
+    present_over_25_ms_count: u64,
+    last_render_duration_ms: f64,
+    max_render_duration_ms: f64,
+    render_over_25_ms_count: u64,
+    frame_statistics_available: bool,
+    last_frame_statistics_present_count: Option<u32>,
+    last_frame_statistics_refresh_count: Option<u32>,
+    last_frame_statistics_present_delta: u32,
+    last_frame_statistics_refresh_delta: u32,
+    repeated_refresh_count: u64,
+    max_repeated_refreshes_per_sample: u32,
     shared_texture_copy_query: ID3D11Query,
     shared_texture_copy_slow_count: u64,
     shared_texture_full_copy_count: u64,
@@ -325,7 +398,33 @@ impl WindowsD3d11Renderer {
             adapter_name,
             last_present: 0,
             frame_latency_waitable_object: HANDLE::default(),
+            frame_latency_wait_generation: 0,
+            frame_latency_ready_permits: 0,
+            async_frame_latency_ready_count: 0,
             frame_latency_wait_timeout_count: 0,
+            frame_latency_not_ready_count: 0,
+            last_render_started_at: None,
+            last_render_interval_ms: 0.0,
+            max_render_interval_ms: 0.0,
+            render_interval_over_25_ms_count: 0,
+            render_interval_over_50_ms_count: 0,
+            render_interval_over_100_ms_count: 0,
+            last_frame_latency_wait_duration_ms: 0.0,
+            max_frame_latency_wait_duration_ms: 0.0,
+            frame_latency_wait_over_25_ms_count: 0,
+            last_present_duration_ms: 0.0,
+            max_present_duration_ms: 0.0,
+            present_over_25_ms_count: 0,
+            last_render_duration_ms: 0.0,
+            max_render_duration_ms: 0.0,
+            render_over_25_ms_count: 0,
+            frame_statistics_available: false,
+            last_frame_statistics_present_count: None,
+            last_frame_statistics_refresh_count: None,
+            last_frame_statistics_present_delta: 0,
+            last_frame_statistics_refresh_delta: 0,
+            repeated_refresh_count: 0,
+            max_repeated_refreshes_per_sample: 0,
             shared_texture_copy_query,
             shared_texture_copy_slow_count: 0,
             shared_texture_full_copy_count: 0,
@@ -382,8 +481,12 @@ impl WindowsD3d11Renderer {
         let swap_chain2: IDXGISwapChain2 = swap_chain
             .cast()
             .map_err(|error| format!("IDXGISwapChain1 to IDXGISwapChain2 failed: {error}"))?;
+        // Two frames preserve CPU/GPU parallelism while the async wait keeps
+        // Electron's message thread free. Controlled physical-input traces
+        // showed fewer missed refreshes than a one-frame queue with either
+        // timer polling or the same worker-wakeup scheduler.
         swap_chain2
-            .SetMaximumFrameLatency(1)
+            .SetMaximumFrameLatency(2)
             .map_err(|error| format!("IDXGISwapChain2::SetMaximumFrameLatency failed: {error}"))?;
         let frame_latency_waitable_object = swap_chain2.GetFrameLatencyWaitableObject();
         if frame_latency_waitable_object.is_invalid() {
@@ -402,6 +505,9 @@ impl WindowsD3d11Renderer {
             let _ = CloseHandle(self.frame_latency_waitable_object);
         }
         self.frame_latency_waitable_object = frame_latency_waitable_object;
+        self.frame_latency_wait_generation =
+            NEXT_FRAME_LATENCY_WAIT_GENERATION.fetch_add(1, Ordering::Relaxed);
+        self.frame_latency_ready_permits = 0;
         self.swap_chain = Some(swap_chain);
         self.render_target = Some(render_target);
         Ok(())
@@ -748,19 +854,61 @@ impl WindowsD3d11Renderer {
         }
     }
 
-    pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<i32, String> {
-        if !self.frame_latency_waitable_object.is_invalid() {
+    pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<Option<i32>, String> {
+        let render_started_at = Instant::now();
+        if self.frame_latency_ready_permits > 0 {
+            // The async worker consumed the auto-reset waitable-object signal.
+            // Spend its matching permit instead of polling the same handle a
+            // second time and incorrectly treating the frame as not ready.
+            self.frame_latency_ready_permits -= 1;
+            self.last_frame_latency_wait_duration_ms = 0.0;
+        } else if !self.frame_latency_waitable_object.is_invalid() {
+            let wait_started_at = Instant::now();
             let wait_result = WaitForSingleObjectEx(
                 self.frame_latency_waitable_object,
-                FRAME_LATENCY_WAIT_TIMEOUT_MS,
+                FRAME_LATENCY_WAIT_POLL_MS,
                 false,
             );
+            let wait_duration_ms = wait_started_at.elapsed().as_secs_f64() * 1_000.0;
+            self.last_frame_latency_wait_duration_ms = wait_duration_ms;
+            self.max_frame_latency_wait_duration_ms = self
+                .max_frame_latency_wait_duration_ms
+                .max(wait_duration_ms);
+            if wait_duration_ms >= 25.0 {
+                self.frame_latency_wait_over_25_ms_count =
+                    self.frame_latency_wait_over_25_ms_count.saturating_add(1);
+            }
             if wait_result == WAIT_FAILED {
                 return Err("WaitForSingleObjectEx for DXGI frame latency failed".to_owned());
+            }
+            if wait_result == WAIT_TIMEOUT {
+                self.frame_latency_not_ready_count =
+                    self.frame_latency_not_ready_count.saturating_add(1);
+                return Ok(None);
             }
             if wait_result != WAIT_OBJECT_0 {
                 self.frame_latency_wait_timeout_count =
                     self.frame_latency_wait_timeout_count.saturating_add(1);
+                return Ok(None);
+            }
+        }
+        if let Some(previous_render_started_at) =
+            self.last_render_started_at.replace(render_started_at)
+        {
+            let interval_ms = previous_render_started_at.elapsed().as_secs_f64() * 1_000.0;
+            self.last_render_interval_ms = interval_ms;
+            self.max_render_interval_ms = self.max_render_interval_ms.max(interval_ms);
+            if interval_ms >= 25.0 {
+                self.render_interval_over_25_ms_count =
+                    self.render_interval_over_25_ms_count.saturating_add(1);
+            }
+            if interval_ms >= 50.0 {
+                self.render_interval_over_50_ms_count =
+                    self.render_interval_over_50_ms_count.saturating_add(1);
+            }
+            if interval_ms >= 100.0 {
+                self.render_interval_over_100_ms_count =
+                    self.render_interval_over_100_ms_count.saturating_add(1);
             }
         }
         // Steam renders its overlay from the Present hook on this device and
@@ -819,7 +967,20 @@ impl WindowsD3d11Renderer {
         // well: flip-model Present(0) is an unsynchronized path that Microsoft
         // recommends only with explicit tearing support, which this tear-free
         // desktop/streaming host intentionally does not request.
+        let present_started_at = Instant::now();
         let result = swap_chain.Present(1, DXGI_PRESENT(0));
+        let present_duration_ms = present_started_at.elapsed().as_secs_f64() * 1_000.0;
+        self.last_present_duration_ms = present_duration_ms;
+        self.max_present_duration_ms = self.max_present_duration_ms.max(present_duration_ms);
+        if present_duration_ms >= 25.0 {
+            self.present_over_25_ms_count = self.present_over_25_ms_count.saturating_add(1);
+        }
+        let render_duration_ms = render_started_at.elapsed().as_secs_f64() * 1_000.0;
+        self.last_render_duration_ms = render_duration_ms;
+        self.max_render_duration_ms = self.max_render_duration_ms.max(render_duration_ms);
+        if render_duration_ms >= 25.0 {
+            self.render_over_25_ms_count = self.render_over_25_ms_count.saturating_add(1);
+        }
         self.last_present = result.0;
         if result.is_err() && result != DXGI_STATUS_OCCLUDED {
             return Err(format!(
@@ -827,7 +988,37 @@ impl WindowsD3d11Renderer {
                 result.0 as u32
             ));
         }
-        Ok(result.0)
+        if result.is_ok() {
+            let mut statistics = DXGI_FRAME_STATISTICS::default();
+            if swap_chain.GetFrameStatistics(&mut statistics).is_ok() {
+                self.frame_statistics_available = true;
+                if let (Some(previous_present_count), Some(previous_refresh_count)) = (
+                    self.last_frame_statistics_present_count,
+                    self.last_frame_statistics_refresh_count,
+                ) {
+                    let present_delta =
+                        statistics.PresentCount.wrapping_sub(previous_present_count);
+                    if previous_present_count > 0 && previous_refresh_count > 0 && present_delta > 0
+                    {
+                        let refresh_delta = statistics
+                            .PresentRefreshCount
+                            .wrapping_sub(previous_refresh_count);
+                        let repeated_refreshes = refresh_delta.saturating_sub(present_delta);
+                        self.last_frame_statistics_present_delta = present_delta;
+                        self.last_frame_statistics_refresh_delta = refresh_delta;
+                        self.repeated_refresh_count = self
+                            .repeated_refresh_count
+                            .saturating_add(u64::from(repeated_refreshes));
+                        self.max_repeated_refreshes_per_sample = self
+                            .max_repeated_refreshes_per_sample
+                            .max(repeated_refreshes);
+                    }
+                }
+                self.last_frame_statistics_present_count = Some(statistics.PresentCount);
+                self.last_frame_statistics_refresh_count = Some(statistics.PresentRefreshCount);
+            }
+        }
+        Ok(Some(result.0))
     }
 
     pub fn has_source(&self) -> bool {
@@ -870,8 +1061,141 @@ impl WindowsD3d11Renderer {
         !self.frame_latency_waitable_object.is_invalid()
     }
 
+    pub fn duplicate_frame_latency_wait_handle(
+        &self,
+    ) -> Result<Option<FrameLatencyWaitHandle>, String> {
+        if self.frame_latency_waitable_object.is_invalid() {
+            return Ok(None);
+        }
+
+        let process = unsafe { GetCurrentProcess() };
+        let mut duplicated = HANDLE::default();
+        unsafe {
+            DuplicateHandle(
+                process,
+                self.frame_latency_waitable_object,
+                process,
+                &mut duplicated,
+                0,
+                false,
+                DUPLICATE_SAME_ACCESS,
+            )
+            .map_err(|error| format!("DuplicateHandle for DXGI frame latency failed: {error}"))?;
+        }
+        Ok(Some(FrameLatencyWaitHandle {
+            handle: duplicated,
+            generation: self.frame_latency_wait_generation,
+        }))
+    }
+
+    pub fn grant_frame_latency_ready_permit(&mut self, generation: u64) -> bool {
+        if generation == 0
+            || generation != self.frame_latency_wait_generation
+            || self.frame_latency_waitable_object.is_invalid()
+        {
+            return false;
+        }
+        self.frame_latency_ready_permits =
+            self.frame_latency_ready_permits.saturating_add(1).min(1);
+        self.async_frame_latency_ready_count =
+            self.async_frame_latency_ready_count.saturating_add(1);
+        true
+    }
+
+    pub fn async_frame_latency_ready_count(&self) -> u64 {
+        self.async_frame_latency_ready_count
+    }
+
     pub fn frame_latency_wait_timeout_count(&self) -> u64 {
         self.frame_latency_wait_timeout_count
+    }
+
+    pub fn frame_latency_not_ready_count(&self) -> u64 {
+        self.frame_latency_not_ready_count
+    }
+
+    pub fn last_render_interval_ms(&self) -> f64 {
+        self.last_render_interval_ms
+    }
+
+    pub fn max_render_interval_ms(&self) -> f64 {
+        self.max_render_interval_ms
+    }
+
+    pub fn render_interval_over_25_ms_count(&self) -> u64 {
+        self.render_interval_over_25_ms_count
+    }
+
+    pub fn render_interval_over_50_ms_count(&self) -> u64 {
+        self.render_interval_over_50_ms_count
+    }
+
+    pub fn render_interval_over_100_ms_count(&self) -> u64 {
+        self.render_interval_over_100_ms_count
+    }
+
+    pub fn last_frame_latency_wait_duration_ms(&self) -> f64 {
+        self.last_frame_latency_wait_duration_ms
+    }
+
+    pub fn max_frame_latency_wait_duration_ms(&self) -> f64 {
+        self.max_frame_latency_wait_duration_ms
+    }
+
+    pub fn frame_latency_wait_over_25_ms_count(&self) -> u64 {
+        self.frame_latency_wait_over_25_ms_count
+    }
+
+    pub fn last_present_duration_ms(&self) -> f64 {
+        self.last_present_duration_ms
+    }
+
+    pub fn max_present_duration_ms(&self) -> f64 {
+        self.max_present_duration_ms
+    }
+
+    pub fn present_over_25_ms_count(&self) -> u64 {
+        self.present_over_25_ms_count
+    }
+
+    pub fn last_render_duration_ms(&self) -> f64 {
+        self.last_render_duration_ms
+    }
+
+    pub fn max_render_duration_ms(&self) -> f64 {
+        self.max_render_duration_ms
+    }
+
+    pub fn render_over_25_ms_count(&self) -> u64 {
+        self.render_over_25_ms_count
+    }
+
+    pub fn frame_statistics_available(&self) -> bool {
+        self.frame_statistics_available
+    }
+
+    pub fn frame_statistics_present_count(&self) -> Option<u32> {
+        self.last_frame_statistics_present_count
+    }
+
+    pub fn frame_statistics_refresh_count(&self) -> Option<u32> {
+        self.last_frame_statistics_refresh_count
+    }
+
+    pub fn last_frame_statistics_present_delta(&self) -> u32 {
+        self.last_frame_statistics_present_delta
+    }
+
+    pub fn last_frame_statistics_refresh_delta(&self) -> u32 {
+        self.last_frame_statistics_refresh_delta
+    }
+
+    pub fn repeated_refresh_count(&self) -> u64 {
+        self.repeated_refresh_count
+    }
+
+    pub fn max_repeated_refreshes_per_sample(&self) -> u32 {
+        self.max_repeated_refreshes_per_sample
     }
 
     pub fn shared_texture_copy_slow_count(&self) -> u64 {

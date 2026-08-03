@@ -2018,11 +2018,18 @@ aspect-fit presentation, and per-display frame cadence. `continuousPresent` is
 an opt-in capture-host policy. Electron texture
 arrivals copy their pooled source and immediately request presentation; the
 session timer remains a retained-frame and Steam-overlay fallback. The Windows
-swap chain uses the DXGI frame-latency waitable object with maximum latency one
+swap chain uses the DXGI frame-latency waitable object with maximum latency two
 as its cadence boundary, retains two flip-sequential buffers, and submits
-tear-free frames through `Present(1)`. This keeps swap-chain contents persistent
-for desktop capture while DXGI, rather than JavaScript timer precision,
-supplies the display-paced boundary.
+tear-free frames through `Present(1)`. A full queue is waited on through an
+owned duplicate handle in a blocking worker; a generation-bound one-shot
+permit carries the consumed auto-reset signal back to the presenter without
+blocking Electron's message thread or spinning a one-millisecond timer. Actual-
+game physical-input A/B traces rejected maximum latency one with both polling
+and the worker scheduler. Readiness waits are armed only for a dirty D3D11
+surface that retains a real source frame; startup readiness alone and the
+diagnostic OpenGL backend cannot enter the async wait loop. This keeps swap-
+chain contents persistent for desktop capture while DXGI, rather than
+JavaScript timer precision, supplies the display-paced boundary.
 
 Cold managed readiness has its own positive contract. Steam initialization and
 callback registration happen before Electron graphics-device creation. When the

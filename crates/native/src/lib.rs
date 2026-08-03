@@ -1080,6 +1080,47 @@ pub fn pump_native_overlay_host_view() -> Result<(), Error> {
     native_surface::pump()
 }
 
+#[napi(js_name = "isNativeOverlayHostFramePending")]
+pub fn is_native_overlay_host_frame_pending() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::frame_pending()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+#[napi(js_name = "waitForNativeOverlayHostFrameReady")]
+pub async fn wait_for_native_overlay_host_frame_ready(
+    timeout_ms: Option<u32>,
+) -> Result<bool, Error> {
+    #[cfg(target_os = "windows")]
+    {
+        let Some(request) = native_surface::begin_frame_latency_wait()? else {
+            return Ok(false);
+        };
+        let timeout_ms = timeout_ms.unwrap_or(100).clamp(1, 1_000);
+        let ready_token = tokio::task::spawn_blocking(move || request.wait(timeout_ms))
+            .await
+            .map_err(|error| {
+                Error::from_reason(format!("DXGI frame latency worker failed: {error}"))
+            })?
+            .map_err(Error::from_reason)?;
+        Ok(ready_token
+            .map(native_surface::grant_frame_latency_ready)
+            .unwrap_or(false))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = timeout_ms;
+        Ok(false)
+    }
+}
+
 #[napi(js_name = "showNativeOverlayHostView")]
 pub fn show_native_overlay_host_view() -> Result<(), Error> {
     native_surface::show()

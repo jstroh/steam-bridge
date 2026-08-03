@@ -95,6 +95,56 @@ exact display-setting restoration.
 Platform adapters add the platform-specific compositor, DPI/backing-scale,
 refresh-rate, input, fullscreen, host, and presentation evidence.
 
+### 2026-08-02 Windows movement-stutter root-cause and pacing checkpoint
+
+The reported two-to-three-second movement hitch was reproduced by a human in
+the actual configured game, then isolated with synchronized Chromium rAF,
+Electron offscreen-paint/shared-texture, native pump/Present, and DXGI frame-
+statistics counters. The game loop remained at 60 FPS with 16.8 ms steady
+renderer intervals, native wait/Present/render work remained far below one
+display frame, and no D3D device loss occurred. DXGI nevertheless recorded
+repeated refreshes. This locates the remaining defect at the asynchronous
+source-to-swap-chain scheduling boundary, not in game simulation, networking,
+shared-texture copy, or GPU execution time.
+
+The Windows renderer still performs a zero-timeout readiness poll before every
+Present, but a full flip queue no longer enters a one-millisecond JavaScript
+retry loop. Steam Bridge duplicates the DXGI frame-latency waitable handle,
+waits on that owned duplicate in a napi-rs blocking worker, records a one-shot
+permit because the wait consumes the auto-reset signal, and wakes the retained
+presenter on the Promise microtask. Surface and swap-chain generations reject
+late completions after close, resize, device recovery, or renderer replacement.
+The Electron main/message-pump thread never blocks on DXGI.
+
+Controlled actual-game comparisons at the active 60 Hz display rejected both
+one-frame variants. Timer-polled maximum latency one produced 197 repeated
+refreshes across 59.174 seconds. With the worker wake-up it improved to 10
+repeats across 59.135 seconds, but still lost to maximum latency two. The final
+two-frame worker build handled all 368 observed full-queue events asynchronously
+and produced 3,546 Presents across 3,550 refreshes in 59.268 seconds: 59.83 FPS
+and four isolated repeated refreshes. During 367 real Windows movement
+keypresses, the post-boundary trace recorded zero Electron paint or shared-
+texture intervals above 25 ms, zero native pump durations, Presents, or renders
+above 25 ms, and zero device losses. The initial 100 ms renderer sample was the
+measurement/focus boundary; no later renderer interval exceeded 25 ms.
+
+Closed paths: do not block Electron's message thread on the waitable object; do
+not restore a one-millisecond readiness timer; do not select maximum latency one
+from generic lowest-latency guidance without repeating this exact external-
+source pipeline proof; and do not diagnose the residual frame-statistics count
+as a JavaScript/game-loop hitch without a matching rAF or paint interval. Repeat
+only after Windows presenter scheduling, swap-chain depth, Electron offscreen
+delivery, DXGI device recovery, or display-rate selection changes, or if a
+fresh physical-input report reproduces a visible periodic hitch on this worker
+build. This source-linked repair is not yet an npm release candidate.
+
+The follow-up dirty-tree review restricts async readiness waits to dirty D3D11
+surfaces that already retain a real source frame. A merely not-yet-ready host or
+the diagnostic OpenGL backend cannot create a false-resolving microtask loop
+during renderer startup. Unexpected Win32 wait results now fail explicitly, and
+unit coverage locks one wait in flight, timeout re-arming, newest-frame
+coalescing, successful wake-up, and late completion after close.
+
 ### 2026-08-02 Windows keyboard-layout and movement-cadence checkpoint
 
 A focused source-linked Windows pass addressed two new configured-consumer

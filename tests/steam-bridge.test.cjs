@@ -1031,13 +1031,23 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /GetMenuBarInfo\(/);
   assert.match(source, /for _ in 0\.\.3/);
   assert.match(d3dSource, /DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT/);
-  assert.match(d3dSource, /SetMaximumFrameLatency\(1\)/);
+  assert.match(d3dSource, /SetMaximumFrameLatency\(2\)/);
+  assert.match(d3dSource, /DuplicateHandle\(/);
+  assert.match(d3dSource, /frame_latency_ready_permits/);
+  assert.match(source, /pub fn begin_frame_latency_wait\(/);
+  assert.match(source, /pub fn grant_frame_latency_ready\(/);
   assert.match(d3dSource, /WaitForSingleObjectEx\(/);
+  assert.match(d3dSource, /FRAME_LATENCY_WAIT_POLL_MS: u32 = 0/);
+  assert.match(d3dSource, /wait_result == WAIT_TIMEOUT[\s\S]*?return Ok\(None\)/);
   assert.match(d3dSource, /\.Present\(1, DXGI_PRESENT\(0\)\)/);
   assert.match(
     bridgeSource,
-    /process\.platform === "win32" && continuousPresentApplied === true && !usesNativeHostView/
+    /usesWindowsStandaloneHost && continuousPresentApplied === true/
   );
+  assert.match(bridgeSource, /binding\.isNativeOverlayHostFramePending\?\.\(\) === true/);
+  assert.match(bridgeSource, /binding\.waitForNativeOverlayHostFrameReady/);
+  assert.match(bridgeSource, /function armWindowsNativeFrameReadyWait\(\)/);
+  assert.match(bridgeSource, /nativeFramePending && usesWindowsStandaloneHost \? 1 : initialIntervalMs/);
   assert.match(bridgeSource, /let pumpImmediate: NodeJS\.Immediate \| undefined/);
   assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
   assert.match(
@@ -24970,6 +24980,94 @@ function createFrameDrivenPumpTestNative() {
   });
   return { fake, pumpedSources };
 }
+
+test("Windows frame readiness waits stay singular, retry timeouts, and stop after close", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let probeOpen = false;
+  let framePending = false;
+  const waitResolvers = [];
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      framePending = true;
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    isNativeOverlayHostFramePending() {
+      this.calls.push({ method: "isNativeOverlayHostFramePending", args: [] });
+      return framePending;
+    },
+    waitForNativeOverlayHostFrameReady(timeoutMs) {
+      this.calls.push({ method: "waitForNativeOverlayHostFrameReady", args: [timeoutMs] });
+      return new Promise((resolve) => waitResolvers.push(resolve));
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
+  assert.equal(waitResolvers.length, 1);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady")
+      .map((call) => call.args),
+    [[100]]
+  );
+
+  session.updateFrame({ data: Buffer.from([3, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 2);
+  assert.equal(waitResolvers.length, 1, "a second frame must share the in-flight native wait");
+
+  waitResolvers.shift()(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(waitResolvers.length, 1, "a bounded timeout must re-arm while a frame is pending");
+  assert.equal(
+    fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length,
+    2
+  );
+
+  framePending = false;
+  waitResolvers.shift()(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 3);
+
+  session.updateFrame({ data: Buffer.from([4, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(waitResolvers.length, 1);
+  const pumpCountBeforeClose = session.snapshot().pumpCount;
+  session.close();
+  framePending = false;
+  waitResolvers.shift()(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, pumpCountBeforeClose);
+});
 
 test("Windows frame-driven pump coalesces to the newest retained source", async (t) => {
   setProcessPlatformForTest(t, "win32");

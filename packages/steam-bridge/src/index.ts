@@ -1788,6 +1788,18 @@ export interface NativeOverlaySessionSnapshot {
   nativeHostUnavailableReason?: NativeOverlayHostUnavailableReason;
   macOverlayEnvironment?: MacOverlayEnvironment;
   lastPumpAt?: number;
+  /** Interval between the two most recent native session pump starts. */
+  lastPumpIntervalMs?: number;
+  /** Longest interval between native session pump starts in this session. */
+  maxPumpIntervalMs?: number;
+  pumpIntervalOver25MsCount?: number;
+  pumpIntervalOver50MsCount?: number;
+  pumpIntervalOver100MsCount?: number;
+  /** Duration of the latest native session pump; async DXGI readiness waits are excluded. */
+  lastPumpDurationMs?: number;
+  /** Longest synchronous native session pump duration in this session. */
+  maxPumpDurationMs?: number;
+  pumpDurationOver25MsCount?: number;
   /** Current target presentation rate. */
   frameRate: number;
   /** Current native session timer interval. */
@@ -8552,6 +8564,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const usesNativeHostView = Boolean(options.nativeWindowHandle)
     || usesStandaloneLinuxHost
     || usesLinuxApplicationHost;
+  const usesWindowsStandaloneHost = process.platform === "win32" && !usesNativeHostView;
   const usesAttachedLinuxHost =
     process.platform === "linux" && Boolean(options.nativeWindowHandle) && !usesStandaloneLinuxHost;
   const shouldHideNativeHostOnOverlayDeactivate = (): boolean => {
@@ -8590,6 +8603,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let closed = false;
   let pumpCount = 0;
   let lastPumpAt: number | undefined;
+  let lastPumpStartedAt: number | undefined;
+  let lastPumpIntervalMs: number | undefined;
+  let maxPumpIntervalMs: number | undefined;
+  let pumpIntervalOver25MsCount = 0;
+  let pumpIntervalOver50MsCount = 0;
+  let pumpIntervalOver100MsCount = 0;
+  let lastPumpDurationMs: number | undefined;
+  let maxPumpDurationMs: number | undefined;
+  let pumpDurationOver25MsCount = 0;
   let lastFrameDrivenPumpAt: number | undefined;
   let sharedTextureUpdateCount = 0;
   let lastSharedTextureUpdateDurationMs: number | undefined;
@@ -8614,6 +8636,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpTimerDueAt: number | undefined;
   let pumpImmediate: NodeJS.Immediate | undefined;
   let frameDrivenPumpQueued = false;
+  let nativeFramePending = false;
+  let nativeFrameWaitInFlight = false;
+  let nativeFrameWaitEpoch = 0;
+  let nativeFrameWaitUnavailable = false;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let hideNativeHostTimer: NodeJS.Timeout | undefined;
   let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
@@ -8658,6 +8684,24 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       return;
     }
 
+    nativeFramePending = false;
+    const pumpStartedAt = performance.now();
+    if (lastPumpStartedAt !== undefined) {
+      const intervalMs = Math.max(0, pumpStartedAt - lastPumpStartedAt);
+      lastPumpIntervalMs = intervalMs;
+      maxPumpIntervalMs = Math.max(maxPumpIntervalMs ?? 0, intervalMs);
+      if (intervalMs >= 25) {
+        pumpIntervalOver25MsCount += 1;
+      }
+      if (intervalMs >= 50) {
+        pumpIntervalOver50MsCount += 1;
+      }
+      if (intervalMs >= 100) {
+        pumpIntervalOver100MsCount += 1;
+      }
+    }
+    lastPumpStartedAt = pumpStartedAt;
+
     try {
       // Read Electron's fullscreen state before opening or synchronizing the
       // native host. On a Wayland fullscreen exit this lets the native state
@@ -8671,7 +8715,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       syncNativeHostBounds();
       syncContinuousPresent();
       try {
-        native().pumpNativeOverlayProbeWindow();
+        const binding = native();
+        binding.pumpNativeOverlayProbeWindow();
+        nativeFramePending = usesWindowsStandaloneHost
+          && binding.isNativeOverlayHostFramePending?.() === true;
       } catch (error) {
         // X11 can deliver WM_DELETE_WINDOW and DestroyNotify in the same pump.
         // The native layer has already queued the close input before reporting
@@ -8700,6 +8747,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     } catch (error) {
       fail(error);
       throw error;
+    } finally {
+      const durationMs = Math.max(0, performance.now() - pumpStartedAt);
+      lastPumpDurationMs = durationMs;
+      maxPumpDurationMs = Math.max(maxPumpDurationMs ?? 0, durationMs);
+      if (durationMs >= 25) {
+        pumpDurationOver25MsCount += 1;
+      }
     }
   };
 
@@ -8738,6 +8792,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       nativeHostUnavailableReason,
       macOverlayEnvironment,
       lastPumpAt,
+      lastPumpIntervalMs,
+      maxPumpIntervalMs,
+      pumpIntervalOver25MsCount,
+      pumpIntervalOver50MsCount,
+      pumpIntervalOver100MsCount,
+      lastPumpDurationMs,
+      maxPumpDurationMs,
+      pumpDurationOver25MsCount,
       lastError,
       nativeSurfaceLeaseGeneration: surfaceLease?.generation,
       nativeSurfaceOwner,
@@ -8779,6 +8841,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     closed = true;
     closeReason = reason;
+    nativeFramePending = false;
+    nativeFrameWaitEpoch += 1;
+    nativeFrameWaitInFlight = false;
     nativeHostUnavailableReason = undefined;
     macOverlayEnvironment = undefined;
 
@@ -9632,8 +9697,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function presentFrameDrivenUpload(): void {
-    const windowsStandaloneHost = process.platform === "win32" && !usesNativeHostView;
-    if (!windowsStandaloneHost) {
+    if (!usesWindowsStandaloneHost) {
       // Linux GLX imports and CPU uploads must finish and present before the
       // producer recycles its frame. Keep their established synchronous pump.
       pump();
@@ -9682,6 +9746,82 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     schedulePumpTimer();
   }
 
+  function armWindowsNativeFrameReadyWait(): boolean {
+    if (
+      closed
+      || !usesWindowsStandaloneHost
+      || !nativeFramePending
+      || nativeFrameWaitUnavailable
+    ) {
+      return false;
+    }
+    if (nativeFrameWaitInFlight) {
+      return true;
+    }
+
+    const binding = native();
+    const waitForFrameReady = binding.waitForNativeOverlayHostFrameReady;
+    if (typeof waitForFrameReady !== "function") {
+      nativeFrameWaitUnavailable = true;
+      return false;
+    }
+
+    const waitEpoch = nativeFrameWaitEpoch;
+    nativeFrameWaitInFlight = true;
+    let waitPromise: Promise<boolean>;
+    try {
+      waitPromise = waitForFrameReady.call(binding, 100);
+    } catch (error) {
+      nativeFrameWaitInFlight = false;
+      nativeFrameWaitUnavailable = true;
+      lastError = error;
+      return false;
+    }
+
+    void Promise.resolve(waitPromise).then(
+      (ready) => {
+        if (waitEpoch !== nativeFrameWaitEpoch) {
+          return;
+        }
+        nativeFrameWaitInFlight = false;
+        if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+          return;
+        }
+        if (!ready || !nativeFramePending) {
+          schedulePumpTimer();
+          return;
+        }
+
+        const previousPumpCount = pumpCount;
+        try {
+          // The worker consumed DXGI's auto-reset readiness signal and the
+          // native renderer recorded its matching one-shot permit. Present on
+          // this microtask turn without blocking Electron's message thread.
+          pump();
+        } catch {
+          return;
+        }
+        if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+          return;
+        }
+        if (pumpCount !== previousPumpCount) {
+          lastFrameDrivenPumpAt = performance.now();
+        }
+        schedulePumpTimer();
+      },
+      (error) => {
+        if (waitEpoch !== nativeFrameWaitEpoch) {
+          return;
+        }
+        nativeFrameWaitInFlight = false;
+        nativeFrameWaitUnavailable = true;
+        lastError = error;
+        schedulePumpTimer();
+      }
+    );
+    return true;
+  }
+
   function schedulePumpTimer(): void {
     if (closed) {
       return;
@@ -9694,6 +9834,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     if (pumpImmediate) {
       clearImmediate(pumpImmediate);
       pumpImmediate = undefined;
+    }
+    if (
+      nativeFramePending
+      && usesWindowsStandaloneHost
+      && armWindowsNativeFrameReadyWait()
+    ) {
+      return;
     }
     if (
       frameDrivenPumpQueued
@@ -9729,6 +9876,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       const timerStartedAt = performance.now();
       if (
         overlayActive !== true
+        && !nativeFramePending
         && lastFrameDrivenPumpAt !== undefined
         && timerStartedAt - lastFrameDrivenPumpAt < pumpIntervalMs * 1.25
       ) {
@@ -9747,8 +9895,17 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (closed) {
         return;
       }
+      if (nativeFramePending && usesWindowsStandaloneHost) {
+        // Wait off the Electron main/message-pump thread and wake this
+        // presenter as soon as DXGI releases a flip-queue slot. Old native
+        // binaries retain the short nonblocking polling fallback.
+        if (!armWindowsNativeFrameReadyWait()) {
+          armPumpTimer(performance.now() + 1);
+        }
+        return;
+      }
       const displaySynchronizedStandaloneHost =
-        process.platform === "win32" && continuousPresentApplied === true && !usesNativeHostView;
+        usesWindowsStandaloneHost && continuousPresentApplied === true;
       // Wake the Windows standalone host immediately on this
       // display-synchronized path. DXGI's frame-latency waitable object gates
       // the actual Present, while other platforms keep the requested cadence.
@@ -9774,7 +9931,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const initialIntervalMs = backend === "macos-metal" && continuousPresentApplied === true
       ? Math.max(pumpIntervalMs, 1000 / 30)
       : pumpIntervalMs;
-    armPumpTimer(performance.now() + initialIntervalMs);
+    armPumpTimer(performance.now() + (
+      nativeFramePending && usesWindowsStandaloneHost ? 1 : initialIntervalMs
+    ));
   }
 
   function updateNativeOverlayHostAvailability(): boolean {
