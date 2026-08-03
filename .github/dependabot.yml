@@ -1,6 +1,7 @@
 version: 2
 multi-ecosystem-groups:
   weekly-dependencies:
+    open-pull-requests-limit: 1
     schedule:
       interval: weekly
 updates:
@@ -9,7 +10,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: weekly-dependencies
-    open-pull-requests-limit: 1
     ignore:
       # TypeScript 7 removes compiler APIs used by the package smoke gate.
       # Upgrade it deliberately with the consuming build scripts.
@@ -21,7 +21,6 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: weekly-dependencies
-    open-pull-requests-limit: 1
     ignore:
       # napi-derive minor releases must move with the compatible napi runtime.
       - dependency-name: napi-derive
@@ -32,4 +31,3 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: weekly-dependencies
-    open-pull-requests-limit: 1
