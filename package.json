@@ -57,7 +57,7 @@
     "electron-builder": "26.15.3",
     "tar": "7.5.22",
     "terser": "^5.49.0",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=22.13"
