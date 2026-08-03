@@ -50,7 +50,7 @@
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
   },
   "devDependencies": {
-    "@electron/asar": "4.2.0",
+    "@electron/asar": "4.2.1",
     "@electron/packager": "^20.0.1",
     "@emnapi/runtime": "1.11.1",
     "@napi-rs/cli": "3.7.2",
