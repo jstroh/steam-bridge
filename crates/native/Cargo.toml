@@ -30,7 +30,7 @@ x11-dl = "2.21"
 zbus = { version = "5.18", default-features = false, features = ["tokio"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = "0.62", features = [
   "Win32_Graphics_Direct3D",
   "Win32_Graphics_Direct3D_Fxc",
   "Win32_Graphics_Direct3D11",
