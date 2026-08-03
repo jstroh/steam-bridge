@@ -24730,6 +24730,15 @@ const STEAM_CLIENT_LIFECYCLE_NATIVE_METHODS = new Set<PropertyKey>([
   "gameServerShutdown"
 ]);
 
+// This wait owns a duplicated DXGI kernel handle and never calls Steam. The
+// retained worker may finish after its overlay session closes; generation
+// checks discard that stale result without touching the released surface.
+// Tracking it as Steam async work would make an otherwise ordered
+// session.close() -> shutdown() race a bounded display wait and fail shutdown.
+const STEAM_CLIENT_LIFECYCLE_UNTRACKED_ASYNC_METHODS = new Set<PropertyKey>([
+  "waitForNativeOverlayHostFrameReady"
+]);
+
 let steamClientNativeBindingSource: NativeBinding | undefined;
 let steamClientNativeBindingProxy: NativeBinding | undefined;
 const STEAM_CLIENT_PROCESS_LIFECYCLE_STATE = Symbol.for(
@@ -24838,8 +24847,12 @@ function native(): NativeBinding {
           return result;
         }
 
-        const lifecycleState = getSteamClientProcessLifecycleState();
         const promise = Promise.resolve(result);
+        if (STEAM_CLIENT_LIFECYCLE_UNTRACKED_ASYNC_METHODS.has(property)) {
+          return promise;
+        }
+
+        const lifecycleState = getSteamClientProcessLifecycleState();
         lifecycleState.pendingNativeOperations += 1;
         return promise.finally(() => {
           lifecycleState.pendingNativeOperations -= 1;

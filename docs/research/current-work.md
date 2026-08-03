@@ -24,11 +24,10 @@ Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
 `v0.3.10`, `v0.3.12`, and `v0.3.15` are published; `v0.3.15` is the current
-stable release. Exact `v0.3.11` is immutable and unpublished; the post-tag
-adversarial review found Web API credential fail-open paths and native
-lifecycle/resource ownership defects, so it must never be moved, reused, or
-published. Never move,
-reuse, or publish any rejected tag.
+stable release. Exact `v0.3.11` and `v0.3.16` are immutable and unpublished.
+The post-tag `v0.3.11` adversarial review found Web API credential fail-open
+paths and native lifecycle/resource ownership defects, so it must never be
+moved, reused, or published. Never move, reuse, or publish any rejected tag.
 
 Exact `v0.3.13` is also immutable and unpublished. Its three native prebuilds
 passed, but the final Windows package gate failed before candidate assembly:
@@ -49,16 +48,32 @@ their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
 
-### 2026-08-03 v0.3.16 release preparation
+### 2026-08-03 v0.3.17 release preparation
 
-Patch `0.3.16` is required because published `0.3.15` predates the Windows
+This patch release is required because published `0.3.15` predates the Windows
 standalone presenter's asynchronous DXGI frame-readiness scheduling and
 two-frame queue selected by the source-linked physical-movement comparison.
 The release also carries bounded presentation telemetry, exact native-binding
 ABI coverage, the audit memory-failure repair, and compatible stable dependency
-updates. The package version is prepared as `0.3.16`; no tag, npm publication,
-or GitHub Release exists until the protected candidate, exact Windows live
-proof, tag CI, Release workflow, and trusted publication gates all pass.
+updates.
+
+The first tagged candidate `v0.3.16` passed source CI and the cross-platform
+Release workflow, but exact Windows actual-game proof caught an ordered-close
+failure: one duplicated-handle DXGI frame-readiness wait could remain pending
+for its bounded worker interval after the overlay session closed, and the
+Steam lifecycle guard therefore rejected immediate `shutdown()`. That tag is
+immutable, rejected, and must never be published or moved.
+
+The frame-readiness wait owns an independent duplicated Win32 kernel handle,
+does not call Steam, and generation-checks its result before touching the
+native surface. It is now explicitly excluded from Steam-client asynchronous
+lifecycle accounting; actual Steam async Promises remain fail-closed across
+init and shutdown. A regression test closes a Windows session with the wait
+unresolved, shuts Steam down successfully, then proves the late result cannot
+pump the closed session. The package version is prepared as `0.3.17`; no tag,
+npm publication, or GitHub Release exists until the protected candidate,
+exact Windows live proof, tag CI, Release workflow, and trusted publication
+gates all pass.
 
 ### 2026-08-02 v0.3.15 stable release checkpoint
 

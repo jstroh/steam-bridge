@@ -25022,6 +25022,7 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
     }
   });
   const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
   const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
   t.after(() => {
     session.close();
@@ -25063,6 +25064,10 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
   assert.equal(waitResolvers.length, 1);
   const pumpCountBeforeClose = session.snapshot().pumpCount;
   session.close();
+  assert.doesNotThrow(
+    () => steam.shutdown(),
+    "the duplicated DXGI wait does not own Steam lifecycle state after session close"
+  );
   framePending = false;
   waitResolvers.shift()(true);
   await new Promise((resolve) => setImmediate(resolve));
