@@ -11,6 +11,12 @@ updates:
       - "*"
     multi-ecosystem-group: weekly-dependencies
     ignore:
+      # 3.8.x requires the alpha @emnapi/runtime 2 line and conflicts with the
+      # stable runtime required by our WASM toolchain. Upgrade them together
+      # once emnapi 2 is stable.
+      - dependency-name: "@napi-rs/cli"
+        update-types:
+          - version-update:semver-minor
       # TypeScript 7 removes compiler APIs used by the package smoke gate.
       # Upgrade it deliberately with the consuming build scripts.
       - dependency-name: typescript

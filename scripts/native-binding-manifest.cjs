@@ -98,7 +98,20 @@ function selfTest() {
       tempFile,
       ["export interface NativeBinding {", "  optional?(): void;", "}", ""].join("\n")
     );
-    assert.throws(() => createNativeBindingManifest(tempFile), /must not be optional/);
+    let optionalMethodError;
+    try {
+      createNativeBindingManifest(tempFile);
+    } catch (error) {
+      optionalMethodError = error;
+    }
+    assert.ok(optionalMethodError instanceof Error, "An optional method must fail validation.");
+    assert.match(optionalMethodError.message, /must not be optional/);
+    assert.equal(
+      optionalMethodError.actual,
+      false,
+      "Optional-method failures must not retain the TypeScript AST node."
+    );
+    assert.equal(optionalMethodError.expected, true);
     fs.writeFileSync(
       tempFile,
       [
