@@ -25,7 +25,7 @@ function readNativeBindingMethodNames(filePath) {
 
   const methodNames = declarations[0].members.map((member) => {
     assert.ok(ts.isMethodSignature(member), `${INTERFACE_NAME} may contain only method signatures.`);
-    assert.equal(member.questionToken, undefined, `${INTERFACE_NAME} methods must not be optional.`);
+    assert.ok(member.questionToken === undefined, `${INTERFACE_NAME} methods must not be optional.`);
     assert.ok(ts.isIdentifier(member.name), `${INTERFACE_NAME} method names must be identifiers.`);
     assert.match(
       member.name.text,

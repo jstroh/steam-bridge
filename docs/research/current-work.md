@@ -3099,3 +3099,14 @@ D3D resources and destabilized the controller; it was not valid product
 evidence. Use an existing operator-approved focus target or direct native focus
 state, without capturing the unrelated window. The game was subsequently
 re-entered and a focused settled rAF retest passed at 60.002 FPS.
+
+### 2026-08-03 Native API audit memory failure
+
+Cross-platform CI exposed two new Windows frame-wait methods that were
+incorrectly marked optional in the exact `NativeBinding` ABI. The audit's
+assertion also retained the unexpected TypeScript AST node while formatting
+the failure, exhausting Node's heap instead of reporting the contract error.
+The methods are now required in the interface, while runtime feature detection
+still preserves compatibility with older native binaries. The validator now
+asserts a boolean condition so future optional-method mistakes fail promptly
+without retaining or rendering an AST graph.
