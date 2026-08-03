@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-02
+Last reviewed: 2026-08-03
 
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
@@ -48,6 +48,17 @@ All argument-bearing release and trusted-publication workflow calls now invoke
 their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
+
+### 2026-08-03 v0.3.16 release preparation
+
+Patch `0.3.16` is required because published `0.3.15` predates the Windows
+standalone presenter's asynchronous DXGI frame-readiness scheduling and
+two-frame queue selected by the source-linked physical-movement comparison.
+The release also carries bounded presentation telemetry, exact native-binding
+ABI coverage, the audit memory-failure repair, and compatible stable dependency
+updates. The package version is prepared as `0.3.16`; no tag, npm publication,
+or GitHub Release exists until the protected candidate, exact Windows live
+proof, tag CI, Release workflow, and trusted publication gates all pass.
 
 ### 2026-08-02 v0.3.15 stable release checkpoint
 
