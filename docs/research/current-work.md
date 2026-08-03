@@ -7,9 +7,10 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-Review anchor: `9c1f1a8a46d5a2bd2c634e56907faa25c4757830`
-(`Fix Web API and native lifecycle safety`). npm `latest` and the stable GitHub
-Release are `0.3.12`; the review anchor is bound to immutable tag `v0.3.12`.
+Review anchor: `d7bc752d29bee26549ecf353638d73e535f534a7`
+(`Bypass npm argument forwarding in release workflows`). npm `latest` and the
+stable GitHub Release are `0.3.15`; the review anchor is bound to immutable tag
+`v0.3.15`.
 Neither the source commit alone nor an intermediate ad-hoc bundle is a
 publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
@@ -22,10 +23,11 @@ Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
-`v0.3.10`, and `v0.3.12` are published; `v0.3.12` is the current stable
-release. Exact `v0.3.11` is immutable and unpublished; the post-tag adversarial
-review found Web API credential fail-open paths and native lifecycle/resource
-ownership defects, so it must never be moved, reused, or published. Never move,
+`v0.3.10`, `v0.3.12`, and `v0.3.15` are published; `v0.3.15` is the current
+stable release. Exact `v0.3.11` is immutable and unpublished; the post-tag
+adversarial review found Web API credential fail-open paths and native
+lifecycle/resource ownership defects, so it must never be moved, reused, or
+published. Never move,
 reuse, or publish any rejected tag.
 
 Exact `v0.3.13` is also immutable and unpublished. Its three native prebuilds
@@ -46,6 +48,37 @@ All argument-bearing release and trusted-publication workflow calls now invoke
 their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
+
+### 2026-08-02 v0.3.15 stable release checkpoint
+
+Immutable tag `v0.3.15` is published to npm and as the stable GitHub Release.
+Source CI run `30771930886`, tag CI run `30772060516`, and cross-platform
+Release run `30772060529` all passed. Trusted npm publication run
+`30774081378` restored the exact audited candidate and its candidate-bound
+Windows live-proof receipt, then published those bytes through the protected
+`npm-production` environment. The temporary compressed-proof environment
+secret was deleted after publication and verified absent.
+
+The canonical and registry `steam-bridge-0.3.15.tgz` files are byte-identical:
+10,031,589 bytes with SHA-256
+`22140c71799d95a88cfa3897d37e735308cdf6601faae79a0b69fba95527b4b6`.
+The Windows live-proof receipt semantic SHA-256 is
+`7d789fa0c65508f30ab3fece97bf5bd722b862073764b813e4861f496a9e3401`.
+The GitHub Release carries the canonical npm tarball, full Windows bundle,
+package audit, stable-Electron native-load result, and live-proof receipt.
+
+The candidate-bound pass used the actual configured Fantasy Online 2 game,
+actual Steam client, stable Electron 43.2.0, physical native addon, ordinary
+Friends overlay, and no DevTools. It covered startup chrome, native menus and
+cursor, title drag, resize, exact 640x480 minimum client size,
+maximize/minimize/focus/fullscreen transitions and restoration, rounded
+corners, overlay client alignment and close, clean shutdown, and settled game
+and overlay pacing at the active 60 Hz display rate. It observed no crash,
+purple or tiny surface, flicker, device loss/recovery, slow shared-texture
+copy, or stderr output. The configured consumer's QA-only native-menu focus
+gate required a separate app-side correction because Win32 emits
+`captureLost` immediately before the menu `WM_COMMAND`; that correction does
+not alter this package's immutable candidate bytes.
 
 ## Active Goal: Cross-platform exhaustive actual-game QA
 
