@@ -1,15 +1,15 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-03
+Last reviewed: 2026-08-04
 
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-Review anchor: `3995710f3c07c01319639b0bef78eef5d6479163`
-(`Fix shutdown after Windows frame waits`). npm `latest` and the stable GitHub
-Release are `0.3.17`; the review anchor is bound to immutable tag `v0.3.17`.
+Review anchor: `e92b157faa1d73853607689eddeabac5067f1484`
+(`Update audited transitive dependencies`). npm `latest` and the stable GitHub
+Release are `0.3.18`; the review anchor is bound to immutable tag `v0.3.18`.
 Neither the source commit alone nor an intermediate ad-hoc bundle is a
 publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
@@ -22,9 +22,9 @@ Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
-`v0.3.10`, `v0.3.12`, `v0.3.15`, and `v0.3.17` are published; `v0.3.17` is the
-current stable release. Exact `v0.3.11` and `v0.3.16` are immutable and
-unpublished.
+`v0.3.10`, `v0.3.12`, `v0.3.15`, `v0.3.17`, and `v0.3.18` are published;
+`v0.3.18` is the current stable release. Exact `v0.3.11` and `v0.3.16` are
+immutable and unpublished.
 The post-tag `v0.3.11` adversarial review found Web API credential fail-open
 paths and native lifecycle/resource ownership defects, so it must never be
 moved, reused, or published. Never move, reuse, or publish any rejected tag.
@@ -48,7 +48,7 @@ their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
 
-### 2026-08-04 v0.3.18 release preparation
+### 2026-08-04 v0.3.18 stable release checkpoint
 
 Patch `0.3.18` removes periodic macOS WindowServer session/display polling
 from the attached Metal child. Lock and display-sleep state initialize once,
@@ -61,16 +61,51 @@ Exact signed/notarized/stapled configured-product candidate
 passed the complete 26-case/five-profile actual-game suite (130/130) with the
 source-linked bridge. Movement ran at 119.867/59.867/48.000/59.867/59.733 FPS,
 with zero intervals over 50 ms, zero Long Tasks, zero crashes, and exact 120 Hz
-desktop restoration. The package version is prepared as `0.3.18`; no tag, npm
-publication, or GitHub Release exists until the protected cross-platform
-candidate, exact Windows live proof, tag CI, Release workflow, and trusted
-publication gates all pass.
+desktop restoration.
 
 The first source CI attempt exposed newly published high-severity `undici`
 advisories in transitive tooling dependencies. The lockfile now selects patched
 `undici` 6.28.0 and 7.29.0; `npm audit --package-lock-only`, the complete local
 test gate, and package smoke are green. This is a dependency-lock repair only
 and does not alter the Steam Bridge runtime API.
+
+Immutable tag `v0.3.18` is published to npm and as the stable GitHub Release.
+Source CI run `30931330761`, untagged cross-platform Release assembly run
+`30931328343`, tag CI run `30932296521`, and tag Release run `30932296788` all
+passed at exact commit `e92b157faa1d73853607689eddeabac5067f1484`.
+Trusted npm publication run `30936087475` restored and revalidated the tag
+Release's audited artifact and candidate-bound Windows receipt, then published
+the exact bytes through the protected `npm-production` environment. The
+temporary compressed-proof secret was deleted after publication and verified
+absent.
+
+The canonical, GitHub Release, and independently downloaded npm registry
+`steam-bridge-0.3.18.tgz` files are byte-identical: 10,514,683 bytes with
+SHA-256
+`155135f4083a037ca42749011c1e8b92c9c67e8489b1d7aacbaad768d1e93863`.
+npm reports integrity
+`sha512-a0+QoDEzO7i2zsAGYssFolXPbK0jz9ZR8J7Bbc9X5ajJJG45Z4o0Xi5XrTDAHtEJAfLK8/haY9psoAlCbphC1A==`
+and SLSA provenance. The Windows bundle is 402,645,504 bytes with SHA-256
+`bd29fb7cd198571e607955004eec8b943856b5ce07fc7c0c54dfbc50c18cfe85`.
+The live-proof receipt semantic SHA-256 is
+`604ef6797a4823f621df0dd97e6122ac20ec85f9a994d1e851abce18bfc4ebe6`;
+the receipt file SHA-256 is
+`21cd723c38f6099828554838966b978b29547e571c2fde77f78451fe7b9c99bc`.
+The GitHub Release carries the canonical npm tarball, full Windows bundle,
+package audit, stable-Electron native-load result, and live-proof receipt.
+
+The protected candidate passed 379/379 JavaScript tests, 37/37 Rust tests,
+supported-platform checks, formatting, native checks, API audit, build,
+package smoke, npm audit, and npm dry-run. The native-load gate proved all
+1,144 methods under stable Electron 43.2.0. Two exact-candidate runs in the
+configured Fantasy Online 2 consumer and actual Steam client covered startup
+chrome, native menus and visible game cursor, title drag, resizing and exact
+640x480 minimum, maximize/minimize/focus/fullscreen restoration, rounded
+corners, ordinary Friends overlay alignment/open/close, and clean shutdown. At
+125% DPI and 60 Hz, the receipt recorded 59.9 FPS median game paint, 59.8 FPS
+median game present, and 58.0 FPS median overlay present, with zero device
+losses, recoveries, frame-latency timeouts, target mismatch, or slow
+shared-texture copies. The final logical client size was 1280x720.
 
 ### 2026-08-03 v0.3.17 stable release checkpoint
 
