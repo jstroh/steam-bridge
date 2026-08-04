@@ -66,6 +66,12 @@ publication, or GitHub Release exists until the protected cross-platform
 candidate, exact Windows live proof, tag CI, Release workflow, and trusted
 publication gates all pass.
 
+The first source CI attempt exposed newly published high-severity `undici`
+advisories in transitive tooling dependencies. The lockfile now selects patched
+`undici` 6.28.0 and 7.29.0; `npm audit --package-lock-only`, the complete local
+test gate, and package smoke are green. This is a dependency-lock repair only
+and does not alter the Steam Bridge runtime API.
+
 ### 2026-08-03 v0.3.17 stable release checkpoint
 
 This patch release is required because published `0.3.15` predates the Windows
