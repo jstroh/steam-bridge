@@ -12,6 +12,91 @@
 #include <string.h>
 #include <memory>
 
+static std::atomic<bool> SteamBridgeSessionScreenLocked(false);
+static std::atomic<bool> SteamBridgeMainDisplayAsleep(false);
+static dispatch_once_t SteamBridgeOverlayEnvironmentMonitorOnce;
+static NSMutableArray<id> *SteamBridgeOverlayEnvironmentMonitorTokens;
+
+static bool SteamBridgeReadSessionScreenLocked(void) {
+    CFDictionaryRef session = CGSessionCopyCurrentDictionary();
+    if (!session) {
+        return false;
+    }
+
+    bool locked = false;
+    CFTypeRef value = CFDictionaryGetValue(session, CFSTR("CGSSessionScreenIsLocked"));
+    if (value && CFGetTypeID(value) == CFBooleanGetTypeID()) {
+        locked = CFBooleanGetValue((CFBooleanRef)value);
+    }
+
+    CFRelease(session);
+    return locked;
+}
+
+static void SteamBridgeRefreshOverlayEnvironment(void) {
+    @autoreleasepool {
+        SteamBridgeSessionScreenLocked.store(
+            SteamBridgeReadSessionScreenLocked(),
+            std::memory_order_relaxed);
+        SteamBridgeMainDisplayAsleep.store(
+            CGDisplayIsAsleep(CGMainDisplayID()),
+            std::memory_order_relaxed);
+    }
+}
+
+static void SteamBridgeStartOverlayEnvironmentMonitor(void) {
+    dispatch_once(&SteamBridgeOverlayEnvironmentMonitorOnce, ^{
+        // Establish an exact initial state before any overlay can open, then
+        // keep it from public workspace lifecycle notifications. CoreGraphics
+        // session/display probes can cross into WindowServer; polling them from
+        // a timed MTKView draw loop or a background timer can still perturb the
+        // compositor even when the call itself is off Electron's UI thread.
+        SteamBridgeRefreshOverlayEnvironment();
+
+        SteamBridgeOverlayEnvironmentMonitorTokens = [NSMutableArray array];
+        NSNotificationCenter *workspaceNotifications =
+            [NSWorkspace sharedWorkspace].notificationCenter;
+        id screensDidSleep = [workspaceNotifications
+            addObserverForName:NSWorkspaceScreensDidSleepNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(NSNotification *notification) {
+                        (void)notification;
+                        SteamBridgeMainDisplayAsleep.store(true, std::memory_order_relaxed);
+                    }];
+        id screensDidWake = [workspaceNotifications
+            addObserverForName:NSWorkspaceScreensDidWakeNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(NSNotification *notification) {
+                        (void)notification;
+                        SteamBridgeMainDisplayAsleep.store(false, std::memory_order_relaxed);
+                    }];
+        id sessionDidResign = [workspaceNotifications
+            addObserverForName:NSWorkspaceSessionDidResignActiveNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(NSNotification *notification) {
+                        (void)notification;
+                        SteamBridgeSessionScreenLocked.store(true, std::memory_order_relaxed);
+                    }];
+        id sessionDidBecomeActive = [workspaceNotifications
+            addObserverForName:NSWorkspaceSessionDidBecomeActiveNotification
+                        object:nil
+                         queue:[NSOperationQueue mainQueue]
+                    usingBlock:^(NSNotification *notification) {
+                        (void)notification;
+                        SteamBridgeRefreshOverlayEnvironment();
+                    }];
+        [SteamBridgeOverlayEnvironmentMonitorTokens addObjectsFromArray:@[
+            screensDidSleep,
+            screensDidWake,
+            sessionDidResign,
+            sessionDidBecomeActive
+        ]];
+    });
+}
+
 static uint64_t SteamBridgeMonotonicMicroseconds(void) {
     CFTimeInterval seconds = CACurrentMediaTime();
     if (!std::isfinite(seconds) || seconds <= 0.0) {
@@ -650,10 +735,8 @@ static void SteamBridgeRecordFailure(
     if (_destroyed || !_window || !_view || !_window.visible || NSApp.hidden) {
         return NO;
     }
-    CGDirectDisplayID displayID = _displayID != kCGNullDirectDisplay
-        ? _displayID
-        : CGMainDisplayID();
-    if (CGDisplayIsAsleep(displayID)) {
+    SteamBridgeStartOverlayEnvironmentMonitor();
+    if (SteamBridgeMainDisplayAsleep.load(std::memory_order_relaxed)) {
         return NO;
     }
     if (!_attachedAsChild) {
@@ -839,8 +922,8 @@ static void SteamBridgeRecordFailure(
         @"parentPresent": @(_parentWindow != nil),
         @"parentVisible": @(parentVisible),
         @"parentMiniaturized": @(_parentWindow ? _parentWindow.miniaturized : NO),
-        @"displayAsleep": @(CGDisplayIsAsleep(
-            _displayID != kCGNullDirectDisplay ? _displayID : CGMainDisplayID())),
+        @"displayAsleep": @(
+            SteamBridgeMainDisplayAsleep.load(std::memory_order_relaxed)),
         @"parentKeyWindow": @(_parentWindow ? _parentWindow.keyWindow : NO),
         @"inputPassthrough": @(_inputPassthrough),
         @"opaque": @([self effectiveOpaqueBackground]),
@@ -1279,23 +1362,13 @@ extern "C" char *steam_bridge_macos_window_snapshot_json(uint32_t app_id) {
 }
 
 extern "C" bool steam_bridge_macos_session_screen_is_locked(void) {
-    CFDictionaryRef session = CGSessionCopyCurrentDictionary();
-    if (!session) {
-        return false;
-    }
-
-    bool locked = false;
-    CFTypeRef value = CFDictionaryGetValue(session, CFSTR("CGSSessionScreenIsLocked"));
-    if (value && CFGetTypeID(value) == CFBooleanGetTypeID()) {
-        locked = CFBooleanGetValue((CFBooleanRef)value);
-    }
-
-    CFRelease(session);
-    return locked;
+    SteamBridgeStartOverlayEnvironmentMonitor();
+    return SteamBridgeSessionScreenLocked.load(std::memory_order_relaxed);
 }
 
 extern "C" bool steam_bridge_macos_main_display_is_asleep(void) {
-    return CGDisplayIsAsleep(CGMainDisplayID());
+    SteamBridgeStartOverlayEnvironmentMonitor();
+    return SteamBridgeMainDisplayAsleep.load(std::memory_order_relaxed);
 }
 
 extern "C" void steam_bridge_macos_free_string(char *value) {

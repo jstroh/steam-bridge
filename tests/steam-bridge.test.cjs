@@ -12828,6 +12828,31 @@ test("macOS keeps one display-synchronized MTKView clock in passive and active p
   );
 });
 
+test("macOS caches lock and display-sleep state from workspace lifecycle notifications", () => {
+  const metalSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
+    "utf8"
+  ).replace(/\r\n/g, "\n");
+  assert.doesNotMatch(metalSource, /SteamBridgeOverlayEnvironmentMonitorTimer|DISPATCH_SOURCE_TYPE_TIMER/);
+  assert.match(
+    metalSource,
+    /\[NSWorkspace sharedWorkspace\]\.notificationCenter[\s\S]*NSWorkspaceScreensDidSleepNotification[\s\S]*NSWorkspaceScreensDidWakeNotification[\s\S]*NSWorkspaceSessionDidResignActiveNotification[\s\S]*NSWorkspaceSessionDidBecomeActiveNotification/
+  );
+  const getters = metalSource.slice(
+    metalSource.indexOf('extern "C" bool steam_bridge_macos_session_screen_is_locked'),
+    metalSource.indexOf('extern "C" void steam_bridge_macos_free_string')
+  );
+  assert.doesNotMatch(getters, /CGSessionCopyCurrentDictionary|CGDisplayIsAsleep/);
+  assert.match(
+    metalSource,
+    /steam_bridge_macos_session_screen_is_locked\(void\)[\s\S]*?SteamBridgeSessionScreenLocked\.load/
+  );
+  assert.match(
+    metalSource,
+    /steam_bridge_macos_main_display_is_asleep\(void\)[\s\S]*?SteamBridgeMainDisplayAsleep\.load/
+  );
+});
+
 test("macOS display notifications rebind the existing MTKView clock without recreating it", () => {
   const source = fs.readFileSync(
     path.join(repoRoot, "crates", "native", "src", "macos_metal_surface.mm"),
@@ -12867,7 +12892,8 @@ test("macOS pauses the attached MTKView while its parent cannot present", () => 
   const policy = source.slice(policyStart, policyEnd);
   assert.match(policy, /!_window\.visible/);
   assert.match(policy, /NSApp\.hidden/);
-  assert.match(policy, /CGDisplayIsAsleep/);
+  assert.doesNotMatch(policy, /CGDisplayIsAsleep/);
+  assert.match(policy, /SteamBridgeMainDisplayAsleep\.load/);
   assert.match(
     policy,
     /_parentWindow != nil\s*&&\s*_parentWindow\.visible\s*&&\s*!_parentWindow\.miniaturized/
@@ -13078,6 +13104,19 @@ test("macOS input QA has one real HID shortcut for nonblocking duplicate-overlay
     sequence,
     /case "cmd-shift-o":[\s\S]*\(56, true, \.maskShift\)[\s\S]*\(55, true, commandShift\)[\s\S]*\(31, true, commandShift\)[\s\S]*\(31, false, commandShift\)[\s\S]*\(55, false, \.maskShift\)[\s\S]*\(56, false, \[\]\)/
   );
+});
+
+test("macOS input QA provides a bounded gameplay key hold with guaranteed release", () => {
+  const source = readSourceFile("scripts", "macos-window-input.swift");
+  assert.match(source, /hold-key --pid PID --key w\|a\|s\|d/);
+  assert.match(source, /case "hold-key":/);
+  assert.match(source, /defer \{[\s\S]*postGameplayKey\(keyCode, down: false\)/);
+  assert.match(source, /consoleLockedState\(\) != false/);
+  assert.match(
+    source,
+    /private func holdGameplayKey[\s\S]*?guard consoleLockedState\(\) == false[\s\S]*?postGameplayKey\(keyCode, down: true\)/
+  );
+  assert.match(source, /consecutiveInactiveSamples >= 3/);
 });
 
 test("macOS input QA moves the real pointer only within the exact owned child/window pair", () => {

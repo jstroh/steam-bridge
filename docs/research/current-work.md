@@ -48,6 +48,24 @@ their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
 
+### 2026-08-04 v0.3.18 release preparation
+
+Patch `0.3.18` removes periodic macOS WindowServer session/display polling
+from the attached Metal child. Lock and display-sleep state initialize once,
+then public `NSWorkspace` lifecycle notifications update atomics consumed by
+the presentation hot path. The release also adds a bounded real-HID movement
+helper with guaranteed key-up for repeatable macOS actual-game pacing proof.
+
+Exact signed/notarized/stapled configured-product candidate
+`d6b9fcf478a8bf671954e006b420d3b5f9d14a7966360b32d545b96be18799d8`
+passed the complete 26-case/five-profile actual-game suite (130/130) with the
+source-linked bridge. Movement ran at 119.867/59.867/48.000/59.867/59.733 FPS,
+with zero intervals over 50 ms, zero Long Tasks, zero crashes, and exact 120 Hz
+desktop restoration. The package version is prepared as `0.3.18`; no tag, npm
+publication, or GitHub Release exists until the protected cross-platform
+candidate, exact Windows live proof, tag CI, Release workflow, and trusted
+publication gates all pass.
+
 ### 2026-08-03 v0.3.17 stable release checkpoint
 
 This patch release is required because published `0.3.15` predates the Windows
@@ -109,6 +127,118 @@ clean shutdown. At 125% DPI and 60 Hz, the receipt recorded 59.9 FPS median
 game paint, 59.8 FPS median game present, and 59.3 FPS median overlay present,
 with zero device losses, recoveries, frame-latency timeouts, target mismatch,
 or slow shared-texture copies. The final logical client size was 1280x720.
+
+### 2026-08-03 macOS offscreen application-host rejection checkpoint
+
+Do not replace the established macOS attached-child renderer with the Windows/
+Linux application-host design on stable Electron 43.2.0. A focused prototype
+made one native top-level AppKit/Metal application window, kept Electron hidden
+in shared-texture offscreen mode, imported each IOSurface, and drove the native
+presenter from the selected display's CVDisplayLink. Steam injection and the
+overlay both worked, the native presenter commonly advanced near 120 FPS, and
+imports stayed below roughly 12.2 ms. The producer nevertheless failed: the
+actual game delivered only 25.9 FPS at rest and 24.6 FPS during a genuine
+10-second `W` hold, with ordinary 50-83 ms frame gaps and a measured 216.6 ms
+maximum. Electron still reported its requested frame rate as 120.
+
+The causal controls were all negative. DevTools focus emulation made
+`document.hasFocus()` true without improving cadence. Chromium's GPU-only
+vsync-disable diagnostic remained near 30 FPS, begin-frame unthrottling fell
+near 24 FPS, and disabling the frame-rate limit fell below 7 FPS. Disabling the
+browser-process macOS DisplayLink also made the hidden renderer settle around
+30-36 FPS. None is a product workaround; all temporary switches and the
+application-host consumer/native plumbing were removed.
+
+The same exact client code in the restored visible Electron parent plus one
+AppKit-attached Metal child immediately held 119.99-120.01 FPS at rest with
+8.2-8.5 ms intervals. Actual gameplay then measured 120.002 FPS, and a genuine
+10-second `W` hold retained exact focus and key release while per-second game
+samples remained 119.99-120.01 FPS. A fresh 30-second movement sample measured
+119.47 FPS with an 8.4 ms p99 and the already-known one-time 125.1 ms first-key
+audio startup outlier. The immediately following 30-second movement sample
+measured 120.0004 FPS, 8.5 ms maximum, and zero intervals above 25, 50, or 100
+ms. Both retained exact focus and guaranteed key-up. The disposable comparison
+build was ad-hoc signed, so this is architectural/renderer evidence rather than
+release-signing proof. It reaffirms the existing product rule: macOS keeps one
+attached child; never substitute a popup, companion, or hidden-OSR application
+host.
+
+The rejected prototype did reveal one independent Steam Bridge defect. A
+10-second process sample found the regular overlay-environment pump performing
+`CGSessionCopyCurrentDictionary()` on Electron's UI thread, with individual
+SkyLight queries blocking for roughly 100-240 ms. Lock and main-display-sleep
+state now initialize once and refresh every 250 ms on a utility dispatch queue;
+hot-path getters read atomics. Afterward the regular pump took approximately
+0.17-0.19 ms instead of periodically blocking the browser/UI thread. A final
+five-second process sample placed every retained session-dictionary query under
+a libdispatch root worker and `SteamBridgeRefreshOverlayEnvironment`, never the
+Electron main thread. Keep this fix on the attached architecture and retest
+only the affected pacing/lifecycle surface before the next complete release-
+candidate gate.
+
+### 2026-08-03 macOS sustained-movement/audio pacing checkpoint
+
+Focused unattended movement work used the exact signed/stapled consumer at the
+built-in Retina display's exact 120 Hz mode. A new `movement-pacing` adapter
+holds genuine HID `W`, requires trusted down/up, retains rAF tail latency,
+Long Task and Long Animation Frame aggregates, focus/lifecycle state, bounded
+native samples, and visual proof, and releases the key two seconds before the
+sample ends. Its `--quiet-pacing` diagnostic removes both the one-second FPS
+report and the consumer's 100 ms native-overlay snapshot loop; neither switch
+is eligible for qualification, promotion, or final receipts.
+
+The root first-input stall is now measured rather than inferred. In two
+ordinary quiet samples, one 125-145 ms main-thread task began at the first
+trusted `W` down and produced the only frame above 100 ms. A timestamped
+15-second control placed task start at 565.8 ms and trusted key-down at 566.0
+ms; key-up at 13.539 seconds was clean. An otherwise identical diagnostic
+created Web Audio immediately before movement. Context construction took
+133.2 ms outside the sample; movement then passed at 117.001 FPS against 120
+Hz, p95 8.4 ms, maximum 51 ms, zero Long Tasks, zero frames above 100 ms, exact
+focus/input/lifecycle retention, and zero crashes. This proves delayed native
+AudioContext startup owned the first-key hitch; it does not implicate Metal
+cadence.
+
+The configured client repair treats the exact Steam cursor bridge as a native
+audio host and reuses its existing constructor-time `activatePlayback()` path,
+moving context startup and bounded menu-sound preload into loading instead of
+the first gameplay key. Its focused audio smoke, TypeScript, 632-module Vite
+production build, source-map cleanup, and `git diff --check` pass. The
+unattended Developer ID keychain still returned `errSecInternalComponent`, so a
+disposable packaged app was locally ad-hoc signed with the same JIT and
+disable-library-validation entitlements for non-release proof. That live app
+loaded the patched loopback PX build, entered the actual game, exposed one
+running AudioContext before the first trusted `W`, and eliminated the old
+125-145 ms first-key task and every 100 ms frame. This validates the product
+path without misrepresenting the disposable signature as release evidence.
+
+The remaining 109-110 FPS samples were independently isolated to active Parsec
+capture, not PX or the attached Metal child. Under capture, a 30-second CPU
+profile was idle for 25.3 seconds; engine functions consumed only tens of
+milliseconds, long-animation frames had zero blocking script, and cadence was
+109.998 FPS with an 8.3 ms median but recurrent coalesced frames. Parsec used
+about 35% CPU while WindowServer used about 45%. With only Parsec stopped, the
+same unchanged running app and movement route passed at 119.735/120 FPS, p95
+8.4 ms, maximum 27.5 ms, zero frames at or above 50/100 ms, zero Long Tasks,
+and exact focus, visibility, trusted key-up/down, canvas, and audio continuity.
+Parsec was restarted immediately afterward. Cadence QA must disconnect remote
+display capture; a Steam-client UI comparison or a streamed view is not a
+valid local 120 Hz game-pacing control.
+
+The separate experiment that drove the passive attached Metal child at 120 Hz
+is rejected and reverted. It doubled passive compositor work and still
+produced 158/333 ms renderer stalls; the product policy remains a bounded
+at-most-60-FPS discovery heartbeat while passive and selected-display cadence
+while Steam presentation is active. Keep the one attached child. Do not retry
+popup/companion architecture, weaken the movement threshold, or treat QA
+sampler overhead as shipped behavior.
+
+Next step: deploy a normally release-signed candidate containing the client
+audio-host repair, then rerun only quiet 30-second `movement-pacing` at 120 Hz
+with Parsec/capture disconnected and the ordinary affected movement probe. If
+those are green, retain the existing broad macOS suite for the next release-
+candidate gate rather than rerunning its unaffected cases. No commit or push
+was made in this checkpoint.
 
 ### 2026-08-02 v0.3.15 stable release checkpoint
 
@@ -3171,3 +3301,103 @@ The methods are now required in the interface, while runtime feature detection
 still preserves compatibility with older native binaries. The validator now
 asserts a boolean condition so future optional-method mistakes fail promptly
 without retaining or rendering an AST graph.
+
+### 2026-08-04 macOS movement-pacing causal fix
+
+The periodic movement investigation separated two independent stalls. The first
+trusted `W` press could synchronously initialize Web Audio because client-px
+recognized only the React Native host as native. Client-px commit
+`d7b61b51` recognizes the Steam preload bridge too, so audio is activated before
+gameplay rather than on the first movement key.
+
+The remaining intermittent hitch was below the renderer's JavaScript work. The
+attached Metal child called `CGDisplayIsAsleep` from every `drawInMTKView` and a
+separate 250 ms timer polled both CoreGraphics display state and the current
+session dictionary. Those calls cross into WindowServer even though the child
+is passive while Steam is inactive. Keep one exact initial CoreGraphics/session
+read, cache the result in atomics, and update it through AppKit's public
+`NSWorkspaceScreensDidSleepNotification`, `NSWorkspaceScreensDidWakeNotification`,
+`NSWorkspaceSessionDidResignActiveNotification`, and
+`NSWorkspaceSessionDidBecomeActiveNotification`. Never restore display/session
+polling to the draw path or a periodic background timer.
+
+This repair does not change the presenter architecture. The only selected
+macOS presenter remains the AppKit-attached child window. The dormant local
+application-host/IOSurface experiment was removed from the build inputs before
+the release candidate was rebuilt; do not revive it as a popup, companion, or
+parallel fallback.
+
+Three 30-second source-linked `movement-pacing` runs at 120 Hz passed at
+119.701, 119.834, and 119.100 FPS. The first two had no interval over 25 ms;
+the clean-child-only rebuild's single 59.1 ms interval remained within the
+bounded sporadic-event contract. Exact signed/notarized/stapled candidate
+`804ba18c0087889d8668defeb25bf6c5690d12227092f75b1cbf82f4be31ac27`
+then passed the affected four-case sweep at
+`/private/tmp/fov4-macos-qa-signed-affected-20260804-01`: movement measured
+119.567 FPS with a 24.8 ms maximum and zero intervals over 25 ms; overlay
+open/close, overlay state stress, and overlay FPS also passed with the same
+child, exact geometry/corners, display-rate pacing, display restoration, Steam
+survival, and zero app/Steam/graphics crashes.
+
+That focused run also found a harness-only receipt defect: movement native
+samples were sanitized once when emitted and then interpreted as raw nested
+telemetry during canonical receipt validation. The sanitizer now accepts both
+raw and already-bounded shapes and has an explicit idempotence regression test.
+The canonical manifest and summary for the affected sweep are complete. The
+five-profile, 26-case final run must remain the single full rerun after these
+individual affected cases are green.
+
+### 2026-08-04 macOS high-refresh QA environment isolation
+
+The first final-run attempt stopped at `display-pacing-transition` because the
+120 Hz renderer remained healthy while PID-pinned Chromium presentation was
+only 113.212 FPS. Narrowing the presentation trace to its exact
+`disabled-by-default-devtools.timeline.frame` category plus an explicit `*`
+exclusion removed Chromium's implicit default categories. Narrowing the
+transition trace to the only consumed ordinary category, `viz`, removed the
+unused GPU and disabled `cc.debug` streams. Static QA is 100/100 green with the
+new trace contract. Focused controls then proved neither trace observer, display
+settling time, nor the ScreenCaptureKit helper owned the remaining loss.
+
+A fresh no-transition baseline reproduced 113.001 FPS while visible background
+ChatGPT, Chrome, and VSCodium windows were consuming compositor/GPU time. The
+applications were hidden without being quit. The unchanged next baseline passed
+at 120.001 FPS with zero drops, and the unchanged 120 -> 60 -> 120 transition
+passed at 119.004 FPS physical presentation with 119.800 FPS scheduler recovery.
+Do not weaken the 95% gate or modify product pacing for this environmental red.
+For high-refresh qualification, record and temporarily hide visible background
+GPU applications, retain their processes/tasks, and restore their prior
+visibility after the suite.
+
+Final attempt 02 passed the complete 120 Hz profile and reached the 60 Hz
+movement case before exposing a QA-observer interaction: the ordinary one-second
+native FPS sample and the 100 ms full overlay snapshot could intermittently
+produce the hitch they were measuring while the overlay was inactive. Either
+observer alone was green. FOV4 now returns from the high-resolution snapshot
+timer while the Steam surface is inactive; active-overlay diagnostics are
+unchanged. Two ordinary-instrumentation 60 Hz movement receipts then passed at
+59.867 and 59.933 FPS, with zero intervals over 50 ms and no long tasks, and the
+affected open/close, state-stress, and overlay-FPS sweep passed 3/3.
+
+Exact signed/notarized/stapled candidate
+`d6b9fcf478a8bf671954e006b420d3b5f9d14a7966360b32d545b96be18799d8`
+(app.asar `5fa104e7b27fcf64ace10cc54c9781db48b8eb1df0195472b968133436e37eee`,
+stable Electron 43.2.0) reached 103/130 in final attempt 03 before one early
+low-Retina overlay comparison sampled Steam's final layout one frame too soon.
+The identical `overlay-state-stress` -> `fps-overlay` sequence passed immediately
+and again after the QA gate was corrected to require two consecutive complete
+static composites inside a bounded window. Persistent right/bottom insets,
+seams, title-chrome coverage, aspect loss, or square restored corners still fail.
+
+Final receipt `/private/tmp/fov4-macos-qa-final-130-20260804-04` is green:
+130/130 case executions, 26/26 in each of five public display profiles, zero
+failures/skips, no accepted exceptions, no app/Steam-overlay/Steam/graphics
+crashes, exact candidate close, Steam survival, and exact restoration to
+1728x1117 logical / 3456x2234 physical at 120 Hz. Sustained movement measured
+119.867 FPS at 120 Hz, 48.000 FPS at 48 Hz, 59.867 FPS in both Retina 60 Hz
+profiles, and 59.733 FPS at scale 1; all five had zero intervals over 50 ms,
+zero intervals over 100 ms, and zero long tasks. The schema-v2 receipt is
+complete, all 84 evidence files match their SHA-256 manifest, and manifest hash
+`0e66d8f158a87f015e00266b09ee2baec432aabe867f6155ae55bb401ee49d8e`
+matches the summary. ChatGPT, Chrome, and VSCodium visibility was restored after
+qualification; none was quit, and no lock- or sleep-capable test ran.

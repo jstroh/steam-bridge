@@ -24,12 +24,14 @@ private struct Options {
     var titleContains: String?
     var kind: String?
     var shortcut: String?
+    var gameplayKey: String?
     var action: String?
     var menu: String?
     var item: String?
     var dx = 0.0
     var dy = 0.0
     var durationMs = 500.0
+    var holdMs = 10_000.0
     var steps = 30
     var edgeOffset = -1.0
     var frame: CGRect?
@@ -72,6 +74,7 @@ private func usage() -> String {
       macos-window-input.swift move-child --pid PID [--x-from-right N] [--y-from-top N]
       macos-window-input.swift move-title --pid PID
       macos-window-input.swift key --pid PID --shortcut cmd-m|cmd-h|cmd-tab|cmd-shift-o|escape|ctrl-cmd-f
+      macos-window-input.swift hold-key --pid PID --key w|a|s|d [--hold-ms N]
       macos-window-input.swift focus --pid PID
       macos-window-input.swift focus-bundle --bundle-id ID
       macos-window-input.swift menu --pid PID --menu LABEL --item LABEL
@@ -125,6 +128,7 @@ private func parseOptions(_ arguments: [String]) throws -> Options {
         case "--title-contains": options.titleContains = try takeValue(arguments, index: &index, option: option)
         case "--kind": options.kind = try takeValue(arguments, index: &index, option: option)
         case "--shortcut": options.shortcut = try takeValue(arguments, index: &index, option: option)
+        case "--key": options.gameplayKey = try takeValue(arguments, index: &index, option: option)
         case "--action": options.action = try takeValue(arguments, index: &index, option: option)
         case "--menu": options.menu = try takeValue(arguments, index: &index, option: option)
         case "--item": options.item = try takeValue(arguments, index: &index, option: option)
@@ -139,6 +143,11 @@ private func parseOptions(_ arguments: [String]) throws -> Options {
                 throw InputError.usage("--duration-ms must be in [50, 10000]")
             }
             options.durationMs = value
+        case "--hold-ms":
+            guard let value = Double(try takeValue(arguments, index: &index, option: option)), value >= 250, value <= 60_000 else {
+                throw InputError.usage("--hold-ms must be in [250, 60000]")
+            }
+            options.holdMs = value
         case "--steps":
             guard let value = Int(try takeValue(arguments, index: &index, option: option)), value >= 2, value <= 1000 else {
                 throw InputError.usage("--steps must be in [2, 1000]")
@@ -1145,6 +1154,92 @@ private func postShortcut(_ shortcut: String) throws {
     }
 }
 
+private func gameplayKeyCode(_ key: String) throws -> CGKeyCode {
+    switch key.lowercased() {
+    case "w": return 13
+    case "a": return 0
+    case "s": return 1
+    case "d": return 2
+    default: throw InputError.usage("--key must be w, a, s, or d")
+    }
+}
+
+private func postGameplayKey(_ keyCode: CGKeyCode, down: Bool) throws {
+    guard let event = CGEvent(
+        keyboardEventSource: nil,
+        virtualKey: keyCode,
+        keyDown: down
+    ) else {
+        throw InputError.failure("failed to create gameplay keyboard event")
+    }
+    event.setIntegerValueField(.keyboardEventAutorepeat, value: 0)
+    event.post(tap: .cghidEventTap)
+}
+
+private func holdGameplayKey(pid: pid_t, key: String, holdMs: Double) throws -> [String: Any] {
+    guard consoleLockedState() == false else {
+        throw InputError.failure("console is locked or its state is unreadable")
+    }
+    let keyCode = try gameplayKeyCode(key)
+    let started = Date()
+    var keyUpPosted = false
+    var focusRetained = true
+    var focusLossReason = "none"
+    var consecutiveInactiveSamples = 0
+    try postGameplayKey(keyCode, down: true)
+    defer {
+        if !keyUpPosted {
+            try? postGameplayKey(keyCode, down: false)
+        }
+    }
+
+    let deadline = started.addingTimeInterval(holdMs / 1_000)
+    while Date() < deadline {
+        guard let application = NSRunningApplication(processIdentifier: pid),
+              !application.isTerminated else {
+            focusRetained = false
+            focusLossReason = "target-terminated"
+            break
+        }
+        if consoleLockedState() != false {
+            focusRetained = false
+            focusLossReason = "console-locked-or-unreadable"
+            break
+        }
+        if application.isHidden {
+            focusRetained = false
+            focusLossReason = "target-hidden"
+            break
+        }
+        if application.isActive {
+            consecutiveInactiveSamples = 0
+        } else {
+            consecutiveInactiveSamples += 1
+            if consecutiveInactiveSamples >= 3 {
+                focusRetained = false
+                focusLossReason = "target-inactive"
+                break
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    try postGameplayKey(keyCode, down: false)
+    keyUpPosted = true
+    let elapsedMs = Date().timeIntervalSince(started) * 1_000
+    return [
+        "schemaVersion": 1,
+        "pid": pid,
+        "key": key.lowercased(),
+        "requestedHoldMs": holdMs,
+        "elapsedMs": elapsedMs,
+        "keyDownPosted": true,
+        "keyUpPosted": keyUpPosted,
+        "focusRetained": focusRetained,
+        "focusLossReason": focusLossReason,
+        "consecutiveInactiveSamples": consecutiveInactiveSamples,
+    ]
+}
+
 private func descendants(_ element: AXUIElement, depth: Int = 0) -> [AXUIElement] {
     guard depth < 12 else { return [] }
     let children = axElements(element, kAXChildrenAttribute as CFString)
@@ -1249,6 +1344,17 @@ private func main() -> Int32 {
             guard let shortcut = options.shortcut else { throw InputError.usage("key requires --shortcut") }
             try postShortcut(shortcut)
             try writeJson(["schemaVersion": 1, "pid": pid, "shortcut": shortcut, "posted": true])
+        case "hold-key":
+            try requireTrusted()
+            let pid = try requireLivePid(options.pid)
+            guard consoleLockedState() == false else {
+                throw InputError.failure("console is locked or its state is unreadable")
+            }
+            try activate(pid: pid, titleContains: options.titleContains)
+            guard let key = options.gameplayKey else {
+                throw InputError.usage("hold-key requires --key")
+            }
+            try writeJson(try holdGameplayKey(pid: pid, key: key, holdMs: options.holdMs))
         case "focus":
             try requireTrusted()
             let pid = try requireLivePid(options.pid)
