@@ -7,9 +7,10 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-Review anchor: `e92b157faa1d73853607689eddeabac5067f1484`
-(`Update audited transitive dependencies`). npm `latest` and the stable GitHub
-Release are `0.3.18`; the review anchor is bound to immutable tag `v0.3.18`.
+Review anchor: `d15f6884a192335239bef367273288ea58a4a8e8`
+(`Fix Windows mixed-refresh display cadence`). npm `latest` and the stable
+GitHub Release are `0.3.18`; immutable tag `v0.3.18` remains bound to
+`e92b157faa1d73853607689eddeabac5067f1484`.
 Neither the source commit alone nor an intermediate ad-hoc bundle is a
 publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
@@ -50,8 +51,9 @@ never move, reuse, or publish `v0.3.14`.
 
 ### 2026-08-07 Windows mixed-refresh pacing repair (unreleased)
 
-Stable npm and GitHub remain `0.3.18` at review anchor `e92b157`; this is an
-unreleased working slice and is not a publishable candidate yet.
+Stable npm and GitHub remain `0.3.18` at tagged commit `e92b157`; source review
+anchor `d15f688` is an unreleased working slice and is not a publishable
+candidate yet.
 
 A player-provided 29.97 FPS capture from a Windows 200 Hz + 75 Hz desktop
 contains a measured 18-frame, approximately 0.6 second freeze during movement.
@@ -82,12 +84,27 @@ runs recorded zero device loss, recovery, frame-latency timeout, or slow shared-
 texture copies. The desktop was restored to its original 1920x1200 at 60 Hz and
 the app shut down cleanly.
 
-This host has one active physical panel, so the exact player 200 Hz + 75 Hz
-cross-monitor move remains a required release-candidate A/B on that player or a
-two-monitor Windows fixture. Rate normalization is covered for 60 and 200 Hz
-in Rust tests, native diagnostics compiled and loaded in Electron, and the
-single-panel live rate transition proves the consumer follows the new native
-field without restarting.
+Focused mixed-display proof then enabled one isolated 1920x1080 at 60 Hz,
+100%-scale virtual output beside the 1920x1200 at 165 Hz, 125%-scale internal
+panel without opening a remote-desktop client. The configured actual game was
+dragged by its real native title bar across the boundary in both directions.
+The host changed `DISPLAY1`/165 Hz/120 DPI to `DISPLAY11`/60 Hz/96 DPI and back;
+renderer rAF, offscreen shared-texture production, native pump, and D3D present
+all settled at the destination refresh rate. Logical client size remained
+1280x720, the image retained its aspect and alignment, and device loss,
+recovery, slow-copy, and crash counts stayed zero.
+
+That pass exposed a configured-consumer ownership gap rather than another
+native-presenter defect: its display lookup attempted a nonexistent generic
+`rect` field and otherwise trusted the cursor position. The consumer now uses
+the native `outerRect` physical center, converts it through Electron
+`screenToDipPoint`, selects the nearest Electron display, and applies the
+refresh rate from the same native snapshot so a boundary crossing cannot mix
+two monitor samples. The repaired consumer passed another live 165 -> 60 ->
+165 actual-game title-drag sequence and Windows was restored to one
+1920x1200@60 output at 125% scale. The local cross-monitor path is therefore
+proven. The reporter's distinct 200 Hz + 75 Hz hardware condition remains the
+release-candidate A/B for the externally reported movement freeze.
 
 ### 2026-08-04 v0.3.18 stable release checkpoint
 
