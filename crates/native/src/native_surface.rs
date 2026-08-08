@@ -1559,11 +1559,12 @@ mod windows {
     };
     use windows_sys::Win32::Graphics::Gdi::{
         BeginPaint, ClientToScreen, CreateFontIndirectW, DeleteObject, DrawFrameControl, DrawTextW,
-        EndPaint, FillRect, GetDC, GetMonitorInfoW, GetStockObject, GetSysColor, GetSysColorBrush,
-        GetTextExtentPoint32W, MonitorFromWindow, ReleaseDC, ScreenToClient, SelectObject,
-        SetBkMode, SetTextColor, COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_MENU,
-        COLOR_MENUBAR, COLOR_MENUTEXT, DEFAULT_GUI_FONT, DFCS_INACTIVE, DFCS_MENUARROW, DFC_MENU,
-        DT_HIDEPREFIX, DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HDC, MONITORINFO,
+        EndPaint, EnumDisplaySettingsW, FillRect, GetDC, GetMonitorInfoW, GetStockObject,
+        GetSysColor, GetSysColorBrush, GetTextExtentPoint32W, MonitorFromWindow, ReleaseDC,
+        ScreenToClient, SelectObject, SetBkMode, SetTextColor, COLOR_GRAYTEXT, COLOR_HIGHLIGHT,
+        COLOR_HIGHLIGHTTEXT, COLOR_MENU, COLOR_MENUBAR, COLOR_MENUTEXT, DEFAULT_GUI_FONT, DEVMODEW,
+        DFCS_INACTIVE, DFCS_MENUARROW, DFC_MENU, DT_HIDEPREFIX, DT_LEFT, DT_RIGHT, DT_SINGLELINE,
+        DT_VCENTER, ENUM_CURRENT_SETTINGS, HDC, MONITORINFO, MONITORINFOEXW,
         MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, TRANSPARENT,
     };
     use windows_sys::Win32::Graphics::OpenGL::{
@@ -1644,6 +1645,59 @@ mod windows {
     const VK_RIGHT_CONTROL_CODE: i32 = 0xA3;
     const VK_LEFT_ALT_CODE: i32 = 0xA4;
     const VK_RIGHT_ALT_CODE: i32 = 0xA5;
+
+    struct WindowDisplayDiagnostics {
+        device_name: String,
+        refresh_rate: Option<u32>,
+    }
+
+    fn normalize_windows_display_refresh_rate(refresh_rate: u32) -> Option<u32> {
+        // EnumDisplaySettings documents 0 and 1 as driver-defined default-rate
+        // sentinels rather than measured Hz values. Let the consumer use its
+        // Electron fallback when Windows returns either sentinel.
+        (refresh_rate > 1).then_some(refresh_rate)
+    }
+
+    unsafe fn window_display_diagnostics(hwnd: HWND) -> Option<WindowDisplayDiagnostics> {
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if monitor.is_null() {
+            return None;
+        }
+
+        let mut monitor_info: MONITORINFOEXW = mem::zeroed();
+        monitor_info.monitorInfo.cbSize = mem::size_of::<MONITORINFOEXW>() as u32;
+        if GetMonitorInfoW(monitor, &mut monitor_info.monitorInfo) == 0 {
+            return None;
+        }
+
+        let device_name_end = monitor_info
+            .szDevice
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(monitor_info.szDevice.len());
+        let device_name = String::from_utf16_lossy(&monitor_info.szDevice[..device_name_end]);
+        if device_name.is_empty() {
+            return None;
+        }
+
+        let mut display_mode: DEVMODEW = mem::zeroed();
+        display_mode.dmSize = mem::size_of::<DEVMODEW>() as u16;
+        let refresh_rate = if EnumDisplaySettingsW(
+            monitor_info.szDevice.as_ptr(),
+            ENUM_CURRENT_SETTINGS,
+            &mut display_mode,
+        ) != 0
+        {
+            normalize_windows_display_refresh_rate(display_mode.dmDisplayFrequency)
+        } else {
+            None
+        };
+
+        Some(WindowDisplayDiagnostics {
+            device_name,
+            refresh_rate,
+        })
+    }
 
     pub struct FrameLatencyWaitRequest {
         surface_generation: u64,
@@ -2718,6 +2772,7 @@ mod windows {
             let style = GetWindowLongPtrW(surface.hwnd, GWL_STYLE) as u32;
             let ex_style = GetWindowLongPtrW(surface.hwnd, GWL_EXSTYLE) as u32;
             let renderer = renderer_diagnostics_json(&surface.renderer);
+            let display = window_display_diagnostics(surface.hwnd);
             let adopted_steam_dialog = surface.adopted_steam_dialog.as_ref().map(|dialog| {
                 json!({
                     "hwnd": hwnd_hex(dialog.hwnd),
@@ -2791,6 +2846,14 @@ mod windows {
                 object.insert(
                     "foregroundKeyboardLayout".to_owned(),
                     json!(foreground_keyboard_layout),
+                );
+                object.insert(
+                    "displayDeviceName".to_owned(),
+                    json!(display.as_ref().map(|value| &value.device_name)),
+                );
+                object.insert(
+                    "displayRefreshRate".to_owned(),
+                    json!(display.as_ref().and_then(|value| value.refresh_rate)),
                 );
                 object.insert("pointer".to_string(), pointer);
                 object.insert(
@@ -5148,10 +5211,19 @@ mod windows {
     mod tests {
         use super::{
             centered_window_rect, clamp_client_size_to_minimum, logical_pixels_to_physical,
-            menu_text_without_mnemonics, minimum_menu_dpi, physical_pixels_to_logical,
-            set_standalone_logical_client_size, set_standalone_min_client_size,
-            standalone_logical_client_size, standalone_min_client_size, RECT,
+            menu_text_without_mnemonics, minimum_menu_dpi, normalize_windows_display_refresh_rate,
+            physical_pixels_to_logical, set_standalone_logical_client_size,
+            set_standalone_min_client_size, standalone_logical_client_size,
+            standalone_min_client_size, RECT,
         };
+
+        #[test]
+        fn windows_display_refresh_rejects_driver_default_sentinels() {
+            assert_eq!(normalize_windows_display_refresh_rate(0), None);
+            assert_eq!(normalize_windows_display_refresh_rate(1), None);
+            assert_eq!(normalize_windows_display_refresh_rate(60), Some(60));
+            assert_eq!(normalize_windows_display_refresh_rate(200), Some(200));
+        }
 
         #[test]
         fn standalone_client_dimensions_scale_from_logical_pixels() {

@@ -17054,7 +17054,7 @@ function syncElectronSteamOverlayDisplayFrameRate(
       : undefined;
   };
   const frameRate = resolveManagedOverlayDisplayFrameRate(
-    electronUsesStandaloneLinuxOverlayHost(),
+    process.platform === "win32" || electronUsesStandaloneLinuxOverlayHost(),
     electronWindowDisplayFrameRate(window),
     nativeDisplayRefreshRate()
   );

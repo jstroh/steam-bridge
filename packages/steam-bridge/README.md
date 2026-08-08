@@ -24,7 +24,7 @@ Requirements:
 - Electron 24 or newer when used with Electron
 - A running Steam client and a Steam app ID
 
-The repository smoke application tracks Electron `43.2.0`. Windows
+The repository smoke application tracks Electron `43.3.0`. Windows
 shared-texture hosting is tested against that runtime; applications using the
 lower-level host should feature-detect Electron's offscreen texture event.
 
@@ -481,11 +481,17 @@ report `sharedTextureUpdateCount`, `lastSharedTextureUpdateDurationMs`, and
 `maxSharedTextureUpdateDurationMs` for this synchronous native copy boundary.
 
 Set `frameRate` to the active display's refresh rate and update it with
-`session.setFrameRate(...)` when the native host moves to another monitor. The
-Windows standalone host uses a DXGI frame-latency waitable swap chain as its
-presentation boundary and submits tear-free frames with `Present(1)`. Waiting
-on DXGI before each frame avoids relying on JavaScript timer precision while
-still following the active display's refresh cadence.
+`session.setFrameRate(...)` when the native host moves to another monitor. On
+Windows, prefer `session.snapshot().nativeHostDiagnostics.displayRefreshRate`:
+it is queried from the monitor containing the native host HWND and avoids
+mixing Win32 physical coordinates with Electron's DIP display coordinates on
+mixed-DPI desktops. `displayDeviceName` identifies the selected Windows
+display for diagnostics. Fall back to Electron's display rate if Windows
+returns its driver-default `0` or `1` sentinel. The Windows standalone host
+uses a DXGI frame-latency waitable swap chain as its presentation boundary and
+submits tear-free frames with `Present(1)`. Waiting on DXGI before each frame
+avoids relying on JavaScript timer precision while still following the active
+display's refresh cadence.
 New CPU frames and shared textures are marked dirty and, when
 `continuousPresent` is `false`, coalesce into one Windows pump on the next main-
 loop turn. The native upload/copy still completes synchronously, so Electron's
@@ -540,7 +546,13 @@ const session = steamworks.overlay.startNativeOverlaySession({
   }
 });
 
-function applyDisplayRate(displayFrequency: number | undefined) {
+function applyDisplayRate(electronDisplayFrequency: number | undefined) {
+  const nativeDisplayFrequency = Number(
+    session.snapshot().nativeHostDiagnostics?.displayRefreshRate
+  );
+  const displayFrequency = nativeDisplayFrequency > 1
+    ? nativeDisplayFrequency
+    : electronDisplayFrequency;
   const frameRate = Math.max(1, Math.round(displayFrequency || 60));
   gameWindow.webContents.setFrameRate(frameRate);
   session.setFrameRate(frameRate);

@@ -1011,6 +1011,11 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /object\.insert\("keyboardLayout"\.to_owned\(\), json!\(keyboard_layout\)\)/);
   assert.match(source, /"foregroundKeyboardLayout"\.to_owned\(\)/);
   assert.match(source, /json!\(foreground_keyboard_layout\)/);
+  assert.match(source, /MonitorFromWindow\(hwnd, MONITOR_DEFAULTTONEAREST\)/);
+  assert.match(source, /GetMonitorInfoW\(monitor, &mut monitor_info\.monitorInfo\)/);
+  assert.match(source, /EnumDisplaySettingsW\([\s\S]*?ENUM_CURRENT_SETTINGS/);
+  assert.match(source, /object\.insert\([\s\S]*?"displayDeviceName"\.to_owned\(\)/);
+  assert.match(source, /object\.insert\([\s\S]*?"displayRefreshRate"\.to_owned\(\)/);
   assert.match(source, /AreDpiAwarenessContextsEqual\(/);
   assert.match(source, /message == WM_DPICHANGED/);
   assert.match(source, /matches!\(message, WM_DISPLAYCHANGE \| WM_SETTINGCHANGE\)/);
@@ -12817,6 +12822,7 @@ test("macOS keeps one display-synchronized MTKView clock in passive and active p
   assert.notEqual(syncEnd, -1);
   const sync = electronSource.slice(syncStart, syncEnd);
   assert.match(sync, /electronWindowDisplayFrameRate\(window\)/);
+  assert.match(sync, /process\.platform === "win32" \|\| electronUsesStandaloneLinuxOverlayHost\(\)/);
   assert.match(sync, /presenter\.setFrameRate\(frameRate\)/);
   assert.match(
     electronSource,

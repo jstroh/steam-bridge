@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-04
+Last reviewed: 2026-08-07
 
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
@@ -47,6 +47,47 @@ All argument-bearing release and trusted-publication workflow calls now invoke
 their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
+
+### 2026-08-07 Windows mixed-refresh pacing repair (unreleased)
+
+Stable npm and GitHub remain `0.3.18` at review anchor `e92b157`; this is an
+unreleased working slice and is not a publishable candidate yet.
+
+A player-provided 29.97 FPS capture from a Windows 200 Hz + 75 Hz desktop
+contains a measured 18-frame, approximately 0.6 second freeze during movement.
+The report also says moving the game between those outputs changes the symptom.
+This external condition reopens only the Windows movement-cadence case; it does
+not invalidate the already-proven standalone D3D host architecture.
+
+The consumer was passing the Win32 host `GetWindowRect` directly to Electron
+`screen.getDisplayMatching`. Win32 returns physical virtual-screen coordinates,
+while Electron screen coordinates are DIP on Windows. Mixed-DPI desktops can
+therefore select the wrong Electron display and drive the hidden OSR producer at
+the wrong refresh rate. The Windows native host now reports
+`displayDeviceName` and `displayRefreshRate` from the monitor containing its
+actual HWND, using `MonitorFromWindow`, `GetMonitorInfoW`, and
+`EnumDisplaySettingsW(ENUM_CURRENT_SETTINGS)`. Windows' documented `0` and `1`
+driver-default sentinels are rejected so consumers retain their Electron
+fallback. Managed Electron overlay cadence also prefers the native Windows rate
+when available.
+
+Focused local proof used the Fantasy Online 2 actual game through stable
+Electron 43.3.0 and the source-linked release native module on the AMD Radeon RX
+7700S. A 20-second held-movement window at 60 Hz measured renderer rAF
+59.994-60.006 FPS with no interval above 25 ms; paint averaged 59.995 FPS and
+present averaged 59.895 FPS. After a live switch to 165 Hz, another 20-second
+held-movement window measured renderer rAF 165.000-165.043 FPS with no interval
+above 25 ms; paint averaged 165.025 FPS and present averaged 164.575 FPS. Both
+runs recorded zero device loss, recovery, frame-latency timeout, or slow shared-
+texture copies. The desktop was restored to its original 1920x1200 at 60 Hz and
+the app shut down cleanly.
+
+This host has one active physical panel, so the exact player 200 Hz + 75 Hz
+cross-monitor move remains a required release-candidate A/B on that player or a
+two-monitor Windows fixture. Rate normalization is covered for 60 and 200 Hz
+in Rust tests, native diagnostics compiled and loaded in Electron, and the
+single-panel live rate transition proves the consumer follows the new native
+field without restarting.
 
 ### 2026-08-04 v0.3.18 stable release checkpoint
 
