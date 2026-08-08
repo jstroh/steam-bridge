@@ -2,30 +2,63 @@
 
 Last reviewed: 2026-08-08
 
-Active researched objective: make Steam Input usable as a game-development
-surface without removing the raw compatibility API. The decided architecture,
-closed paths, phased implementation, and cross-platform QA contract are in
-[`steam-input-product-plan.md`](steam-input-product-plan.md). The active
-worktree now implements the raw open-enum/lifecycle fixes, bounded asynchronous
-wait and direct-event queue, manifest validator/type generator, one-call native
-batch poll, typed `SteamInputSession`, disconnect release state, revision-aware
-prompts, rebinding/output/diagnostics, bounded acknowledged Electron MessagePort
-delivery with coalescing metrics, a secure Electron inspector, a Node diagnostic
-runner, and the public guide. Final Windows automated validation is green:
-`npm test` passed 400/400 JavaScript/TypeScript tests and 49/49 Rust tests;
-`package:smoke`, `api:check`, `check:platform`, `native:fmt`, `native:check`, and
-`git diff --check` passed. Live App ID 480 probes initialized Steam, produced
-monotonic batched frames, and shut down cleanly. Steam enumerated zero attached
-controllers and had no matching example action configuration, so physical
-button/glyph/output/rebinding claims and macOS/Deck physical lanes remain
-unclaimed pending a candidate with the required hardware. The implementation
-review anchor is current `main`
-`03c0f02969e1ce4c3f257d92fcdab93cba3e7606` plus the active worktree.
+Steam Input is now available as a game-development surface without removing the
+raw compatibility API. The decided architecture, closed paths, implementation,
+and cross-platform QA contract are in
+[`steam-input-product-plan.md`](steam-input-product-plan.md) and
+[`../steam-input.md`](../steam-input.md). Stable `0.3.20` includes the raw
+open-enum/lifecycle fixes, bounded asynchronous wait and direct-event queue,
+manifest validator/type generator, one-call native batch poll, typed
+`SteamInputSession`, disconnect release state, revision-aware prompts,
+rebinding/output/diagnostics, bounded acknowledged Electron MessagePort
+delivery with coalescing metrics, a secure Electron inspector, a Node
+diagnostic runner, and the public guide. Physical controller
+button/glyph/output/rebinding behavior and macOS/Deck physical-controller lanes
+remain unclaimed until the required hardware is available; the Windows
+software, packaging, real-game, and ordinary-overlay gates are complete.
 
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-08 v0.3.20 stable release checkpoint
+
+Patch `0.3.20` is published at immutable tag and commit `v0.3.20` /
+`c8baaf9c30252b9c3c25ba3a0c24bb8e94cfeb7a`. Tag Release run
+`31280732693`, tag CI run `31280732707`, and trusted npm publication run
+`31281635144` all passed. The publication job restored and revalidated the
+exact tag artifact and candidate-bound Windows receipt through the protected
+`npm-production` environment. Its temporary compressed-proof secret was
+deleted after publication.
+
+npm `latest` and the stable GitHub Release resolve to `0.3.20`; the package has
+SLSA provenance. The npm and audited tag tarball is 10,694,935 bytes with
+SHA-256
+`2c55a9e4f658452185dbcbf4011ffeb4eefaff81b0d15a38c11e23d859127ea6`
+and registry integrity
+`sha512-Ha1eA6GcOYbTUFr/iWCO963xwdvyLb0qm3QhXZYr/Fb9CUNDoQvgh1PiaOIZRNA35SsazTHesHqm1L9qTQ1aaw==`.
+The audited Windows bundle is 403,198,464 bytes with SHA-256
+`0e327e4368c007ff9e4a6ad1424bdc01ae76dff3f62f58706a511464c85b0844`.
+The candidate binding SHA-256 is
+`48bc2c3349f7a1313100e4f24d3f7b2e23706a0932e0c05179ee9ad1d2931864`;
+the receipt semantic SHA-256 is
+`ac76b9f3bcdf60a0ee22811ef39af0326889274d20d25cec7a64332f30dcd27f`;
+the receipt file SHA-256 is
+`d367ec426b34ca1074617a1fa34a32ab64df7c354f8ecfe9dcc0c165124b140c`.
+
+The release passed 400/400 JavaScript/TypeScript tests, 49/49 Rust tests,
+supported-platform checks, formatting, native checks, API audit, package smoke,
+npm audit, and exact Electron/native-load verification for all 1,146 methods
+under stable Electron 43.3.0. The protected exact candidate installed into the
+configured Fantasy Online 2 consumer passed startup chrome, native menus,
+cursor behavior, actual-game login, sustained W/A/S/D movement, title drag,
+resize and exact 640x480 minimum, maximize, minimize, focus return, fullscreen
+restoration, rounded corners, ordinary Friends overlay alignment and close, and
+clean shutdown at 125% DPI. Its receipt records 369 active-game samples with
+59.9 FPS median paint and present plus eight active-overlay samples with 59.0
+FPS median present at 60 Hz, with zero crashes, device losses, recoveries,
+native frame-latency timeouts, target mismatches, or slow shared-texture copies.
 
 ### 2026-08-08 Windows retained-frame freeze investigation
 
@@ -108,9 +141,9 @@ regeneration. `npm test` is green at 400/400 JavaScript/TypeScript tests and
 remains subject to the existing hardware lanes and is not claimed by this
 automated checkpoint.
 
-Review anchor: `5125a14c272d45a915d131545b77339c82990e5e`
-(`Release steam-bridge 0.3.19`). npm `latest` and the stable GitHub Release are
-`0.3.19`; immutable tag `v0.3.19` is bound to that exact commit.
+Review anchor: `c8baaf9c30252b9c3c25ba3a0c24bb8e94cfeb7a`
+(`Release steam-bridge 0.3.20`). npm `latest` and the stable GitHub Release are
+`0.3.20`; immutable tag `v0.3.20` is bound to that exact commit.
 Neither the source commit alone nor an intermediate ad-hoc bundle is a
 publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
@@ -123,9 +156,9 @@ Shift+Tab input and treated a bounded Win32 modal-menu wait as a GPU failure.
 Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
-`v0.3.10`, `v0.3.12`, `v0.3.15`, `v0.3.17`, `v0.3.18`, and `v0.3.19` are
-published; `v0.3.19` is the current stable release. Exact `v0.3.11` and
-`v0.3.16` are immutable and unpublished.
+`v0.3.10`, `v0.3.12`, `v0.3.15`, `v0.3.17`, `v0.3.18`, `v0.3.19`, and
+`v0.3.20` are published; `v0.3.20` is the current stable release. Exact
+`v0.3.11` and `v0.3.16` are immutable and unpublished.
 The post-tag `v0.3.11` adversarial review found Web API credential fail-open
 paths and native lifecycle/resource ownership defects, so it must never be
 moved, reused, or published. Never move, reuse, or publish any rejected tag.
