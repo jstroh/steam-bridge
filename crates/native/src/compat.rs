@@ -465,6 +465,14 @@ const MAX_LEGACY_NETWORKING_PACKET_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_POP_COUNT: u32 = 65_536;
 const MAX_HTTP_HEADER_BYTES: u32 = 1024 * 1024;
 const MAX_HTTP_RESPONSE_BODY_BYTES: u32 = 100 * 1024 * 1024;
+const MAX_INVENTORY_LIST_ENTRIES: u32 = 1_000_000;
+const DEFAULT_ELIGIBLE_PROMO_ITEM_ENTRIES: u32 = 256;
+const MAX_INVENTORY_PROPERTY_BYTES: u32 = 1024 * 1024;
+const MAX_INVENTORY_SERIALIZED_RESULT_BYTES: u32 = 100 * 1024 * 1024;
+const DEFAULT_VIDEO_OPF_BUFFER_BYTES: u32 = 48_000;
+const MAX_VIDEO_OPF_BUFFER_BYTES: u32 = 1024 * 1024;
+const MAX_GAMEPAD_TEXT_CHARACTERS: u32 = 1024 * 1024;
+const MAX_STEAM_IMAGE_BYTES: u32 = 256 * 1024 * 1024;
 const MAX_USER_VOICE_BYTES: u32 = 1024 * 1024;
 const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
 const DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES: u32 = 2048;
@@ -3346,7 +3354,7 @@ pub fn friends_get_clan_chat_message(
     let friends = steam_friends()?;
     let clan_chat_id = bigint_to_u64(clan_chat_id64, "clanChatId64")?;
     let capacity = max_bytes.unwrap_or(4096).clamp(1, 65_536);
-    let mut data = vec![0u8; capacity as usize];
+    let mut data = bounded_zeroed_buffer(capacity, 65_536, "clan chat message")?;
     let mut entry_type = sys::EChatEntryType::k_EChatEntryTypeInvalid;
     let mut chatter = u64_to_csteam_id(0);
     let size = unsafe {
@@ -3431,7 +3439,7 @@ pub fn friends_get_friend_message(
     let friends = steam_friends()?;
     let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
     let capacity = max_bytes.unwrap_or(4096).clamp(1, 65_536);
-    let mut data = vec![0u8; capacity as usize];
+    let mut data = bounded_zeroed_buffer(capacity, 65_536, "friend message")?;
     let mut entry_type = sys::EChatEntryType::k_EChatEntryTypeInvalid;
     let size = unsafe {
         sys::SteamAPI_ISteamFriends_GetFriendMessage(
@@ -3866,7 +3874,7 @@ pub fn apps_dlc_download_progress(app_id: u32) -> Result<Option<AppDlcDownloadPr
 pub fn apps_launch_command_line(max_bytes: Option<u32>) -> Result<String, Error> {
     let apps = steam_apps()?;
     let capacity = max_bytes.unwrap_or(4096).clamp(1, 65_536);
-    let mut buf = vec![0i8; capacity as usize];
+    let mut buf = bounded_filled_buffer(capacity, 65_536, "launch command line", "bytes", 0i8)?;
     let len = unsafe {
         sys::SteamAPI_ISteamApps_GetLaunchCommandLine(apps, buf.as_mut_ptr(), buf.len() as i32)
     };
@@ -4176,7 +4184,11 @@ pub async fn cloud_read_file_async(
             "cloud async read cannot exceed {MAX_CLOUD_SINGLE_CHUNK_BYTES} bytes"
         )));
     }
-    let mut bytes = vec![0u8; bytes_read as usize];
+    let mut bytes = bounded_zeroed_buffer(
+        bytes_read,
+        MAX_CLOUD_SINGLE_CHUNK_BYTES,
+        "Steam Cloud async file read",
+    )?;
     let ok = unsafe {
         sys::SteamAPI_ISteamRemoteStorage_FileReadAsyncComplete(
             steam_remote_storage()?,
@@ -4530,7 +4542,11 @@ pub fn cloud_read_ugc(
             "cloud UGC read cannot exceed {MAX_CLOUD_UGC_READ_BYTES} bytes"
         )));
     }
-    let mut bytes = vec![0u8; bytes_to_read as usize];
+    let mut bytes = bounded_zeroed_buffer(
+        bytes_to_read,
+        MAX_CLOUD_UGC_READ_BYTES,
+        "Steam Cloud UGC read",
+    )?;
     let read = unsafe {
         sys::SteamAPI_ISteamRemoteStorage_UGCRead(
             steam_remote_storage()?,
@@ -6602,23 +6618,18 @@ pub fn inventory_get_result_items(
     if count == 0 {
         return Ok(Some(Vec::new()));
     }
-    let mut items = vec![
-        unsafe { MaybeUninit::<sys::SteamItemDetails_t>::zeroed().assume_init() };
-        count as usize
-    ];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_GetResultItems(
-            inventory,
-            result_handle,
-            items.as_mut_ptr(),
-            &mut count,
-        )
-    };
-    if !ok {
-        return Ok(None);
-    }
-    items.truncate(count as usize);
-    Ok(Some(items.into_iter().map(inventory_item_detail).collect()))
+    let empty_item = unsafe { MaybeUninit::<sys::SteamItemDetails_t>::zeroed().assume_init() };
+    Ok(read_resizable_steam_buffer(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES,
+        "inventory result items",
+        "entries",
+        empty_item,
+        |items, count| unsafe {
+            sys::SteamAPI_ISteamInventory_GetResultItems(inventory, result_handle, items, count)
+        },
+    )?
+    .map(|items| items.into_iter().map(inventory_item_detail).collect()))
 }
 
 #[napi(js_name = "inventoryGetResultItemProperty")]
@@ -6701,20 +6712,22 @@ pub fn inventory_serialize_result(result_handle: i32) -> Result<Option<Buffer>, 
     if !ok {
         return Ok(None);
     }
-    let mut bytes = vec![0u8; size as usize];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_SerializeResult(
-            inventory,
-            result_handle,
-            bytes.as_mut_ptr().cast::<c_void>(),
-            &mut size,
-        )
-    };
-    if !ok {
-        return Ok(None);
-    }
-    bytes.truncate(size as usize);
-    Ok(Some(bytes.into()))
+    Ok(read_resizable_steam_buffer(
+        size,
+        MAX_INVENTORY_SERIALIZED_RESULT_BYTES,
+        "serialized inventory result",
+        "bytes",
+        0u8,
+        |bytes, size| unsafe {
+            sys::SteamAPI_ISteamInventory_SerializeResult(
+                inventory,
+                result_handle,
+                bytes.cast::<c_void>(),
+                size,
+            )
+        },
+    )?
+    .map(Into::into))
 }
 
 #[napi(js_name = "inventoryDeserializeResult")]
@@ -6903,19 +6916,17 @@ pub fn inventory_get_item_definition_ids() -> Result<Vec<i32>, Error> {
     if !ok || count == 0 {
         return Ok(Vec::new());
     }
-    let mut definitions = vec![0i32; count as usize];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_GetItemDefinitionIDs(
-            inventory,
-            definitions.as_mut_ptr(),
-            &mut count,
-        )
-    };
-    if !ok {
-        return Ok(Vec::new());
-    }
-    definitions.truncate(count as usize);
-    Ok(definitions)
+    Ok(read_resizable_steam_buffer(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES,
+        "inventory item definitions",
+        "entries",
+        0i32,
+        |definitions, count| unsafe {
+            sys::SteamAPI_ISteamInventory_GetItemDefinitionIDs(inventory, definitions, count)
+        },
+    )?
+    .unwrap_or_default())
 }
 
 #[napi(js_name = "inventoryGetItemDefinitionProperty")]
@@ -6956,32 +6967,22 @@ pub fn inventory_get_eligible_promo_item_definition_ids(
 ) -> Result<Vec<i32>, Error> {
     let inventory = steam_inventory()?;
     let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
-    let mut count = 0u32;
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_GetEligiblePromoItemDefinitionIDs(
-            inventory,
-            steam_id,
-            ptr::null_mut(),
-            &mut count,
-        )
-    };
-    if !ok || count == 0 {
-        return Ok(Vec::new());
-    }
-    let mut definitions = vec![0i32; count as usize];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_GetEligiblePromoItemDefinitionIDs(
-            inventory,
-            steam_id,
-            definitions.as_mut_ptr(),
-            &mut count,
-        )
-    };
-    if !ok {
-        return Ok(Vec::new());
-    }
-    definitions.truncate(count as usize);
-    Ok(definitions)
+    Ok(read_resizable_steam_buffer(
+        DEFAULT_ELIGIBLE_PROMO_ITEM_ENTRIES,
+        MAX_INVENTORY_LIST_ENTRIES,
+        "eligible promo item definitions",
+        "entries",
+        0i32,
+        |definitions, count| unsafe {
+            sys::SteamAPI_ISteamInventory_GetEligiblePromoItemDefinitionIDs(
+                inventory,
+                steam_id,
+                definitions,
+                count,
+            )
+        },
+    )?
+    .unwrap_or_default())
 }
 
 #[napi(js_name = "inventoryStartPurchase")]
@@ -7047,9 +7048,27 @@ pub fn inventory_get_items_with_prices(
     if count == 0 {
         return Ok(Vec::new());
     }
-    let mut definitions = vec![0i32; count as usize];
-    let mut current_prices = vec![0u64; count as usize];
-    let mut base_prices = vec![0u64; count as usize];
+    let mut definitions = bounded_filled_buffer(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES,
+        "inventory price definitions",
+        "entries",
+        0i32,
+    )?;
+    let mut current_prices = bounded_filled_buffer(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES,
+        "inventory current prices",
+        "entries",
+        0u64,
+    )?;
+    let mut base_prices = bounded_filled_buffer(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES,
+        "inventory base prices",
+        "entries",
+        0u64,
+    )?;
     let ok = unsafe {
         sys::SteamAPI_ISteamInventory_GetItemsWithPrices(
             inventory,
@@ -8787,7 +8806,11 @@ pub fn game_coordinator_retrieve_message(
     let requested_size = max_bytes.unwrap_or(available.message_size);
     let buffer_size =
         game_coordinator_message_len(requested_size as usize, "game coordinator receive buffer")?;
-    let mut data = vec![0u8; buffer_size as usize];
+    let mut data = bounded_zeroed_buffer(
+        buffer_size,
+        MAX_GAME_COORDINATOR_MESSAGE_BYTES,
+        "game coordinator receive buffer",
+    )?;
     let mut message_type = 0u32;
     let mut message_size = 0u32;
     let result = unsafe {
@@ -9822,19 +9845,27 @@ pub fn video_request_opf_settings(app_id: u32) -> Result<(), Error> {
 #[napi(js_name = "videoGetOpfStringForApp")]
 pub fn video_get_opf_string_for_app(app_id: u32) -> Result<Option<String>, Error> {
     let video = steam_video()?;
-    let mut size = 0i32;
-    unsafe {
-        sys::SteamAPI_ISteamVideo_GetOPFStringForApp(video, app_id, ptr::null_mut(), &mut size);
-    }
-    if size <= 0 {
-        return Ok(None);
-    }
-
-    let mut buf = vec![0i8; size as usize];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamVideo_GetOPFStringForApp(video, app_id, buf.as_mut_ptr(), &mut size)
-    };
-    Ok(ok.then(|| c_buf_to_string(&buf)))
+    Ok(read_resizable_steam_buffer(
+        DEFAULT_VIDEO_OPF_BUFFER_BYTES,
+        MAX_VIDEO_OPF_BUFFER_BYTES,
+        "Steam video OPF string",
+        "bytes",
+        0i8,
+        |buffer, size| {
+            let mut signed_size = *size as i32;
+            let ok = unsafe {
+                sys::SteamAPI_ISteamVideo_GetOPFStringForApp(
+                    video,
+                    app_id,
+                    buffer,
+                    &mut signed_size,
+                )
+            };
+            *size = u32::try_from(signed_size).unwrap_or(0);
+            ok
+        },
+    )?
+    .map(|buffer| c_buf_to_string(&buffer)))
 }
 
 #[napi(js_name = "parentalIsParentalLockEnabled")]
@@ -10736,7 +10767,7 @@ pub fn game_server_get_auth_session_ticket(
         .as_ref()
         .map_or(ptr::null(), |identity| identity as *const _);
     let size = max_bytes.unwrap_or(4096).clamp(1, 65_536);
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(size, 65_536, "game server auth ticket")?;
     let mut data_len = 0u32;
     let handle = unsafe {
         sys::SteamAPI_ISteamGameServer_GetAuthSessionTicket(
@@ -10897,7 +10928,7 @@ pub fn game_server_get_next_outgoing_packet(
     max_bytes: Option<u32>,
 ) -> Result<Option<GameServerOutgoingPacket>, Error> {
     let size = max_bytes.unwrap_or(2048).clamp(1, 65_536);
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(size, 65_536, "game server outgoing packet")?;
     let mut ip = 0u32;
     let mut port = 0u16;
     let packet_size = unsafe {
@@ -12508,7 +12539,13 @@ pub fn networking_sockets_get_detailed_connection_status(
     max_bytes: Option<u32>,
 ) -> Result<Option<String>, Error> {
     let size = max_bytes.unwrap_or(4096).clamp(1, 65_536) as usize;
-    let mut output = vec![0i8; size];
+    let mut output = bounded_filled_buffer(
+        size as u32,
+        65_536,
+        "networking detailed connection status",
+        "bytes",
+        0i8,
+    )?;
     let result = unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_GetDetailedConnectionStatus(
             steam_networking_sockets()?,
@@ -12852,7 +12889,8 @@ pub fn networking_sockets_get_game_coordinator_server_login(
     let size = max_blob_bytes.unwrap_or(4096).clamp(1, 65_536);
     let mut signed_blob_size = i32::try_from(size)
         .map_err(|_| Error::from_reason("game coordinator server login blob size exceeds i32"))?;
-    let mut signed_blob = vec![0u8; size as usize];
+    let mut signed_blob =
+        bounded_zeroed_buffer(size, 65_536, "game coordinator server login blob")?;
     let result = unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_GetGameCoordinatorServerLogin(
             steam_networking_sockets()?,
@@ -12877,7 +12915,7 @@ pub fn networking_sockets_get_certificate_request(
     let size = max_bytes.unwrap_or(1024).clamp(1, 65_536);
     let mut size_i32 = i32::try_from(size)
         .map_err(|_| Error::from_reason("certificate request buffer size exceeds i32"))?;
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(size, 65_536, "networking certificate request")?;
     let mut err_msg = [0 as c_char; sys::k_cchMaxSteamNetworkingErrMsg as usize];
     let success = unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_GetCertificateRequest(
@@ -13986,7 +14024,11 @@ pub fn networking_utils_get_config_value(
     let capacity = max_bytes
         .unwrap_or(4096)
         .clamp(8, MAX_NETWORKING_CONFIG_VALUE_BYTES);
-    let mut buffer = vec![0u8; capacity as usize];
+    let mut buffer = bounded_zeroed_buffer(
+        capacity,
+        MAX_NETWORKING_CONFIG_VALUE_BYTES,
+        "networking config value",
+    )?;
     let mut data_type = sys::ESteamNetworkingConfigDataType::k_ESteamNetworkingConfig_Int32;
     let mut byte_count = buffer.len();
     let mut result = unsafe {
@@ -14005,7 +14047,11 @@ pub fn networking_utils_get_config_value(
         && max_bytes.is_none()
         && byte_count <= MAX_NETWORKING_CONFIG_VALUE_BYTES as usize
     {
-        buffer.resize(byte_count.max(8), 0);
+        buffer = bounded_zeroed_buffer(
+            byte_count.max(8) as u32,
+            MAX_NETWORKING_CONFIG_VALUE_BYTES,
+            "networking config value",
+        )?;
         result = unsafe {
             sys::SteamAPI_ISteamNetworkingUtils_GetConfigValue(
                 steam_networking_utils()?,
@@ -14320,11 +14366,12 @@ pub fn utils_get_image_rgba(image: i32) -> Result<Option<Buffer>, Error> {
         .checked_mul(u64::from(height))
         .and_then(|pixels| pixels.checked_mul(4))
         .ok_or_else(|| Error::from_reason("Steam image dimensions overflowed"))?;
-    if size > 256 * 1024 * 1024 {
+    if size > u64::from(MAX_STEAM_IMAGE_BYTES) {
         return Err(Error::from_reason("Steam image is too large to copy"));
     }
 
-    let mut data = vec![0u8; size as usize];
+    let mut data =
+        bounded_zeroed_buffer(size as u32, MAX_STEAM_IMAGE_BYTES, "Steam image RGBA data")?;
     let ok = unsafe {
         sys::SteamAPI_ISteamUtils_GetImageRGBA(utils, image, data.as_mut_ptr(), data.len() as i32)
     };
@@ -14582,7 +14629,7 @@ pub fn utils_filter_text(
         .unwrap_or(default_capacity.min(u32::MAX as usize) as u32)
         .clamp(1, 65_536);
     let input = cstring(input, "text filter input")?;
-    let mut output = vec![0i8; capacity as usize];
+    let mut output = bounded_filled_buffer(capacity, 65_536, "filtered text", "bytes", 0i8)?;
     let characters_filtered = unsafe {
         sys::SteamAPI_ISteamUtils_FilterText(
             utils,
@@ -14634,12 +14681,13 @@ pub async fn utils_show_gamepad_text_input(
     existing_text: Option<String>,
     timeout_seconds: Option<u32>,
 ) -> Result<Option<String>, Error> {
+    let max_text_bytes = gamepad_text_buffer_limit(max_characters)?;
     let description = cstring(description, "gamepad text input description")?;
     let existing_text = cstring(existing_text.unwrap_or_default(), "existing gamepad text")?;
     let input_mode = gamepad_text_input_mode_from_u32(input_mode)?;
     let input_line_mode = gamepad_text_input_line_mode_from_u32(input_line_mode)?;
 
-    let (tx, rx) = oneshot::channel::<Option<String>>();
+    let (tx, rx) = oneshot::channel::<Result<Option<String>, String>>();
     let tx_for_callback = Arc::new(Mutex::new(Some(tx)));
     let (_registration, shown) = {
         let _dispatch = crate::state::lock_manual_dispatch(crate::state::CallbackDomain::Client);
@@ -14650,9 +14698,12 @@ pub async fn utils_show_gamepad_text_input(
                 let event = unsafe { &*(param as *const sys::GamepadTextInputDismissed_t) };
                 let submitted = unsafe { ptr::addr_of!(event.m_bSubmitted).read_unaligned() };
                 let value = if submitted {
-                    entered_gamepad_text().ok().flatten()
+                    let submitted_text =
+                        unsafe { ptr::addr_of!(event.m_unSubmittedText).read_unaligned() };
+                    entered_gamepad_text(submitted_text, max_text_bytes)
+                        .map_err(|error| error.to_string())
                 } else {
-                    None
+                    Ok(None)
                 };
                 if let Some(tx) = tx_for_callback
                     .lock()
@@ -14681,7 +14732,8 @@ pub async fn utils_show_gamepad_text_input(
 
     let timeout_seconds = u64::from(timeout_seconds.unwrap_or(300));
     match tokio::time::timeout(std::time::Duration::from_secs(timeout_seconds), rx).await {
-        Ok(Ok(value)) => Ok(value),
+        Ok(Ok(Ok(value))) => Ok(value),
+        Ok(Ok(Err(reason))) => Err(Error::from_reason(reason)),
         Ok(Err(err)) => Err(Error::from_reason(err.to_string())),
         Err(_) => Err(Error::from_reason("Steam gamepad text input timed out")),
     }
@@ -14823,8 +14875,16 @@ pub fn user_get_voice(
         uncompressed_capacity = 0;
     }
 
-    let mut compressed = vec![0u8; compressed_capacity as usize];
-    let mut uncompressed = vec![0u8; uncompressed_capacity as usize];
+    let mut compressed = bounded_zeroed_buffer(
+        compressed_capacity,
+        MAX_USER_VOICE_BYTES,
+        "compressed voice",
+    )?;
+    let mut uncompressed = bounded_zeroed_buffer(
+        uncompressed_capacity,
+        MAX_USER_VOICE_BYTES,
+        "uncompressed voice",
+    )?;
     let mut compressed_bytes = 0;
     let mut uncompressed_bytes = 0;
     let result = unsafe {
@@ -14864,7 +14924,8 @@ pub fn user_decompress_voice(
         requested_user_voice_bytes(max_bytes, MAX_USER_VOICE_BYTES, "decompressed voice")?;
     let sample_rate = desired_sample_rate
         .unwrap_or_else(|| unsafe { sys::SteamAPI_ISteamUser_GetVoiceOptimalSampleRate(user) });
-    let mut decompressed = vec![0u8; max_bytes as usize];
+    let mut decompressed =
+        bounded_zeroed_buffer(max_bytes, MAX_USER_VOICE_BYTES, "decompressed voice")?;
     let mut bytes_written = 0;
     let compressed_len = len_to_u32(compressed.len(), "compressed voice")?;
     let result = unsafe {
@@ -14995,7 +15056,7 @@ pub fn user_initiate_game_connection_deprecated(
     let size = max_bytes
         .unwrap_or(DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES)
         .clamp(1, 65_536);
-    let mut auth_blob = vec![0u8; size as usize];
+    let mut auth_blob = bounded_zeroed_buffer(size, 65_536, "game connection auth blob")?;
     let bytes_written = unsafe {
         sys::SteamAPI_ISteamUser_InitiateGameConnection_DEPRECATED(
             steam_user()?,
@@ -15089,7 +15150,11 @@ pub fn user_get_encrypted_app_ticket(max_bytes: Option<u32>) -> Result<Option<Bu
     let max_bytes = max_bytes
         .unwrap_or(MAX_ENCRYPTED_APP_TICKET_BYTES)
         .clamp(1, MAX_ENCRYPTED_APP_TICKET_BYTES);
-    let mut ticket = vec![0u8; max_bytes as usize];
+    let mut ticket = bounded_zeroed_buffer(
+        max_bytes,
+        MAX_ENCRYPTED_APP_TICKET_BYTES,
+        "encrypted app ticket",
+    )?;
     let mut ticket_len = 0;
     let ok = unsafe {
         sys::SteamAPI_ISteamUser_GetEncryptedAppTicket(
@@ -15124,7 +15189,11 @@ pub fn encrypted_app_ticket_decrypt(
     let max_bytes = max_bytes
         .unwrap_or(MAX_ENCRYPTED_APP_TICKET_BYTES)
         .clamp(1, MAX_DECRYPTED_APP_TICKET_BYTES);
-    let mut decrypted = vec![0u8; max_bytes as usize];
+    let mut decrypted = bounded_zeroed_buffer(
+        max_bytes,
+        MAX_DECRYPTED_APP_TICKET_BYTES,
+        "decrypted app ticket",
+    )?;
     let mut decrypted_len = max_bytes;
     let ok = unsafe {
         SteamEncryptedAppTicket_BDecryptTicket(
@@ -15304,7 +15373,11 @@ pub fn app_ticket_get_app_ownership_ticket_data(
     let max_bytes = max_bytes
         .unwrap_or(DEFAULT_APP_OWNERSHIP_TICKET_BYTES)
         .clamp(1, MAX_APP_OWNERSHIP_TICKET_BYTES);
-    let mut ticket = vec![0u8; max_bytes as usize];
+    let mut ticket = bounded_zeroed_buffer(
+        max_bytes,
+        MAX_APP_OWNERSHIP_TICKET_BYTES,
+        "app ownership ticket",
+    )?;
     let mut app_id_offset = 0u32;
     let mut steam_id_offset = 0u32;
     let mut signature_offset = 0u32;
@@ -16394,7 +16467,7 @@ pub fn matchmaking_get_lobby_chat_entry(
     max_bytes: Option<u32>,
 ) -> Result<Option<LobbyChatEntry>, Error> {
     let size = max_bytes.unwrap_or(4096).clamp(1, 4096);
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(size, 4096, "lobby chat entry")?;
     let mut steam_id = u64_to_csteam_id(0);
     let mut entry_type = sys::EChatEntryType::k_EChatEntryTypeInvalid;
     let written = unsafe {
@@ -19501,18 +19574,21 @@ fn inventory_get_item_property_string(
     if !ok {
         return Ok(None);
     }
-    let mut output = vec![0i8; size.max(1) as usize];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_GetResultItemProperty(
-            inventory,
-            result_handle,
-            item_index,
-            property_name,
-            output.as_mut_ptr(),
-            &mut size,
-        )
-    };
-    Ok(ok.then(|| c_buf_to_string(&output)))
+    read_resizable_steam_c_string(
+        size,
+        MAX_INVENTORY_PROPERTY_BYTES,
+        label,
+        |output, size| unsafe {
+            sys::SteamAPI_ISteamInventory_GetResultItemProperty(
+                inventory,
+                result_handle,
+                item_index,
+                property_name,
+                output,
+                size,
+            )
+        },
+    )
 }
 
 fn inventory_get_definition_property_string(
@@ -19539,17 +19615,20 @@ fn inventory_get_definition_property_string(
     if !ok {
         return Ok(None);
     }
-    let mut output = vec![0i8; size.max(1) as usize];
-    let ok = unsafe {
-        sys::SteamAPI_ISteamInventory_GetItemDefinitionProperty(
-            inventory,
-            definition,
-            property_name,
-            output.as_mut_ptr(),
-            &mut size,
-        )
-    };
-    Ok(ok.then(|| c_buf_to_string(&output)))
+    read_resizable_steam_c_string(
+        size,
+        MAX_INVENTORY_PROPERTY_BYTES,
+        "inventory definition property",
+        |output, size| unsafe {
+            sys::SteamAPI_ISteamInventory_GetItemDefinitionProperty(
+                inventory,
+                definition,
+                property_name,
+                output,
+                size,
+            )
+        },
+    )
 }
 
 fn inventory_eligible_promo_result(
@@ -19623,13 +19702,101 @@ fn bounded_buffer_size(size: u32, maximum: u32, label: &str) -> Result<usize, Er
 }
 
 fn bounded_zeroed_buffer(size: u32, maximum: u32, label: &str) -> Result<Vec<u8>, Error> {
-    let size = bounded_buffer_size(size, maximum, label)?;
+    bounded_filled_buffer(size, maximum, label, "bytes", 0u8)
+}
+
+fn bounded_filled_buffer<T: Clone>(
+    size: u32,
+    maximum: u32,
+    label: &str,
+    unit: &str,
+    value: T,
+) -> Result<Vec<T>, Error> {
+    if size > maximum {
+        return Err(Error::from_reason(format!(
+            "{label} cannot exceed {maximum} {unit}"
+        )));
+    }
+    let size = size as usize;
     let mut buffer = Vec::new();
     buffer
         .try_reserve_exact(size)
         .map_err(|_| Error::from_reason(format!("{label} buffer allocation failed")))?;
-    buffer.resize(size, 0);
+    buffer.resize(size, value);
     Ok(buffer)
+}
+
+fn read_resizable_steam_buffer<T: Clone>(
+    initial_size: u32,
+    maximum: u32,
+    label: &str,
+    unit: &str,
+    value: T,
+    mut read: impl FnMut(*mut T, &mut u32) -> bool,
+) -> Result<Option<Vec<T>>, Error> {
+    let mut requested = initial_size.max(1);
+    for _ in 0..3 {
+        let mut buffer = bounded_filled_buffer(requested, maximum, label, unit, value.clone())?;
+        let mut reported = requested;
+        let ok = read(buffer.as_mut_ptr(), &mut reported);
+        if reported > requested {
+            requested = reported;
+            continue;
+        }
+        if !ok {
+            return Ok(None);
+        }
+        buffer.truncate(reported as usize);
+        return Ok(Some(buffer));
+    }
+    Err(Error::from_reason(format!(
+        "{label} size changed repeatedly while reading"
+    )))
+}
+
+fn read_resizable_steam_c_string(
+    initial_size: u32,
+    maximum: u32,
+    label: &str,
+    mut read: impl FnMut(*mut i8, &mut u32) -> bool,
+) -> Result<Option<String>, Error> {
+    let mut requested = initial_size.max(1);
+    for _ in 0..3 {
+        let mut buffer = bounded_filled_buffer(requested, maximum, label, "bytes", 0i8)?;
+        let mut reported = requested;
+        let ok = read(buffer.as_mut_ptr(), &mut reported);
+        if reported > requested {
+            requested = reported;
+            continue;
+        }
+        if !ok {
+            return Ok(None);
+        }
+        let written = (reported as usize).min(buffer.len());
+        if written > 0 && !buffer[..written].contains(&0) {
+            requested = requested
+                .checked_mul(2)
+                .ok_or_else(|| Error::from_reason(format!("{label} buffer size overflowed")))?;
+            continue;
+        }
+        buffer.truncate(written);
+        return Ok(Some(c_buf_to_string(&buffer)));
+    }
+    Err(Error::from_reason(format!(
+        "{label} size changed repeatedly while reading"
+    )))
+}
+
+fn gamepad_text_buffer_limit(max_characters: u32) -> Result<u32, Error> {
+    if max_characters == 0 || max_characters > MAX_GAMEPAD_TEXT_CHARACTERS {
+        return Err(Error::from_reason(format!(
+            "gamepad text input must allow between 1 and {MAX_GAMEPAD_TEXT_CHARACTERS} characters"
+        )));
+    }
+    max_characters
+        .checked_mul(4)
+        .and_then(|bytes| bytes.checked_add(1))
+        .ok_or_else(|| Error::from_reason("gamepad text input buffer size overflowed"))
 }
 
 fn bounded_pop_count(count: u32, label: &str) -> Result<i32, Error> {
@@ -23494,13 +23661,18 @@ fn duration_control_online_state_from_u32(
     }
 }
 
-fn entered_gamepad_text() -> Result<Option<String>, Error> {
+fn entered_gamepad_text(len: u32, maximum: u32) -> Result<Option<String>, Error> {
     let utils = steam_utils()?;
-    let len = unsafe { sys::SteamAPI_ISteamUtils_GetEnteredGamepadTextLength(utils) };
+    let reported_len = unsafe { sys::SteamAPI_ISteamUtils_GetEnteredGamepadTextLength(utils) };
+    if reported_len != len {
+        return Err(Error::from_reason(format!(
+            "Steam gamepad text length changed from {len} to {reported_len} inside its dismissal callback"
+        )));
+    }
     if len == 0 {
         return Ok(Some(String::new()));
     }
-    let mut buf = vec![0i8; len as usize];
+    let mut buf = bounded_filled_buffer(len, maximum, "entered gamepad text", "bytes", 0i8)?;
     let ok = unsafe {
         sys::SteamAPI_ISteamUtils_GetEnteredGamepadTextInput(utils, buf.as_mut_ptr(), len)
     };
@@ -25913,11 +26085,100 @@ mod lifecycle_resource_tests {
         .is_err());
         assert_eq!(bounded_zeroed_buffer(4, 4, "test buffer").unwrap(), [0; 4]);
         assert!(bounded_zeroed_buffer(5, 4, "test buffer").is_err());
+        assert_eq!(gamepad_text_buffer_limit(1).unwrap(), 5);
+        assert_eq!(
+            gamepad_text_buffer_limit(MAX_GAMEPAD_TEXT_CHARACTERS).unwrap(),
+            MAX_GAMEPAD_TEXT_CHARACTERS * 4 + 1
+        );
+        assert!(gamepad_text_buffer_limit(0).is_err());
+        assert!(gamepad_text_buffer_limit(MAX_GAMEPAD_TEXT_CHARACTERS + 1).is_err());
         assert_eq!(
             bounded_pop_count(MAX_NETWORKING_POP_COUNT, "test POP count").unwrap(),
             65_536
         );
         assert!(bounded_pop_count(MAX_NETWORKING_POP_COUNT + 1, "test POP count").is_err());
+    }
+
+    #[test]
+    fn steam_buffer_reads_retry_growth_and_reject_unstable_sizes() {
+        let mut calls = 0;
+        let bytes =
+            read_resizable_steam_buffer(2, 8, "test bytes", "bytes", 0u8, |buffer, size| {
+                calls += 1;
+                if calls == 1 {
+                    *size = 4;
+                    false
+                } else {
+                    unsafe { ptr::copy_nonoverlapping([1u8, 2, 3, 4].as_ptr(), buffer, 4) };
+                    *size = 4;
+                    true
+                }
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(bytes, [1, 2, 3, 4]);
+
+        let mut requested = 1;
+        assert!(read_resizable_steam_buffer(
+            1,
+            8,
+            "unstable bytes",
+            "bytes",
+            0u8,
+            |_buffer, size| {
+                requested += 1;
+                *size = requested;
+                false
+            }
+        )
+        .is_err());
+        assert!(read_resizable_steam_buffer(
+            9,
+            8,
+            "oversized bytes",
+            "bytes",
+            0u8,
+            |_buffer, _size| true
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn steam_string_reads_never_return_partial_values() {
+        let mut calls = 0;
+        let value = read_resizable_steam_c_string(4, 16, "test string", |buffer, size| {
+            calls += 1;
+            if calls == 1 {
+                unsafe { ptr::copy_nonoverlapping(b"part".as_ptr().cast::<i8>(), buffer, 4) };
+                *size = 9;
+            } else {
+                unsafe { ptr::copy_nonoverlapping(b"complete\0".as_ptr().cast::<i8>(), buffer, 9) };
+                *size = 9;
+            }
+            true
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(value, "complete");
+
+        let mut calls = 0;
+        let value = read_resizable_steam_c_string(4, 16, "implicit partial", |buffer, size| {
+            calls += 1;
+            if calls == 1 {
+                unsafe { ptr::copy_nonoverlapping(b"part".as_ptr().cast::<i8>(), buffer, 4) };
+                *size = 4;
+            } else {
+                unsafe { ptr::copy_nonoverlapping(b"ok\0".as_ptr().cast::<i8>(), buffer, 3) };
+                *size = 3;
+            }
+            true
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(value, "ok");
     }
 
     #[test]

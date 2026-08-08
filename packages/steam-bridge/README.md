@@ -186,6 +186,31 @@ native object is collected, but garbage collection is only a safety net and is
 not a timely resource-lifecycle mechanism. Never retain or reuse ticket bytes
 after cancellation; request a fresh ticket for the next authentication attempt.
 
+## Inventory result ownership
+
+Every non-null handle returned by an inventory operation is a live Steam
+resource. Destroy it in `finally`, including when status polling, item decoding,
+or application work fails:
+
+```ts
+const result = client.inventory.getAllItems();
+if (result !== null) {
+  try {
+    // Wait for SteamInventoryResultReady or poll getResultStatus(result).
+    const items = client.inventory.getResultItems(result);
+  } finally {
+    client.inventory.destroyResult(result);
+  }
+}
+```
+
+Valve rate-limits `getAllItems()` and may return cached data when it is called
+too frequently. Do not use it as a rapid refresh loop. Prefer the result from
+the inventory operation that changed state, `getItemsById()` for a small known
+set, and `SteamInventoryFullUpdate` for authoritative full updates. Steam
+Bridge bounds and retries variable-size property and serialization reads, but
+application code still owns request pacing and every result handle's lifetime.
+
 ## Electron overlay
 
 On Linux and macOS, configure Electron before `app.ready`, then create one

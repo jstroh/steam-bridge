@@ -48,10 +48,10 @@ their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
 
-### 2026-08-08 post-v0.3.19 packaging and allocation hardening
+### 2026-08-08 post-v0.3.19 packaging and Steam API hardening
 
-The current post-release worktree fixes three defect clusters without changing
-the settled overlay architecture or presentation cadence:
+The current post-release worktree fixes the following defect clusters without
+changing the settled overlay architecture or presentation cadence:
 
 - Linux `launcherArgs` can no longer remove the required `--no-zygote` and
   `--no-sandbox` switches. They are additional arguments, exact duplicates are
@@ -68,15 +68,33 @@ the settled overlay architecture or presentation cadence:
   streaming bodies, legacy P2P/socket reads, and networking POP enumeration.
   Native byte buffers use fallible reservation so allocation pressure returns a
   JavaScript error instead of deliberately requesting multi-gigabyte storage.
+- Valve's variable-size inventory reads now use bounded, fallible buffers and
+  retry a changed size. Result/definition property reads reject a successful
+  partial copy without a terminator instead of returning it as the complete
+  value; serialized results, result-item arrays, item-definition arrays, and
+  price arrays follow the same allocation policy. The eligible-promo getter no
+  longer depends on an undocumented null-array sizing call.
+- Steam video OPF retrieval starts with Valve's documented 48,000-byte buffer
+  and retries only when Steam reports that it needs more space, preserving the
+  API's single-successful-read lifetime. Gamepad text retrieval cross-checks
+  `GamepadTextInputDismissed_t.m_unSubmittedText` against
+  `GetEnteredGamepadTextLength` inside the dismissal callback, passes that exact
+  byte count back to Steam, and bounds the UTF-8 allocation derived from the
+  caller's maximum character count.
+- Remaining dynamic native byte buffers with an existing public or SDK-derived
+  ceiling now reserve fallibly as well, including async Cloud/UGC reads, Steam
+  image RGBA copies, chat, voice, networking configuration/certificates,
+  game-server packets, and ticket buffers. Small fixed stack-equivalent buffers
+  remain unchanged.
 
 Change-scoped validation is green: `npm test` passed 384/384 JavaScript tests
-and 39/39 Rust tests; `check:platform`, `api:check`, `native:fmt`,
-`native:check`, `npm audit --omit=dev`, the macOS preparation self-test, and
-`package:smoke` all passed. No actual-game pass was repeated because these
-changes do not touch window ownership, frame presentation, overlay input, DPI,
-or display timing. The external non-English keyboard-layout and Windows
-200 Hz + 75 Hz movement-cadence cases remain open under their existing retest
-contracts.
+and 41/41 Rust tests; `check:platform`, `api:check`, `native:fmt`, and
+`native:check` passed, and `npm audit --omit=dev` reports zero vulnerabilities.
+The earlier packaging slice also passed the macOS preparation self-test and
+`package:smoke`. No actual-game pass was repeated because these changes do not
+touch window ownership, frame presentation, overlay input, DPI, or display
+timing. The external non-English keyboard-layout and Windows 200 Hz + 75 Hz
+movement-cadence cases remain open under their existing retest contracts.
 
 ### 2026-08-08 v0.3.19 stable release checkpoint
 
