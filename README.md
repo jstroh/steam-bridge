@@ -227,7 +227,11 @@ non-optional requirement: Steam otherwise injects into Chromium children and
 creates competing overlay targets that have crashed or presented incorrectly
 in the actual game. This disables Chromium's process sandbox for the Linux
 package; do not remove it unless a replacement passes actual-game QA on Linux
-Desktop and both Steam Deck modes. The macOS helper installs the native
+Desktop and both Steam Deck modes. Custom `launcherArgs` are appended and
+cannot remove either required switch. Both packaging helpers are safe to rerun
+in an existing output directory: they replace a stale renamed Electron binary,
+resume an interrupted rename, and reject a launcher whose Electron target is
+missing. The macOS helper installs the native
 launcher and Steam-compatible entitlements; run your normal Apple signing and
 notarization pipeline after it. Windows application signing remains the
 application distributor's responsibility.

@@ -461,6 +461,10 @@ const PARTY_METADATA_BUFFER_SIZE: usize = 4096;
 const FRIEND_FLAG_IMMEDIATE: u32 = 4;
 const MAX_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_CONFIG_VALUE_BYTES: u32 = 1024 * 1024;
+const MAX_LEGACY_NETWORKING_PACKET_BYTES: u32 = 1024 * 1024;
+const MAX_NETWORKING_POP_COUNT: u32 = 65_536;
+const MAX_HTTP_HEADER_BYTES: u32 = 1024 * 1024;
+const MAX_HTTP_RESPONSE_BODY_BYTES: u32 = 100 * 1024 * 1024;
 const MAX_USER_VOICE_BYTES: u32 = 1024 * 1024;
 const DEFAULT_USER_VOICE_BYTES: u32 = 64 * 1024;
 const DEFAULT_DEPRECATED_GAME_CONNECTION_AUTH_BLOB_BYTES: u32 = 2048;
@@ -472,7 +476,7 @@ const MAX_ENCRYPTED_APP_TICKET_RSA_KEY_BYTES: u32 = 65_536;
 const DEFAULT_APP_OWNERSHIP_TICKET_BYTES: u32 = 4096;
 const MAX_APP_OWNERSHIP_TICKET_BYTES: u32 = 65_536;
 const USER_DATA_FOLDER_BUFFER_SIZE: usize = 4096;
-const MAX_CLOUD_ASYNC_READ_BYTES: u32 = 100 * 1024 * 1024;
+const MAX_CLOUD_SINGLE_CHUNK_BYTES: u32 = 100 * 1024 * 1024;
 const MAX_CLOUD_UGC_READ_BYTES: u32 = 100 * 1024 * 1024;
 
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
@@ -4032,7 +4036,11 @@ pub fn cloud_read_file(name: String) -> Result<String, Error> {
     if size < 0 {
         return Err(Error::from_reason("Steam Cloud file does not exist"));
     }
-    let mut bytes = vec![0u8; size as usize];
+    let mut bytes = bounded_zeroed_buffer(
+        size as u32,
+        MAX_CLOUD_SINGLE_CHUNK_BYTES,
+        "Steam Cloud file read",
+    )?;
     let read = unsafe {
         sys::SteamAPI_ISteamRemoteStorage_FileRead(
             storage,
@@ -4052,12 +4060,17 @@ pub fn cloud_read_file(name: String) -> Result<String, Error> {
 pub fn cloud_write_file(name: String, content: String) -> Result<bool, Error> {
     let storage = steam_remote_storage()?;
     let name = cstring(name, "cloud file name")?;
+    let content_len = bounded_buffer_size(
+        len_to_u32(content.len(), "cloud file data")?,
+        MAX_CLOUD_SINGLE_CHUNK_BYTES,
+        "Steam Cloud file write",
+    )?;
     Ok(unsafe {
         sys::SteamAPI_ISteamRemoteStorage_FileWrite(
             storage,
             name.as_ptr(),
             content.as_ptr().cast::<c_void>(),
-            content.len() as i32,
+            content_len as i32,
         )
     })
 }
@@ -4069,8 +4082,13 @@ pub async fn cloud_write_file_async(
     timeout_seconds: Option<u32>,
 ) -> Result<u32, Error> {
     let name = cstring(name, "cloud file name")?;
-    let data = data.to_vec();
     let data_len = len_to_u32(data.len(), "cloud file data")?;
+    bounded_buffer_size(
+        data_len,
+        MAX_CLOUD_SINGLE_CHUNK_BYTES,
+        "Steam Cloud async file write",
+    )?;
+    let data = data.to_vec();
     let call = {
         let storage = steam_remote_storage()?;
         unsafe {
@@ -4120,9 +4138,9 @@ pub async fn cloud_read_file_async(
             }
         }
     };
-    if bytes_to_read > MAX_CLOUD_ASYNC_READ_BYTES {
+    if bytes_to_read > MAX_CLOUD_SINGLE_CHUNK_BYTES {
         return Err(Error::from_reason(format!(
-            "cloud async read cannot exceed {MAX_CLOUD_ASYNC_READ_BYTES} bytes"
+            "cloud async read cannot exceed {MAX_CLOUD_SINGLE_CHUNK_BYTES} bytes"
         )));
     }
     let call = {
@@ -4153,9 +4171,9 @@ pub async fn cloud_read_file_async(
     }
     let read_call = unsafe { ptr::addr_of!(result.m_hFileReadAsync).read_unaligned() };
     let bytes_read = unsafe { ptr::addr_of!(result.m_cubRead).read_unaligned() };
-    if bytes_read > MAX_CLOUD_ASYNC_READ_BYTES {
+    if bytes_read > MAX_CLOUD_SINGLE_CHUNK_BYTES {
         return Err(Error::from_reason(format!(
-            "cloud async read cannot exceed {MAX_CLOUD_ASYNC_READ_BYTES} bytes"
+            "cloud async read cannot exceed {MAX_CLOUD_SINGLE_CHUNK_BYTES} bytes"
         )));
     }
     let mut bytes = vec![0u8; bytes_read as usize];
@@ -5359,7 +5377,7 @@ fn http_get_response_header_value_with(
         return Ok(None);
     };
     let name = cstring(name, "HTTP header name")?;
-    let mut bytes = vec![0u8; size as usize];
+    let mut bytes = bounded_zeroed_buffer(size, MAX_HTTP_HEADER_BYTES, "HTTP response header")?;
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPResponseHeaderValue(
             accessor()?,
@@ -5390,7 +5408,8 @@ fn http_get_response_body_data_with(
     let Some(size) = http_get_response_body_size_with(accessor, request)? else {
         return Ok(None);
     };
-    let mut bytes = vec![0u8; size as usize];
+    let mut bytes =
+        bounded_zeroed_buffer(size, MAX_HTTP_RESPONSE_BODY_BYTES, "HTTP response body")?;
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPResponseBodyData(
             accessor()?,
@@ -5408,7 +5427,11 @@ fn http_get_streaming_response_body_data_with(
     offset: u32,
     size: u32,
 ) -> Result<Option<Buffer>, Error> {
-    let mut bytes = vec![0u8; size as usize];
+    let mut bytes = bounded_zeroed_buffer(
+        size,
+        MAX_HTTP_RESPONSE_BODY_BYTES,
+        "HTTP streaming response chunk",
+    )?;
     let ok = unsafe {
         sys::SteamAPI_ISteamHTTP_GetHTTPStreamingResponseBodyData(
             accessor()?,
@@ -11180,7 +11203,11 @@ fn networking_read_p2p_packet_with(
     size: u32,
 ) -> Result<Option<P2PPacket>, Error> {
     let networking = accessor()?;
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(
+        size,
+        MAX_LEGACY_NETWORKING_PACKET_BYTES,
+        "legacy Steam P2P packet read",
+    )?;
     let mut actual_size = 0u32;
     let mut remote: sys::CSteamID = unsafe { std::mem::zeroed() };
     let ok = unsafe {
@@ -11392,7 +11419,11 @@ fn networking_retrieve_data_from_socket_with(
     socket: u32,
     size: u32,
 ) -> Result<Option<LegacyNetworkingSocketData>, Error> {
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(
+        size,
+        MAX_LEGACY_NETWORKING_PACKET_BYTES,
+        "legacy Steam socket read",
+    )?;
     let mut actual_size = 0u32;
     let ok = unsafe {
         sys::SteamAPI_ISteamNetworking_RetrieveDataFromSocket(
@@ -11435,7 +11466,11 @@ fn networking_retrieve_data_with(
     listen_socket: u32,
     size: u32,
 ) -> Result<Option<LegacyNetworkingListenSocketData>, Error> {
-    let mut data = vec![0u8; size as usize];
+    let mut data = bounded_zeroed_buffer(
+        size,
+        MAX_LEGACY_NETWORKING_PACKET_BYTES,
+        "legacy Steam listen socket read",
+    )?;
     let mut actual_size = 0u32;
     let mut socket = 0u32;
     let ok = unsafe {
@@ -13513,13 +13548,14 @@ pub fn networking_utils_get_pop_count() -> Result<i32, Error> {
 #[napi(js_name = "networkingUtilsGetPopList")]
 pub fn networking_utils_get_pop_list(max_pops: Option<u32>) -> Result<Vec<u32>, Error> {
     let utils = steam_networking_utils()?;
-    let capacity = max_pops
-        .map(|value| {
-            i32::try_from(value).map_err(|_| Error::from_reason("max POP count exceeds i32"))
-        })
-        .transpose()?
-        .unwrap_or_else(|| unsafe { sys::SteamAPI_ISteamNetworkingUtils_GetPOPCount(utils) })
-        .max(0);
+    let capacity = match max_pops {
+        Some(value) => bounded_pop_count(value, "max POP count")?,
+        None => {
+            let count =
+                unsafe { sys::SteamAPI_ISteamNetworkingUtils_GetPOPCount(utils) }.max(0) as u32;
+            bounded_pop_count(count, "Steam POP count")?
+        }
+    };
     if capacity == 0 {
         return Ok(Vec::new());
     }
@@ -19575,6 +19611,34 @@ fn len_to_u32(len: usize, label: &str) -> Result<u32, Error> {
 
 fn len_to_i32(len: usize, label: &str) -> Result<i32, Error> {
     i32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds i32")))
+}
+
+fn bounded_buffer_size(size: u32, maximum: u32, label: &str) -> Result<usize, Error> {
+    if size > maximum {
+        return Err(Error::from_reason(format!(
+            "{label} cannot exceed {maximum} bytes"
+        )));
+    }
+    Ok(size as usize)
+}
+
+fn bounded_zeroed_buffer(size: u32, maximum: u32, label: &str) -> Result<Vec<u8>, Error> {
+    let size = bounded_buffer_size(size, maximum, label)?;
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(size)
+        .map_err(|_| Error::from_reason(format!("{label} buffer allocation failed")))?;
+    buffer.resize(size, 0);
+    Ok(buffer)
+}
+
+fn bounded_pop_count(count: u32, label: &str) -> Result<i32, Error> {
+    if count > MAX_NETWORKING_POP_COUNT {
+        return Err(Error::from_reason(format!(
+            "{label} cannot exceed {MAX_NETWORKING_POP_COUNT}"
+        )));
+    }
+    Ok(count as i32)
 }
 
 fn decrypted_app_ticket(ticket: Buffer) -> Result<Vec<u8>, Error> {
@@ -25828,6 +25892,32 @@ mod lifecycle_resource_tests {
         assert!(validate_workshop_query_item_count(1).is_ok());
         assert!(validate_workshop_query_item_count(1_000).is_ok());
         assert!(validate_workshop_query_item_count(1_001).is_err());
+    }
+
+    #[test]
+    fn caller_controlled_native_buffer_allocations_are_bounded() {
+        assert_eq!(
+            bounded_buffer_size(
+                MAX_LEGACY_NETWORKING_PACKET_BYTES,
+                MAX_LEGACY_NETWORKING_PACKET_BYTES,
+                "test packet"
+            )
+            .unwrap(),
+            MAX_LEGACY_NETWORKING_PACKET_BYTES as usize
+        );
+        assert!(bounded_buffer_size(
+            MAX_LEGACY_NETWORKING_PACKET_BYTES + 1,
+            MAX_LEGACY_NETWORKING_PACKET_BYTES,
+            "test packet"
+        )
+        .is_err());
+        assert_eq!(bounded_zeroed_buffer(4, 4, "test buffer").unwrap(), [0; 4]);
+        assert!(bounded_zeroed_buffer(5, 4, "test buffer").is_err());
+        assert_eq!(
+            bounded_pop_count(MAX_NETWORKING_POP_COUNT, "test POP count").unwrap(),
+            65_536
+        );
+        assert!(bounded_pop_count(MAX_NETWORKING_POP_COUNT + 1, "test POP count").is_err());
     }
 
     #[test]

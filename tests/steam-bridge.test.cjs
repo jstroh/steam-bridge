@@ -4255,6 +4255,58 @@ test("macOS signing verifier checks launcher identity marker", (t) => {
   );
 });
 
+test("macOS launcher marker scan handles chunk boundaries without loading the whole executable", (t) => {
+  const verifier = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-signing-marker-scan-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const filePath = path.join(tempDir, "Example");
+  fs.writeFileSync(filePath, `1234567${verifier.STEAM_BRIDGE_MACOS_LAUNCHER_ID}suffix`);
+  assert.equal(verifier.fileContainsAsciiMarker(filePath, verifier.STEAM_BRIDGE_MACOS_LAUNCHER_ID, 8), true);
+  assert.equal(verifier.fileContainsAsciiMarker(filePath, "missing marker", 8), false);
+  assert.throws(() => verifier.fileContainsAsciiMarker(filePath, "", 8), /non-empty string/);
+  assert.throws(() => verifier.fileContainsAsciiMarker(filePath, "marker", 0), /positive safe integer/);
+});
+
+test("macOS preparation staging replaces stale Electron and recovers interrupted reruns", (t) => {
+  const preparer = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "prepare-macos-app.cjs"));
+  const verifier = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-stage-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const appExe = path.join(tempDir, "Example");
+  const electronExe = `${appExe}.electron`;
+  const resolved = { appExe, electronExe };
+  const options = { dryRun: false };
+  const io = { log() {} };
+  const writeExecutable = (filePath, contents) => {
+    fs.writeFileSync(filePath, contents);
+    if (process.platform !== "win32") {
+      fs.chmodSync(filePath, 0o755);
+    }
+  };
+
+  writeExecutable(appExe, "fresh Electron v2");
+  writeExecutable(electronExe, "stale Electron v1");
+  preparer.stageMacosElectronExecutable(resolved, options, io);
+  assert.equal(fs.existsSync(appExe), false);
+  assert.equal(fs.readFileSync(electronExe, "utf8"), "fresh Electron v2");
+
+  preparer.stageMacosElectronExecutable(resolved, options, io);
+  assert.equal(fs.readFileSync(electronExe, "utf8"), "fresh Electron v2");
+
+  writeExecutable(appExe, `binary ${verifier.STEAM_BRIDGE_MACOS_LAUNCHER_ID}`);
+  preparer.stageMacosElectronExecutable(resolved, options, io);
+  assert.equal(fs.readFileSync(electronExe, "utf8"), "fresh Electron v2");
+
+  fs.rmSync(electronExe);
+  assert.throws(
+    () => preparer.stageMacosElectronExecutable(resolved, options, io),
+    /launcher[\s\S]*renamed Electron executable is missing/
+  );
+  assert.match(fs.readFileSync(appExe, "utf8"), /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
+});
+
 test("electron-builder helper skips non-mac targets without spawning", (t) => {
   const calls = mockSpawnSyncForTest(t);
   const builder = require(distFile("electron-builder.js"));
@@ -4397,14 +4449,17 @@ test("electron-builder Linux helper wraps executable with zygote-safe launcher",
   const executablePath = path.join(tempDir, "My Game");
   fs.writeFileSync(executablePath, "electron binary bytes");
 
-  const result = builder.prepareLinuxSteamAppAfterPack({
-    appOutDir: tempDir,
-    electronPlatformName: "linux",
-    arch: "x64",
-    packager: {
-      appInfo: { productFilename: "My Game" }
-    }
-  });
+  const result = builder.prepareLinuxSteamAppAfterPack(
+    {
+      appOutDir: tempDir,
+      electronPlatformName: "linux",
+      arch: "x64",
+      packager: {
+        appInfo: { productFilename: "My Game" }
+      }
+    },
+    { launcherArgs: [] }
+  );
 
   assert.equal(result.skipped, false);
   assert.equal(result.appExe, executablePath);
@@ -4436,7 +4491,6 @@ test("electron-builder Linux helper is idempotent after the executable has alrea
     arch: "x64",
     packager: { executableName: "SteamBridgeSmoke" }
   });
-  fs.writeFileSync(executablePath, "stale launcher");
 
   const result = builder.prepareLinuxSteamAppAfterPack({
     appOutDir: tempDir,
@@ -4448,6 +4502,87 @@ test("electron-builder Linux helper is idempotent after the executable has alrea
   assert.equal(result.skipped, false);
   assert.equal(fs.readFileSync(`${executablePath}.bin`, "utf8"), "first binary");
   assert.match(fs.readFileSync(executablePath, "utf8"), /--no-zygote' '--no-sandbox/);
+});
+
+test("electron-builder Linux helper replaces stale renamed Electron after a fresh rebuild", (t) => {
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-builder-rebuild-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const executablePath = path.join(tempDir, "SteamBridgeSmoke");
+  fs.writeFileSync(executablePath, "first binary");
+  const context = {
+    appOutDir: tempDir,
+    electronPlatformName: "linux",
+    arch: "x64",
+    packager: { executableName: "SteamBridgeSmoke" }
+  };
+  builder.prepareLinuxSteamAppAfterPack(context);
+
+  fs.writeFileSync(executablePath, "second binary");
+  const result = builder.prepareLinuxSteamAppAfterPack(context, {
+    launcherArgs: ["--no-sandbox", "--disable-gpu", "--no-zygote"]
+  });
+
+  assert.deepEqual(result.launcherArgs, ["--no-zygote", "--no-sandbox", "--disable-gpu"]);
+  assert.equal(fs.readFileSync(`${executablePath}.bin`, "utf8"), "second binary");
+  assert.match(fs.readFileSync(executablePath, "utf8"), /STEAM_BRIDGE_LINUX_ELECTRON_LAUNCHER_V1/);
+});
+
+test("electron-builder Linux helper recognizes its pre-marker launcher during an upgrade", (t) => {
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-builder-legacy-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const executablePath = path.join(tempDir, "SteamBridgeSmoke");
+  const binaryPath = `${executablePath}.bin`;
+  fs.writeFileSync(binaryPath, "existing Electron binary");
+  fs.writeFileSync(
+    executablePath,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      'cd "$(dirname "${BASH_SOURCE[0]}")"',
+      "exec './SteamBridgeSmoke.bin' '--no-zygote' '--no-sandbox' \"$@\"",
+      ""
+    ].join("\n")
+  );
+
+  builder.prepareLinuxSteamAppAfterPack({
+    appOutDir: tempDir,
+    electronPlatformName: "linux",
+    arch: "x64",
+    packager: { executableName: "SteamBridgeSmoke" }
+  });
+
+  assert.equal(fs.readFileSync(binaryPath, "utf8"), "existing Electron binary");
+  assert.match(fs.readFileSync(executablePath, "utf8"), /STEAM_BRIDGE_LINUX_ELECTRON_LAUNCHER_V1/);
+});
+
+test("electron-builder Linux helper recovers an interrupted wrap but rejects a launcher without Electron", (t) => {
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-builder-recovery-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+
+  const executablePath = path.join(tempDir, "SteamBridgeSmoke");
+  const context = {
+    appOutDir: tempDir,
+    electronPlatformName: "linux",
+    arch: "x64",
+    packager: { executableName: "SteamBridgeSmoke" }
+  };
+  fs.writeFileSync(executablePath, "electron binary");
+  builder.prepareLinuxSteamAppAfterPack(context);
+
+  fs.rmSync(executablePath);
+  builder.prepareLinuxSteamAppAfterPack(context);
+  assert.equal(fs.readFileSync(`${executablePath}.bin`, "utf8"), "electron binary");
+
+  fs.rmSync(`${executablePath}.bin`);
+  assert.throws(
+    () => builder.prepareLinuxSteamAppAfterPack(context),
+    /launcher[\s\S]*renamed Electron executable is missing/
+  );
 });
 
 test("electron-builder Linux helper reports missing executable names clearly", (t) => {

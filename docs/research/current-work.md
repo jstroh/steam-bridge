@@ -48,6 +48,36 @@ their Node CLIs directly, and package smoke rejects either workflow if that npm
 forwarding pattern returns. The replacement must use a new version and tag;
 never move, reuse, or publish `v0.3.14`.
 
+### 2026-08-08 post-v0.3.19 packaging and allocation hardening
+
+The current post-release worktree fixes three defect clusters without changing
+the settled overlay architecture or presentation cadence:
+
+- Linux `launcherArgs` can no longer remove the required `--no-zygote` and
+  `--no-sandbox` switches. They are additional arguments, exact duplicates are
+  removed, and the generated launcher has an explicit identity marker while
+  remaining compatible with pre-marker Steam Bridge launchers.
+- Linux and macOS package preparation now distinguish a fresh Electron binary
+  from an existing Steam Bridge launcher. A fresh rebuild replaces the stale
+  renamed Electron executable, an interruption after the rename is recoverable,
+  and a launcher with no renamed Electron target fails closed. The macOS marker
+  verifier scans in fixed-size chunks instead of reading the entire Electron
+  executable into memory.
+- Caller- or remote-controlled native allocation sizes are bounded before
+  allocation for Steam Cloud single-chunk reads/writes, HTTP headers and full or
+  streaming bodies, legacy P2P/socket reads, and networking POP enumeration.
+  Native byte buffers use fallible reservation so allocation pressure returns a
+  JavaScript error instead of deliberately requesting multi-gigabyte storage.
+
+Change-scoped validation is green: `npm test` passed 384/384 JavaScript tests
+and 39/39 Rust tests; `check:platform`, `api:check`, `native:fmt`,
+`native:check`, `npm audit --omit=dev`, the macOS preparation self-test, and
+`package:smoke` all passed. No actual-game pass was repeated because these
+changes do not touch window ownership, frame presentation, overlay input, DPI,
+or display timing. The external non-English keyboard-layout and Windows
+200 Hz + 75 Hz movement-cadence cases remain open under their existing retest
+contracts.
+
 ### 2026-08-08 v0.3.19 stable release checkpoint
 
 Patch `0.3.19` publishes the Windows mixed-refresh pacing repair at immutable

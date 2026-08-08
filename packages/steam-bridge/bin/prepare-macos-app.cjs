@@ -5,6 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const {
+  STEAM_BRIDGE_MACOS_LAUNCHER_ID,
+  fileContainsAsciiMarker,
   readCfBundleExecutable,
   resolveMacAppBundleExecutable,
   verifyMacAppBundleLauncher,
@@ -179,18 +181,11 @@ function prepareMacApp(options, io = console) {
   if (options.sign) {
     assertNonEmptyFile(entitlements, "entitlements");
   }
-  if (!options.dryRun) {
-    assertExecutable(resolved.appExe, "current app executable");
-  }
 
   logStep(io, options, `prepare ${resolved.appExe}`);
-  if (!fs.existsSync(resolved.electronExe)) {
-    logStep(io, options, `rename ${resolved.appExe} -> ${resolved.electronExe}`);
-    if (!options.dryRun) {
-      fs.renameSync(resolved.appExe, resolved.electronExe);
-    }
-  } else {
-    logStep(io, options, `reuse existing renamed Electron executable ${resolved.electronExe}`);
+  stageMacosElectronExecutable(resolved, options, io);
+  if (!options.dryRun) {
+    assertExecutable(resolved.electronExe, "renamed Electron executable");
   }
 
   logStep(io, options, `set CFBundleExecutable=${resolved.bundle.executableName}`);
@@ -222,6 +217,64 @@ function prepareMacApp(options, io = console) {
   }
 
   logStep(io, options, `prepared macOS Steam app: ${resolved.appExe}`);
+}
+
+function stageMacosElectronExecutable(resolved, options, io = console) {
+  const appExists = fs.existsSync(resolved.appExe);
+  const electronExists = fs.existsSync(resolved.electronExe);
+
+  if (options.dryRun) {
+    if (!appExists && electronExists) {
+      logStep(io, options, `recover using renamed Electron executable ${resolved.electronExe}`);
+    } else if (appExists && electronExists) {
+      const appIsLauncher = fileContainsAsciiMarker(resolved.appExe, STEAM_BRIDGE_MACOS_LAUNCHER_ID);
+      logStep(
+        io,
+        options,
+        appIsLauncher
+          ? `reuse existing renamed Electron executable ${resolved.electronExe}`
+          : `replace stale renamed Electron executable ${resolved.electronExe} with ${resolved.appExe}`
+      );
+    } else {
+      logStep(io, options, `rename ${resolved.appExe} -> ${resolved.electronExe}`);
+    }
+    return;
+  }
+
+  if (!appExists) {
+    if (!electronExists) {
+      throw new Error(
+        `current app executable and renamed Electron executable are both missing: ${resolved.appExe}`
+      );
+    }
+    assertNonEmptyFile(resolved.electronExe, "renamed Electron executable");
+    verifyRenamedElectronIsNotLauncher(resolved.electronExe, "renamed Electron executable");
+    logStep(io, options, `recover using renamed Electron executable ${resolved.electronExe}`);
+    return;
+  }
+
+  assertNonEmptyFile(resolved.appExe, "current app executable");
+  const appIsLauncher = fileContainsAsciiMarker(resolved.appExe, STEAM_BRIDGE_MACOS_LAUNCHER_ID);
+  if (appIsLauncher) {
+    if (!electronExists) {
+      throw new Error(
+        `found the Steam Bridge launcher at ${resolved.appExe}, but the renamed Electron executable is missing at ${resolved.electronExe}. Rebuild the .app before preparing it again.`
+      );
+    }
+    assertNonEmptyFile(resolved.electronExe, "renamed Electron executable");
+    verifyRenamedElectronIsNotLauncher(resolved.electronExe, "renamed Electron executable");
+    logStep(io, options, `reuse existing renamed Electron executable ${resolved.electronExe}`);
+    return;
+  }
+
+  if (electronExists) {
+    logStep(io, options, `replace stale renamed Electron executable ${resolved.electronExe} with ${resolved.appExe}`);
+    fs.rmSync(resolved.electronExe, { force: true });
+  } else {
+    logStep(io, options, `rename ${resolved.appExe} -> ${resolved.electronExe}`);
+  }
+  fs.renameSync(resolved.appExe, resolved.electronExe);
+  assertNonEmptyFile(resolved.electronExe, "renamed Electron executable");
 }
 
 function resolvePreparePaths(appExe) {
@@ -356,5 +409,6 @@ module.exports = {
   prepareMacApp,
   resolvePreparePaths,
   runCli,
-  runSelfTest
+  runSelfTest,
+  stageMacosElectronExecutable
 };

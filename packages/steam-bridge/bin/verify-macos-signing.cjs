@@ -230,8 +230,7 @@ function verifyRenamedElectronIsNotLauncher(filePath, label) {
 
 function assertBinaryMarker(filePath, label, expectedPresent) {
   assertNonEmptyFile(filePath, label);
-  const marker = Buffer.from(STEAM_BRIDGE_MACOS_LAUNCHER_ID, "utf8");
-  const hasMarker = fs.readFileSync(filePath).includes(marker);
+  const hasMarker = fileContainsAsciiMarker(filePath, STEAM_BRIDGE_MACOS_LAUNCHER_ID);
   if (expectedPresent && !hasMarker) {
     throw new Error(`${label} is not the Steam Bridge macOS launcher: missing ${STEAM_BRIDGE_MACOS_LAUNCHER_ID}`);
   }
@@ -239,6 +238,37 @@ function assertBinaryMarker(filePath, label, expectedPresent) {
     throw new Error(
       `${label} must be the renamed Electron executable, not the Steam Bridge macOS launcher: ${filePath}`
     );
+  }
+}
+
+function fileContainsAsciiMarker(filePath, markerText, chunkSize = 64 * 1024) {
+  if (typeof markerText !== "string" || markerText.length === 0) {
+    throw new TypeError("markerText must be a non-empty string");
+  }
+  if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
+    throw new TypeError("chunkSize must be a positive safe integer");
+  }
+
+  const marker = Buffer.from(markerText, "utf8");
+  const descriptor = fs.openSync(filePath, "r");
+  const buffer = Buffer.allocUnsafe(chunkSize);
+  let carry = Buffer.alloc(0);
+  try {
+    while (true) {
+      const bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        return false;
+      }
+      const current = bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead);
+      const searchable = carry.length > 0 ? Buffer.concat([carry, current]) : current;
+      if (searchable.includes(marker)) {
+        return true;
+      }
+      const carryLength = Math.min(marker.length - 1, searchable.length);
+      carry = Buffer.from(searchable.subarray(searchable.length - carryLength));
+    }
+  } finally {
+    fs.closeSync(descriptor);
   }
 }
 
@@ -463,6 +493,7 @@ module.exports = {
   STEAM_BRIDGE_MACOS_LAUNCHER_ID,
   main,
   assertBundleExecutableMatches,
+  fileContainsAsciiMarker,
   parseArgs,
   parseCfBundleExecutable,
   parseEntitlementBooleans,

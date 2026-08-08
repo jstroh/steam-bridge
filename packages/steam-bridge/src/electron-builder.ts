@@ -50,6 +50,7 @@ export interface PrepareMacosSteamAppAfterPackResult {
 export interface PrepareLinuxSteamAppAfterPackOptions {
   appExe?: string;
   executableName?: string;
+  /** Additional Electron arguments. Steam Bridge always retains --no-zygote and --no-sandbox. */
   launcherArgs?: string[];
 }
 
@@ -60,6 +61,9 @@ export interface PrepareLinuxSteamAppAfterPackResult {
   binaryExe?: string;
   launcherArgs?: string[];
 }
+
+const LINUX_LAUNCHER_ID = "STEAM_BRIDGE_LINUX_ELECTRON_LAUNCHER_V1";
+const REQUIRED_LINUX_LAUNCHER_ARGS = ["--no-zygote", "--no-sandbox"] as const;
 
 export function prepareMacosSteamAppAfterPack(
   context: ElectronBuilderAfterPackContext,
@@ -111,17 +115,12 @@ export function prepareLinuxSteamAppAfterPack(
 
   const appExe = resolveLinuxAppExe(context, options);
   const binaryExe = `${appExe}.bin`;
-  const launcherArgs = options.launcherArgs ?? ["--no-zygote", "--no-sandbox"];
-
-  if (!fs.existsSync(binaryExe)) {
-    if (!fs.existsSync(appExe)) {
-      throw new Error(`prepareLinuxSteamAppAfterPack could not find the Linux executable at ${appExe}.`);
-    }
-    fs.renameSync(appExe, binaryExe);
-  }
+  const launcherArgs = normalizeLinuxLauncherArgs(options.launcherArgs);
+  stageLinuxElectronExecutable(appExe, binaryExe);
 
   const launcher = [
     "#!/usr/bin/env bash",
+    `# ${LINUX_LAUNCHER_ID}`,
     "set -euo pipefail",
     'cd "$(dirname "${BASH_SOURCE[0]}")"',
     `exec ${shellSingleQuote(`./${path.basename(binaryExe)}`)} ${launcherArgs.map(shellSingleQuote).join(" ")} "$@"`,
@@ -138,6 +137,98 @@ export function prepareLinuxSteamAppAfterPack(
     binaryExe,
     launcherArgs
   };
+}
+
+function normalizeLinuxLauncherArgs(additionalArgs: string[] | undefined): string[] {
+  if (additionalArgs !== undefined && !Array.isArray(additionalArgs)) {
+    throw new TypeError("prepareLinuxSteamAppAfterPack launcherArgs must be an array of strings.");
+  }
+
+  const normalized: string[] = [...REQUIRED_LINUX_LAUNCHER_ARGS];
+  for (const argument of additionalArgs ?? []) {
+    if (typeof argument !== "string" || argument.includes("\0")) {
+      throw new TypeError("prepareLinuxSteamAppAfterPack launcherArgs must contain only NUL-free strings.");
+    }
+    if (!normalized.includes(argument)) {
+      normalized.push(argument);
+    }
+  }
+  return normalized;
+}
+
+function stageLinuxElectronExecutable(appExe: string, binaryExe: string): void {
+  const appExists = fs.existsSync(appExe);
+  const binaryExists = fs.existsSync(binaryExe);
+
+  if (!appExists) {
+    if (!binaryExists) {
+      throw new Error(`prepareLinuxSteamAppAfterPack could not find the Linux executable at ${appExe}.`);
+    }
+    assertRegularNonEmptyFile(binaryExe, "renamed Linux Electron executable");
+    return;
+  }
+
+  assertRegularNonEmptyFile(appExe, "current Linux app executable");
+  if (isSteamBridgeLinuxLauncher(appExe, path.basename(binaryExe))) {
+    if (!binaryExists) {
+      throw new Error(
+        `prepareLinuxSteamAppAfterPack found its launcher at ${appExe}, but the renamed Electron executable is missing at ${binaryExe}. Rebuild the unpacked app before preparing it again.`
+      );
+    }
+    assertRegularNonEmptyFile(binaryExe, "renamed Linux Electron executable");
+    return;
+  }
+
+  if (binaryExists) {
+    fs.rmSync(binaryExe, { force: true });
+  }
+  fs.renameSync(appExe, binaryExe);
+  assertRegularNonEmptyFile(binaryExe, "renamed Linux Electron executable");
+}
+
+function isSteamBridgeLinuxLauncher(filePath: string, binaryBasename: string): boolean {
+  const prefix = readFilePrefix(filePath, 16 * 1024);
+  if (!prefix.startsWith("#!/usr/bin/env bash\n")) {
+    return false;
+  }
+  if (prefix.includes(LINUX_LAUNCHER_ID)) {
+    return true;
+  }
+
+  // Recognize launchers emitted before the marker was added so package upgrades remain idempotent.
+  const legacyExecPrefix = `exec ${shellSingleQuote(`./${binaryBasename}`)} `;
+  return (
+    prefix.includes("set -euo pipefail\n") &&
+    prefix.includes('cd "$(dirname "${BASH_SOURCE[0]}")"\n') &&
+    prefix.includes(legacyExecPrefix) &&
+    prefix.includes('"$@"')
+  );
+}
+
+function readFilePrefix(filePath: string, maxBytes: number): string {
+  const descriptor = fs.openSync(filePath, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(maxBytes);
+    const bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
+    return buffer.toString("utf8", 0, bytesRead);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function assertRegularNonEmptyFile(filePath: string, label: string): void {
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(filePath);
+  } catch {
+    throw new Error(`${label} is missing: ${filePath}`);
+  }
+  if (!stats.isFile()) {
+    throw new Error(`${label} is not a regular file: ${filePath}`);
+  }
+  if (stats.size <= 0) {
+    throw new Error(`${label} is empty: ${filePath}`);
+  }
 }
 
 function validateMacosArm64AfterPackContext(

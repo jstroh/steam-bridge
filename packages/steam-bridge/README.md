@@ -783,6 +783,14 @@ broken presentation. Do not remove or make these switches opt-in unless a
 replacement has passed actual-game QA on Linux Desktop, Steam Deck Desktop,
 and Steam Deck Game Mode.
 
+`launcherArgs` adds application-specific Electron arguments; it does not
+replace the required arguments. The helper always retains `--no-zygote` and
+`--no-sandbox` and removes exact duplicates. It is safe to rerun in the same
+output directory: a freshly packaged Electron executable replaces an older
+`<name>.bin`, while a run interrupted after the rename resumes from that
+renamed executable. A launcher whose renamed Electron executable is missing is
+rejected instead of being mistaken for Electron.
+
 This is process-start infrastructure, not application window policy. The game
 still owns its BrowserWindow size, minimum size, fullscreen behavior, cursor
 policy, and platform-specific input model; Steam Bridge follows the resulting
@@ -806,7 +814,20 @@ exports.afterPack = async (context) => {
 ```
 
 Use your normal Apple signing and notarization pipeline after preparation. The
-helper rejects Intel, Rosetta, and universal targets.
+helper rejects Intel, Rosetta, and universal targets. It also distinguishes a
+fresh Electron executable from its previously compiled launcher, replaces a
+stale `<name>.electron` during an in-place rebuild, and can resume a run that
+was interrupted after renaming Electron. It fails closed if the launcher is
+present but the renamed Electron executable is missing.
+
+### Native buffer safety
+
+Low-level reads validate allocation sizes before entering the Steam API.
+Steam Cloud single-chunk reads and writes, full or streaming HTTP response
+copies, legacy P2P/socket reads, and Steam networking POP enumeration reject
+sizes above their documented or package safety bounds instead of attempting
+multi-gigabyte native allocations. Use the asynchronous/chunked Steam APIs for
+larger payloads.
 
 For the complete packaging matrix and platform procedures, see the
 [Electron example guide](https://github.com/jstroh/steam-bridge/blob/main/examples/electron-basic/README.md#packaged-smoke-builds).
