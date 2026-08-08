@@ -465,6 +465,11 @@ const MAX_LEGACY_NETWORKING_PACKET_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_POP_COUNT: u32 = 65_536;
 const MAX_HTTP_HEADER_BYTES: u32 = 1024 * 1024;
 const MAX_HTTP_RESPONSE_BODY_BYTES: u32 = 100 * 1024 * 1024;
+const MAX_STEAM_ENUMERATION_ENTRIES: usize = 1_000_000;
+const MAX_NETWORKING_RECEIVE_MESSAGE_BYTES: usize = 100 * 1024 * 1024;
+const MAX_LOBBY_MEMBERS: u32 = 250;
+const MAX_LEADERBOARD_USERS: usize = 100;
+const MAX_WORKSHOP_PLAYTIME_ITEMS: usize = 100;
 const MAX_INVENTORY_LIST_ENTRIES: u32 = 1_000_000;
 const DEFAULT_ELIGIBLE_PROMO_ITEM_ENTRIES: u32 = 256;
 const MAX_INVENTORY_PROPERTY_BYTES: u32 = 1024 * 1024;
@@ -2777,10 +2782,15 @@ pub fn achievement_clear(name: String) -> Result<bool, Error> {
 #[napi(js_name = "achievementNames")]
 pub fn achievement_names() -> Result<Vec<String>, Error> {
     let stats = steam_user_stats()?;
-    let count = unsafe { sys::SteamAPI_ISteamUserStats_GetNumAchievements(stats) };
-    let mut names = Vec::with_capacity(count as usize);
+    let count = bounded_u32_collection_count(
+        unsafe { sys::SteamAPI_ISteamUserStats_GetNumAchievements(stats) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "achievement count",
+    )?;
+    let mut names =
+        bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "achievement list")?;
     for index in 0..count {
-        let raw = unsafe { sys::SteamAPI_ISteamUserStats_GetAchievementName(stats, index) };
+        let raw = unsafe { sys::SteamAPI_ISteamUserStats_GetAchievementName(stats, index as u32) };
         names.push(string_from_ptr(raw));
     }
     Ok(names)
@@ -2830,10 +2840,15 @@ pub fn friends_get_friend_by_index(
 #[napi(js_name = "friendsGetFriends")]
 pub fn friends_get_friends(friend_flags: Option<u32>) -> Result<Vec<PlayerSteamId>, Error> {
     let flags = friend_flags.unwrap_or(FRIEND_FLAG_IMMEDIATE);
-    let count = friends_get_friend_count(Some(flags))?;
-    let mut result = Vec::with_capacity(count.max(0) as usize);
+    let count = bounded_i32_collection_count(
+        friends_get_friend_count(Some(flags))?,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "friend count",
+    )?;
+    let mut result =
+        bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "friend list")?;
     for index in 0..count {
-        result.push(friends_get_friend_by_index(index, Some(flags))?);
+        result.push(friends_get_friend_by_index(index as i32, Some(flags))?);
     }
     Ok(result)
 }
@@ -2963,23 +2978,38 @@ pub fn friends_request_user_information(
 #[napi(js_name = "friendsGetFriendsGroups")]
 pub fn friends_get_friends_groups() -> Result<Vec<FriendsGroupInfo>, Error> {
     let friends = steam_friends()?;
-    let count = unsafe { sys::SteamAPI_ISteamFriends_GetFriendsGroupCount(friends) };
-    let mut groups = Vec::with_capacity(count.max(0) as usize);
+    let count = bounded_i32_collection_count(
+        unsafe { sys::SteamAPI_ISteamFriends_GetFriendsGroupCount(friends) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "friends group count",
+    )?;
+    let mut groups =
+        bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "friends group list")?;
     for index in 0..count {
-        let id = unsafe { sys::SteamAPI_ISteamFriends_GetFriendsGroupIDByIndex(friends, index) };
+        let id =
+            unsafe { sys::SteamAPI_ISteamFriends_GetFriendsGroupIDByIndex(friends, index as i32) };
         let name = string_from_ptr(unsafe {
             sys::SteamAPI_ISteamFriends_GetFriendsGroupName(friends, id)
         });
-        let member_count =
-            unsafe { sys::SteamAPI_ISteamFriends_GetFriendsGroupMembersCount(friends, id) };
-        let mut members = vec![u64_to_csteam_id(0); member_count.max(0) as usize];
+        let member_count = bounded_i32_collection_count(
+            unsafe { sys::SteamAPI_ISteamFriends_GetFriendsGroupMembersCount(friends, id) },
+            MAX_STEAM_ENUMERATION_ENTRIES,
+            "friends group member count",
+        )?;
+        let mut members = bounded_filled_buffer(
+            member_count as u32,
+            MAX_STEAM_ENUMERATION_ENTRIES as u32,
+            "friends group member list",
+            "entries",
+            u64_to_csteam_id(0),
+        )?;
         if member_count > 0 {
             unsafe {
                 sys::SteamAPI_ISteamFriends_GetFriendsGroupMembersList(
                     friends,
                     id,
                     members.as_mut_ptr(),
-                    member_count,
+                    member_count as i32,
                 );
             }
         }
@@ -3008,10 +3038,14 @@ pub fn friends_get_clan_by_index(index: i32) -> Result<PlayerSteamId, Error> {
 
 #[napi(js_name = "friendsGetClans")]
 pub fn friends_get_clans() -> Result<Vec<PlayerSteamId>, Error> {
-    let count = friends_get_clan_count()?;
-    let mut clans = Vec::with_capacity(count.max(0) as usize);
+    let count = bounded_i32_collection_count(
+        friends_get_clan_count()?,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "clan count",
+    )?;
+    let mut clans = bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "clan list")?;
     for index in 0..count {
-        clans.push(friends_get_clan_by_index(index)?);
+        clans.push(friends_get_clan_by_index(index as i32)?);
     }
     Ok(clans)
 }
@@ -3065,15 +3099,25 @@ pub async fn friends_download_clan_activity_counts(
     timeout_seconds: Option<u32>,
 ) -> Result<DownloadClanActivityCountsResult, Error> {
     let friends = steam_friends()?;
-    let mut clan_ids = clan_ids64
-        .into_iter()
-        .map(|id| bigint_to_u64(id, "clanId64").map(u64_to_csteam_id))
-        .collect::<Result<Vec<_>, _>>()?;
+    let clan_count = bounded_collection_count(
+        clan_ids64.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "clan activity request",
+    )?;
+    let mut clan_ids = bounded_collection_capacity(
+        clan_count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "clan activity request",
+    )?;
+    for id in clan_ids64 {
+        clan_ids.push(u64_to_csteam_id(bigint_to_u64(id, "clanId64")?));
+    }
+    let clan_count = len_to_i32(clan_count, "clan activity request")?;
     let call = unsafe {
         sys::SteamAPI_ISteamFriends_DownloadClanActivityCounts(
             friends,
             clan_ids.as_mut_ptr(),
-            clan_ids.len() as i32,
+            clan_count,
         )
     };
     drop(clan_ids);
@@ -3114,11 +3158,16 @@ pub fn friends_get_friend_from_source_by_index(
 pub fn friends_get_friends_from_source(source_id64: BigInt) -> Result<Vec<PlayerSteamId>, Error> {
     let friends = steam_friends()?;
     let source_id = bigint_to_u64(source_id64, "sourceId64")?;
-    let count = unsafe { sys::SteamAPI_ISteamFriends_GetFriendCountFromSource(friends, source_id) };
-    let mut friends_list = Vec::with_capacity(count.max(0) as usize);
+    let count = bounded_i32_collection_count(
+        unsafe { sys::SteamAPI_ISteamFriends_GetFriendCountFromSource(friends, source_id) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "source friend count",
+    )?;
+    let mut friends_list =
+        bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "source friend list")?;
     for index in 0..count {
         friends_list.push(steam_id_to_player(unsafe {
-            sys::SteamAPI_ISteamFriends_GetFriendFromSourceByIndex(friends, source_id, index)
+            sys::SteamAPI_ISteamFriends_GetFriendFromSourceByIndex(friends, source_id, index as i32)
         }));
     }
     Ok(friends_list)
@@ -3220,12 +3269,23 @@ pub fn friends_get_friend_rich_presence(steam_id64: BigInt, key: String) -> Resu
 pub fn friends_get_friend_rich_presence_keys(steam_id64: BigInt) -> Result<Vec<String>, Error> {
     let friends = steam_friends()?;
     let steam_id = bigint_to_u64(steam_id64, "steamId64")?;
-    let count =
-        unsafe { sys::SteamAPI_ISteamFriends_GetFriendRichPresenceKeyCount(friends, steam_id) };
-    let mut keys = Vec::with_capacity(count.max(0) as usize);
+    let count = bounded_i32_collection_count(
+        unsafe { sys::SteamAPI_ISteamFriends_GetFriendRichPresenceKeyCount(friends, steam_id) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "rich presence key count",
+    )?;
+    let mut keys = bounded_collection_capacity(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "rich presence key list",
+    )?;
     for index in 0..count {
         keys.push(string_from_ptr(unsafe {
-            sys::SteamAPI_ISteamFriends_GetFriendRichPresenceKeyByIndex(friends, steam_id, index)
+            sys::SteamAPI_ISteamFriends_GetFriendRichPresenceKeyByIndex(
+                friends,
+                steam_id,
+                index as i32,
+            )
         }));
     }
     Ok(keys)
@@ -3268,10 +3328,15 @@ pub fn friends_get_coplay_friend(index: i32) -> Result<PlayerSteamId, Error> {
 
 #[napi(js_name = "friendsGetCoplayFriends")]
 pub fn friends_get_coplay_friends() -> Result<Vec<PlayerSteamId>, Error> {
-    let count = friends_get_coplay_friend_count()?;
-    let mut friends_list = Vec::with_capacity(count.max(0) as usize);
+    let count = bounded_i32_collection_count(
+        friends_get_coplay_friend_count()?,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "coplay friend count",
+    )?;
+    let mut friends_list =
+        bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "coplay friend list")?;
     for index in 0..count {
-        friends_list.push(friends_get_coplay_friend(index)?);
+        friends_list.push(friends_get_coplay_friend(index as i32)?);
     }
     Ok(friends_list)
 }
@@ -3521,8 +3586,9 @@ pub async fn friends_enumerate_following_list(
     let eresult = unsafe { ptr::addr_of!(result.m_eResult).read_unaligned() };
     let returned = unsafe { ptr::addr_of!(result.m_nResultsReturned).read_unaligned() };
     let total = unsafe { ptr::addr_of!(result.m_nTotalResultCount).read_unaligned() };
-    let mut steam_ids = Vec::with_capacity(returned.max(0) as usize);
     let returned_len = returned.clamp(0, result.m_rgSteamID.len() as i32) as usize;
+    let mut steam_ids =
+        bounded_collection_capacity(returned_len, result.m_rgSteamID.len(), "following list")?;
     for index in 0..returned_len {
         steam_ids.push(csteam_id_to_player(result.m_rgSteamID[index]));
     }
@@ -3716,9 +3782,7 @@ pub fn apps_app_install_dir(app_id: u32) -> Result<String, Error> {
     if len == 0 {
         Ok(String::new())
     } else {
-        Ok(unsafe { CStr::from_ptr(buf.as_ptr()) }
-            .to_string_lossy()
-            .into_owned())
+        Ok(c_buf_to_string(&buf[..(len as usize).min(buf.len())]))
     }
 }
 
@@ -3753,11 +3817,7 @@ pub fn apps_current_beta_name() -> Result<Option<String>, Error> {
         sys::SteamAPI_ISteamApps_GetCurrentBetaName(apps, buf.as_mut_ptr(), buf.len() as i32)
     };
     if ok {
-        Ok(Some(
-            unsafe { CStr::from_ptr(buf.as_ptr()) }
-                .to_string_lossy()
-                .into_owned(),
-        ))
+        Ok(Some(c_buf_to_string(&buf)))
     } else {
         Ok(None)
     }
@@ -4319,12 +4379,20 @@ pub fn cloud_get_quota() -> Result<Option<CloudQuota>, Error> {
 #[napi(js_name = "cloudListFiles")]
 pub fn cloud_list_files() -> Result<Vec<CloudFileInfo>, Error> {
     let storage = steam_remote_storage()?;
-    let count = unsafe { sys::SteamAPI_ISteamRemoteStorage_GetFileCount(storage) };
-    let mut files = Vec::new();
+    let count = bounded_i32_collection_count(
+        unsafe { sys::SteamAPI_ISteamRemoteStorage_GetFileCount(storage) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "Steam Cloud file count",
+    )?;
+    let mut files = bounded_collection_capacity(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "Steam Cloud file list",
+    )?;
     for index in 0..count {
         let mut size = 0i32;
         let name = unsafe {
-            sys::SteamAPI_ISteamRemoteStorage_GetFileNameAndSize(storage, index, &mut size)
+            sys::SteamAPI_ISteamRemoteStorage_GetFileNameAndSize(storage, index as i32, &mut size)
         };
         if !name.is_null() {
             files.push(CloudFileInfo {
@@ -4366,10 +4434,18 @@ pub fn cloud_get_local_file_change(index: i32) -> Result<Option<CloudLocalFileCh
 
 #[napi(js_name = "cloudGetLocalFileChanges")]
 pub fn cloud_get_local_file_changes() -> Result<Vec<CloudLocalFileChange>, Error> {
-    let count = cloud_get_local_file_change_count()?.max(0);
-    let mut changes = Vec::new();
+    let count = bounded_i32_collection_count(
+        cloud_get_local_file_change_count()?,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "Steam Cloud local change count",
+    )?;
+    let mut changes = bounded_collection_capacity(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "Steam Cloud local change list",
+    )?;
     for index in 0..count {
-        if let Some(change) = cloud_get_local_file_change(index)? {
+        if let Some(change) = cloud_get_local_file_change(index as i32)? {
             changes.push(change);
         }
     }
@@ -4579,10 +4655,18 @@ pub fn cloud_get_cached_ugc_handle(index: i32) -> Result<Option<BigInt>, Error> 
 
 #[napi(js_name = "cloudGetCachedUgcHandles")]
 pub fn cloud_get_cached_ugc_handles() -> Result<Vec<BigInt>, Error> {
-    let count = cloud_get_cached_ugc_count()?.max(0);
-    let mut handles = Vec::new();
+    let count = bounded_i32_collection_count(
+        cloud_get_cached_ugc_count()?,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "cached UGC count",
+    )?;
+    let mut handles = bounded_collection_capacity(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "cached UGC handle list",
+    )?;
     for index in 0..count {
-        if let Some(handle) = cloud_get_cached_ugc_handle(index)? {
+        if let Some(handle) = cloud_get_cached_ugc_handle(index as i32)? {
             handles.push(handle);
         }
     }
@@ -6342,18 +6426,23 @@ pub fn html_file_load_dialog_response(
     browser: u32,
     selected_files: Vec<String>,
 ) -> Result<(), Error> {
-    let selected_files = selected_files
-        .into_iter()
-        .map(|file| cstring(file, "HTML selected file"))
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut pointers: Vec<*const c_char> =
-        selected_files.iter().map(|file| file.as_ptr()).collect();
-    pointers.push(ptr::null());
+    let selected_file_count = bounded_collection_count(
+        selected_files.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "HTML selected file list",
+    )?;
+    let (_selected_files, mut pointers) = cstring_pointer_array(
+        selected_files,
+        selected_file_count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "HTML selected file",
+    )?;
+    let selected_files_ptr = null_terminated_pointer_array(&mut pointers, "HTML selected files")?;
     unsafe {
         sys::SteamAPI_ISteamHTMLSurface_FileLoadDialogResponse(
             steam_html_surface()?,
             browser,
-            pointers.as_mut_ptr(),
+            selected_files_ptr,
         )
     };
     Ok(())
@@ -6373,10 +6462,18 @@ pub fn parties_get_beacon_by_index(index: u32) -> Result<Option<BigInt>, Error> 
 #[napi(js_name = "partiesGetActiveBeacons")]
 pub fn parties_get_active_beacons() -> Result<Vec<BigInt>, Error> {
     let parties = steam_parties()?;
-    let count = unsafe { sys::SteamAPI_ISteamParties_GetNumActiveBeacons(parties) };
-    let mut beacons = Vec::with_capacity(count as usize);
+    let count = bounded_u32_collection_count(
+        unsafe { sys::SteamAPI_ISteamParties_GetNumActiveBeacons(parties) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "active party beacon count",
+    )?;
+    let mut beacons = bounded_collection_capacity(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "active party beacon list",
+    )?;
     for index in 0..count {
-        let beacon = unsafe { sys::SteamAPI_ISteamParties_GetBeaconByIndex(parties, index) };
+        let beacon = unsafe { sys::SteamAPI_ISteamParties_GetBeaconByIndex(parties, index as u32) };
         if beacon != sys::k_ulPartyBeaconIdInvalid {
             beacons.push(beacon.into());
         }
@@ -6747,7 +6844,7 @@ pub fn inventory_deserialize_result(data: Buffer) -> Result<Option<i32>, Error> 
 
 #[napi(js_name = "inventoryGenerateItems")]
 pub fn inventory_generate_items(items: Vec<InventoryItemQuantity>) -> Result<Option<i32>, Error> {
-    let (defs, quantities) = inventory_definition_quantities(items);
+    let (defs, quantities) = inventory_definition_quantities(items)?;
     let mut result_handle = sys::k_SteamInventoryResultInvalid;
     let ok = unsafe {
         sys::SteamAPI_ISteamInventory_GenerateItems(
@@ -6816,7 +6913,8 @@ pub fn inventory_exchange_items(
     generate: Vec<InventoryItemQuantity>,
     destroy: Vec<InventoryInstanceQuantity>,
 ) -> Result<Option<i32>, Error> {
-    let (generate_defs, generate_quantities) = inventory_definition_quantities(generate);
+    let (generate_defs, generate_quantities) = inventory_definition_quantities(generate)?;
+    validate_inventory_exchange_output(&generate_defs, &generate_quantities)?;
     let (destroy_ids, destroy_quantities) = inventory_instance_quantities(destroy)?;
     let mut result_handle = sys::k_SteamInventoryResultInvalid;
     let ok = unsafe {
@@ -6990,7 +7088,7 @@ pub async fn inventory_start_purchase(
     items: Vec<InventoryItemQuantity>,
     timeout_seconds: Option<u32>,
 ) -> Result<InventoryStartPurchaseResult, Error> {
-    let (defs, quantities) = inventory_definition_quantities(items);
+    let (defs, quantities) = inventory_definition_quantities(items)?;
     let call = unsafe {
         sys::SteamAPI_ISteamInventory_StartPurchase(
             steam_client_inventory()?,
@@ -7417,7 +7515,7 @@ pub async fn game_server_inventory_start_purchase(
     items: Vec<InventoryItemQuantity>,
     timeout_seconds: Option<u32>,
 ) -> Result<InventoryStartPurchaseResult, Error> {
-    let (defs, quantities) = inventory_definition_quantities(items);
+    let (defs, quantities) = inventory_definition_quantities(items)?;
     let call = unsafe {
         sys::SteamAPI_ISteamInventory_StartPurchase(
             steam_game_server_inventory()?,
@@ -9324,23 +9422,24 @@ pub async fn stats_download_leaderboard_entries_for_users(
     steam_ids64: Vec<BigInt>,
     details_max: Option<u32>,
 ) -> Result<LeaderboardScoresDownloaded, Error> {
-    if steam_ids64.is_empty() {
-        return Err(Error::from_reason(
-            "at least one Steam ID is required to download leaderboard entries for users",
-        ));
-    }
+    let user_count_usize = steam_ids64.len();
+    let user_count = validate_leaderboard_user_count(user_count_usize)?;
     let leaderboard = bigint_to_u64(leaderboard, "leaderboard")?;
-    let mut users = steam_ids64
-        .into_iter()
-        .map(|steam_id| bigint_to_u64(steam_id, "steamId64").map(u64_to_csteam_id))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut users = bounded_collection_capacity(
+        user_count_usize,
+        MAX_LEADERBOARD_USERS,
+        "leaderboard user list",
+    )?;
+    for steam_id in steam_ids64 {
+        users.push(u64_to_csteam_id(bigint_to_u64(steam_id, "steamId64")?));
+    }
     let details_max = leaderboard_details_max(details_max);
     let call = unsafe {
         sys::SteamAPI_ISteamUserStats_DownloadLeaderboardEntriesForUsers(
             steam_user_stats()?,
             leaderboard,
             users.as_mut_ptr(),
-            users.len() as i32,
+            user_count,
         )
     };
     let result: sys::LeaderboardScoresDownloaded_t = wait_for_api_call(
@@ -10224,8 +10323,16 @@ pub fn remote_play_get_session_id(index: i32) -> Result<u32, Error> {
 #[napi(js_name = "remotePlayGetSessions")]
 pub fn remote_play_get_sessions() -> Result<Vec<RemotePlaySessionInfo>, Error> {
     let remote_play = steam_remote_play()?;
-    let count = unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionCount(remote_play) };
-    let mut sessions = Vec::with_capacity(count as usize);
+    let count = bounded_u32_collection_count(
+        unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionCount(remote_play) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "Remote Play session count",
+    )?;
+    let mut sessions = bounded_collection_capacity(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "Remote Play session list",
+    )?;
     for index in 0..count {
         let id = unsafe { sys::SteamAPI_ISteamRemotePlay_GetSessionID(remote_play, index as i32) };
         sessions.push(remote_play_session_info(remote_play, id));
@@ -11985,17 +12092,7 @@ fn networking_messages_receive_messages_on_channel_with(
     if received <= 0 {
         return Ok(Vec::new());
     }
-
-    let mut output = Vec::with_capacity(received as usize);
-    for message in messages.into_iter().take(received as usize) {
-        if message.is_null() {
-            continue;
-        }
-        let parsed = unsafe { networking_message_from_ptr(message) };
-        unsafe { sys::SteamAPI_SteamNetworkingMessage_t_Release(message) };
-        output.push(parsed);
-    }
-    Ok(output)
+    collect_received_networking_messages(&mut messages, received)
 }
 
 fn networking_messages_accept_session_with_user_with(
@@ -12400,10 +12497,19 @@ pub fn networking_sockets_send_messages(
         return Ok(Vec::new());
     }
 
+    let batch_size = bounded_collection_count(
+        messages.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "networking socket message batch",
+    )?;
     let sockets = steam_networking_sockets()?;
     let utils = steam_networking_utils()?;
-    let message_count = len_to_i32(messages.len(), "networking socket message batch")?;
-    let mut raw_messages = Vec::with_capacity(messages.len());
+    let message_count = len_to_i32(batch_size, "networking socket message batch")?;
+    let mut raw_messages = bounded_collection_capacity(
+        batch_size,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "networking socket message batch",
+    )?;
 
     for message in messages {
         let raw = match allocate_networking_socket_message(utils, message) {
@@ -12416,7 +12522,19 @@ pub fn networking_sockets_send_messages(
         raw_messages.push(raw);
     }
 
-    let mut results = vec![0i64; raw_messages.len()];
+    let mut results = match bounded_filled_buffer(
+        batch_size as u32,
+        MAX_STEAM_ENUMERATION_ENTRIES as u32,
+        "networking socket send results",
+        "entries",
+        0i64,
+    ) {
+        Ok(results) => results,
+        Err(error) => {
+            release_networking_messages(&raw_messages);
+            return Err(error);
+        }
+    };
     unsafe {
         sys::SteamAPI_ISteamNetworkingSockets_SendMessages(
             sockets,
@@ -12618,9 +12736,12 @@ pub fn networking_sockets_configure_connection_lanes(
     priorities: Vec<i32>,
     weights: Option<Vec<u32>>,
 ) -> Result<u32, Error> {
-    let lane_count = priorities.len();
-    let lane_count_i32 = i32::try_from(lane_count)
-        .map_err(|_| Error::from_reason("connection lane count exceeds i32"))?;
+    let lane_count = bounded_collection_count(
+        priorities.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "connection lane count",
+    )?;
+    let lane_count_i32 = len_to_i32(lane_count, "connection lane count")?;
     let weights = weights
         .map(|weights| {
             if weights.len() != lane_count {
@@ -12628,13 +12749,18 @@ pub fn networking_sockets_configure_connection_lanes(
                     "connection lane weights must match priorities length",
                 ));
             }
-            weights
-                .into_iter()
-                .map(|weight| {
+            let mut converted = bounded_collection_capacity(
+                lane_count,
+                MAX_STEAM_ENUMERATION_ENTRIES,
+                "connection lane weight list",
+            )?;
+            for weight in weights {
+                converted.push(
                     u16::try_from(weight)
-                        .map_err(|_| Error::from_reason("connection lane weight exceeds u16"))
-                })
-                .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| Error::from_reason("connection lane weight exceeds u16"))?,
+                );
+            }
+            Ok(converted)
         })
         .transpose()?;
     let weight_ptr = weights
@@ -16187,11 +16313,12 @@ pub async fn matchmaking_create_lobby(
     lobby_type: u32,
     max_members: u32,
 ) -> Result<LobbyResult, Error> {
+    let max_members = validate_lobby_member_limit(max_members)?;
     let call = unsafe {
         sys::SteamAPI_ISteamMatchmaking_CreateLobby(
             steam_matchmaking()?,
             lobby_type_from_u32(lobby_type)?,
-            max_members as i32,
+            max_members,
         )
     };
     let result: sys::LobbyCreated_t = wait_for_api_call(
@@ -16241,9 +16368,14 @@ pub async fn matchmaking_get_lobbies() -> Result<Vec<LobbyResult>, Error> {
         DEFAULT_ASYNC_TIMEOUT_SECONDS,
     )
     .await?;
-    let count = unsafe { ptr::addr_of!(result.m_nLobbiesMatching).read_unaligned() };
+    let count = bounded_u32_collection_count(
+        unsafe { ptr::addr_of!(result.m_nLobbiesMatching).read_unaligned() },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "lobby match count",
+    )?;
     let matchmaking = steam_matchmaking()?;
-    let mut lobbies = Vec::new();
+    let mut lobbies =
+        bounded_collection_capacity(count, MAX_STEAM_ENUMERATION_ENTRIES, "lobby match list")?;
     for index in 0..count {
         let id =
             unsafe { sys::SteamAPI_ISteamMatchmaking_GetLobbyByIndex(matchmaking, index as i32) };
@@ -16289,11 +16421,16 @@ pub fn matchmaking_get_lobby_member_limit(lobby_id: BigInt) -> Result<Option<u32
 pub fn matchmaking_get_lobby_members(lobby_id: BigInt) -> Result<Vec<PlayerSteamId>, Error> {
     let matchmaking = steam_matchmaking()?;
     let lobby = bigint_to_u64(lobby_id, "lobby id")?;
-    let count = unsafe { sys::SteamAPI_ISteamMatchmaking_GetNumLobbyMembers(matchmaking, lobby) };
-    let mut members = Vec::new();
-    for index in 0..count.max(0) {
+    let count = bounded_i32_collection_count(
+        unsafe { sys::SteamAPI_ISteamMatchmaking_GetNumLobbyMembers(matchmaking, lobby) },
+        MAX_LOBBY_MEMBERS as usize,
+        "lobby member count",
+    )?;
+    let mut members =
+        bounded_collection_capacity(count, MAX_LOBBY_MEMBERS as usize, "lobby member list")?;
+    for index in 0..count {
         let id = unsafe {
-            sys::SteamAPI_ISteamMatchmaking_GetLobbyMemberByIndex(matchmaking, lobby, index)
+            sys::SteamAPI_ISteamMatchmaking_GetLobbyMemberByIndex(matchmaking, lobby, index as i32)
         };
         members.push(steam_id_to_player(id));
     }
@@ -16370,16 +16507,20 @@ pub fn matchmaking_delete_lobby_data(lobby_id: BigInt, key: String) -> Result<bo
 pub fn matchmaking_get_lobby_full_data(lobby_id: BigInt) -> Result<Value, Error> {
     let matchmaking = steam_matchmaking()?;
     let lobby = bigint_to_u64(lobby_id, "lobby id")?;
-    let count = unsafe { sys::SteamAPI_ISteamMatchmaking_GetLobbyDataCount(matchmaking, lobby) };
+    let count = bounded_i32_collection_count(
+        unsafe { sys::SteamAPI_ISteamMatchmaking_GetLobbyDataCount(matchmaking, lobby) },
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "lobby metadata count",
+    )?;
     let mut map = serde_json::Map::new();
-    for index in 0..count.max(0) {
+    for index in 0..count {
         let mut key = vec![0i8; 256];
         let mut value = vec![0i8; 4096];
         let ok = unsafe {
             sys::SteamAPI_ISteamMatchmaking_GetLobbyDataByIndex(
                 matchmaking,
                 lobby,
-                index,
+                index as i32,
                 key.as_mut_ptr(),
                 key.len() as i32,
                 value.as_mut_ptr(),
@@ -16554,6 +16695,9 @@ pub fn matchmaking_set_lobby_member_limit(
     lobby_id: BigInt,
     max_members: i32,
 ) -> Result<bool, Error> {
+    let max_members = u32::try_from(max_members)
+        .map_err(|_| Error::from_reason("lobby member limit must be positive"))?;
+    let max_members = validate_lobby_member_limit(max_members)?;
     Ok(unsafe {
         sys::SteamAPI_ISteamMatchmaking_SetLobbyMemberLimit(
             steam_matchmaking()?,
@@ -16777,18 +16921,16 @@ async fn workshop_update_item_inner(
     }
 
     if let Some(tags) = update_details.get("tags").and_then(Value::as_array) {
-        let tag_strings: Vec<CString> = tags
-            .iter()
-            .filter_map(Value::as_str)
-            .map(|tag| {
-                CString::new(tag)
-                    .map_err(|_| Error::from_reason("workshop tag contains a NUL byte"))
-            })
-            .collect::<Result<_, _>>()?;
-        let mut pointers: Vec<*const c_char> = tag_strings.iter().map(|tag| tag.as_ptr()).collect();
+        let tag_count = tags.iter().filter_map(Value::as_str).count();
+        let (_tag_strings, mut pointers) = cstring_pointer_array(
+            tags.iter().filter_map(Value::as_str),
+            tag_count,
+            MAX_STEAM_ENUMERATION_ENTRIES,
+            "workshop tag",
+        )?;
         let tag_array = sys::SteamParamStringArray_t {
             m_ppStrings: pointers.as_mut_ptr(),
-            m_nNumStrings: pointers.len() as i32,
+            m_nNumStrings: len_to_i32(tag_count, "workshop tag list")?,
         };
         unsafe { sys::SteamAPI_ISteamUGC_SetItemTags(ugc, handle, &tag_array, false) };
     }
@@ -17283,13 +17425,10 @@ pub async fn workshop_get_user_item_vote(
 pub async fn workshop_start_playtime_tracking(
     item_ids: Vec<BigInt>,
 ) -> Result<WorkshopSimpleResult, Error> {
+    let item_count = validate_workshop_playtime_item_count(item_ids.len())?;
     let mut ids = workshop_item_id_vec(item_ids)?;
     let call = unsafe {
-        sys::SteamAPI_ISteamUGC_StartPlaytimeTracking(
-            steam_ugc()?,
-            ids.as_mut_ptr(),
-            ids.len() as u32,
-        )
+        sys::SteamAPI_ISteamUGC_StartPlaytimeTracking(steam_ugc()?, ids.as_mut_ptr(), item_count)
     };
     let result: sys::StartPlaytimeTrackingResult_t = wait_for_api_call(
         call,
@@ -17306,13 +17445,10 @@ pub async fn workshop_start_playtime_tracking(
 pub async fn workshop_stop_playtime_tracking(
     item_ids: Vec<BigInt>,
 ) -> Result<WorkshopSimpleResult, Error> {
+    let item_count = validate_workshop_playtime_item_count(item_ids.len())?;
     let mut ids = workshop_item_id_vec(item_ids)?;
     let call = unsafe {
-        sys::SteamAPI_ISteamUGC_StopPlaytimeTracking(
-            steam_ugc()?,
-            ids.as_mut_ptr(),
-            ids.len() as u32,
-        )
+        sys::SteamAPI_ISteamUGC_StopPlaytimeTracking(steam_ugc()?, ids.as_mut_ptr(), item_count)
     };
     let result: sys::StopPlaytimeTrackingResult_t = wait_for_api_call(
         call,
@@ -17607,11 +17743,12 @@ pub fn workshop_set_items_disabled_locally(
     disabled: bool,
 ) -> Result<bool, Error> {
     let mut ids = workshop_item_id_vec(item_ids)?;
+    let item_count = len_to_u32(ids.len(), "locally disabled workshop item list")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamUGC_SetItemsDisabledLocally(
             steam_ugc()?,
             ids.as_mut_ptr(),
-            ids.len() as u32,
+            item_count,
             disabled,
         )
     })
@@ -17620,11 +17757,12 @@ pub fn workshop_set_items_disabled_locally(
 #[napi(js_name = "workshopSetSubscriptionsLoadOrder")]
 pub fn workshop_set_subscriptions_load_order(item_ids: Vec<BigInt>) -> Result<bool, Error> {
     let mut ids = workshop_item_id_vec(item_ids)?;
+    let item_count = len_to_u32(ids.len(), "workshop subscription load order")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamUGC_SetSubscriptionsLoadOrder(
             steam_ugc()?,
             ids.as_mut_ptr(),
-            ids.len() as u32,
+            item_count,
         )
     })
 }
@@ -17644,10 +17782,21 @@ pub fn workshop_get_downloaded_items(max_entries: Option<u32>) -> Result<Vec<Big
     let ugc = steam_ugc()?;
     let count = unsafe { sys::SteamAPI_ISteamUGC_GetNumDownloadedItems(ugc) };
     let max_entries = max_entries.unwrap_or(count).min(count);
+    bounded_u32_collection_count(
+        max_entries,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "downloaded workshop item count",
+    )?;
     if max_entries == 0 {
         return Ok(Vec::new());
     }
-    let mut ids = vec![0u64; max_entries as usize];
+    let mut ids = bounded_filled_buffer(
+        max_entries,
+        MAX_STEAM_ENUMERATION_ENTRIES as u32,
+        "downloaded workshop item list",
+        "entries",
+        0u64,
+    )?;
     let written =
         unsafe { sys::SteamAPI_ISteamUGC_GetDownloadedItems(ugc, ids.as_mut_ptr(), max_entries) };
     ids.truncate((written as usize).min(ids.len()));
@@ -17658,7 +17807,13 @@ pub fn workshop_get_downloaded_items(max_entries: Option<u32>) -> Result<Vec<Big
 pub fn workshop_get_subscribed_items() -> Result<Vec<BigInt>, Error> {
     let ugc = steam_ugc()?;
     let count = unsafe { sys::SteamAPI_ISteamUGC_GetNumSubscribedItems(ugc, false) };
-    let mut ids = vec![0u64; count as usize];
+    let mut ids = bounded_filled_buffer(
+        count,
+        MAX_STEAM_ENUMERATION_ENTRIES as u32,
+        "subscribed workshop item list",
+        "entries",
+        0u64,
+    )?;
     let written =
         unsafe { sys::SteamAPI_ISteamUGC_GetSubscribedItems(ugc, ids.as_mut_ptr(), count, false) };
     ids.truncate(written as usize);
@@ -18715,14 +18870,12 @@ fn steam_param_string_array(
     ),
     Error,
 > {
-    let tag_strings: Vec<CString> = tags
-        .into_iter()
-        .map(|tag| cstring(tag, label))
-        .collect::<Result<_, _>>()?;
-    let mut pointers: Vec<*const c_char> = tag_strings.iter().map(|tag| tag.as_ptr()).collect();
+    let tag_count = bounded_collection_count(tags.len(), MAX_STEAM_ENUMERATION_ENTRIES, label)?;
+    let (tag_strings, mut pointers) =
+        cstring_pointer_array(tags, tag_count, MAX_STEAM_ENUMERATION_ENTRIES, label)?;
     let tag_array = sys::SteamParamStringArray_t {
         m_ppStrings: pointers.as_mut_ptr(),
-        m_nNumStrings: pointers.len() as i32,
+        m_nNumStrings: len_to_i32(tag_count, label)?,
     };
     Ok((tag_strings, pointers, tag_array))
 }
@@ -19194,10 +19347,19 @@ fn leaderboard_scores_downloaded(
     let entries_handle =
         unsafe { ptr::addr_of!(result.m_hSteamLeaderboardEntries).read_unaligned() };
     let entry_count = unsafe { ptr::addr_of!(result.m_cEntryCount).read_unaligned() };
-    let mut entries = Vec::with_capacity(entry_count.max(0) as usize);
-    for index in 0..entry_count {
+    let bounded_entry_count = bounded_i32_collection_count(
+        entry_count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "downloaded leaderboard entry count",
+    )?;
+    let mut entries = bounded_collection_capacity(
+        bounded_entry_count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "downloaded leaderboard entry list",
+    )?;
+    for index in 0..bounded_entry_count {
         if let Some(entry) =
-            downloaded_leaderboard_entry(stats, entries_handle, index, details_max)?
+            downloaded_leaderboard_entry(stats, entries_handle, index as i32, details_max)?
         {
             entries.push(entry);
         }
@@ -19528,18 +19690,49 @@ fn inventory_item_detail(item: sys::SteamItemDetails_t) -> InventoryItemDetail {
     }
 }
 
-fn inventory_definition_quantities(items: Vec<InventoryItemQuantity>) -> (Vec<i32>, Vec<u32>) {
-    items
-        .into_iter()
-        .map(|item| (item.definition, item.quantity))
-        .unzip()
+fn inventory_definition_quantities(
+    items: Vec<InventoryItemQuantity>,
+) -> Result<(Vec<i32>, Vec<u32>), Error> {
+    let count = bounded_collection_count(
+        items.len(),
+        MAX_INVENTORY_LIST_ENTRIES as usize,
+        "inventory definition quantity list",
+    )?;
+    let mut definitions = bounded_collection_capacity(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES as usize,
+        "inventory definition list",
+    )?;
+    let mut quantities = bounded_collection_capacity(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES as usize,
+        "inventory definition quantity list",
+    )?;
+    for item in items {
+        definitions.push(item.definition);
+        quantities.push(item.quantity);
+    }
+    Ok((definitions, quantities))
 }
 
 fn inventory_instance_quantities(
     items: Vec<InventoryInstanceQuantity>,
 ) -> Result<(Vec<u64>, Vec<u32>), Error> {
-    let mut ids = Vec::with_capacity(items.len());
-    let mut quantities = Vec::with_capacity(items.len());
+    let count = bounded_collection_count(
+        items.len(),
+        MAX_INVENTORY_LIST_ENTRIES as usize,
+        "inventory instance quantity list",
+    )?;
+    let mut ids = bounded_collection_capacity(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES as usize,
+        "inventory instance list",
+    )?;
+    let mut quantities = bounded_collection_capacity(
+        count,
+        MAX_INVENTORY_LIST_ENTRIES as usize,
+        "inventory instance quantity list",
+    )?;
     for item in items {
         ids.push(bigint_to_u64(item.item_id, "inventory item id")?);
         quantities.push(item.quantity);
@@ -19690,6 +19883,116 @@ fn len_to_u32(len: usize, label: &str) -> Result<u32, Error> {
 
 fn len_to_i32(len: usize, label: &str) -> Result<i32, Error> {
     i32::try_from(len).map_err(|_| Error::from_reason(format!("{label} length exceeds i32")))
+}
+
+fn bounded_collection_count(count: usize, maximum: usize, label: &str) -> Result<usize, Error> {
+    if count > maximum {
+        return Err(Error::from_reason(format!(
+            "{label} cannot exceed {maximum} entries"
+        )));
+    }
+    Ok(count)
+}
+
+fn bounded_i32_collection_count(count: i32, maximum: usize, label: &str) -> Result<usize, Error> {
+    bounded_collection_count(count.max(0) as usize, maximum, label)
+}
+
+fn bounded_u32_collection_count(count: u32, maximum: usize, label: &str) -> Result<usize, Error> {
+    bounded_collection_count(count as usize, maximum, label)
+}
+
+fn bounded_collection_capacity<T>(
+    count: usize,
+    maximum: usize,
+    label: &str,
+) -> Result<Vec<T>, Error> {
+    let count = bounded_collection_count(count, maximum, label)?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| Error::from_reason(format!("{label} allocation failed")))?;
+    Ok(values)
+}
+
+fn null_terminated_pointer_array<T>(
+    pointers: &mut Vec<*const T>,
+    label: &str,
+) -> Result<*mut *const T, Error> {
+    if pointers.is_empty() {
+        return Ok(ptr::null_mut());
+    }
+    pointers
+        .try_reserve_exact(1)
+        .map_err(|_| Error::from_reason(format!("{label} allocation failed")))?;
+    pointers.push(ptr::null());
+    Ok(pointers.as_mut_ptr())
+}
+
+fn cstring_pointer_array<I, S>(
+    values: I,
+    count: usize,
+    maximum: usize,
+    label: &str,
+) -> Result<(Vec<CString>, Vec<*const c_char>), Error>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut strings = bounded_collection_capacity(count, maximum, label)?;
+    for value in values {
+        strings.push(
+            CString::new(value.as_ref())
+                .map_err(|_| Error::from_reason(format!("{label} contains a NUL byte")))?,
+        );
+    }
+    if strings.len() != count {
+        return Err(Error::from_reason(format!(
+            "{label} count changed while building its native pointer array"
+        )));
+    }
+    let mut pointers = bounded_collection_capacity(count, maximum, label)?;
+    pointers.extend(strings.iter().map(|value| value.as_ptr()));
+    Ok((strings, pointers))
+}
+
+fn validate_lobby_member_limit(max_members: u32) -> Result<i32, Error> {
+    if !(1..=MAX_LOBBY_MEMBERS).contains(&max_members) {
+        return Err(Error::from_reason(format!(
+            "lobby member limit must be between 1 and {MAX_LOBBY_MEMBERS}"
+        )));
+    }
+    Ok(max_members as i32)
+}
+
+fn validate_leaderboard_user_count(count: usize) -> Result<i32, Error> {
+    if !(1..=MAX_LEADERBOARD_USERS).contains(&count) {
+        return Err(Error::from_reason(format!(
+            "leaderboard user download requires between 1 and {MAX_LEADERBOARD_USERS} Steam IDs"
+        )));
+    }
+    Ok(count as i32)
+}
+
+fn validate_workshop_playtime_item_count(count: usize) -> Result<u32, Error> {
+    if !(1..=MAX_WORKSHOP_PLAYTIME_ITEMS).contains(&count) {
+        return Err(Error::from_reason(format!(
+            "workshop playtime tracking requires between 1 and {MAX_WORKSHOP_PLAYTIME_ITEMS} item IDs"
+        )));
+    }
+    Ok(count as u32)
+}
+
+fn validate_inventory_exchange_output(
+    definitions: &[i32],
+    quantities: &[u32],
+) -> Result<(), Error> {
+    if definitions.len() != 1 || quantities != [1] {
+        return Err(Error::from_reason(
+            "inventory exchange must generate exactly one item with quantity 1",
+        ));
+    }
+    Ok(())
 }
 
 fn bounded_buffer_size(size: u32, maximum: u32, label: &str) -> Result<usize, Error> {
@@ -20283,8 +20586,16 @@ fn networking_config_values(
     let options = options.unwrap_or_default();
     let option_count = i32::try_from(options.len())
         .map_err(|_| Error::from_reason("networking config option count exceeds i32"))?;
-    let mut values = Vec::with_capacity(options.len());
-    let mut strings = Vec::with_capacity(options.len());
+    let mut values = bounded_collection_capacity(
+        options.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "networking config option list",
+    )?;
+    let mut strings = bounded_collection_capacity(
+        options.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "networking config string list",
+    )?;
 
     for option in options {
         let (value, string) = networking_config_value_struct(option)?;
@@ -20831,15 +21142,40 @@ where
     if received <= 0 {
         return Ok(Vec::new());
     }
+    collect_received_networking_messages(&mut messages, received)
+}
 
-    let mut output = Vec::with_capacity(received as usize);
-    for message in messages.into_iter().take(received as usize) {
+fn collect_received_networking_messages(
+    messages: &mut [*mut sys::SteamNetworkingMessage_t],
+    received: i32,
+) -> Result<Vec<NetworkingMessage>, Error> {
+    let received = (received.max(0) as usize).min(messages.len());
+    let mut output = match bounded_collection_capacity(
+        received,
+        messages.len(),
+        "received networking message list",
+    ) {
+        Ok(output) => output,
+        Err(error) => {
+            release_networking_messages(&messages[..received]);
+            return Err(error);
+        }
+    };
+
+    for index in 0..received {
+        let message = std::mem::replace(&mut messages[index], ptr::null_mut());
         if message.is_null() {
             continue;
         }
         let parsed = unsafe { networking_message_from_ptr(message) };
         unsafe { sys::SteamAPI_SteamNetworkingMessage_t_Release(message) };
-        output.push(parsed);
+        match parsed {
+            Ok(parsed) => output.push(parsed),
+            Err(error) => {
+                release_networking_messages(&messages[index + 1..received]);
+                return Err(error);
+            }
+        }
     }
     Ok(output)
 }
@@ -20929,15 +21265,26 @@ fn networking_socket_send_messages_result(value: i64) -> NetworkingSocketSendRes
 
 unsafe fn networking_message_from_ptr(
     message: *mut sys::SteamNetworkingMessage_t,
-) -> NetworkingMessage {
-    let size = ptr::addr_of!((*message).m_cbSize).read_unaligned().max(0) as usize;
+) -> Result<NetworkingMessage, Error> {
+    let raw_size = ptr::addr_of!((*message).m_cbSize).read_unaligned();
+    let size = networking_message_payload_size(raw_size)?;
     let data_ptr = ptr::addr_of!((*message).m_pData).read_unaligned();
-    let data = if data_ptr.is_null() || size == 0 {
+    let data = if size == 0 {
         Vec::new()
+    } else if data_ptr.is_null() {
+        return Err(Error::from_reason(
+            "received networking message has a null payload pointer",
+        ));
     } else {
-        std::slice::from_raw_parts(data_ptr.cast::<u8>(), size).to_vec()
+        let mut data = bounded_collection_capacity(
+            size,
+            MAX_NETWORKING_RECEIVE_MESSAGE_BYTES,
+            "received networking message payload",
+        )?;
+        data.extend_from_slice(std::slice::from_raw_parts(data_ptr.cast::<u8>(), size));
+        data
     };
-    NetworkingMessage {
+    Ok(NetworkingMessage {
         data: data.into(),
         size: size as u32,
         peer: networking_identity_info(ptr::addr_of!((*message).m_identityPeer).read_unaligned()),
@@ -20957,7 +21304,20 @@ unsafe fn networking_message_from_ptr(
             .read_unaligned()
             .into(),
         lane: u32::from(ptr::addr_of!((*message).m_idxLane).read_unaligned()),
+    })
+}
+
+fn networking_message_payload_size(raw_size: i32) -> Result<usize, Error> {
+    if raw_size < 0 {
+        return Err(Error::from_reason(
+            "received networking message has a negative payload size",
+        ));
     }
+    bounded_collection_count(
+        raw_size as usize,
+        MAX_NETWORKING_RECEIVE_MESSAGE_BYTES,
+        "received networking message payload",
+    )
 }
 
 fn networking_real_time_status(
@@ -24023,14 +24383,24 @@ async fn request_matchmaking_server_list(
             let request = request_handle as sys::HServerListRequest;
             let result = match wait_result {
                 Ok(response_code) => {
-                    let count = unsafe {
-                        sys::SteamAPI_ISteamMatchmakingServers_GetServerCount(servers, request)
-                    };
-                    let mut items = Vec::new();
-                    for index in 0..count.max(0) {
+                    let count = bounded_i32_collection_count(
+                        unsafe {
+                            sys::SteamAPI_ISteamMatchmakingServers_GetServerCount(servers, request)
+                        },
+                        MAX_STEAM_ENUMERATION_ENTRIES,
+                        "matchmaking server count",
+                    )?;
+                    let mut items = bounded_collection_capacity(
+                        count,
+                        MAX_STEAM_ENUMERATION_ENTRIES,
+                        "matchmaking server list",
+                    )?;
+                    for index in 0..count {
                         let item = unsafe {
                             sys::SteamAPI_ISteamMatchmakingServers_GetServerDetails(
-                                servers, request, index,
+                                servers,
+                                request,
+                                index as i32,
                             )
                         };
                         if let Some(item) = matchmaking_server_item(item) {
@@ -24575,7 +24945,11 @@ fn matchmaking_server_filters(
         }
         None => return Ok(Vec::new()),
     };
-    let mut values = Vec::with_capacity(filters.len());
+    let mut values = bounded_collection_capacity(
+        filters.len(),
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "matchmaking server filter list",
+    )?;
     for filter in filters {
         let Value::Object(filter) = filter else {
             return Err(Error::from_reason(
@@ -25470,19 +25844,16 @@ fn apply_query_config(
             let Some(tags) = group.as_array() else {
                 return Err(Error::from_reason("required tag group must be an array"));
             };
-            let tag_strings: Vec<CString> = tags
-                .iter()
-                .filter_map(Value::as_str)
-                .map(|tag| {
-                    CString::new(tag)
-                        .map_err(|_| Error::from_reason("required tag group contains a NUL byte"))
-                })
-                .collect::<Result<_, _>>()?;
-            let mut pointers: Vec<*const c_char> =
-                tag_strings.iter().map(|tag| tag.as_ptr()).collect();
+            let tag_count = tags.iter().filter_map(Value::as_str).count();
+            let (_tag_strings, mut pointers) = cstring_pointer_array(
+                tags.iter().filter_map(Value::as_str),
+                tag_count,
+                MAX_STEAM_ENUMERATION_ENTRIES,
+                "required tag group",
+            )?;
             let tag_array = sys::SteamParamStringArray_t {
                 m_ppStrings: pointers.as_mut_ptr(),
-                m_nNumStrings: len_to_i32(pointers.len(), "required tag group")?,
+                m_nNumStrings: len_to_i32(tag_count, "required tag group")?,
             };
             unsafe { sys::SteamAPI_ISteamUGC_AddRequiredTagGroup(ugc, handle, &tag_array) };
         }
@@ -25570,16 +25941,26 @@ fn collect_query_items(
         let cursor = ptr::addr_of!(result.m_rgchNextCursor).read_unaligned();
         c_buf_to_string(&cursor)
     };
-    let mut items = Vec::new();
-    for index in 0..returned {
+    let returned_count = bounded_u32_collection_count(
+        returned,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "workshop query result count",
+    )?;
+    let mut items = bounded_collection_capacity(
+        returned_count,
+        MAX_STEAM_ENUMERATION_ENTRIES,
+        "workshop query result list",
+    )?;
+    for index in 0..returned_count {
         let mut details = unsafe { MaybeUninit::<sys::SteamUGCDetails_t>::zeroed().assume_init() };
-        let ok =
-            unsafe { sys::SteamAPI_ISteamUGC_GetQueryUGCResult(ugc, handle, index, &mut details) };
+        let ok = unsafe {
+            sys::SteamAPI_ISteamUGC_GetQueryUGCResult(ugc, handle, index as u32, &mut details)
+        };
         if ok {
             items.push(Some(workshop_item_from_details(
                 ugc,
                 handle,
-                index,
+                index as u32,
                 &details,
                 query_config,
             )?));
@@ -26064,6 +26445,94 @@ mod lifecycle_resource_tests {
         assert!(validate_workshop_query_item_count(1).is_ok());
         assert!(validate_workshop_query_item_count(1_000).is_ok());
         assert!(validate_workshop_query_item_count(1_001).is_err());
+    }
+
+    #[test]
+    fn steam_collection_counts_are_bounded_before_allocation() {
+        assert_eq!(
+            bounded_collection_count(4, 4, "test collection").unwrap(),
+            4
+        );
+        assert!(bounded_collection_count(5, 4, "test collection").is_err());
+        assert_eq!(
+            bounded_i32_collection_count(-1, 4, "test collection").unwrap(),
+            0
+        );
+        assert_eq!(
+            bounded_u32_collection_count(4, 4, "test collection").unwrap(),
+            4
+        );
+        assert!(bounded_u32_collection_count(5, 4, "test collection").is_err());
+        assert!(
+            bounded_collection_capacity::<u64>(4, 4, "test collection")
+                .unwrap()
+                .capacity()
+                >= 4
+        );
+    }
+
+    #[test]
+    fn steam_api_hard_limits_are_enforced() {
+        assert!(validate_lobby_member_limit(0).is_err());
+        assert_eq!(validate_lobby_member_limit(1).unwrap(), 1);
+        assert_eq!(
+            validate_lobby_member_limit(MAX_LOBBY_MEMBERS).unwrap(),
+            MAX_LOBBY_MEMBERS as i32
+        );
+        assert!(validate_lobby_member_limit(MAX_LOBBY_MEMBERS + 1).is_err());
+
+        assert!(validate_leaderboard_user_count(0).is_err());
+        assert_eq!(validate_leaderboard_user_count(1).unwrap(), 1);
+        assert_eq!(
+            validate_leaderboard_user_count(MAX_LEADERBOARD_USERS).unwrap(),
+            MAX_LEADERBOARD_USERS as i32
+        );
+        assert!(validate_leaderboard_user_count(MAX_LEADERBOARD_USERS + 1).is_err());
+
+        assert!(validate_workshop_playtime_item_count(0).is_err());
+        assert_eq!(validate_workshop_playtime_item_count(1).unwrap(), 1);
+        assert_eq!(
+            validate_workshop_playtime_item_count(MAX_WORKSHOP_PLAYTIME_ITEMS).unwrap(),
+            MAX_WORKSHOP_PLAYTIME_ITEMS as u32
+        );
+        assert!(validate_workshop_playtime_item_count(MAX_WORKSHOP_PLAYTIME_ITEMS + 1).is_err());
+    }
+
+    #[test]
+    fn inventory_exchange_requires_the_only_supported_output_shape() {
+        assert!(validate_inventory_exchange_output(&[], &[]).is_err());
+        assert!(validate_inventory_exchange_output(&[1, 2], &[1, 1]).is_err());
+        assert!(validate_inventory_exchange_output(&[1], &[2]).is_err());
+        assert!(validate_inventory_exchange_output(&[1], &[1]).is_ok());
+    }
+
+    #[test]
+    fn html_file_dialog_cancel_uses_a_null_pointer() {
+        let mut empty = Vec::<*const i8>::new();
+        assert!(null_terminated_pointer_array(&mut empty, "test files")
+            .unwrap()
+            .is_null());
+
+        let first = 1_i8;
+        let mut selected = vec![ptr::addr_of!(first)];
+        let array = null_terminated_pointer_array(&mut selected, "test files").unwrap();
+        assert!(!array.is_null());
+        assert_eq!(selected.len(), 2);
+        assert!(selected[1].is_null());
+    }
+
+    #[test]
+    fn received_networking_payload_sizes_are_bounded() {
+        assert!(networking_message_payload_size(-1).is_err());
+        assert_eq!(networking_message_payload_size(0).unwrap(), 0);
+        assert_eq!(
+            networking_message_payload_size(MAX_NETWORKING_RECEIVE_MESSAGE_BYTES as i32).unwrap(),
+            MAX_NETWORKING_RECEIVE_MESSAGE_BYTES
+        );
+        assert!(
+            networking_message_payload_size(MAX_NETWORKING_RECEIVE_MESSAGE_BYTES as i32 + 1)
+                .is_err()
+        );
     }
 
     #[test]

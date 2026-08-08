@@ -86,9 +86,24 @@ changing the settled overlay architecture or presentation cadence:
   image RGBA copies, chat, voice, networking configuration/certificates,
   game-server packets, and ticket buffers. Small fixed stack-equivalent buffers
   remain unchanged.
+- Steam-owned enumeration counts are bounded before loops or allocation across
+  achievements, friends and groups, Cloud files and changes, Remote Play,
+  parties, lobbies, server browser results, leaderboards, inventory, and
+  Workshop lists. Temporary native pointer arrays and paired inventory arrays
+  reserve fallibly instead of relying on process-aborting allocation.
+- Networking Messages and Networking Sockets receive paths validate native
+  payload lengths, reject null non-empty payloads, cap individual inbound
+  messages at 100 MiB, and release every Steam-owned message on success and on
+  all conversion/allocation failures. Batched sends likewise release all
+  bridge-owned messages if preparation fails before Steam takes ownership.
+- Public inputs now enforce Valve's documented hard contracts: lobbies accept
+  1-250 members, per-user leaderboard downloads and Workshop playtime tracking
+  accept 1-100 IDs, and inventory exchanges generate exactly one item with
+  quantity one. HTML file-dialog cancellation passes a null list as required;
+  app-install and beta-name reads no longer scan beyond their fixed buffers.
 
 Change-scoped validation is green: `npm test` passed 384/384 JavaScript tests
-and 41/41 Rust tests; `check:platform`, `api:check`, `native:fmt`, and
+and 46/46 Rust tests; `check:platform`, `api:check`, `native:fmt`, and
 `native:check` passed, and `npm audit --omit=dev` reports zero vulnerabilities.
 The earlier packaging slice also passed the macOS preparation self-test and
 `package:smoke`. No actual-game pass was repeated because these changes do not
