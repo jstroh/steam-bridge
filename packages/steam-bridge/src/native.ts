@@ -468,6 +468,48 @@ export interface NativeInputControllerInfo {
   inputType: string;
 }
 
+export interface NativeInputPollDigitalState {
+  actionHandle?: bigint | string | number;
+  action_handle?: bigint | string | number;
+  state: boolean;
+  active: boolean;
+}
+
+export interface NativeInputPollAnalogState {
+  actionHandle?: bigint | string | number;
+  action_handle?: bigint | string | number;
+  mode: number;
+  x: number;
+  y: number;
+  active: boolean;
+}
+
+export interface NativeInputPollControllerSnapshot {
+  handle: bigint | string | number;
+  inputType?: string;
+  input_type?: string;
+  gamepadIndex?: number;
+  gamepad_index?: number;
+  currentActionSet?: bigint | string | number;
+  current_action_set?: bigint | string | number;
+  activeActionSetLayers?: Array<bigint | string | number>;
+  active_action_set_layers?: Array<bigint | string | number>;
+  remotePlaySessionId?: number;
+  remote_play_session_id?: number;
+  bindingRevision?: NativeInputDeviceBindingRevision | null;
+  binding_revision?: NativeInputDeviceBindingRevision | null;
+  digital: NativeInputPollDigitalState[];
+  analog: NativeInputPollAnalogState[];
+}
+
+export interface NativeInputPollSnapshot {
+  sequence: bigint | string | number;
+  capturedAtNs?: bigint | string | number;
+  captured_at_ns?: bigint | string | number;
+  controllers: NativeInputPollControllerSnapshot[];
+  merged?: NativeInputPollControllerSnapshot | null;
+}
+
 export interface NativeAnalogActionVector {
   x: number;
   y: number;
@@ -2229,11 +2271,18 @@ export interface NativeBinding {
   inputShutdown(): void;
   inputRunFrame(reserved?: boolean | null): void;
   inputWaitForData(waitForever?: boolean | null, timeoutMs?: number | null): boolean;
+  inputWaitForDataAsync(timeoutMs?: number | null): Promise<boolean>;
   inputNewDataAvailable(): boolean;
   inputEnableDeviceCallbacks(): void;
   inputRegisterActionEventCallback(handler: (event: NativeInputActionEvent) => void): NativeCallbackHandle;
   inputSetActionManifestFilePath(path: string): boolean;
   inputGetControllers(): NativeInputControllerInfo[];
+  inputPollSnapshot(
+    digitalActions: bigint[],
+    analogActions: bigint[],
+    runFrame?: boolean | null,
+    includeMerged?: boolean | null
+  ): NativeInputPollSnapshot;
   inputGetActionSet(actionSetName: string): bigint;
   inputGetDigitalAction(actionName: string): bigint;
   inputGetAnalogAction(actionName: string): bigint;

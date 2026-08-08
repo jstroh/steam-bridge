@@ -25,6 +25,8 @@ import {
   type KWinWaylandOverlayPresentationConvergedState
 } from "./kwin";
 import { isMainThread } from "node:worker_threads";
+import { existsSync } from "node:fs";
+import { isAbsolute, resolve as resolvePath } from "node:path";
 import { assertSteamPublisherServerRuntime } from "./publisher-security";
 export { SteamPublisherSecretsClientRuntimeError } from "./publisher-security";
 import { SteamworksEnums as GeneratedSteamworksEnums } from "./generated-steamworks-enums";
@@ -89,6 +91,10 @@ import {
   NativeInputDeviceBindingRevision,
   NativeInputDigitalActionData,
   NativeInputMotionData,
+  NativeInputPollAnalogState,
+  NativeInputPollControllerSnapshot,
+  NativeInputPollDigitalState,
+  NativeInputPollSnapshot,
   NativeIsFollowingResult,
   NativeAchievementProgressLimitsFloat,
   NativeAchievementProgressLimitsInt,
@@ -4033,6 +4039,7 @@ export interface InputDigitalActionData {
 }
 
 export interface InputAnalogActionData {
+  /** Valve input source mode. New Steam clients may return values newer than this package's named constants. */
   mode: number;
   x: number;
   y: number;
@@ -4055,6 +4062,168 @@ export interface InputMotionData {
 export interface InputDeviceBindingRevision {
   major: number;
   minor: number;
+}
+
+export type SteamInputNameMap = Readonly<Record<string, string>>;
+
+export interface SteamInputDefinition<
+  TActionSets extends SteamInputNameMap = SteamInputNameMap,
+  TActionLayers extends SteamInputNameMap = SteamInputNameMap,
+  TDigitalActions extends SteamInputNameMap = SteamInputNameMap,
+  TAnalogActions extends SteamInputNameMap = SteamInputNameMap
+> {
+  actionSets: TActionSets;
+  actionLayers?: TActionLayers;
+  digital: TDigitalActions;
+  analog: TAnalogActions;
+}
+
+export function defineSteamInput<
+  const TActionSets extends SteamInputNameMap,
+  const TDigitalActions extends SteamInputNameMap,
+  const TAnalogActions extends SteamInputNameMap,
+  const TActionLayers extends SteamInputNameMap = Record<never, never>
+>(
+  definition: SteamInputDefinition<TActionSets, TActionLayers, TDigitalActions, TAnalogActions>
+): SteamInputDefinition<TActionSets, TActionLayers, TDigitalActions, TAnalogActions> {
+  validateSteamInputDefinition(definition);
+  return definition;
+}
+
+export type SteamInputControllerMode = "individual" | "merged" | "both";
+
+export interface SteamInputSessionOptions<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
+  definition: TDefinition;
+  /** Absolute development/package path. Omit when Steamworks supplies the deployed manifest. */
+  manifestPath?: string | null;
+  controllers?: SteamInputControllerMode;
+}
+
+export interface SteamInputDigitalFrameState {
+  action: string;
+  actionName: string;
+  handle: bigint | null;
+  active: boolean;
+  isDown: boolean;
+  pressedThisFrame: boolean;
+  releasedThisFrame: boolean;
+}
+
+export interface SteamInputAnalogFrameState {
+  action: string;
+  actionName: string;
+  handle: bigint | null;
+  active: boolean;
+  mode: number;
+  x: number;
+  y: number;
+}
+
+export type SteamInputDigitalFrameMap<TDefinition extends SteamInputDefinition> = {
+  readonly [K in keyof TDefinition["digital"]]: SteamInputDigitalFrameState;
+};
+
+export type SteamInputAnalogFrameMap<TDefinition extends SteamInputDefinition> = {
+  readonly [K in keyof TDefinition["analog"]]: SteamInputAnalogFrameState;
+};
+
+export interface SteamInputControllerFrame<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
+  handle: bigint;
+  inputType: InputTypeValue;
+  gamepadIndex: number;
+  currentActionSet: keyof TDefinition["actionSets"] | null;
+  currentActionSetHandle: bigint;
+  activeActionLayers: Array<keyof NonNullable<TDefinition["actionLayers"]>>;
+  activeActionLayerHandles: bigint[];
+  remotePlaySessionId: number;
+  bindingRevision: InputDeviceBindingRevision | null;
+  digital: SteamInputDigitalFrameMap<TDefinition>;
+  analog: SteamInputAnalogFrameMap<TDefinition>;
+}
+
+export interface SteamInputFrame<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
+  sequence: bigint;
+  capturedAtNs: bigint;
+  receivedAtNs: bigint;
+  controllers: SteamInputControllerFrame<TDefinition>[];
+  mergedController: SteamInputControllerFrame<TDefinition> | null;
+  primaryController: SteamInputControllerFrame<TDefinition> | null;
+}
+
+export interface SteamInputPromptGlyph {
+  origin: number;
+  label: string;
+  pngPath: string;
+  svgPath: string;
+}
+
+export interface SteamInputPrompt {
+  kind: "digital" | "analog";
+  action: string;
+  actionName: string;
+  localizedActionName: string;
+  controllerHandle: bigint;
+  actionSetHandle: bigint;
+  origins: number[];
+  glyphs: SteamInputPromptGlyph[];
+}
+
+export interface SteamInputDiagnostic {
+  code: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  details?: Record<string, string | number | boolean | null>;
+}
+
+export interface SteamInputSessionDiagnostics {
+  started: boolean;
+  disposed: boolean;
+  manifestPath: string | null;
+  controllerMode: SteamInputControllerMode;
+  unresolvedActionSets: string[];
+  unresolvedActionLayers: string[];
+  unresolvedDigitalActions: string[];
+  unresolvedAnalogActions: string[];
+  resolvedActionSetCount: number;
+  resolvedActionLayerCount: number;
+  resolvedDigitalActionCount: number;
+  resolvedAnalogActionCount: number;
+  controllerCount: number;
+  primaryControllerHandle: bigint | null;
+  lastSequence: bigint;
+}
+
+export type SteamInputSessionEventName =
+  | "controller-connected"
+  | "controller-disconnected"
+  | "configuration-loaded"
+  | "gamepad-slot-changed"
+  | "active-controller-changed"
+  | "diagnostic";
+
+export interface SteamInputSessionEventMap<
+  TDefinition extends SteamInputDefinition = SteamInputDefinition
+> {
+  "controller-connected": {
+    handle: bigint;
+    controller: SteamInputControllerFrame<TDefinition> | null;
+    nativeEvent?: SteamInputDeviceConnectedEvent;
+  };
+  "controller-disconnected": {
+    handle: bigint;
+    lastController: SteamInputControllerFrame<TDefinition> | null;
+    /** Final zeroed state with release edges for actions that were held at disconnect. */
+    releasedController: SteamInputControllerFrame<TDefinition> | null;
+    nativeEvent?: SteamInputDeviceDisconnectedEvent;
+  };
+  "configuration-loaded": SteamInputConfigurationLoadedEvent;
+  "gamepad-slot-changed": SteamInputGamepadSlotChangeEvent;
+  "active-controller-changed": {
+    previousHandle: bigint | null;
+    handle: bigint | null;
+    controller: SteamInputControllerFrame<TDefinition> | null;
+  };
+  diagnostic: SteamInputDiagnostic;
 }
 
 export interface InputActionEvent {
@@ -6717,6 +6886,32 @@ export const InputActionEventType = {
   AnalogAction: 1
 } as const;
 
+export const InputSourceMode = {
+  None: 0,
+  Dpad: 1,
+  Buttons: 2,
+  FourButtons: 3,
+  AbsoluteMouse: 4,
+  RelativeMouse: 5,
+  JoystickMove: 6,
+  JoystickMouse: 7,
+  JoystickCamera: 8,
+  ScrollWheel: 9,
+  Trigger: 10,
+  TouchMenu: 11,
+  MouseJoystick: 12,
+  MouseRegion: 13,
+  RadialMenu: 14,
+  SingleButton: 15,
+  Switches: 16
+} as const;
+
+// Action origins are intentionally exposed from the generated SDK enum rather
+// than copied into a closed friendly enum. Steam can return newer numeric
+// origins than the SDK used to compile this package; all origin-consuming APIs
+// accept the complete forward-compatible range.
+export const InputActionOrigin = SteamworksEnums.EInputActionOrigin;
+
 export const InputGlyphSize = {
   Small: 0,
   Medium: 1,
@@ -7355,6 +7550,8 @@ export type SteamCallbackId = typeof SteamCallback[keyof typeof SteamCallback];
 export type SteamCallbackName = keyof typeof SteamCallback;
 export type InputTypeValue = typeof InputType[keyof typeof InputType];
 export type InputTypeCodeValue = typeof InputTypeCode[keyof typeof InputTypeCode];
+export type InputSourceModeValue = typeof InputSourceMode[keyof typeof InputSourceMode];
+export type InputActionOriginValue = typeof InputActionOrigin[keyof typeof InputActionOrigin];
 
 const DEFAULT_STEAM_WEB_API_BASE_URL = "https://api.steampowered.com";
 const DEFAULT_STEAM_WEB_API_PARTNER_BASE_URL = "https://partner.steam-api.com";
@@ -7373,6 +7570,901 @@ export class Ticket implements AuthTicket {
 
 export class FileInfo {
   constructor(public name: string, public size: bigint) {}
+}
+
+let steamInputReferenceCount = 0;
+let activeSteamInputSession: SteamInputSession<SteamInputDefinition> | undefined;
+
+function acquireSteamInputReference(): void {
+  if (steamInputReferenceCount === 0) native().inputInit();
+  steamInputReferenceCount += 1;
+}
+
+function releaseSteamInputReference(): void {
+  if (steamInputReferenceCount === 0) return;
+  steamInputReferenceCount -= 1;
+  if (steamInputReferenceCount === 0) {
+    let firstError: unknown;
+    try {
+      clearInputActionEventSubscribers();
+    } catch (error) {
+      firstError = error;
+    }
+    try {
+      native().inputShutdown();
+    } catch (error) {
+      firstError ??= error;
+    }
+    if (firstError !== undefined) throw firstError;
+  }
+}
+
+function forceReleaseSteamInputReferences(): void {
+  if (steamInputReferenceCount === 0) return;
+  steamInputReferenceCount = 0;
+  let firstError: unknown;
+  try {
+    clearInputActionEventSubscribers();
+  } catch (error) {
+    firstError = error;
+  }
+  try {
+    native().inputShutdown();
+  } catch (error) {
+    firstError ??= error;
+  }
+  if (firstError !== undefined) throw firstError;
+}
+
+type SteamInputSessionListener = (value: unknown) => void;
+
+export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
+  readonly definition: TDefinition;
+  readonly manifestPath: string | null;
+  readonly controllerMode: SteamInputControllerMode;
+
+  private started = false;
+  private disposed = false;
+  private ownsInputReference = false;
+  private readonly actionSetEntries: Array<[string, string]>;
+  private readonly actionLayerEntries: Array<[string, string]>;
+  private readonly digitalEntries: Array<[string, string]>;
+  private readonly analogEntries: Array<[string, string]>;
+  private readonly actionSetHandles = new Map<string, bigint>();
+  private readonly actionLayerHandles = new Map<string, bigint>();
+  private readonly digitalActionHandles = new Map<string, bigint>();
+  private readonly analogActionHandles = new Map<string, bigint>();
+  private readonly callbacks: CallbackHandle[] = [];
+  private readonly listeners = new Map<SteamInputSessionEventName, Set<SteamInputSessionListener>>();
+  private readonly promptCache = new Map<string, SteamInputPrompt>();
+  private readonly emittedDiagnostics = new Set<string>();
+  private allDefinitionHandlesResolved = false;
+  private pollDigitalHandles: bigint[] = [];
+  private pollAnalogHandles: bigint[] = [];
+  private previousControllers = new Map<bigint, SteamInputControllerFrame<TDefinition>>();
+  private knownControllerHandles = new Set<bigint>();
+  private primaryControllerHandle: bigint | null = null;
+  private lastFrameValue: SteamInputFrame<TDefinition> = {
+    sequence: 0n,
+    capturedAtNs: 0n,
+    receivedAtNs: 0n,
+    controllers: [],
+    mergedController: null,
+    primaryController: null
+  };
+
+  constructor(options: SteamInputSessionOptions<TDefinition>) {
+    validateSteamInputDefinition(options.definition);
+    this.definition = options.definition;
+    this.actionSetEntries = definitionEntries(options.definition.actionSets);
+    this.actionLayerEntries = definitionEntries(options.definition.actionLayers ?? {});
+    this.digitalEntries = definitionEntries(options.definition.digital);
+    this.analogEntries = definitionEntries(options.definition.analog);
+    this.controllerMode = options.controllers ?? "individual";
+    if (!(["individual", "merged", "both"] as const).includes(this.controllerMode)) {
+      throw new Error(`Invalid Steam Input controller mode: ${String(options.controllers)}`);
+    }
+    if (options.manifestPath == null) {
+      this.manifestPath = null;
+    } else {
+      if (!isAbsolute(options.manifestPath)) {
+        throw new Error("Steam Input manifestPath must be an absolute path");
+      }
+      this.manifestPath = resolvePath(options.manifestPath);
+    }
+  }
+
+  start(): this {
+    if (this.started) return this;
+    if (this.disposed) throw new Error("A disposed SteamInputSession cannot be restarted");
+    if (activeSteamInputSession && activeSteamInputSession !== this) {
+      throw new Error("Steam Bridge permits only one active SteamInputSession per client process");
+    }
+    if (this.manifestPath && !existsSync(this.manifestPath)) {
+      throw new Error(`Steam Input action manifest does not exist: ${this.manifestPath}`);
+    }
+
+    acquireSteamInputReference();
+    this.ownsInputReference = true;
+    try {
+      if (this.manifestPath && !native().inputSetActionManifestFilePath(this.manifestPath)) {
+        throw new Error(`Steam rejected the input action manifest path: ${this.manifestPath}`);
+      }
+      this.started = true;
+      activeSteamInputSession = this as unknown as SteamInputSession<SteamInputDefinition>;
+      native().inputEnableDeviceCallbacks();
+      this.callbacks.push(input.onDeviceConnected((event) => this.handleDeviceConnected(event)));
+      this.callbacks.push(input.onDeviceDisconnected((event) => this.handleDeviceDisconnected(event)));
+      this.callbacks.push(input.onConfigurationLoaded((event) => this.handleConfigurationLoaded(event)));
+      this.callbacks.push(input.onGamepadSlotChange((event) => this.handleGamepadSlotChanged(event)));
+      this.resolveHandles();
+      return this;
+    } catch (error) {
+      this.dispose();
+      throw error;
+    }
+  }
+
+  update(): SteamInputFrame<TDefinition> {
+    this.assertStarted();
+    if (!this.allDefinitionHandlesResolved) this.resolveHandles();
+
+    const snapshot = native().inputPollSnapshot(
+      this.pollDigitalHandles,
+      this.pollAnalogHandles,
+      true,
+      this.controllerMode !== "individual"
+    );
+    const rawControllers = snapshot.controllers ?? [];
+    const nextControllers = rawControllers.map((controller) => this.normalizeControllerFrame(controller));
+    const nextControllerMap = new Map(nextControllers.map((controller) => [controller.handle, controller]));
+
+    for (const controller of nextControllers) {
+      if (!this.knownControllerHandles.has(controller.handle)) {
+        this.knownControllerHandles.add(controller.handle);
+        this.emit("controller-connected", { handle: controller.handle, controller });
+      }
+      const previous = this.previousControllers.get(controller.handle);
+      if (previous && controllerFrameHasActivity(controller, previous)) {
+        this.setPrimaryController(controller.handle, controller);
+      }
+    }
+    for (const handle of [...this.knownControllerHandles]) {
+      if (!nextControllerMap.has(handle)) {
+        const previous = this.previousControllers.get(handle) ?? null;
+        this.knownControllerHandles.delete(handle);
+        this.emit("controller-disconnected", {
+          handle,
+          lastController: previous,
+          releasedController: previous ? disconnectedControllerFrame(previous) : null
+        });
+      }
+    }
+
+    if (this.primaryControllerHandle != null && !nextControllerMap.has(this.primaryControllerHandle)) {
+      this.setPrimaryController(nextControllers[0]?.handle ?? null, nextControllers[0] ?? null);
+    } else if (this.primaryControllerHandle == null && nextControllers.length > 0) {
+      this.setPrimaryController(nextControllers[0].handle, nextControllers[0]);
+    }
+
+    const merged = snapshot.merged ? this.normalizeControllerFrame(snapshot.merged) : null;
+    const publicControllers = this.controllerMode === "merged" ? [] : nextControllers;
+    const primary =
+      this.controllerMode === "merged"
+        ? merged
+        : this.primaryControllerHandle == null
+          ? null
+          : nextControllerMap.get(this.primaryControllerHandle) ?? null;
+    const frame: SteamInputFrame<TDefinition> = {
+      sequence: requiredBigIntLike(snapshot.sequence, "Steam Input snapshot sequence"),
+      capturedAtNs: requiredBigIntLike(
+        snapshot.capturedAtNs ?? snapshot.captured_at_ns ?? 0,
+        "Steam Input snapshot capture time"
+      ),
+      receivedAtNs: process.hrtime.bigint(),
+      controllers: publicControllers,
+      mergedController: merged,
+      primaryController: primary
+    };
+    this.previousControllers = nextControllerMap;
+    if (merged) this.previousControllers.set(merged.handle, merged);
+    this.lastFrameValue = frame;
+    return frame;
+  }
+
+  get lastFrame(): SteamInputFrame<TDefinition> {
+    return this.lastFrameValue;
+  }
+
+  on<TEvent extends SteamInputSessionEventName>(
+    event: TEvent,
+    handler: (value: SteamInputSessionEventMap<TDefinition>[TEvent]) => void
+  ): CallbackHandle {
+    if (typeof handler !== "function") throw new TypeError("Steam Input session event handler must be a function");
+    let handlers = this.listeners.get(event);
+    if (!handlers) {
+      handlers = new Set();
+      this.listeners.set(event, handlers);
+    }
+    const listener = handler as SteamInputSessionListener;
+    handlers.add(listener);
+    let connected = true;
+    return {
+      disconnect: () => {
+        if (!connected) return;
+        connected = false;
+        handlers?.delete(listener);
+      }
+    };
+  }
+
+  activateActionSet(
+    actionSet: keyof TDefinition["actionSets"] & string,
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): void {
+    this.assertStarted();
+    const actionSetHandle = this.requireResolvedHandle(this.actionSetHandles, actionSet, "action set");
+    native().inputActivateActionSet(inputControllerHandle(controller), actionSetHandle);
+  }
+
+  activateActionLayer(
+    actionLayer: keyof NonNullable<TDefinition["actionLayers"]> & string,
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): void {
+    this.assertStarted();
+    const handle = this.requireResolvedHandle(this.actionLayerHandles, actionLayer, "action layer");
+    native().inputActivateActionSetLayer(inputControllerHandle(controller), handle);
+  }
+
+  deactivateActionLayer(
+    actionLayer: keyof NonNullable<TDefinition["actionLayers"]> & string,
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): void {
+    this.assertStarted();
+    const handle = this.requireResolvedHandle(this.actionLayerHandles, actionLayer, "action layer");
+    native().inputDeactivateActionSetLayer(inputControllerHandle(controller), handle);
+  }
+
+  deactivateAllActionLayers(controller?: SteamInputControllerFrame<TDefinition> | bigint | null): void {
+    this.assertStarted();
+    native().inputDeactivateAllActionSetLayers(inputControllerHandle(controller));
+  }
+
+  getDigitalPrompt(
+    action: keyof TDefinition["digital"] & string,
+    options: {
+      controller?: SteamInputControllerFrame<TDefinition> | bigint | null;
+      actionSet?: keyof TDefinition["actionSets"] & string;
+      size?: number;
+      style?: number;
+    } = {}
+  ): SteamInputPrompt | null {
+    return this.getPrompt("digital", action, options);
+  }
+
+  getAnalogPrompt(
+    action: keyof TDefinition["analog"] & string,
+    options: {
+      controller?: SteamInputControllerFrame<TDefinition> | bigint | null;
+      actionSet?: keyof TDefinition["actionSets"] & string;
+      size?: number;
+      style?: number;
+    } = {}
+  ): SteamInputPrompt | null {
+    return this.getPrompt("analog", action, options);
+  }
+
+  showBindingPanel(controller?: SteamInputControllerFrame<TDefinition> | bigint | null): boolean {
+    this.assertStarted();
+    const handle = this.resolveConcreteControllerHandle(controller);
+    if (handle == null) {
+      this.diagnostic(
+        "STEAM_INPUT_NO_CONTROLLER",
+        "warning",
+        "Steam Input cannot open the binding panel because no controller is available."
+      );
+      return false;
+    }
+    const opened = native().inputShowBindingPanel(handle);
+    if (!opened) {
+      this.diagnostic(
+        "STEAM_INPUT_BINDING_PANEL_UNAVAILABLE",
+        "warning",
+        "Steam could not open the controller binding panel; the Steam overlay may be disabled or unavailable."
+      );
+    }
+    return opened;
+  }
+
+  vibrate(
+    leftIntensity: number,
+    rightIntensity: number,
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): void {
+    this.assertStarted();
+    const handle = this.requireConcreteControllerHandle(controller);
+    native().inputTriggerVibration(
+      handle,
+      normalizedIntensityU16(leftIntensity, "left vibration intensity"),
+      normalizedIntensityU16(rightIntensity, "right vibration intensity")
+    );
+  }
+
+  setLedColor(
+    red: number,
+    green: number,
+    blue: number,
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): void {
+    this.assertStarted();
+    const handle = this.requireConcreteControllerHandle(controller);
+    native().inputSetLedColor(
+      handle,
+      inputColorChannel(red, "red"),
+      inputColorChannel(green, "green"),
+      inputColorChannel(blue, "blue"),
+      InputLedFlag.SetColor
+    );
+  }
+
+  restoreLedColor(controller?: SteamInputControllerFrame<TDefinition> | bigint | null): void {
+    this.assertStarted();
+    native().inputSetLedColor(
+      this.requireConcreteControllerHandle(controller),
+      0,
+      0,
+      0,
+      InputLedFlag.RestoreUserDefault
+    );
+  }
+
+  getDiagnostics(): SteamInputSessionDiagnostics {
+    return {
+      started: this.started,
+      disposed: this.disposed,
+      manifestPath: this.manifestPath,
+      controllerMode: this.controllerMode,
+      unresolvedActionSets: unresolvedDefinitionEntryNames(this.actionSetEntries, this.actionSetHandles),
+      unresolvedActionLayers: unresolvedDefinitionEntryNames(this.actionLayerEntries, this.actionLayerHandles),
+      unresolvedDigitalActions: unresolvedDefinitionEntryNames(this.digitalEntries, this.digitalActionHandles),
+      unresolvedAnalogActions: unresolvedDefinitionEntryNames(this.analogEntries, this.analogActionHandles),
+      resolvedActionSetCount: resolvedDefinitionHandleCount(this.actionSetEntries, this.actionSetHandles),
+      resolvedActionLayerCount: resolvedDefinitionHandleCount(this.actionLayerEntries, this.actionLayerHandles),
+      resolvedDigitalActionCount: resolvedDefinitionHandleCount(this.digitalEntries, this.digitalActionHandles),
+      resolvedAnalogActionCount: resolvedDefinitionHandleCount(this.analogEntries, this.analogActionHandles),
+      controllerCount: this.previousControllers.size - (this.previousControllers.has(STEAM_INPUT_HANDLE_ALL_CONTROLLERS) ? 1 : 0),
+      primaryControllerHandle: this.primaryControllerHandle,
+      lastSequence: this.lastFrameValue.sequence
+    };
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.started = false;
+    for (const callback of this.callbacks.splice(0)) {
+      try {
+        callback.disconnect();
+      } catch {
+        // Continue deterministic cleanup; native shutdown remains the final owner.
+      }
+    }
+    this.listeners.clear();
+    this.promptCache.clear();
+    this.previousControllers.clear();
+    this.knownControllerHandles.clear();
+    if (activeSteamInputSession === (this as unknown as SteamInputSession<SteamInputDefinition>)) {
+      activeSteamInputSession = undefined;
+    }
+    if (this.ownsInputReference) {
+      this.ownsInputReference = false;
+      releaseSteamInputReference();
+    }
+  }
+
+  private normalizeControllerFrame(
+    source: NativeInputPollControllerSnapshot
+  ): SteamInputControllerFrame<TDefinition> {
+    const handle = requiredBigIntLike(source.handle, "Steam Input controller handle");
+    const previous = this.previousControllers.get(handle);
+    const digitalByHandle = new Map(
+      (source.digital ?? []).map((state) => [
+        requiredBigIntLike(state.actionHandle ?? state.action_handle ?? 0, "Steam Input digital action handle"),
+        state
+      ])
+    );
+    const analogByHandle = new Map(
+      (source.analog ?? []).map((state) => [
+        requiredBigIntLike(state.actionHandle ?? state.action_handle ?? 0, "Steam Input analog action handle"),
+        state
+      ])
+    );
+    const digital: Record<string, SteamInputDigitalFrameState> = {};
+    for (const [key, actionName] of this.digitalEntries) {
+      const resolvedActionHandle = this.digitalActionHandles.get(key);
+      const actionHandle = resolvedActionHandle && resolvedActionHandle !== 0n ? resolvedActionHandle : null;
+      const raw = actionHandle == null ? undefined : digitalByHandle.get(actionHandle);
+      const previousState = previous?.digital[key];
+      const hasPreviousSample = previousState?.handle != null && previousState.handle === actionHandle;
+      const wasDown = hasPreviousSample ? previousState.isDown : false;
+      const isDown = Boolean(raw?.active && raw.state);
+      digital[key] = {
+        action: key,
+        actionName,
+        handle: actionHandle,
+        active: Boolean(raw?.active),
+        isDown,
+        pressedThisFrame: hasPreviousSample && isDown && !wasDown,
+        releasedThisFrame: hasPreviousSample && wasDown && !isDown
+      };
+    }
+    const analog: Record<string, SteamInputAnalogFrameState> = {};
+    for (const [key, actionName] of this.analogEntries) {
+      const resolvedActionHandle = this.analogActionHandles.get(key);
+      const actionHandle = resolvedActionHandle && resolvedActionHandle !== 0n ? resolvedActionHandle : null;
+      const raw = actionHandle == null ? undefined : analogByHandle.get(actionHandle);
+      analog[key] = {
+        action: key,
+        actionName,
+        handle: actionHandle,
+        active: Boolean(raw?.active),
+        mode: finiteNumber(raw?.mode, InputSourceMode.None),
+        x: finiteNumber(raw?.x, 0),
+        y: finiteNumber(raw?.y, 0)
+      };
+    }
+    const currentActionSetHandle = requiredBigIntLike(
+      source.currentActionSet ?? source.current_action_set ?? 0,
+      "Steam Input current action set handle"
+    );
+    const layerHandles = (source.activeActionSetLayers ?? source.active_action_set_layers ?? []).map(
+      (value) => requiredBigIntLike(value, "Steam Input action layer handle")
+    );
+    const revision = source.bindingRevision ?? source.binding_revision;
+    if (previous && !sameInputBindingRevision(previous.bindingRevision, revision ?? null)) {
+      this.promptCache.clear();
+    }
+    return {
+      handle,
+      inputType: normalizeInputType(source.inputType ?? source.input_type ?? "Unknown"),
+      gamepadIndex: Number(source.gamepadIndex ?? source.gamepad_index ?? -1),
+      currentActionSet: keyForHandle(this.actionSetHandles, currentActionSetHandle) as
+        | keyof TDefinition["actionSets"]
+        | null,
+      currentActionSetHandle,
+      activeActionLayers: layerHandles
+        .map((layerHandle) => keyForHandle(this.actionLayerHandles, layerHandle))
+        .filter((key): key is string => key !== null) as Array<keyof NonNullable<TDefinition["actionLayers"]>>,
+      activeActionLayerHandles: layerHandles,
+      remotePlaySessionId: Number(source.remotePlaySessionId ?? source.remote_play_session_id ?? 0),
+      bindingRevision: revision
+        ? { major: Number(revision.major), minor: Number(revision.minor) }
+        : null,
+      digital: digital as SteamInputDigitalFrameMap<TDefinition>,
+      analog: analog as SteamInputAnalogFrameMap<TDefinition>
+    };
+  }
+
+  private getPrompt(
+    kind: "digital" | "analog",
+    action: string,
+    options: {
+      controller?: SteamInputControllerFrame<TDefinition> | bigint | null;
+      actionSet?: keyof TDefinition["actionSets"] & string;
+      size?: number;
+      style?: number;
+    }
+  ): SteamInputPrompt | null {
+    this.assertStarted();
+    const controllerHandle = this.resolveConcreteControllerHandle(options.controller);
+    if (controllerHandle == null) return null;
+    const controllerFrame = this.previousControllers.get(controllerHandle);
+    const actionSetHandle = options.actionSet
+      ? this.requireResolvedHandle(this.actionSetHandles, options.actionSet, "action set")
+      : controllerFrame?.currentActionSetHandle ?? 0n;
+    if (actionSetHandle === 0n) {
+      this.diagnostic(
+        "STEAM_INPUT_ACTION_SET_UNAVAILABLE",
+        "warning",
+        "Steam Input cannot resolve a prompt until the controller has an active action set."
+      );
+      return null;
+    }
+    const handles = kind === "digital" ? this.digitalActionHandles : this.analogActionHandles;
+    const actionHandle = this.requireResolvedHandle(handles, action, `${kind} action`);
+    const size = options.size ?? InputGlyphSize.Medium;
+    const style = options.style ?? InputGlyphStyle.Knockout;
+    const revision = controllerFrame?.bindingRevision;
+    const cacheKey = [
+      kind,
+      action,
+      controllerHandle.toString(),
+      actionSetHandle.toString(),
+      size,
+      style,
+      revision?.major ?? -1,
+      revision?.minor ?? -1
+    ].join(":");
+    const cached = this.promptCache.get(cacheKey);
+    if (cached) return cached;
+    const controller = new Controller(controllerHandle, controllerFrame?.inputType);
+    const origins =
+      kind === "digital"
+        ? controller.getDigitalActionOrigins(actionSetHandle, actionHandle)
+        : controller.getAnalogActionOrigins(actionSetHandle, actionHandle);
+    const actionName = (kind === "digital" ? this.definition.digital : this.definition.analog)[action];
+    const localizedActionName =
+      (kind === "digital"
+        ? native().inputGetStringForDigitalActionName(actionHandle)
+        : native().inputGetStringForAnalogActionName(actionHandle)) || actionName;
+    const prompt: SteamInputPrompt = {
+      kind,
+      action,
+      actionName,
+      localizedActionName,
+      controllerHandle,
+      actionSetHandle,
+      origins,
+      glyphs: origins.map((origin) => ({
+        origin,
+        label: native().inputGetStringForActionOrigin(origin) || `Input ${origin}`,
+        pngPath: native().inputGetGlyphPngForActionOrigin(origin, size, style),
+        svgPath: native().inputGetGlyphSvgForActionOrigin(origin, style)
+      }))
+    };
+    this.promptCache.set(cacheKey, prompt);
+    return prompt;
+  }
+
+  private resolveHandles(): void {
+    resolveDefinitionEntryHandles(this.actionSetEntries, this.actionSetHandles, (name) =>
+      BigInt(native().inputGetActionSet(name))
+    );
+    resolveDefinitionEntryHandles(this.actionLayerEntries, this.actionLayerHandles, (name) =>
+      BigInt(native().inputGetActionSet(name))
+    );
+    resolveDefinitionEntryHandles(this.digitalEntries, this.digitalActionHandles, (name) =>
+      BigInt(native().inputGetDigitalAction(name))
+    );
+    resolveDefinitionEntryHandles(this.analogEntries, this.analogActionHandles, (name) =>
+      BigInt(native().inputGetAnalogAction(name))
+    );
+    this.pollDigitalHandles = resolvedDefinitionHandles(this.digitalEntries, this.digitalActionHandles);
+    this.pollAnalogHandles = resolvedDefinitionHandles(this.analogEntries, this.analogActionHandles);
+    const diagnostics = this.getDiagnostics();
+    const unresolved = [
+      ...diagnostics.unresolvedActionSets,
+      ...diagnostics.unresolvedActionLayers,
+      ...diagnostics.unresolvedDigitalActions,
+      ...diagnostics.unresolvedAnalogActions
+    ];
+    this.allDefinitionHandlesResolved = unresolved.length === 0;
+    if (unresolved.length > 0) {
+      this.diagnostic(
+        "STEAM_INPUT_HANDLES_PENDING",
+        "info",
+        "Steam Input action handles are still loading and will be retried after controller/configuration updates.",
+        { unresolved: unresolved.join(", ") }
+      );
+    }
+  }
+
+  private handleDeviceConnected(event: SteamInputDeviceConnectedEvent): void {
+    this.promptCache.clear();
+    this.resolveHandles();
+    const handle = event.connectedDeviceHandle;
+    if (!this.knownControllerHandles.has(handle)) {
+      this.knownControllerHandles.add(handle);
+      this.emit("controller-connected", { handle, controller: null, nativeEvent: event });
+    }
+  }
+
+  private handleDeviceDisconnected(event: SteamInputDeviceDisconnectedEvent): void {
+    this.promptCache.clear();
+    const handle = event.disconnectedDeviceHandle;
+    if (this.knownControllerHandles.delete(handle)) {
+      const previous = this.previousControllers.get(handle) ?? null;
+      this.emit("controller-disconnected", {
+        handle,
+        lastController: previous,
+        releasedController: previous ? disconnectedControllerFrame(previous) : null,
+        nativeEvent: event
+      });
+    }
+    this.previousControllers.delete(handle);
+    if (this.primaryControllerHandle === handle) this.setPrimaryController(null, null);
+  }
+
+  private handleConfigurationLoaded(event: SteamInputConfigurationLoadedEvent): void {
+    this.promptCache.clear();
+    this.resolveHandles();
+    this.emit("configuration-loaded", event);
+  }
+
+  private handleGamepadSlotChanged(event: SteamInputGamepadSlotChangeEvent): void {
+    this.promptCache.clear();
+    this.emit("gamepad-slot-changed", event);
+  }
+
+  private setPrimaryController(
+    handle: bigint | null,
+    controller: SteamInputControllerFrame<TDefinition> | null
+  ): void {
+    if (this.primaryControllerHandle === handle) return;
+    const previousHandle = this.primaryControllerHandle;
+    this.primaryControllerHandle = handle;
+    this.emit("active-controller-changed", { previousHandle, handle, controller });
+  }
+
+  private resolveConcreteControllerHandle(
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): bigint | null {
+    if (typeof controller === "bigint") return controller === STEAM_INPUT_HANDLE_ALL_CONTROLLERS ? null : controller;
+    if (controller) return controller.handle;
+    return this.primaryControllerHandle ?? this.lastFrameValue.controllers[0]?.handle ?? null;
+  }
+
+  private requireConcreteControllerHandle(
+    controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+  ): bigint {
+    const handle = this.resolveConcreteControllerHandle(controller);
+    if (handle == null) throw new Error("Steam Input requires a connected controller for this operation");
+    return handle;
+  }
+
+  private requireResolvedHandle(handles: Map<string, bigint>, key: string, kind: string): bigint {
+    let handle = handles.get(key);
+    if (!handle || handle === 0n) {
+      this.resolveHandles();
+      handle = handles.get(key);
+    }
+    if (!handle || handle === 0n) {
+      throw new Error(`Steam Input ${kind} \"${key}\" is unresolved; verify the manifest and controller configuration`);
+    }
+    return handle;
+  }
+
+  private diagnostic(
+    code: string,
+    severity: SteamInputDiagnostic["severity"],
+    message: string,
+    details?: SteamInputDiagnostic["details"]
+  ): void {
+    const key = `${code}:${JSON.stringify(details ?? {})}`;
+    if (this.emittedDiagnostics.has(key)) return;
+    this.emittedDiagnostics.add(key);
+    this.emit("diagnostic", { code, severity, message, ...(details ? { details } : {}) });
+  }
+
+  private emit<TEvent extends SteamInputSessionEventName>(
+    event: TEvent,
+    value: SteamInputSessionEventMap<TDefinition>[TEvent]
+  ): void {
+    for (const listener of [...(this.listeners.get(event) ?? [])]) {
+      try {
+        listener(value);
+      } catch (error) {
+        const cause = error instanceof Error ? error : new Error(String(error));
+        process.emitWarning(`Steam Input ${event} listener failed: ${cause.message}`, {
+          code: "STEAM_INPUT_LISTENER_FAILED",
+          detail: cause.stack
+        });
+      }
+    }
+  }
+
+  private assertStarted(): void {
+    if (!this.started) throw new Error("SteamInputSession.start() must be called before use");
+  }
+}
+
+function validateSteamInputDefinition(definition: SteamInputDefinition): void {
+  if (!definition || typeof definition !== "object") {
+    throw new TypeError("Steam Input definition must be an object");
+  }
+
+  const maps: Array<[string, SteamInputNameMap | undefined]> = [
+    ["actionSets", definition.actionSets],
+    ["actionLayers", definition.actionLayers],
+    ["digital", definition.digital],
+    ["analog", definition.analog]
+  ];
+  for (const [label, map] of maps) {
+    if (map == null && label === "actionLayers") continue;
+    if (!map || typeof map !== "object" || Array.isArray(map)) {
+      throw new TypeError(`Steam Input ${label} must be an object mapping developer keys to manifest names`);
+    }
+    const keys = new Set<string>();
+    const values = new Map<string, string>();
+    for (const [key, value] of Object.entries(map)) {
+      if (!key.trim()) throw new Error(`Steam Input ${label} contains an empty developer key`);
+      if (keys.has(key.toLocaleLowerCase("en-US"))) {
+        throw new Error(`Steam Input ${label} contains developer keys that differ only by case: ${key}`);
+      }
+      keys.add(key.toLocaleLowerCase("en-US"));
+      if (typeof value !== "string" || !value.trim()) {
+        throw new Error(`Steam Input ${label}.${key} must be a non-empty manifest name`);
+      }
+      const normalizedValue = value.toLocaleLowerCase("en-US");
+      const previousKey = values.get(normalizedValue);
+      if (previousKey) {
+        throw new Error(
+          `Steam Input ${label}.${key} duplicates manifest name "${value}" already used by ${label}.${previousKey}`
+        );
+      }
+      values.set(normalizedValue, key);
+    }
+  }
+
+  if (definitionEntries(definition.actionSets).length === 0) {
+    throw new Error("Steam Input definition must declare at least one action set");
+  }
+  const digitalNames = definitionEntries(definition.digital);
+  const analogNames = definitionEntries(definition.analog);
+  if (digitalNames.length > 128) {
+    throw new Error(`Steam Input supports at most 128 digital actions; received ${digitalNames.length}`);
+  }
+  if (analogNames.length > 16) {
+    throw new Error(`Steam Input supports at most 16 analog actions; received ${analogNames.length}`);
+  }
+  const digitalByName = new Map(
+    digitalNames.map(([key, name]) => [name.toLocaleLowerCase("en-US"), key] as const)
+  );
+  for (const [key, name] of analogNames) {
+    const digitalKey = digitalByName.get(name.toLocaleLowerCase("en-US"));
+    if (digitalKey) {
+      throw new Error(
+        `Steam Input action "${name}" cannot be both digital (${digitalKey}) and analog (${key})`
+      );
+    }
+  }
+}
+
+function definitionEntries(definition: SteamInputNameMap): Array<[string, string]> {
+  return Object.entries(definition);
+}
+
+function unresolvedDefinitionEntryNames(
+  entries: Array<[string, string]>,
+  handles: Map<string, bigint>
+): string[] {
+  return entries
+    .filter(([key]) => (handles.get(key) ?? 0n) === 0n)
+    .map(([key, name]) => `${key} (${name})`);
+}
+
+function resolveDefinitionEntryHandles(
+  entries: Array<[string, string]>,
+  handles: Map<string, bigint>,
+  resolveHandle: (name: string) => bigint
+): void {
+  for (const [key, name] of entries) {
+    if ((handles.get(key) ?? 0n) !== 0n) continue;
+    handles.set(key, resolveHandle(name));
+  }
+}
+
+function resolvedDefinitionHandles(
+  entries: Array<[string, string]>,
+  handles: Map<string, bigint>
+): bigint[] {
+  const resolved: bigint[] = [];
+  for (const [key] of entries) {
+    const handle = handles.get(key);
+    if (handle && handle !== 0n) resolved.push(handle);
+  }
+  return resolved;
+}
+
+function resolvedDefinitionHandleCount(
+  entries: Array<[string, string]>,
+  handles: Map<string, bigint>
+): number {
+  let count = 0;
+  for (const [key] of entries) {
+    const handle = handles.get(key);
+    if (handle && handle !== 0n) count += 1;
+  }
+  return count;
+}
+
+function keyForHandle(handles: Map<string, bigint>, handle: bigint): string | null {
+  if (handle === 0n) return null;
+  for (const [key, candidate] of handles) {
+    if (candidate === handle) return key;
+  }
+  return null;
+}
+
+function inputControllerHandle<TDefinition extends SteamInputDefinition>(
+  controller?: SteamInputControllerFrame<TDefinition> | bigint | null
+): bigint {
+  if (typeof controller === "bigint") return controller;
+  return controller?.handle ?? STEAM_INPUT_HANDLE_ALL_CONTROLLERS;
+}
+
+function normalizedIntensityU16(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new RangeError(`Steam Input ${label} must be a finite number from 0 through 1`);
+  }
+  return Math.round(value * 65_535);
+}
+
+function inputColorChannel(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 255) {
+    throw new RangeError(`Steam Input LED ${label} must be an integer from 0 through 255`);
+  }
+  return value;
+}
+
+function controllerFrameHasActivity<TDefinition extends SteamInputDefinition>(
+  current: SteamInputControllerFrame<TDefinition>,
+  previous: SteamInputControllerFrame<TDefinition>
+): boolean {
+  for (const key in current.digital) {
+    if (!Object.prototype.hasOwnProperty.call(current.digital, key)) continue;
+    const value = current.digital[key];
+    const before = previous.digital[key as keyof TDefinition["digital"]];
+    if (value.pressedThisFrame || value.releasedThisFrame || value.isDown !== before?.isDown) return true;
+  }
+  for (const key in current.analog) {
+    if (!Object.prototype.hasOwnProperty.call(current.analog, key)) continue;
+    const value = current.analog[key];
+    const before = previous.analog[key as keyof TDefinition["analog"]];
+    if (!before) {
+      if (value.active && (Math.abs(value.x) > 0.001 || Math.abs(value.y) > 0.001)) return true;
+      continue;
+    }
+    if (
+      value.active !== before.active ||
+      Math.abs(value.x - before.x) > 0.001 ||
+      Math.abs(value.y - before.y) > 0.001
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function disconnectedControllerFrame<TDefinition extends SteamInputDefinition>(
+  controller: SteamInputControllerFrame<TDefinition>
+): SteamInputControllerFrame<TDefinition> {
+  const digital: Record<string, SteamInputDigitalFrameState> = {};
+  for (const key in controller.digital) {
+    if (!Object.prototype.hasOwnProperty.call(controller.digital, key)) continue;
+    const previous = controller.digital[key];
+    digital[key] = {
+      ...previous,
+      active: false,
+      isDown: false,
+      pressedThisFrame: false,
+      releasedThisFrame: previous.isDown
+    };
+  }
+  const analog: Record<string, SteamInputAnalogFrameState> = {};
+  for (const key in controller.analog) {
+    if (!Object.prototype.hasOwnProperty.call(controller.analog, key)) continue;
+    analog[key] = {
+      ...controller.analog[key],
+      active: false,
+      mode: InputSourceMode.None,
+      x: 0,
+      y: 0
+    };
+  }
+  return {
+    ...controller,
+    digital: digital as SteamInputDigitalFrameMap<TDefinition>,
+    analog: analog as SteamInputAnalogFrameMap<TDefinition>
+  };
+}
+
+function sameInputBindingRevision(
+  previous: InputDeviceBindingRevision | null,
+  current: NativeInputDeviceBindingRevision | null
+): boolean {
+  if (previous == null || current == null) return previous == null && current == null;
+  return previous.major === Number(current.major) && previous.minor === Number(current.minor);
 }
 
 export class Controller {
@@ -8395,6 +9487,17 @@ function closeSteamBridgeJsResources(): unknown {
   const registry = steamOverlayProcessOwnershipRegistry();
   stopCallbackPump();
   let firstError: unknown;
+  for (const closeInputResource of [
+    () => activeSteamInputSession?.dispose(),
+    () => clearInputActionEventSubscribers(),
+    () => forceReleaseSteamInputReferences()
+  ]) {
+    try {
+      closeInputResource();
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
 
   const controllerLease = registry.activeElectronSteamOverlayControllerLease;
   if (controllerLease?.close) {
@@ -21216,10 +22319,63 @@ export const gameServerInventory = {
   }
 };
 
+let nextInputActionEventSubscriberId = 1;
+const inputActionEventSubscribers = new Map<number, (event: InputActionEvent) => void>();
+let inputActionEventNativeHandle: NativeCallbackHandle | undefined;
+
+function dispatchInputActionEvent(event: NativeInputActionEvent): void {
+  const normalized = normalizeInputActionEvent(event);
+  for (const handler of [...inputActionEventSubscribers.values()]) {
+    try {
+      handler(normalized);
+    } catch (error) {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      process.emitWarning(`Steam Input action-event listener failed: ${cause.message}`, {
+        code: "STEAM_INPUT_ACTION_EVENT_LISTENER_FAILED",
+        detail: cause.stack
+      });
+    }
+  }
+}
+
+function registerInputActionEventSubscriber(handler: (event: InputActionEvent) => void): CallbackHandle {
+  const id = nextInputActionEventSubscriberId++;
+  inputActionEventSubscribers.set(id, handler);
+  try {
+    inputActionEventNativeHandle ??= native().inputRegisterActionEventCallback(dispatchInputActionEvent);
+  } catch (error) {
+    inputActionEventSubscribers.delete(id);
+    throw error;
+  }
+
+  let connected = true;
+  return {
+    disconnect(): void {
+      if (!connected) return;
+      connected = false;
+      inputActionEventSubscribers.delete(id);
+      if (inputActionEventSubscribers.size === 0) {
+        const nativeHandle = inputActionEventNativeHandle;
+        inputActionEventNativeHandle = undefined;
+        nativeHandle?.disconnect();
+      }
+    }
+  };
+}
+
+function clearInputActionEventSubscribers(): void {
+  inputActionEventSubscribers.clear();
+  const nativeHandle = inputActionEventNativeHandle;
+  inputActionEventNativeHandle = undefined;
+  nativeHandle?.disconnect();
+}
+
 export const input = {
   STEAM_INPUT_HANDLE_ALL_CONTROLLERS,
   STEAM_INPUT_MAX_COUNT,
   InputActionEventType,
+  InputSourceMode,
+  InputActionOrigin,
   InputType,
   InputTypeCode,
   InputGlyphSize,
@@ -21230,14 +22386,33 @@ export const input = {
   XboxOrigin,
   SessionInputConfigurationSetting,
   Controller,
+  SteamInputSession,
+  defineSteamInput,
   init(): void {
-    native().inputInit();
+    acquireSteamInputReference();
   },
-  runFrame(reserved = false): void {
+  createSession<const TDefinition extends SteamInputDefinition>(
+    options: SteamInputSessionOptions<TDefinition>
+  ): SteamInputSession<TDefinition> {
+    return new SteamInputSession(options);
+  },
+  runFrame(reserved = true): void {
     native().inputRunFrame(reserved);
   },
+  /**
+   * Low-level synchronous wait. An infinite wait is rejected because it would
+   * permanently block Node's main thread; use waitForDataAsync instead.
+   */
   waitForData(waitForever = false, timeoutMs = 0): boolean {
+    if (waitForever) {
+      throw new Error(
+        "Steam Bridge cannot wait forever for Steam Input data on Node's main thread; use input.waitForDataAsync(timeoutMs)."
+      );
+    }
     return native().inputWaitForData(waitForever, timeoutMs);
+  },
+  waitForDataAsync(timeoutMs = 0): Promise<boolean> {
+    return native().inputWaitForDataAsync(timeoutMs);
   },
   newDataAvailable(): boolean {
     return native().inputNewDataAvailable();
@@ -21266,11 +22441,7 @@ export const input = {
     });
   },
   registerActionEventCallback(handler: (event: InputActionEvent) => void): CallbackHandle {
-    return wrapCallbackHandle(
-      native().inputRegisterActionEventCallback((event) => {
-        handler(normalizeInputActionEvent(event));
-      })
-    );
+    return registerInputActionEventSubscriber(handler);
   },
   setActionManifestFilePath(path: string): boolean {
     return native().inputSetActionManifestFilePath(path);
@@ -21293,6 +22464,7 @@ export const input = {
   getStringForDigitalActionName(actionHandle: bigint): string {
     return native().inputGetStringForDigitalActionName(actionHandle);
   },
+  /** @deprecated Activates the named action set as a side effect. Cache handles or use createSession instead. */
   getDigitalActionStateByName(
     controller: Controller | bigint,
     actionSetName: string,
@@ -21301,6 +22473,12 @@ export const input = {
     const handle = typeof controller === "bigint" ? controller : controller.getHandle();
     const actionSetHandle = BigInt(native().inputGetActionSet(actionSetName));
     native().inputActivateActionSet(handle, actionSetHandle);
+    const actionHandle = BigInt(native().inputGetDigitalAction(actionName));
+    return normalizeInputDigitalActionData(native().inputGetDigitalActionData(handle, actionHandle));
+  },
+  /** Resolve and read one digital action without changing the active action set. Cache a handle or use a session per frame. */
+  readDigitalActionStateByName(controller: Controller | bigint, actionName: string): InputDigitalActionData {
+    const handle = typeof controller === "bigint" ? controller : controller.getHandle();
     const actionHandle = BigInt(native().inputGetDigitalAction(actionName));
     return normalizeInputDigitalActionData(native().inputGetDigitalActionData(handle, actionHandle));
   },
@@ -21339,7 +22517,7 @@ export const input = {
     return native().inputGetSessionInputConfigurationSettings();
   },
   shutdown(): void {
-    native().inputShutdown();
+    releaseSteamInputReference();
   }
 };
 
@@ -30752,6 +31930,12 @@ function normalizeBigIntLike(value: unknown): bigint | unknown {
   return value;
 }
 
+function requiredBigIntLike(value: unknown, label: string): bigint {
+  const normalized = normalizeBigIntLike(value);
+  if (typeof normalized === "bigint") return normalized;
+  throw new TypeError(`${label} must be an unsigned integer`);
+}
+
 function normalizeInputType(value: string): InputTypeValue {
   return Object.values(InputType).includes(value as InputTypeValue) ? (value as InputTypeValue) : InputType.Unknown;
 }
@@ -31919,6 +33103,8 @@ const defaultExport = {
   http,
   inventory,
   input,
+  defineSteamInput,
+  SteamInputSession,
   localplayer,
   matchmaking,
   matchmakingServers,

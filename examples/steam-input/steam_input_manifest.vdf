@@ -1,0 +1,51 @@
+"Action Manifest"
+{
+  "actions"
+  {
+    "menu"
+    {
+      "title" "#set_menu"
+      "Button"
+      {
+        "accept" "#action_accept"
+        "cancel" "#action_cancel"
+      }
+    }
+    "gameplay"
+    {
+      "title" "#set_gameplay"
+      "StickPadGyro"
+      {
+        "move" { "title" "#action_move" "input_mode" "joystick_move" }
+      }
+      "Button"
+      {
+        "jump" "#action_jump"
+        "pause" "#action_pause"
+      }
+    }
+  }
+  "action_layers"
+  {
+    "inventory"
+    {
+      "title" "#layer_inventory"
+      "parent_set_name" "gameplay"
+      "Button" { "accept" "#action_accept" "cancel" "#action_cancel" }
+    }
+  }
+  "localization"
+  {
+    "english"
+    {
+      "set_menu" "Menu"
+      "set_gameplay" "Gameplay"
+      "layer_inventory" "Inventory"
+      "action_accept" "Accept"
+      "action_cancel" "Back"
+      "action_move" "Move"
+      "action_jump" "Jump"
+      "action_pause" "Pause"
+    }
+  }
+}

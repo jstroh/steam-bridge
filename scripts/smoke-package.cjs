@@ -191,6 +191,7 @@ function runMacosPackageSigningStaticChecks() {
   const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
   const packageReadme = fs.readFileSync(path.join(packageRoot, "README.md"), "utf8");
   const initTxnScript = fs.readFileSync(path.join(packageRoot, "bin", "init-client-txn.cjs"), "utf8");
+  const steamInputScript = fs.readFileSync(path.join(packageRoot, "bin", "steam-input.cjs"), "utf8");
   const prepareScript = fs.readFileSync(path.join(packageRoot, "bin", "prepare-macos-app.cjs"), "utf8");
   const checkoutValidatorScript = fs.readFileSync(path.join(packageRoot, "bin", "validate-checkout-target.cjs"), "utf8");
   const verifierScript = fs.readFileSync(path.join(packageRoot, "bin", "verify-macos-signing.cjs"), "utf8");
@@ -199,6 +200,11 @@ function runMacosPackageSigningStaticChecks() {
     packageJson.bin?.["steam-bridge-init-client-txn"],
     "bin/init-client-txn.cjs",
     "steam-bridge package must expose the InitTxn capture CLI"
+  );
+  assert.equal(
+    packageJson.bin?.["steam-bridge-input"],
+    "bin/steam-input.cjs",
+    "steam-bridge package must expose the Steam Input manifest CLI"
   );
   assert.equal(
     packageJson.bin?.["steam-bridge-prepare-macos-app"],
@@ -216,6 +222,7 @@ function runMacosPackageSigningStaticChecks() {
     "steam-bridge package must expose the macOS signing verifier CLI"
   );
   assertExecutableFile(path.join(packageRoot, "bin", "init-client-txn.cjs"));
+  assertExecutableFile(path.join(packageRoot, "bin", "steam-input.cjs"));
   assert.equal(
     packageJson.exports?.["./electron-builder"]?.default,
     "./dist/electron-builder.js",
@@ -253,6 +260,9 @@ function runMacosPackageSigningStaticChecks() {
     assert.ok(initTxnScript.includes(expected), `InitTxn capture CLI missing ${expected}`);
   }
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
+  assert.ok(steamInputScript.includes("steam-bridge-input generate"));
+  assert.ok(steamInputScript.includes("MAX_DIGITAL_ACTIONS = 128"));
+  assert.ok(steamInputScript.includes("MAX_ANALOG_ACTIONS = 16"));
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   assert.equal(
     examplePackageJson.scripts?.["package:mac"],
@@ -4615,12 +4625,14 @@ function runConsumerChecks() {
     "Packed SteamworksEnums must remain a direct CommonJS export that Node 22 can import by name"
   );
   const initTxnCapture = path.join(installedPackageRoot, "bin", "init-client-txn.cjs");
+  const steamInputManifestCli = path.join(installedPackageRoot, "bin", "steam-input.cjs");
   const macosPrepareApp = path.join(installedPackageRoot, "bin", "prepare-macos-app.cjs");
   const macosSigningVerifier = path.join(installedPackageRoot, "bin", "verify-macos-signing.cjs");
   const checkoutTargetValidator = path.join(installedPackageRoot, "bin", "validate-checkout-target.cjs");
   const macosLauncherTemplate = path.join(installedPackageRoot, "templates", "macos-steam-env-launcher.c");
   const macosEntitlementsTemplate = path.join(installedPackageRoot, "templates", "entitlements.steam.macos.plist");
   assertNonEmptyFile(initTxnCapture);
+  assertNonEmptyFile(steamInputManifestCli);
   assertNonEmptyFile(macosPrepareApp);
   assertNonEmptyFile(macosSigningVerifier);
   assertNonEmptyFile(checkoutTargetValidator);
@@ -4629,10 +4641,12 @@ function runConsumerChecks() {
   assertNonEmptyFile(macosLauncherTemplate);
   assertNonEmptyFile(macosEntitlementsTemplate);
   assertExecutableFile(initTxnCapture);
+  assertExecutableFile(steamInputManifestCli);
   assertExecutableFile(macosPrepareApp);
   assertExecutableFile(macosSigningVerifier);
   assertExecutableFile(checkoutTargetValidator);
   run("node", [initTxnCapture, "--self-test"], { cwd: consumerDir });
+  run("node", [steamInputManifestCli, "--self-test"], { cwd: consumerDir });
   run("node", [macosPrepareApp, "--self-test"], { cwd: consumerDir });
   run("node", [macosSigningVerifier, "--self-test"], { cwd: consumerDir });
   run("node", [checkoutTargetValidator, "--self-test"], { cwd: consumerDir });
@@ -4679,6 +4693,8 @@ assert.equal(typeof steam.overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof steam.overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.utils.isOverlayNeedsPresentPollingEnabled, "function");
+assert.equal(typeof steam.defineSteamInput, "function");
+assert.equal(typeof steam.input.createSession, "function");
 assert.equal(steam.STEAM_FRIENDS_OVERLAY_URL, "https://steamcommunity.com/chat/");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
@@ -4694,6 +4710,8 @@ assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
+assert.equal(typeof electron.createElectronSteamInputTransport, "function");
+assert.equal(typeof electron.subscribeElectronSteamInput, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 assert.equal(
   electron.electronConfigureSteamOverlay({ profile: "off", disableDirectComposition: true }).disableDirectComposition,
@@ -4771,6 +4789,8 @@ assert.equal(typeof overlay.createElectronSteamOverlay, "function");
 assert.equal(typeof overlay.setNativeOverlayHostInputPassthrough, "function");
 assert.equal(typeof overlay.setNativeOverlayHostOpacity, "function");
 assert.equal(typeof steam.utils.isOverlayNeedsPresentPollingEnabled, "function");
+assert.equal(typeof steam.defineSteamInput, "function");
+assert.equal(typeof steam.input.createSession, "function");
 assert.equal(typeof steam.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof steam.electronOverlayPresenterOptions, "function");
 assert.equal(typeof steam.electronScrubSteamOverlayChildProcessEnv, "function");
@@ -4781,6 +4801,8 @@ assert.equal(typeof electron.electronConfigureSteamOverlay, "function");
 assert.equal(typeof electron.electronNativeOverlaySessionOptions, "function");
 assert.equal(typeof electron.electronOverlayPresenterOptions, "function");
 assert.equal(typeof electron.electronScrubSteamOverlayChildProcessEnv, "function");
+assert.equal(typeof electron.createElectronSteamInputTransport, "function");
+assert.equal(typeof electron.subscribeElectronSteamInput, "function");
 assert.equal(electron.electronConfigureSteamOverlay({ profile: "off" }).profile, "off");
 assert.equal(
   electron.electronConfigureSteamOverlay({ profile: "off", disableDirectComposition: true }).disableDirectComposition,
@@ -4838,7 +4860,13 @@ import steam, {
   type SteamOverlayWaitSnapshot,
   type SteamOverlayTarget
 } from "steam-bridge";
-import { electronConfigureSteamOverlay } from "steam-bridge/electron";
+import {
+  createElectronSteamInputTransport,
+  electronConfigureSteamOverlay,
+  subscribeElectronSteamInput,
+  type ElectronSteamInputFrame,
+  type ElectronSteamInputTransport
+} from "steam-bridge/electron";
 import { electronNativeOverlaySessionOptions } from "steam-bridge/electron";
 import { electronOverlayPresenterOptions } from "steam-bridge/electron";
 import { electronScrubSteamOverlayChildProcessEnv } from "steam-bridge/electron";
@@ -4854,6 +4882,24 @@ import {
 } from "steam-bridge/server";
 
 const client = steam.init(480);
+const inputDefinition = steam.defineSteamInput({
+  actionSets: { gameplay: "gameplay" },
+  digital: { jump: "jump" },
+  analog: { move: "move" }
+});
+const typedInputSession = client.input.createSession({ definition: inputDefinition });
+typedInputSession.activateActionSet("gameplay");
+// @ts-expect-error generated/session definitions reject unknown action sets
+typedInputSession.activateActionSet("typo");
+// @ts-expect-error a definition without action layers has no valid layer key
+typedInputSession.activateActionLayer("missing");
+const typedInputFrame = typedInputSession.lastFrame;
+const jumpPressed: boolean | undefined = typedInputFrame.primaryController?.digital.jump.pressedThisFrame;
+const moveX: number | undefined = typedInputFrame.primaryController?.analog.move.x;
+const rendererInputFrame: ElectronSteamInputFrame<typeof inputDefinition> | undefined = undefined;
+const mainInputTransportFactory = createElectronSteamInputTransport;
+const rendererInputSubscribeFactory = subscribeElectronSteamInput;
+let typedInputTransport: ElectronSteamInputTransport<typeof inputDefinition> | undefined;
 const web = createSteamWebApiClient({ apiKey: "test" });
 const serverOptions: SteamWebApiServerClientOptions = { publisherApiKey: "test" };
 const publisherWeb = createPublisherWebApiClient(serverOptions);
@@ -5060,6 +5106,14 @@ void nativeCheckoutReservationPromise;
 void nativeCheckoutOperationPromise;
 void waitSnapshot;
 void waitDiagnostics;
+void typedInputSession;
+void typedInputFrame;
+void jumpPressed;
+void moveX;
+void rendererInputFrame;
+void mainInputTransportFactory;
+void rendererInputSubscribeFactory;
+void typedInputTransport;
 void waitNativeHostUnavailable;
 void waitMacEnvironment;
 void inputPassthroughFn;

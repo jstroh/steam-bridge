@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Steam Input inspector</title>
+    <style>
+      :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background: #10141b; color: #e8edf5; }
+      body { margin: 0; padding: 24px; }
+      header, section { max-width: 900px; margin: 0 auto 18px; }
+      h1 { margin: 0 0 6px; font-size: 26px; }
+      .controls { display: flex; flex-wrap: wrap; gap: 10px; }
+      button { padding: 9px 13px; border: 1px solid #58657a; border-radius: 7px; background: #253044; color: inherit; cursor: pointer; }
+      button:hover { background: #34425b; }
+      pre { min-height: 360px; overflow: auto; padding: 16px; border: 1px solid #303b4e; border-radius: 9px; background: #080b10; }
+      #status { color: #9fb4d4; }
+      #error { color: #ff8d8d; min-height: 1.4em; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Steam Input inspector</h1>
+      <div id="status">Waiting for the first Steam Input frame…</div>
+      <div id="error"></div>
+    </header>
+    <section class="controls">
+      <button id="jump-prompt">Read Jump prompt</button>
+      <button id="pause-prompt">Read Pause prompt</button>
+      <button id="binding-panel">Open Steam bindings</button>
+      <button id="diagnostics">Read diagnostics</button>
+    </section>
+    <section><pre id="output" aria-live="polite"></pre></section>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

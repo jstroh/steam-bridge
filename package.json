@@ -38,6 +38,9 @@
     "steam-deck:overlay-matrix": "bash scripts/steam-deck-overlay-matrix.sh",
     "steam-deck:smoke": "bash scripts/steam-deck-smoke.sh",
     "steam-shortcut:check": "node scripts/upsert-steam-shortcut.cjs --self-test",
+    "steam-input:check": "node packages/steam-bridge/bin/steam-input.cjs --self-test",
+    "steam-input:example:electron": "electron examples/steam-input/electron-main.cjs",
+    "steam-input:example:node": "node examples/steam-input/diagnostic.cjs",
     "steam-shortcut:upsert": "node scripts/upsert-steam-shortcut.cjs",
     "steamworks-enums:generate": "node scripts/generate-steamworks-enums.cjs",
     "typecheck": "npm run typecheck -w steam-bridge",
@@ -46,7 +49,7 @@
     "native:fmt": "cargo fmt --all --check",
     "native:test": "node scripts/run-native-tests.cjs",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
+    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run steam-input:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
   },
   "devDependencies": {

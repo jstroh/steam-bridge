@@ -3116,12 +3116,50 @@ function createFakeNative(overrides = {}) {
         { handle: 456n, inputType: "FlightStick" }
       ];
     },
+    inputPollSequence: 0n,
+    inputPollDigitalDown: false,
+    inputPollAnalogX: 0,
+    inputPollSnapshot(digitalActions, analogActions, runFrame, includeMerged) {
+      calls.push({ method: "inputPollSnapshot", args: [digitalActions, analogActions, runFrame, includeMerged] });
+      fake.inputPollSequence += 1n;
+      const controller = {
+        handle: "123",
+        input_type: "PS5Controller",
+        gamepad_index: 0,
+        current_action_set: "10",
+        active_action_set_layers: [],
+        remote_play_session_id: 0,
+        binding_revision: { major: 1, minor: 2 },
+        digital: digitalActions.map((actionHandle) => ({
+          action_handle: actionHandle,
+          state: fake.inputPollDigitalDown,
+          active: true
+        })),
+        analog: analogActions.map((actionHandle) => ({
+          action_handle: actionHandle,
+          mode: 1,
+          x: fake.inputPollAnalogX,
+          y: 0,
+          active: true
+        }))
+      };
+      return {
+        sequence: fake.inputPollSequence,
+        captured_at_ns: fake.inputPollSequence * 1_000_000n,
+        controllers: [controller],
+        merged: includeMerged ? { ...controller, handle: "18446744073709551615" } : null
+      };
+    },
     inputRunFrame(reserved) {
       calls.push({ method: "inputRunFrame", args: [reserved] });
     },
     inputWaitForData(waitForever, timeoutMs) {
       calls.push({ method: "inputWaitForData", args: [waitForever, timeoutMs] });
       return true;
+    },
+    inputWaitForDataAsync(timeoutMs) {
+      calls.push({ method: "inputWaitForDataAsync", args: [timeoutMs] });
+      return Promise.resolve(true);
     },
     inputNewDataAvailable() {
       calls.push({ method: "inputNewDataAvailable", args: [] });
@@ -3132,6 +3170,7 @@ function createFakeNative(overrides = {}) {
     },
     inputRegisterActionEventCallback(handler) {
       calls.push({ method: "inputRegisterActionEventCallback", args: [] });
+      fake.inputActionEventHandler = handler;
       handler({
         controller_handle: "123",
         event_type: 0,
@@ -3949,6 +3988,7 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.ok(packageJson.files.includes("libsteam_api.*"));
   assert.ok(packageJson.files.includes("steam_api*.dll"));
   assert.equal(packageJson.bin?.["steam-bridge-init-client-txn"], "bin/init-client-txn.cjs");
+  assert.equal(packageJson.bin?.["steam-bridge-input"], "bin/steam-input.cjs");
   assert.equal(packageJson.exports?.["./server"]?.default, "./dist/server.js");
   assert.equal(packageJson.exports?.["./server"]?.types, "./dist/server.d.ts");
   assert.match(initClientTxnScript, /dist["', ]+,?[\s\S]*server\.js/);
@@ -28413,8 +28453,17 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(steam.input.InputGlyphSize.Medium, 1);
   assert.equal(steam.input.InputHapticLocation.Both, 3);
   assert.equal(steam.input.XboxOrigin.A, 0);
-  steam.input.runFrame(true);
+  steam.input.runFrame();
+  assert.deepEqual(fake.calls.find((call) => call.method === "inputRunFrame"), {
+    method: "inputRunFrame",
+    args: [true]
+  });
   assert.equal(steam.input.waitForData(false, 16), true);
+  assert.throws(
+    () => steam.input.waitForData(true, 16),
+    /cannot wait forever for Steam Input data/
+  );
+  assert.equal(await steam.input.waitForDataAsync(16), true);
   assert.equal(steam.input.newDataAvailable(), true);
   steam.input.enableDeviceCallbacks();
   const inputDeviceConnectedEvents = [];
@@ -28493,7 +28542,26 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   inputGamepadSlotChangeHandle.disconnect();
   const actionEvents = [];
   const actionEventHandle = steam.input.registerActionEventCallback((event) => actionEvents.push(event));
+  const secondActionEvents = [];
+  const secondActionEventHandle = steam.input.registerActionEventCallback((event) => secondActionEvents.push(event));
+  assert.equal(
+    fake.calls.filter((call) => call.method === "inputRegisterActionEventCallback").length,
+    1,
+    "one native action callback must multiplex JavaScript subscribers"
+  );
+  fake.inputActionEventHandler({
+    controller_handle: "456",
+    event_type: 0,
+    digital_action_handle: "20",
+    digital_action_data: { state: false, active: true }
+  });
   actionEventHandle.disconnect();
+  assert.equal(
+    fake.calls.filter((call) => call.method === "disconnectInputActionEventCallback").length,
+    0,
+    "the native callback stays connected while one subscriber remains"
+  );
+  secondActionEventHandle.disconnect();
   assert.deepEqual(actionEvents, [
     {
       controllerHandle: 123n,
@@ -28502,6 +28570,24 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
       analogActionData: undefined,
       digitalActionHandle: 20n,
       digitalActionData: { state: true, active: true }
+    },
+    {
+      controllerHandle: 456n,
+      eventType: steam.input.InputActionEventType.DigitalAction,
+      analogActionHandle: undefined,
+      analogActionData: undefined,
+      digitalActionHandle: 20n,
+      digitalActionData: { state: false, active: true }
+    }
+  ]);
+  assert.deepEqual(secondActionEvents, [
+    {
+      controllerHandle: 456n,
+      eventType: steam.input.InputActionEventType.DigitalAction,
+      analogActionHandle: undefined,
+      analogActionData: undefined,
+      digitalActionHandle: 20n,
+      digitalActionData: { state: false, active: true }
     }
   ]);
   assert.equal(steam.input.setActionManifestFilePath("/tmp/actions.json"), true);
@@ -28520,6 +28606,14 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.deepEqual(fake.calls.slice(-4), [
     { method: "inputGetActionSet", args: ["gameplay"] },
     { method: "inputActivateActionSet", args: [123n, 10n] },
+    { method: "inputGetDigitalAction", args: ["jump"] },
+    { method: "inputGetDigitalActionData", args: [123n, 20n] }
+  ]);
+  assert.deepEqual(steam.input.readDigitalActionStateByName(controllers[0], "jump"), {
+    state: true,
+    active: true
+  });
+  assert.deepEqual(fake.calls.slice(-2), [
     { method: "inputGetDigitalAction", args: ["jump"] },
     { method: "inputGetDigitalActionData", args: [123n, 20n] }
   ]);
@@ -28646,6 +28740,527 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   const packet = steam.networking.readP2PPacket(64);
   assert.deepEqual(packet.data, Buffer.from("hello"));
   assert.equal(packet.steamId.steamId64, 76561198000000001n);
+});
+
+test("SteamInputSession batches frames, computes edges, manages prompts, and owns lifecycle", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    actionLayers: { menu: "menu" },
+    digital: { jump: "jump" },
+    analog: { move: "move" }
+  });
+  const session = steam.input.createSession({ definition, controllers: "both" }).start();
+  assert.equal(fake.calls.filter((call) => call.method === "inputInit").length, 1);
+
+  const first = session.update();
+  assert.equal(first.sequence, 1n);
+  assert.equal(first.controllers.length, 1);
+  assert.equal(first.controllers[0].digital.jump.isDown, false);
+  assert.equal(first.controllers[0].digital.jump.pressedThisFrame, false);
+  assert.equal(first.mergedController.handle, steam.STEAM_INPUT_HANDLE_ALL_CONTROLLERS);
+
+  fake.inputPollDigitalDown = true;
+  fake.inputPollAnalogX = 0.75;
+  const pressed = session.update();
+  assert.equal(pressed.primaryController.handle, 123n);
+  assert.equal(pressed.primaryController.digital.jump.pressedThisFrame, true);
+  assert.equal(pressed.primaryController.digital.jump.releasedThisFrame, false);
+  assert.equal(pressed.primaryController.analog.move.x, 0.75);
+  assert.equal(session.update().primaryController.digital.jump.pressedThisFrame, false);
+
+  fake.inputPollDigitalDown = false;
+  const released = session.update();
+  assert.equal(released.primaryController.digital.jump.releasedThisFrame, true);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "inputPollSnapshot").length,
+    4,
+    "each game update must cross native once regardless of action count"
+  );
+
+  session.activateActionSet("gameplay", released.primaryController);
+  session.activateActionLayer("menu", released.primaryController);
+  session.deactivateActionLayer("menu", released.primaryController);
+  session.deactivateAllActionLayers(released.primaryController);
+  session.vibrate(0.5, 1, released.primaryController);
+  session.setLedColor(1, 2, 3, released.primaryController);
+  session.restoreLedColor(released.primaryController);
+  assert.equal(session.showBindingPanel(released.primaryController), true);
+  assert.deepEqual(
+    fake.calls.find((call) => call.method === "inputTriggerVibration"),
+    { method: "inputTriggerVibration", args: [123n, 32768, 65535] }
+  );
+  assert.throws(() => session.vibrate(-0.1, 1, released.primaryController), /from 0 through 1/);
+  assert.throws(() => session.setLedColor(256, 0, 0, released.primaryController), /from 0 through 255/);
+
+  const firstPrompt = session.getDigitalPrompt("jump", { controller: released.primaryController });
+  assert.equal(firstPrompt.localizedActionName, "jump");
+  assert.deepEqual(firstPrompt.origins, [1, 2]);
+  assert.deepEqual(firstPrompt.glyphs[0], {
+    origin: 1,
+    label: "A",
+    pngPath: "/glyph.png",
+    svgPath: "/glyph.svg"
+  });
+  session.getDigitalPrompt("jump", { controller: released.primaryController });
+  assert.equal(
+    fake.calls.filter((call) => call.method === "inputGetDigitalActionOrigins").length,
+    1,
+    "prompt metadata must be cached until the binding revision/configuration changes"
+  );
+  fake.callbacks.get(steam.SteamCallback.SteamInputConfigurationLoaded)({
+    app_id: 480,
+    device_handle: "123",
+    mapping_creator: "76561198000000000",
+    major_revision: 2,
+    minor_revision: 0,
+    uses_steam_input_api: true,
+    uses_gamepad_api: false
+  });
+  session.getDigitalPrompt("jump", { controller: released.primaryController });
+  assert.equal(fake.calls.filter((call) => call.method === "inputGetDigitalActionOrigins").length, 2);
+  const diagnostics = session.getDiagnostics();
+  assert.deepEqual(diagnostics.unresolvedDigitalActions, []);
+  assert.equal(diagnostics.resolvedActionSetCount, 1);
+  assert.equal(diagnostics.resolvedActionLayerCount, 1);
+  assert.equal(diagnostics.resolvedDigitalActionCount, 1);
+  assert.equal(diagnostics.resolvedAnalogActionCount, 1);
+
+  const secondSession = steam.input.createSession({ definition });
+  assert.throws(() => secondSession.start(), /only one active SteamInputSession/);
+  session.dispose();
+  assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 1);
+  assert.equal(session.getDiagnostics().started, false);
+});
+
+test("SteamInputSession retries pending handles without inventing input edges", (t) => {
+  let digitalResolves = 0;
+  const fake = createFakeNative({
+    inputGetDigitalAction(actionName) {
+      fake.calls.push({ method: "inputGetDigitalAction", args: [actionName] });
+      digitalResolves += 1;
+      return digitalResolves <= 2 ? 0n : 20n;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    digital: { jump: "jump" },
+    analog: {}
+  });
+  const diagnostics = [];
+  const session = steam.input.createSession({ definition });
+  session.on("diagnostic", (diagnostic) => diagnostics.push(diagnostic));
+  session.start();
+  assert.match(session.getDiagnostics().unresolvedDigitalActions[0], /jump/);
+  fake.inputPollDigitalDown = true;
+  const unresolvedFrame = session.update();
+  assert.equal(unresolvedFrame.primaryController.digital.jump.handle, null);
+  const frame = session.update();
+  assert.equal(frame.primaryController.digital.jump.handle, 20n);
+  assert.equal(frame.primaryController.digital.jump.pressedThisFrame, false);
+  assert.equal(diagnostics[0].code, "STEAM_INPUT_HANDLES_PENDING");
+  session.dispose();
+});
+
+test("SteamInputSession polls maximum action definitions across two controllers in one native call", (t) => {
+  const digital = Object.fromEntries(
+    Array.from({ length: 128 }, (_, index) => [`digital${index}`, `digital_${index}`])
+  );
+  const analog = Object.fromEntries(
+    Array.from({ length: 16 }, (_, index) => [`analog${index}`, `analog_${index}`])
+  );
+  let sequence = 0n;
+  let fake;
+  fake = createFakeNative({
+    inputGetDigitalAction(name) {
+      fake.calls.push({ method: "inputGetDigitalAction", args: [name] });
+      return BigInt(1_000 + Number(name.slice("digital_".length)));
+    },
+    inputGetAnalogAction(name) {
+      fake.calls.push({ method: "inputGetAnalogAction", args: [name] });
+      return BigInt(2_000 + Number(name.slice("analog_".length)));
+    },
+    inputPollSnapshot(digitalActions, analogActions, runFrame, includeMerged) {
+      fake.calls.push({ method: "inputPollSnapshot", args: [digitalActions, analogActions, runFrame, includeMerged] });
+      sequence += 1n;
+      const controller = (handle, gamepadIndex) => ({
+        handle: String(handle),
+        input_type: gamepadIndex === 0 ? "XBoxOneController" : "PS5Controller",
+        gamepad_index: gamepadIndex,
+        current_action_set: "10",
+        active_action_set_layers: [],
+        remote_play_session_id: 0,
+        binding_revision: { major: 1, minor: 0 },
+        digital: digitalActions.map((actionHandle) => ({
+          action_handle: actionHandle,
+          state: false,
+          active: true
+        })),
+        analog: analogActions.map((actionHandle) => ({
+          action_handle: actionHandle,
+          mode: 1,
+          x: 0,
+          y: 0,
+          active: true
+        }))
+      });
+      return {
+        sequence,
+        captured_at_ns: sequence * 1_000_000n,
+        controllers: [controller(123, 0), controller(456, 1)],
+        merged: null
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const session = steam.input.createSession({
+    definition: steam.defineSteamInput({
+      actionSets: { gameplay: "gameplay" },
+      digital,
+      analog
+    })
+  }).start();
+  const resolvedCallCount = fake.calls.filter(
+    (call) => call.method === "inputGetDigitalAction" || call.method === "inputGetAnalogAction"
+  ).length;
+
+  const frame = session.update();
+  assert.equal(frame.controllers.length, 2);
+  assert.equal(Object.keys(frame.controllers[0].digital).length, 128);
+  assert.equal(Object.keys(frame.controllers[1].analog).length, 16);
+  const poll = fake.calls.filter((call) => call.method === "inputPollSnapshot");
+  assert.equal(poll.length, 1);
+  assert.equal(poll[0].args[0].length, 128);
+  assert.equal(poll[0].args[1].length, 16);
+  session.update();
+  assert.equal(fake.calls.filter((call) => call.method === "inputPollSnapshot").length, 2);
+  assert.equal(
+    fake.calls.filter(
+      (call) => call.method === "inputGetDigitalAction" || call.method === "inputGetAnalogAction"
+    ).length,
+    resolvedCallCount,
+    "resolved action handles are cached and never looked up in the steady-state frame path"
+  );
+  session.dispose();
+});
+
+test("SteamInputSession reference ownership composes with raw input.init", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    digital: {},
+    analog: {}
+  });
+  steam.input.init();
+  const session = steam.input.createSession({ definition }).start();
+  assert.equal(fake.calls.filter((call) => call.method === "inputInit").length, 1);
+  session.dispose();
+  assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 0);
+  assert.throws(() => session.start(), /cannot be restarted/);
+  steam.input.shutdown();
+  assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 1);
+});
+
+test("SteamInputSession rolls back callbacks and native ownership when startup fails partway", (t) => {
+  let inputCallbackCount = 0;
+  const fake = createFakeNative({
+    registerSteamCallback(callbackId, handler) {
+      fake.calls.push({ method: "registerSteamCallback", args: [callbackId] });
+      if (callbackId >= 2801 && callbackId <= 2804) {
+        inputCallbackCount += 1;
+        if (inputCallbackCount === 2) throw new Error("callback registration failed");
+      }
+      fake.callbacks.set(callbackId, handler);
+      return {
+        disconnect() {
+          fake.callbacks.delete(callbackId);
+          fake.calls.push({ method: "disconnectCallback", args: [callbackId] });
+        }
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    digital: {},
+    analog: {}
+  });
+  const session = steam.input.createSession({ definition });
+  assert.throws(() => session.start(), /callback registration failed/);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "disconnectCallback"),
+    [{ method: "disconnectCallback", args: [steam.SteamCallback.SteamInputDeviceConnected] }]
+  );
+  assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 1);
+  assert.equal(session.getDiagnostics().disposed, true);
+});
+
+test("SteamInputSession emits one final release snapshot when a held controller disconnects", (t) => {
+  let connected = true;
+  let digitalDown = false;
+  let sequence = 0n;
+  let fake;
+  fake = createFakeNative({
+    inputPollSnapshot(digitalActions, analogActions, runFrame, includeMerged) {
+      fake.calls.push({ method: "inputPollSnapshot", args: [digitalActions, analogActions, runFrame, includeMerged] });
+      sequence += 1n;
+      const controller = {
+        handle: "123",
+        input_type: "PS5Controller",
+        gamepad_index: 0,
+        current_action_set: "10",
+        active_action_set_layers: [],
+        remote_play_session_id: 0,
+        binding_revision: { major: 1, minor: 2 },
+        digital: digitalActions.map((actionHandle) => ({
+          action_handle: actionHandle,
+          state: digitalDown,
+          active: true
+        })),
+        analog: analogActions.map((actionHandle) => ({
+          action_handle: actionHandle,
+          mode: 1,
+          x: digitalDown ? 0.75 : 0,
+          y: digitalDown ? -0.5 : 0,
+          active: true
+        }))
+      };
+      return {
+        sequence,
+        captured_at_ns: sequence * 1_000_000n,
+        controllers: connected ? [controller] : [],
+        merged: null
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const session = steam.input.createSession({
+    definition: steam.defineSteamInput({
+      actionSets: { gameplay: "gameplay" },
+      digital: { jump: "jump" },
+      analog: { move: "move" }
+    })
+  });
+  const disconnects = [];
+  session.on("controller-disconnected", (event) => disconnects.push(event));
+  session.start();
+  session.update();
+  digitalDown = true;
+  assert.equal(session.update().primaryController.digital.jump.pressedThisFrame, true);
+  connected = false;
+  session.update();
+
+  assert.equal(disconnects.length, 1);
+  assert.equal(disconnects[0].lastController.digital.jump.isDown, true);
+  assert.equal(disconnects[0].releasedController.digital.jump.isDown, false);
+  assert.equal(disconnects[0].releasedController.digital.jump.releasedThisFrame, true);
+  assert.deepEqual(
+    {
+      active: disconnects[0].releasedController.analog.move.active,
+      mode: disconnects[0].releasedController.analog.move.mode,
+      x: disconnects[0].releasedController.analog.move.x,
+      y: disconnects[0].releasedController.analog.move.y
+    },
+    { active: false, mode: steam.InputSourceMode.None, x: 0, y: 0 }
+  );
+  session.update();
+  assert.equal(disconnects.length, 1, "the release snapshot is emitted only on the disconnect transition");
+  session.dispose();
+});
+
+test("defineSteamInput rejects ambiguous or over-limit definitions", (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  t.after(clearSteamBridgeCache);
+  assert.throws(
+    () => steam.defineSteamInput({ actionSets: {}, digital: {}, analog: {} }),
+    /at least one action set/
+  );
+  assert.throws(
+    () =>
+      steam.defineSteamInput({
+        actionSets: { gameplay: "gameplay" },
+        digital: { first: "jump", second: "JUMP" },
+        analog: {}
+      }),
+    /duplicates manifest name/
+  );
+  assert.throws(
+    () =>
+      steam.defineSteamInput({
+        actionSets: { gameplay: "gameplay" },
+        digital: { movement: "move" },
+        analog: { movement: "MOVE" }
+      }),
+    /cannot be both digital/
+  );
+  const tooManyDigital = Object.fromEntries(
+    Array.from({ length: 129 }, (_, index) => [`action${index}`, `action_${index}`])
+  );
+  assert.throws(
+    () => steam.defineSteamInput({ actionSets: { gameplay: "gameplay" }, digital: tooManyDigital, analog: {} }),
+    /at most 128 digital actions/
+  );
+});
+
+test("Electron Steam Input transport is acknowledged, coalesced, and renderer-scoped", (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  const ipcListeners = new Map();
+  const ipcRenderer = {
+    on(channel, listener) {
+      ipcListeners.set(channel, listener);
+    },
+    off(channel, listener) {
+      if (ipcListeners.get(channel) === listener) ipcListeners.delete(channel);
+    }
+  };
+  const rendererMessages = [];
+  const mainMessageListeners = new Set();
+  const rendererPort = {
+    onmessage: null,
+    postMessage(value) {
+      for (const listener of [...mainMessageListeners]) listener({ data: value });
+    },
+    start() {},
+    close() {}
+  };
+  const mainPort = {
+    postMessage(value) {
+      rendererMessages.push(value);
+    },
+    start() {},
+    close() {},
+    on(_event, listener) {
+      mainMessageListeners.add(listener);
+    },
+    off(_event, listener) {
+      mainMessageListeners.delete(listener);
+    }
+  };
+  const webContentsListeners = new Map();
+  const webContents = {
+    postMessage(channel, message, ports) {
+      assert.deepEqual(message, { type: "connect", version: 1 });
+      assert.equal(ports[0], rendererPort);
+      ipcListeners.get(channel)({ ports });
+    },
+    on(event, listener) {
+      webContentsListeners.set(event, listener);
+    },
+    off(event, listener) {
+      if (webContentsListeners.get(event) === listener) webContentsListeners.delete(event);
+    }
+  };
+  const received = [];
+  const subscription = electronInput.subscribeElectronSteamInput(ipcRenderer, (frame) => received.push(frame));
+  let sequence = 0n;
+  const session = {
+    update() {
+      sequence += 1n;
+      return {
+        sequence,
+        capturedAtNs: sequence * 10n,
+        receivedAtNs: sequence * 20n,
+        controllers: [],
+        mergedController: null,
+        primaryController: null
+      };
+    }
+  };
+  const transport = electronInput.createElectronSteamInputTransport(session, webContents, {
+    createMessageChannel: () => ({ port1: rendererPort, port2: mainPort })
+  });
+  transport.update();
+  transport.update();
+  transport.update();
+  assert.equal(rendererMessages.length, 1, "only one unacknowledged frame may be sent");
+  assert.equal(rendererMessages[0].frame.sequence, "1");
+  assert.deepEqual(transport.getDiagnostics(), {
+    closed: false,
+    inFlightSequence: "1",
+    pendingSequence: "3",
+    lastPublishedSequence: "3",
+    lastAcknowledgedSequence: null,
+    publishedFrameCount: 3,
+    sentFrameCount: 1,
+    acknowledgedFrameCount: 0,
+    coalescedFrameCount: 1
+  });
+
+  rendererPort.onmessage({ data: rendererMessages.shift() });
+  assert.equal(received[0].sequence, "1");
+  assert.equal(rendererMessages.length, 1);
+  assert.equal(rendererMessages[0].frame.sequence, "3", "a slow renderer receives only the newest pending frame");
+  rendererPort.onmessage({ data: rendererMessages.shift() });
+  assert.deepEqual(received.map((frame) => frame.sequence), ["1", "3"]);
+  assert.equal(transport.getDiagnostics().acknowledgedFrameCount, 2);
+  assert.equal(transport.getDiagnostics().lastAcknowledgedSequence, "3");
+
+  webContentsListeners.get("did-start-navigation")({}, {}, false, true);
+  assert.equal(transport.closed, true);
+  subscription.close();
+  assert.equal(subscription.closed, true);
+});
+
+test("Electron Steam Input transport rolls back a failed renderer handoff", (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  const mainMessageListeners = new Set();
+  const webContentsListeners = new Map();
+  let mainPortClosed = false;
+  const mainPort = {
+    postMessage() {},
+    start() {},
+    close() {
+      mainPortClosed = true;
+    },
+    on(_event, listener) {
+      mainMessageListeners.add(listener);
+    },
+    off(_event, listener) {
+      mainMessageListeners.delete(listener);
+    }
+  };
+  const webContents = {
+    postMessage() {
+      throw new Error("renderer handoff failed");
+    },
+    on(event, listener) {
+      webContentsListeners.set(event, listener);
+    },
+    off(event, listener) {
+      if (webContentsListeners.get(event) === listener) webContentsListeners.delete(event);
+    }
+  };
+
+  assert.throws(
+    () => electronInput.createElectronSteamInputTransport(
+      { update() { throw new Error("not reached"); } },
+      webContents,
+      {
+        createMessageChannel: () => ({
+          port1: { postMessage() {}, start() {}, close() {}, on() {}, onmessage: null },
+          port2: mainPort
+        })
+      }
+    ),
+    /renderer handoff failed/
+  );
+  assert.equal(mainPortClosed, true);
+  assert.equal(mainMessageListeners.size, 0);
+  assert.equal(webContentsListeners.size, 0);
 });
 
 test("cloud legacy facade covers published file workflows", async (t) => {

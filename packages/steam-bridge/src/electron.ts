@@ -1,4 +1,5 @@
 import { ensureKWinWaylandOverlayHostSync } from "./kwin";
+import type { SteamInputDefinition, SteamInputFrame, SteamInputSession } from "./index";
 export {
   getKWinWaylandOverlayHostSyncStatus,
   onKWinWaylandOverlaySourceInteractiveResize
@@ -9,6 +10,294 @@ export type {
 } from "./kwin";
 
 export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "repaint" | "compatibility";
+
+export type ElectronSteamInputValue<T> = T extends bigint
+  ? string
+  : T extends readonly (infer TItem)[]
+    ? ElectronSteamInputValue<TItem>[]
+    : T extends object
+      ? { [K in keyof T]: ElectronSteamInputValue<T[K]> }
+      : T;
+
+/** JSON-safe Steam Input frame delivered from Electron's main process to one renderer. */
+export type ElectronSteamInputFrame<TDefinition extends SteamInputDefinition = SteamInputDefinition> =
+  ElectronSteamInputValue<SteamInputFrame<TDefinition>>;
+
+export interface ElectronSteamInputTransportOptions {
+  /** Dedicated MessagePort bootstrap channel. Defaults to `steam-bridge:steam-input`. */
+  channel?: string;
+  /** Test/embedding hook. Normal Electron applications should omit this. */
+  createMessageChannel?: () => ElectronSteamInputMessageChannel;
+}
+
+export interface ElectronSteamInputTransport<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
+  /** Poll Steam Input exactly once and publish the newest frame without an unbounded IPC queue. */
+  update(): SteamInputFrame<TDefinition>;
+  /** Publish an already-polled frame when the application owns the game-frame scheduler. */
+  publish(frame: SteamInputFrame<TDefinition>): void;
+  getDiagnostics(): ElectronSteamInputTransportDiagnostics;
+  close(): void;
+  readonly closed: boolean;
+}
+
+export interface ElectronSteamInputTransportDiagnostics {
+  closed: boolean;
+  inFlightSequence: string | null;
+  pendingSequence: string | null;
+  lastPublishedSequence: string | null;
+  lastAcknowledgedSequence: string | null;
+  publishedFrameCount: number;
+  sentFrameCount: number;
+  acknowledgedFrameCount: number;
+  coalescedFrameCount: number;
+}
+
+export interface ElectronSteamInputRendererSubscription {
+  close(): void;
+  readonly closed: boolean;
+}
+
+export interface ElectronSteamInputMessagePortMain {
+  postMessage(value: unknown): void;
+  start(): void;
+  close(): void;
+  on(event: "message", listener: (event: { data?: unknown } | unknown) => void): unknown;
+  off?(event: "message", listener: (event: { data?: unknown } | unknown) => void): unknown;
+}
+
+export interface ElectronSteamInputMessageChannel {
+  port1: ElectronSteamInputMessagePortMain;
+  port2: ElectronSteamInputMessagePortMain;
+}
+
+export interface ElectronSteamInputWebContents {
+  postMessage(channel: string, message: unknown, transfer?: ElectronSteamInputMessagePortMain[]): void;
+  isDestroyed?(): boolean;
+  on?(event: string, listener: (...args: unknown[]) => void): unknown;
+  off?(event: string, listener: (...args: unknown[]) => void): unknown;
+}
+
+export interface ElectronSteamInputRendererPort {
+  postMessage(value: unknown): void;
+  start?(): void;
+  close(): void;
+  onmessage: ((event: { data?: unknown }) => void) | null;
+}
+
+export interface ElectronSteamInputIpcRenderer {
+  on(channel: string, listener: (event: { ports?: ElectronSteamInputRendererPort[] }) => void): unknown;
+  off?(channel: string, listener: (event: { ports?: ElectronSteamInputRendererPort[] }) => void): unknown;
+  removeListener?(channel: string, listener: (event: { ports?: ElectronSteamInputRendererPort[] }) => void): unknown;
+}
+
+const DEFAULT_ELECTRON_STEAM_INPUT_CHANNEL = "steam-bridge:steam-input";
+
+/**
+ * Create the main-process half of Steam Bridge's bounded Steam Input transport.
+ *
+ * Only one frame may be in flight. If the renderer is slow, intermediate frames
+ * are replaced by the newest one and delivered after its acknowledgement.
+ */
+export function createElectronSteamInputTransport<TDefinition extends SteamInputDefinition>(
+  session: SteamInputSession<TDefinition>,
+  webContents: ElectronSteamInputWebContents,
+  options: ElectronSteamInputTransportOptions = {}
+): ElectronSteamInputTransport<TDefinition> {
+  const channel = electronSteamInputChannel(options.channel);
+  if (webContents.isDestroyed?.()) throw new Error("Cannot attach Steam Input to destroyed Electron webContents");
+  const messageChannel = options.createMessageChannel?.() ?? createElectronSteamInputMessageChannel();
+  const mainPort = messageChannel.port2;
+  let isClosed = false;
+  let inFlightSequence: string | null = null;
+  let pendingFrame: ElectronSteamInputFrame<TDefinition> | null = null;
+  let lastPublishedSequence: string | null = null;
+  let lastAcknowledgedSequence: string | null = null;
+  let publishedFrameCount = 0;
+  let sentFrameCount = 0;
+  let acknowledgedFrameCount = 0;
+  let coalescedFrameCount = 0;
+
+  const sendPendingFrame = (): void => {
+    if (isClosed || inFlightSequence != null || pendingFrame == null) return;
+    const frame = pendingFrame;
+    pendingFrame = null;
+    inFlightSequence = frame.sequence;
+    try {
+      mainPort.postMessage({ type: "frame", version: 1, frame });
+      sentFrameCount += 1;
+    } catch (error) {
+      inFlightSequence = null;
+      pendingFrame = frame;
+      throw error;
+    }
+  };
+  const onMessage = (event: { data?: unknown } | unknown): void => {
+    const data = electronSteamInputMessageData(event);
+    if (!data || typeof data !== "object") return;
+    const value = data as { type?: unknown; sequence?: unknown };
+    if (value.type !== "ack" || value.sequence !== inFlightSequence) return;
+    lastAcknowledgedSequence = inFlightSequence;
+    acknowledgedFrameCount += 1;
+    inFlightSequence = null;
+    sendPendingFrame();
+  };
+  const closeTransport = (): void => {
+    if (isClosed) return;
+    isClosed = true;
+    pendingFrame = null;
+    inFlightSequence = null;
+    webContents.off?.("destroyed", onDestroyed);
+    webContents.off?.("render-process-gone", onDestroyed);
+    webContents.off?.("did-start-navigation", onNavigation);
+    mainPort.off?.("message", onMessage);
+    mainPort.close();
+  };
+  const onDestroyed = (): void => closeTransport();
+  const onNavigation = (...args: unknown[]): void => {
+    const navigationDetails = args[1];
+    const explicitIsMainFrame = args[3];
+    if (explicitIsMainFrame === false) return;
+    if (
+      navigationDetails &&
+      typeof navigationDetails === "object" &&
+      "isMainFrame" in navigationDetails &&
+      (navigationDetails as { isMainFrame?: unknown }).isMainFrame === false
+    ) {
+      return;
+    }
+    closeTransport();
+  };
+  try {
+    mainPort.on("message", onMessage);
+    mainPort.start();
+    webContents.on?.("destroyed", onDestroyed);
+    webContents.on?.("render-process-gone", onDestroyed);
+    webContents.on?.("did-start-navigation", onNavigation);
+    webContents.postMessage(channel, { type: "connect", version: 1 }, [messageChannel.port1]);
+  } catch (error) {
+    closeTransport();
+    throw error;
+  }
+
+  const transport: ElectronSteamInputTransport<TDefinition> = {
+    update(): SteamInputFrame<TDefinition> {
+      const frame = session.update();
+      transport.publish(frame);
+      return frame;
+    },
+    publish(frame: SteamInputFrame<TDefinition>): void {
+      if (isClosed) return;
+      const serialized = serializeElectronSteamInputFrame(frame);
+      publishedFrameCount += 1;
+      lastPublishedSequence = serialized.sequence;
+      if (pendingFrame != null) coalescedFrameCount += 1;
+      pendingFrame = serialized;
+      sendPendingFrame();
+    },
+    getDiagnostics(): ElectronSteamInputTransportDiagnostics {
+      return {
+        closed: isClosed,
+        inFlightSequence,
+        pendingSequence: pendingFrame?.sequence ?? null,
+        lastPublishedSequence,
+        lastAcknowledgedSequence,
+        publishedFrameCount,
+        sentFrameCount,
+        acknowledgedFrameCount,
+        coalescedFrameCount
+      };
+    },
+    close(): void {
+      closeTransport();
+    },
+    get closed(): boolean {
+      return isClosed;
+    }
+  };
+  return transport;
+}
+
+/**
+ * Install the preload/renderer half. Expose the resulting frame callback from a
+ * context-isolated preload instead of exposing `ipcRenderer` itself.
+ */
+export function subscribeElectronSteamInput<TDefinition extends SteamInputDefinition>(
+  ipcRenderer: ElectronSteamInputIpcRenderer,
+  listener: (frame: ElectronSteamInputFrame<TDefinition>) => void,
+  options: Pick<ElectronSteamInputTransportOptions, "channel"> = {}
+): ElectronSteamInputRendererSubscription {
+  const channel = electronSteamInputChannel(options.channel);
+  let isClosed = false;
+  let rendererPort: ElectronSteamInputRendererPort | null = null;
+  const onConnect = (event: { ports?: ElectronSteamInputRendererPort[] }): void => {
+    if (isClosed) return;
+    const nextPort = event.ports?.[0];
+    if (!nextPort) return;
+    rendererPort?.close();
+    rendererPort = nextPort;
+    nextPort.onmessage = (messageEvent): void => {
+      const message = messageEvent.data;
+      if (!message || typeof message !== "object") return;
+      const value = message as { type?: unknown; version?: unknown; frame?: unknown };
+      if (value.type !== "frame" || value.version !== 1 || !isElectronSteamInputFrame(value.frame)) return;
+      const frame = value.frame as ElectronSteamInputFrame<TDefinition>;
+      try {
+        listener(frame);
+      } finally {
+        nextPort.postMessage({ type: "ack", sequence: frame.sequence });
+      }
+    };
+    nextPort.start?.();
+  };
+  ipcRenderer.on(channel, onConnect);
+  return {
+    close(): void {
+      if (isClosed) return;
+      isClosed = true;
+      if (ipcRenderer.off) ipcRenderer.off(channel, onConnect);
+      else ipcRenderer.removeListener?.(channel, onConnect);
+      rendererPort?.close();
+      rendererPort = null;
+    },
+    get closed(): boolean {
+      return isClosed;
+    }
+  };
+}
+
+export function serializeElectronSteamInputFrame<TDefinition extends SteamInputDefinition>(
+  frame: SteamInputFrame<TDefinition>
+): ElectronSteamInputFrame<TDefinition> {
+  return JSON.parse(
+    JSON.stringify(frame, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value))
+  ) as ElectronSteamInputFrame<TDefinition>;
+}
+
+function electronSteamInputChannel(channel: string | undefined): string {
+  const value = channel ?? DEFAULT_ELECTRON_STEAM_INPUT_CHANNEL;
+  if (!value.trim()) throw new Error("Electron Steam Input channel must not be empty");
+  return value;
+}
+
+function createElectronSteamInputMessageChannel(): ElectronSteamInputMessageChannel {
+  const electron = require("electron") as { MessageChannelMain?: new () => ElectronSteamInputMessageChannel };
+  if (!electron.MessageChannelMain) {
+    throw new Error("Electron MessageChannelMain is unavailable; create the transport from Electron's main process");
+  }
+  return new electron.MessageChannelMain();
+}
+
+function electronSteamInputMessageData(event: { data?: unknown } | unknown): unknown {
+  return event && typeof event === "object" && "data" in event
+    ? (event as { data?: unknown }).data
+    : event;
+}
+
+function isElectronSteamInputFrame(value: unknown): value is ElectronSteamInputFrame {
+  if (!value || typeof value !== "object") return false;
+  const frame = value as { sequence?: unknown; controllers?: unknown; mergedController?: unknown };
+  return typeof frame.sequence === "string" && Array.isArray(frame.controllers) && "mergedController" in frame;
+}
 
 export interface ElectronOverlayOptions {
   enableInProcessGpu?: boolean;

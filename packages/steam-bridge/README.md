@@ -58,6 +58,7 @@ containing your app ID next to the executable or in its working directory.
 | Goal | Start with |
 | --- | --- |
 | Call native Steam APIs from Node/Electron | `steamworks.init(appId)` and the grouped client APIs |
+| Build action-based controller support | [Steam Input guide](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-input.md) |
 | Add Steam routes to an existing Linux/macOS Electron window | [`createElectronSteamOverlay()`](#electron-overlay) |
 | Put a live Electron game behind Steam on Windows | [Windows standalone game-host mode](#windows-game-host-mode) |
 | Put a live Electron game behind Steam on Linux/Deck | [Linux application-host mode](#linux-and-steam-deck) |
@@ -81,6 +82,10 @@ contains complete runnable host, input, frame-forwarding, and packaging code.
 
 See the [Steam API coverage](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-api-coverage.md)
 for the complete implemented surface and known gaps.
+
+For action manifests, generated TypeScript names, one-call game-frame polling,
+button edges, controller prompts, rebinding, output, diagnostics, and bounded
+Electron delivery, use the [Steam Input guide](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-input.md).
 
 ## Platform Targets
 
@@ -901,6 +906,7 @@ for the full development and release checks.
 - [Project overview](https://github.com/jstroh/steam-bridge#readme)
 - [Electron example and platform guide](https://github.com/jstroh/steam-bridge/blob/main/examples/electron-basic/README.md)
 - [Steam API coverage](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-api-coverage.md)
+- [Steam Input for game developers](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-input.md)
 - [Contribution guide](https://github.com/jstroh/steam-bridge/blob/main/CONTRIBUTING.md)
 
 ## License

@@ -137,14 +137,18 @@ covered.
   clipboard/source/find/link helpers, cookies, scale/background/DPI controls,
   developer tools, request/dialog responses, file dialog responses, and typed
   HTML callback helpers with structured metadata and paint-buffer delivery.
-- Steam Input: init/shutdown, action manifest selection, frame/data polling,
+- Steam Input: ref-counted init/shutdown, action-manifest validation and typed
+  definition generation, one-call native frame batching, high-level typed
+  sessions with digital edges and controller activity tracking, optional
+  acknowledged/coalescing Electron MessagePort delivery, action manifest selection, frame/data polling,
   connected controllers, device and direct action-event callbacks, gamepad
   index mapping, typed device/configuration/gamepad-slot callback helpers,
   action sets/layers, digital and analog action data/origins/names,
   named digital-action lookups, all-controller and max-controller constants,
   action-event type constants, glyph/string lookups, Xbox-origin translation,
   DualSense trigger-effect forwarding, motion data, haptics, LED controls,
-  binding panels, remote-play session IDs, session configuration, controller
+  cached revision-aware prompts and glyphs, normalized vibration and LED
+  output, binding panels, diagnostics, remote-play session IDs, session configuration, controller
   type, deprecated `ISteamController` compatibility helpers, and text input
   helpers.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,

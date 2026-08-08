@@ -2,6 +2,26 @@
 
 Last reviewed: 2026-08-08
 
+Active researched objective: make Steam Input usable as a game-development
+surface without removing the raw compatibility API. The decided architecture,
+closed paths, phased implementation, and cross-platform QA contract are in
+[`steam-input-product-plan.md`](steam-input-product-plan.md). The active
+worktree now implements the raw open-enum/lifecycle fixes, bounded asynchronous
+wait and direct-event queue, manifest validator/type generator, one-call native
+batch poll, typed `SteamInputSession`, disconnect release state, revision-aware
+prompts, rebinding/output/diagnostics, bounded acknowledged Electron MessagePort
+delivery with coalescing metrics, a secure Electron inspector, a Node diagnostic
+runner, and the public guide. Final Windows automated validation is green:
+`npm test` passed 393/393 JavaScript/TypeScript tests and 49/49 Rust tests;
+`package:smoke`, `api:check`, `check:platform`, `native:fmt`, `native:check`, and
+`git diff --check` passed. Live App ID 480 probes initialized Steam, produced
+monotonic batched frames, and shut down cleanly. Steam enumerated zero attached
+controllers and had no matching example action configuration, so physical
+button/glyph/output/rebinding claims and macOS/Deck physical lanes remain
+unclaimed pending a candidate with the required hardware. The implementation
+review anchor is current `main`
+`60029cf491b2e6e84fd8c19cc7cab15555d90a03` plus the active worktree.
+
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review

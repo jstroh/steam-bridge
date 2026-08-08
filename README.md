@@ -89,6 +89,59 @@ and rejects lifecycle changes while an async native operation is pending. Pure
 URL/Web API helpers and the trusted `steam-bridge/server` publisher-ticket
 utilities remain available in server workers.
 
+For controller actions, generated manifest types, one-call frame batching,
+button edges, glyph prompts, rebinding, haptics, and bounded Electron renderer
+delivery, follow the [Steam Input guide](docs/steam-input.md).
+
+## Steam Input in ten minutes
+
+Create Valve's `steam_input_manifest.vdf`, export the official controller
+layouts from Steam, and validate/generate the game-facing names:
+
+```sh
+npx steam-bridge-input validate ./input/steam_input_manifest.vdf
+npx steam-bridge-input generate ./input/steam_input_manifest.vdf --out ./src/steam-input.generated.ts
+```
+
+Keep one session in the process that initialized Steamworks and poll it once
+from the game-frame scheduler:
+
+```ts
+import steamworks from "steam-bridge";
+import { steamInputDefinition } from "./steam-input.generated";
+
+const client = steamworks.init(MY_APP_ID);
+const input = client.input.createSession({
+  definition: steamInputDefinition,
+  controllers: "individual"
+}).start();
+
+input.activateActionSet("gameplay");
+
+function gameFrame() {
+  const controller = input.update().primaryController;
+  if (controller?.digital.jump.pressedThisFrame) player.jump();
+  if (controller?.analog.move.active) {
+    player.move(controller.analog.move.x, controller.analog.move.y);
+  }
+}
+
+const jumpPrompt = input.getDigitalPrompt("jump");
+input.showBindingPanel();
+
+// On application shutdown:
+input.dispose();
+steamworks.shutdown();
+```
+
+Omit `manifestPath` in a deployed Steam build so Steam uses the depot
+configuration. Use an absolute override only during development. Electron
+games keep this session in main and use the bounded transport from
+`steam-bridge/electron`; the runnable
+[Steam Input example](examples/steam-input/README.md) includes a secure
+context-isolated inspector. The full guide covers prompts, local multiplayer,
+disconnect releases, diagnostics, packaging, Steam Deck, and physical QA.
+
 Steam Networking custom-signaling and non-null pointer-valued config escape
 hatches are also unavailable. JavaScript cannot prove ownership, layout, or
 lifetime for those C++ interface pointers, so Steam Bridge rejects them instead
@@ -274,6 +327,7 @@ retry a desktop route indefinitely or create a second window as a fallback.
 - [npm package reference](packages/steam-bridge/README.md)
 - [Electron example and platform guide](examples/electron-basic/README.md)
 - [Steam API coverage](docs/steam-api-coverage.md)
+- [Steam Input for game developers](docs/steam-input.md)
 - [Contributing and release process](CONTRIBUTING.md)
 - [Architecture decisions and retained QA evidence](docs/research)
 
