@@ -12,7 +12,7 @@ batch poll, typed `SteamInputSession`, disconnect release state, revision-aware
 prompts, rebinding/output/diagnostics, bounded acknowledged Electron MessagePort
 delivery with coalescing metrics, a secure Electron inspector, a Node diagnostic
 runner, and the public guide. Final Windows automated validation is green:
-`npm test` passed 393/393 JavaScript/TypeScript tests and 49/49 Rust tests;
+`npm test` passed 400/400 JavaScript/TypeScript tests and 49/49 Rust tests;
 `package:smoke`, `api:check`, `check:platform`, `native:fmt`, `native:check`, and
 `git diff --check` passed. Live App ID 480 probes initialized Steam, produced
 monotonic batched frames, and shut down cleanly. Steam enumerated zero attached
@@ -20,12 +20,93 @@ controllers and had no matching example action configuration, so physical
 button/glyph/output/rebinding claims and macOS/Deck physical lanes remain
 unclaimed pending a candidate with the required hardware. The implementation
 review anchor is current `main`
-`60029cf491b2e6e84fd8c19cc7cab15555d90a03` plus the active worktree.
+`03c0f02969e1ce4c3f257d92fcdab93cba3e7606` plus the active worktree.
 
 Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-08 Windows retained-frame freeze investigation
+
+The immediate release blocker is an external Windows mixed-refresh report on
+the `0.3.19` consumer: while the player is moving, the visible game periodically
+appears to return to or retain an older frame. Frame-by-frame analysis of the
+13.28-second, 29.97 FPS player recording found one genuine presentation freeze:
+motion became nearly identical for 12 consecutive frame transitions from
+4.004s through 4.404s, then jumped forward. This is a roughly 400ms retained
+frame, not an ordinary single-frame cadence miss. The player's follow-up says
+it feels distance-triggered; that is not yet treated as proof of a game-world
+distance threshold because the captured failure is presentation-wide.
+
+The active worktree fixes a concrete Windows scheduler race introduced by the
+asynchronous DXGI frame-latency wait path. A Win32 message-path render can
+consume the auto-reset readiness signal and clear the native dirty frame while
+the worker is waiting. Before this fix, a false 100ms worker result trusted the
+cached JavaScript `nativeFramePending === true` value and immediately armed
+another 100ms wait without rereading native state. Repeated stale retries match
+the duration and visible behavior in the player capture. A timeout now performs
+one nonblocking native pump, refreshes the authoritative dirty state, and only
+re-arms when a frame is still genuinely pending. Session diagnostics expose
+`nativeFrameWaitTimeoutCount`; regressions cover both a still-pending timeout
+and a message-path present that must stop the retry chain.
+
+Do not "fix" this by removing the Electron shared-texture completion wait,
+caching a shared handle, or reading the shared texture after `release()`.
+Electron's documented OSR contract uses a bounded texture pool, may deliver a
+different pooled texture for every frame, and requires each event's handle to
+be opened and copied to application-owned storage before prompt release. The
+current full/dirty-rectangle copy follows that contract. A synchronous copy
+stall remains separately observable through `sharedTextureCopySlowCount` and
+the session's shared-texture update durations; it was not observed locally.
+
+Change-scoped live Windows evidence with the local bridge and actual game is
+green on the available single 60Hz display. A 30-second sustained movement run,
+a 48-second W/D/S/A directional loop, and a 30-second movement plus forced
+Win32 repaint-race stress held renderer RAF, Electron paint/shared-texture
+delivery, and native presents at approximately 60 FPS. The directional run had
+zero new 50ms pump gaps, zero async wait timeouts, and zero slow copies; the
+repaint stress likewise had zero wait timeouts, zero 50ms pump gaps, and zero
+slow copies while 34 sampled present rates stayed between 58.3 and 60.9 FPS.
+Shared-texture update duration remained below 3.7ms. The local panel currently
+advertises only 1920x1200 at 60Hz, so the exact external 200Hz + 75Hz dual-output
+case remains unclaimed and needs a candidate retest by that player. The focused
+automated scheduler regressions pass. The combined repository gate is green at
+400/400 JavaScript/TypeScript tests and 49/49 Rust tests; `api:check`,
+`check:platform`, `native:fmt`, `native:check`, `package:smoke`, and
+`git diff --check` also pass.
+
+### 2026-08-08 Steam Input post-implementation review fixes
+
+The active worktree closes the full prioritized review following the first
+high-level Steam Input implementation:
+
+- `SteamInputSession` initializes Valve in explicit `RunFrame` mode, while the
+  source-compatible raw `input.init()` default remains automatic. Mixed frame
+  ownership is rejected; a raw caller may intentionally compose by using
+  `input.init(true)` and balancing that reference.
+- A merged controller is absent when no physical device exists. With devices,
+  its device/configuration metadata follows the active physical primary, and
+  output or binding helpers resolve the aggregate sentinel to that concrete
+  controller rather than forwarding it into a single-device API.
+- Frames, event payloads, and prompts returned to callers are isolated copies,
+  preventing consumer mutation from corrupting edge state or caches. Immediate
+  action-set activation queues while Steam is still resolving its handle.
+- Electron main transports now close and remove listeners when the renderer's
+  `MessagePort` closes, in addition to navigation, crash, and destruction.
+- The manifest CLI rejects unknown action categories, unsupported controller
+  types, invalid or duplicate priorities, non-file configurations, and a source
+  manifest selected as output. Generated output is deterministic and replaced
+  through a same-directory atomic write.
+
+Regression coverage exercises each contract, including zero-device merged
+mode, raw/session ownership mismatch, delayed and unknown action-set handling, mutated
+consumer snapshots/prompts, aggregate output routing, renderer port closure,
+schema typos, controller names, priorities, overwrite refusal, and atomic
+regeneration. `npm test` is green at 400/400 JavaScript/TypeScript tests and
+49/49 Rust tests. Physical controller action/glyph/output/rebinding behavior
+remains subject to the existing hardware lanes and is not claimed by this
+automated checkpoint.
 
 Review anchor: `5125a14c272d45a915d131545b77339c82990e5e`
 (`Release steam-bridge 0.3.19`). npm `latest` and the stable GitHub Release are

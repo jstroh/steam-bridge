@@ -14,7 +14,7 @@ export type ElectronSteamOverlayProfile = "off" | "diagnostic" | "repaint" | "co
 export type ElectronSteamInputValue<T> = T extends bigint
   ? string
   : T extends readonly (infer TItem)[]
-    ? ElectronSteamInputValue<TItem>[]
+    ? ReadonlyArray<ElectronSteamInputValue<TItem>>
     : T extends object
       ? { [K in keyof T]: ElectronSteamInputValue<T[K]> }
       : T;
@@ -62,7 +62,9 @@ export interface ElectronSteamInputMessagePortMain {
   start(): void;
   close(): void;
   on(event: "message", listener: (event: { data?: unknown } | unknown) => void): unknown;
+  on(event: "close", listener: () => void): unknown;
   off?(event: "message", listener: (event: { data?: unknown } | unknown) => void): unknown;
+  off?(event: "close", listener: () => void): unknown;
 }
 
 export interface ElectronSteamInputMessageChannel {
@@ -150,9 +152,11 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     webContents.off?.("render-process-gone", onDestroyed);
     webContents.off?.("did-start-navigation", onNavigation);
     mainPort.off?.("message", onMessage);
+    mainPort.off?.("close", onPortClosed);
     mainPort.close();
   };
   const onDestroyed = (): void => closeTransport();
+  const onPortClosed = (): void => closeTransport();
   const onNavigation = (...args: unknown[]): void => {
     const navigationDetails = args[1];
     const explicitIsMainFrame = args[3];
@@ -169,6 +173,7 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
   };
   try {
     mainPort.on("message", onMessage);
+    mainPort.on("close", onPortClosed);
     mainPort.start();
     webContents.on?.("destroyed", onDestroyed);
     webContents.on?.("render-process-gone", onDestroyed);

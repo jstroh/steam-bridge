@@ -21,9 +21,12 @@ means the main process. Do not initialize Steamworks again in a renderer.
 ## 1. Build and validate the action manifest
 
 Use Valve's action-manifest format and bundle official controller layouts in
-the same depot. Steam Bridge validates KeyValues syntax, action/set/layer name
-collisions, action limits, English localization fallbacks, parent-set links,
-and referenced layout files.
+the same depot. Steam Bridge validates KeyValues syntax, the exact Valve action
+categories and controller-type names, action/set/layer name collisions,
+configuration priorities, action limits, English localization fallbacks,
+parent-set links, and referenced layout files. Generation refuses to overwrite
+the source manifest and replaces an existing output atomically, so an
+interrupted write cannot leave a half-generated definition.
 
 ```sh
 npx steam-bridge-input validate ./input/steam_input_manifest.vdf
@@ -71,8 +74,14 @@ const steamInput = client.input.createSession({
 steamInput.activateActionSet("gameplay");
 ```
 
-Only one `SteamInputSession` may be active in a process. The session and raw
-`input.init()` calls share reference-counted ownership, and `dispose()` releases
+Only one `SteamInputSession` may be active in a process. It initializes Valve
+in explicit-frame mode and owns the matching `RunFrame` calls made by
+`update()`. The raw `input.init()` default remains Valve's automatic mode for
+backward compatibility. Do not mix that default with a session: Steam Bridge
+rejects automatic/explicit ownership mismatches instead of allowing an
+accidental double or missing frame advance. A low-level caller that deliberately
+shares the session's explicit-frame contract may use `input.init(true)` and must
+release its matching reference with `input.shutdown()`. `dispose()` releases
 only the session's own reference.
 
 An explicit `manifestPath` is a Steam-session-wide development override, not a
@@ -117,6 +126,14 @@ poll at the cadence at which the game consumes input.
   all-controllers handle;
 - `"both"` returns both views from one batch.
 
+When no physical Steam Input controller is connected, the merged view and
+`primaryController` are `null`; an all-controllers sentinel is never reported
+as a device. When devices exist, the merged view carries the active physical
+primary controller's type, gamepad slot, action-set/layer, Remote Play, and
+binding-revision metadata. Returned frames are isolated snapshots: changing a
+consumer-owned object cannot corrupt edge detection, prompt caching, events, or
+the next frame.
+
 For local multiplayer, consume `frame.controllers` and assign stable controller
 handles to player seats. For a single-player game, use `primaryController`. It
 starts with the first controller and moves to the controller that produces
@@ -143,6 +160,12 @@ context; do not make a named state read silently mutate it. The old
 `getDigitalActionStateByName(controller, set, action)` helper remains for
 compatibility but is deprecated because it activates the set as a side effect.
 
+Action handles can legitimately remain zero while Steam is still loading a
+configuration. `activateActionSet()` queues an unresolved named set per target
+controller, emits `STEAM_INPUT_ACTION_SET_QUEUED`, and applies the newest queued
+set after resolution. This makes the common immediate-after-`start()` call safe
+without hiding genuinely unknown names from diagnostics.
+
 ## Controller prompts and rebinding
 
 ```ts
@@ -163,7 +186,8 @@ They include every bound origin, Valve's localized action/origin labels, and
 Steam-client PNG/SVG glyph paths. Cache entries include device binding
 revision and are cleared by device/configuration/slot callbacks, so a changed
 binding produces new prompt data. Keep a keyboard/mouse fallback in UI when no
-Steam prompt is available.
+Steam prompt is available. Prompt results are returned as isolated copies, so
+UI code cannot mutate the session's cached prompt.
 
 `showBindingPanel()` opens Steam's controller configurator for a concrete
 controller. It returns `false` and emits a diagnostic if Steam cannot open it;
@@ -178,9 +202,13 @@ steamInput.setLedColor(20, 100, 255, controller); // integer RGB 0..255
 steamInput.restoreLedColor(controller);
 ```
 
-Output always requires a concrete connected controller. Invalid ranges throw
-before reaching native code. Use the lower-level `Controller` methods for
-extended vibration, DualSense trigger effects, motion, or specialized haptics.
+Output always requires a concrete connected controller. Passing a merged frame
+controller or Valve's all-controllers handle targets the current physical
+primary controller; with no physical device the helper returns `false` and
+emits a diagnostic instead of forwarding the sentinel to a concrete-device
+API. Invalid ranges throw before reaching native code. Use the lower-level
+`Controller` methods for extended vibration, DualSense trigger effects, motion,
+or specialized haptics.
 
 ## Events and diagnostics
 
@@ -211,8 +239,8 @@ edge for each held action. Use it to clear per-player state immediately.
 When gameplay runs in a context-isolated renderer, transfer a private
 `MessagePort` after the page is ready. The transport allows one frame in
 flight; while the renderer is behind it replaces old pending frames with the
-newest one. Navigation, renderer failure, or `webContents` destruction closes
-the port.
+newest one. Navigation, renderer failure, `webContents` destruction, or either
+`MessagePort` endpoint closing closes the transport and removes every listener.
 
 Main process:
 

@@ -8,24 +8,27 @@ lanes below and is not claimed from a machine with no connected controller.
 
 ## Implementation result
 
-The active worktree at base commit `60029cf491b2e6e84fd8c19cc7cab15555d90a03`
+The active worktree at base commit `03c0f02969e1ce4c3f257d92fcdab93cba3e7606`
 implements every product layer selected by this plan:
 
-- corrected forward-safe raw Steam Input ABI/lifecycle behavior, a bounded
-  asynchronous data wait, and multiplexed bounded direct-action events;
-- a dependency-free manifest validator and deterministic typed-definition CLI;
+- corrected forward-safe raw Steam Input ABI/lifecycle behavior, explicit
+  session frame ownership with rejected mixed modes, a bounded asynchronous
+  data wait, and multiplexed bounded direct-action events;
+- a dependency-free manifest validator and deterministic, schema-strict,
+  overwrite-safe typed-definition CLI;
 - one-call native frame snapshots and typed `SteamInputSession` state with
   cached handles, edges, two-controller/max-action coverage, disconnect release
-  snapshots, action sets/layers, active-controller tracking, and diagnostics;
+  snapshots, queued unresolved action sets, truthful merged-device semantics,
+  isolated consumer snapshots, active-controller tracking, and diagnostics;
 - revision-aware localized prompts, rebinding, vibration/LED helpers, and
   explicit failure diagnostics;
-- an acknowledged/coalescing Electron MessagePort transport with renderer
-  lifecycle cleanup, rollback on failed handoff, and queue metrics;
+- an acknowledged/coalescing Electron MessagePort transport with renderer and
+  peer-port lifecycle cleanup, rollback on failed handoff, and queue metrics;
 - a secure context-isolated Electron inspector, a bounded Node diagnostic
   runner, a sample manifest/generated definition, and the public human guide.
 
 Final Windows automated evidence on 2026-08-08 is green: `npm test` passed
-393/393 JavaScript/TypeScript tests and 49/49 Rust tests; `package:smoke`,
+400/400 JavaScript/TypeScript tests and 49/49 Rust tests; `package:smoke`,
 `api:check`, `check:platform`, `native:fmt`, `native:check`, and
 `git diff --check` passed. A live App ID 480 lifecycle probe and the runnable
 diagnostic both initialized Steam, produced monotonic batched frames, and shut
@@ -49,7 +52,8 @@ top of the existing raw `client.input` facade. Its public contract should be:
 - game actions and action sets are named and typed;
 - action handles are resolved once and retried when Steam has not loaded a
   controller configuration yet;
-- one session owns Steam Input lifecycle in the process;
+- one session owns explicit Steam Input lifecycle and frame advancement in the
+  process;
 - one batched native call samples every requested action for every requested
   controller per game frame;
 - digital edge state, controller lifecycle, and the active controller are
@@ -250,7 +254,9 @@ Each controller snapshot should contain:
 The session should offer both per-controller state for local multiplayer and a
 merged `STEAM_INPUT_HANDLE_ALL_CONTROLLERS` view for single-player games. It
 must never merge controllers by default when `controllers: "individual"` is
-requested.
+requested. The merged view exists only while at least one physical controller
+is connected, inherits the active physical primary controller's device
+metadata, and resolves back to that concrete controller for output APIs.
 
 ### Lifecycle events
 
@@ -276,7 +282,7 @@ send batched snapshots over one authenticated, one-way channel to a specific
 
 - never expose arbitrary native-method invocation over IPC;
 - bind to one session and one intended renderer;
-- clean up on renderer destruction or navigation;
+- clean up on renderer destruction, navigation, or peer port closure;
 - coalesce stale frames instead of queueing them;
 - carry the native sequence and timestamp so the renderer can detect staleness;
 - avoid JSON serialization of `bigint`; and

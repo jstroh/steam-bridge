@@ -3104,8 +3104,8 @@ function createFakeNative(overrides = {}) {
         start_index: 0
       });
     },
-    inputInit() {
-      calls.push({ method: "inputInit", args: [] });
+    inputInit(explicitlyCallRunFrame) {
+      calls.push({ method: "inputInit", args: [explicitlyCallRunFrame] });
     },
     inputShutdown() {
       calls.push({ method: "inputShutdown", args: [] });
@@ -3147,7 +3147,18 @@ function createFakeNative(overrides = {}) {
         sequence: fake.inputPollSequence,
         captured_at_ns: fake.inputPollSequence * 1_000_000n,
         controllers: [controller],
-        merged: includeMerged ? { ...controller, handle: "18446744073709551615" } : null
+        merged: includeMerged
+          ? {
+              ...controller,
+              handle: "18446744073709551615",
+              input_type: "Unknown",
+              gamepad_index: -1,
+              current_action_set: "0",
+              active_action_set_layers: [],
+              remote_play_session_id: 0,
+              binding_revision: null
+            }
+          : null
       };
     },
     inputRunFrame(reserved) {
@@ -25268,6 +25279,12 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
 
   waitResolvers.shift()(false);
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    session.snapshot().pumpCount,
+    initialPumpCount + 3,
+    "a bounded timeout must refresh native pending state before it re-arms"
+  );
+  assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
   assert.equal(waitResolvers.length, 1, "a bounded timeout must re-arm while a frame is pending");
   assert.equal(
     fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length,
@@ -25277,7 +25294,7 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
   framePending = false;
   waitResolvers.shift()(true);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(session.snapshot().pumpCount, initialPumpCount + 3);
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 4);
 
   session.updateFrame({ data: Buffer.from([4, 0, 0, 0]), width: 1, height: 1 });
   await new Promise((resolve) => setImmediate(resolve));
@@ -25292,6 +25309,73 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
   waitResolvers.shift()(true);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(session.snapshot().pumpCount, pumpCountBeforeClose);
+});
+
+test("Windows frame readiness timeout stops retrying after a message-path present", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+
+  let probeOpen = false;
+  let framePending = false;
+  const waitResolvers = [];
+  const fake = createFakeNative({
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      framePending = true;
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    isNativeOverlayHostFramePending() {
+      this.calls.push({ method: "isNativeOverlayHostFramePending", args: [] });
+      return framePending;
+    },
+    waitForNativeOverlayHostFrameReady(timeoutMs) {
+      this.calls.push({ method: "waitForNativeOverlayHostFrameReady", args: [timeoutMs] });
+      return new Promise((resolve) => waitResolvers.push(resolve));
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(waitResolvers.length, 1);
+
+  // Model a WM_PAINT/WM_WINDOWPOSCHANGED path presenting the retained frame
+  // and consuming the auto-reset DXGI signal before the worker observes it.
+  framePending = false;
+  waitResolvers.shift()(false);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+  assert.equal(
+    fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length,
+    1,
+    "the stale JavaScript pending flag must not re-arm another 100 ms wait"
+  );
+  assert.equal(waitResolvers.length, 0);
 });
 
 test("Windows frame-driven pump coalesces to the newest retained source", async (t) => {
@@ -28666,7 +28750,7 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   assert.equal(steam.input.shutdown(), undefined);
   assert.deepEqual(fake.calls.find((call) => call.method === "inputInit"), {
     method: "inputInit",
-    args: []
+    args: [false]
   });
   assert.deepEqual(fake.calls.find((call) => call.method === "inputShutdown"), {
     method: "inputShutdown",
@@ -28755,6 +28839,7 @@ test("SteamInputSession batches frames, computes edges, manages prompts, and own
   });
   const session = steam.input.createSession({ definition, controllers: "both" }).start();
   assert.equal(fake.calls.filter((call) => call.method === "inputInit").length, 1);
+  assert.deepEqual(fake.calls.find((call) => call.method === "inputInit").args, [true]);
 
   const first = session.update();
   assert.equal(first.sequence, 1n);
@@ -28762,6 +28847,8 @@ test("SteamInputSession batches frames, computes edges, manages prompts, and own
   assert.equal(first.controllers[0].digital.jump.isDown, false);
   assert.equal(first.controllers[0].digital.jump.pressedThisFrame, false);
   assert.equal(first.mergedController.handle, steam.STEAM_INPUT_HANDLE_ALL_CONTROLLERS);
+  assert.equal(first.mergedController.inputType, first.primaryController.inputType);
+  assert.equal(first.mergedController.currentActionSetHandle, first.primaryController.currentActionSetHandle);
 
   fake.inputPollDigitalDown = true;
   fake.inputPollAnalogX = 0.75;
@@ -28770,7 +28857,14 @@ test("SteamInputSession batches frames, computes edges, manages prompts, and own
   assert.equal(pressed.primaryController.digital.jump.pressedThisFrame, true);
   assert.equal(pressed.primaryController.digital.jump.releasedThisFrame, false);
   assert.equal(pressed.primaryController.analog.move.x, 0.75);
-  assert.equal(session.update().primaryController.digital.jump.pressedThisFrame, false);
+  pressed.primaryController.digital.jump.isDown = false;
+  pressed.primaryController.analog.move.x = -1;
+  const held = session.update();
+  assert.equal(held.primaryController.digital.jump.pressedThisFrame, false);
+  assert.equal(held.primaryController.analog.move.x, 0.75);
+  const exposedLastFrame = session.lastFrame;
+  exposedLastFrame.primaryController.digital.jump.isDown = false;
+  assert.equal(session.lastFrame.primaryController.digital.jump.isDown, true);
 
   fake.inputPollDigitalDown = false;
   const released = session.update();
@@ -28810,6 +28904,18 @@ test("SteamInputSession batches frames, computes edges, manages prompts, and own
     fake.calls.filter((call) => call.method === "inputGetDigitalActionOrigins").length,
     1,
     "prompt metadata must be cached until the binding revision/configuration changes"
+  );
+  firstPrompt.glyphs[0].label = "mutated by consumer";
+  assert.equal(
+    session.getDigitalPrompt("jump", { controller: released.primaryController }).glyphs[0].label,
+    "A",
+    "prompt cache entries must not be exposed by reference"
+  );
+  session.vibrate(0.25, 0.25, released.mergedController);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "inputTriggerVibration").at(-1),
+    { method: "inputTriggerVibration", args: [123n, 16384, 16384] },
+    "aggregate frames must resolve output to the active concrete controller"
   );
   fake.callbacks.get(steam.SteamCallback.SteamInputConfigurationLoaded)({
     app_id: 480,
@@ -28864,6 +28970,92 @@ test("SteamInputSession retries pending handles without inventing input edges", 
   assert.equal(frame.primaryController.digital.jump.handle, 20n);
   assert.equal(frame.primaryController.digital.jump.pressedThisFrame, false);
   assert.equal(diagnostics[0].code, "STEAM_INPUT_HANDLES_PENDING");
+  session.dispose();
+});
+
+test("SteamInputSession queues action-set activation until its handle resolves", (t) => {
+  let actionSetResolves = 0;
+  let fake;
+  fake = createFakeNative({
+    inputGetActionSet(actionSetName) {
+      fake.calls.push({ method: "inputGetActionSet", args: [actionSetName] });
+      actionSetResolves += 1;
+      return actionSetResolves < 3 ? 0n : 10n;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    digital: {},
+    analog: {}
+  });
+  const diagnostics = [];
+  const session = steam.input.createSession({ definition }).start();
+  session.on("diagnostic", (diagnostic) => diagnostics.push(diagnostic));
+
+  assert.doesNotThrow(() => session.activateActionSet("gameplay"));
+  assert.equal(fake.calls.filter((call) => call.method === "inputActivateActionSet").length, 0);
+  session.update();
+  assert.deepEqual(
+    fake.calls.find((call) => call.method === "inputActivateActionSet"),
+    { method: "inputActivateActionSet", args: [steam.STEAM_INPUT_HANDLE_ALL_CONTROLLERS, 10n] }
+  );
+  assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "STEAM_INPUT_ACTION_SET_QUEUED"));
+  session.dispose();
+});
+
+test("SteamInputSession rejects an unknown action set instead of queueing it forever", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const session = steam.input.createSession({
+    definition: steam.defineSteamInput({
+      actionSets: { gameplay: "gameplay" },
+      digital: {},
+      analog: {}
+    })
+  }).start();
+
+  assert.throws(
+    () => session.activateActionSet("typo"),
+    /Unknown Steam Input action set: typo/
+  );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "inputActivateActionSet").length,
+    0
+  );
+  session.dispose();
+});
+
+test("SteamInputSession merged mode reports no primary controller when no devices are connected", (t) => {
+  const fake = createFakeNative({
+    inputPollSnapshot(digitalActions, analogActions, runFrame, includeMerged) {
+      fake.calls.push({ method: "inputPollSnapshot", args: [digitalActions, analogActions, runFrame, includeMerged] });
+      return {
+        sequence: 1n,
+        captured_at_ns: 1_000_000n,
+        controllers: [],
+        merged: null
+      };
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const session = steam.input.createSession({
+    definition: steam.defineSteamInput({
+      actionSets: { gameplay: "gameplay" },
+      digital: {},
+      analog: {}
+    }),
+    controllers: "merged"
+  }).start();
+
+  const frame = session.update();
+  assert.equal(frame.controllers.length, 0);
+  assert.equal(frame.mergedController, null);
+  assert.equal(frame.primaryController, null);
+  assert.equal(session.showBindingPanel(), false);
   session.dispose();
 });
 
@@ -28950,7 +29142,7 @@ test("SteamInputSession polls maximum action definitions across two controllers 
   session.dispose();
 });
 
-test("SteamInputSession reference ownership composes with raw input.init", (t) => {
+test("SteamInputSession reference ownership composes with explicit raw input.init", (t) => {
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
   t.after(clearSteamBridgeCache);
@@ -28959,7 +29151,7 @@ test("SteamInputSession reference ownership composes with raw input.init", (t) =
     digital: {},
     analog: {}
   });
-  steam.input.init();
+  steam.input.init(true);
   const session = steam.input.createSession({ definition }).start();
   assert.equal(fake.calls.filter((call) => call.method === "inputInit").length, 1);
   session.dispose();
@@ -28967,6 +29159,51 @@ test("SteamInputSession reference ownership composes with raw input.init", (t) =
   assert.throws(() => session.start(), /cannot be restarted/);
   steam.input.shutdown();
   assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 1);
+});
+
+test("raw input.shutdown cannot release a SteamInputSession-owned reference", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    digital: {},
+    analog: {}
+  });
+
+  steam.input.init(true);
+  const session = steam.input.createSession({ definition }).start();
+  steam.input.shutdown();
+  steam.input.shutdown();
+  assert.equal(
+    fake.calls.filter((call) => call.method === "inputShutdown").length,
+    0,
+    "extra raw shutdown calls must not steal the session-owned reference"
+  );
+  session.dispose();
+  assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 1);
+});
+
+test("SteamInputSession rejects mixed automatic and explicit frame ownership", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const definition = steam.defineSteamInput({
+    actionSets: { gameplay: "gameplay" },
+    digital: {},
+    analog: {}
+  });
+
+  steam.input.init();
+  assert.throws(
+    () => steam.input.createSession({ definition }).start(),
+    /already initialized with automatic frame ownership/
+  );
+  steam.input.shutdown();
+
+  const session = steam.input.createSession({ definition }).start();
+  assert.throws(() => steam.input.init(), /already initialized with explicit frame ownership/);
+  session.dispose();
 });
 
 test("SteamInputSession rolls back callbacks and native ownership when startup fails partway", (t) => {
@@ -29126,11 +29363,14 @@ test("Electron Steam Input transport is acknowledged, coalesced, and renderer-sc
     }
   };
   const rendererMessages = [];
-  const mainMessageListeners = new Set();
+  const mainPortListeners = new Map([
+    ["message", new Set()],
+    ["close", new Set()]
+  ]);
   const rendererPort = {
     onmessage: null,
     postMessage(value) {
-      for (const listener of [...mainMessageListeners]) listener({ data: value });
+      for (const listener of [...mainPortListeners.get("message")]) listener({ data: value });
     },
     start() {},
     close() {}
@@ -29141,11 +29381,11 @@ test("Electron Steam Input transport is acknowledged, coalesced, and renderer-sc
     },
     start() {},
     close() {},
-    on(_event, listener) {
-      mainMessageListeners.add(listener);
+    on(event, listener) {
+      mainPortListeners.get(event).add(listener);
     },
-    off(_event, listener) {
-      mainMessageListeners.delete(listener);
+    off(event, listener) {
+      mainPortListeners.get(event).delete(listener);
     }
   };
   const webContentsListeners = new Map();
@@ -29211,6 +29451,52 @@ test("Electron Steam Input transport is acknowledged, coalesced, and renderer-sc
   assert.equal(transport.closed, true);
   subscription.close();
   assert.equal(subscription.closed, true);
+});
+
+test("Electron Steam Input transport closes when the renderer port disconnects", (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  const portListeners = new Map([
+    ["message", new Set()],
+    ["close", new Set()]
+  ]);
+  let mainPortClosed = false;
+  const mainPort = {
+    postMessage() {},
+    start() {},
+    close() {
+      mainPortClosed = true;
+    },
+    on(event, listener) {
+      portListeners.get(event).add(listener);
+    },
+    off(event, listener) {
+      portListeners.get(event).delete(listener);
+    }
+  };
+  const webContentsListeners = new Map();
+  const webContents = {
+    postMessage() {},
+    on(event, listener) {
+      webContentsListeners.set(event, listener);
+    },
+    off(event, listener) {
+      if (webContentsListeners.get(event) === listener) webContentsListeners.delete(event);
+    }
+  };
+  const transport = electronInput.createElectronSteamInputTransport(
+    { update() { throw new Error("not reached"); } },
+    webContents,
+    { createMessageChannel: () => ({ port1: { close() {} }, port2: mainPort }) }
+  );
+
+  for (const listener of [...portListeners.get("close")]) listener();
+  assert.equal(transport.closed, true);
+  assert.equal(mainPortClosed, true);
+  assert.equal(portListeners.get("message").size, 0);
+  assert.equal(portListeners.get("close").size, 0);
+  assert.equal(webContentsListeners.size, 0);
 });
 
 test("Electron Steam Input transport rolls back a failed renderer handoff", (t) => {

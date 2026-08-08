@@ -11,6 +11,25 @@ const MAX_DIGITAL_ACTIONS = 128;
 const MAX_ANALOG_ACTIONS = 16;
 const ANALOG_CATEGORIES = new Set(["stickpadgyro", "analogtrigger"]);
 const DIGITAL_CATEGORIES = new Set(["button"]);
+const ACTION_CONTAINER_METADATA_KEYS = new Set(["title", "legacy_set", "set_layer", "parent_set_name"]);
+const SUPPORTED_CONTROLLER_TYPES = new Set([
+  "controller_neptune",
+  "controller_steamcontroller_gordon",
+  "controller_xbox360",
+  "controller_xboxone",
+  "controller_xboxelite",
+  "controller_ps3",
+  "controller_ps4",
+  "controller_ps5",
+  "controller_ps5_edge",
+  "controller_switch_pro",
+  "controller_switch2_pro",
+  "controller_switch_joycon_left",
+  "controller_switch_joycon_right",
+  "controller_switch_joycon_pair",
+  "controller_mobile_touch",
+  "controller_generic"
+]);
 
 function main(args = process.argv.slice(2)) {
   let options;
@@ -71,7 +90,7 @@ function main(args = process.argv.slice(2)) {
     }
 
     fs.mkdirSync(path.dirname(options.outPath), { recursive: true });
-    fs.writeFileSync(options.outPath, generated);
+    writeFileAtomic(options.outPath, generated);
     console.log(`Generated Steam Input definition: ${options.outPath}`);
     return 0;
   } catch (error) {
@@ -119,6 +138,12 @@ function parseArgs(args) {
   if (options.command === "validate" && options.outPath) throw new Error("validate does not accept --out");
   if (options.command === "validate" && options.check) throw new Error("validate does not accept --check");
   if (options.command === "generate" && !options.outPath) throw new Error("generate requires --out <file>");
+  if (
+    options.command === "generate" &&
+    pathsReferToSameFile(options.manifestPath, options.outPath)
+  ) {
+    throw new Error("Generated definition output must not overwrite the Steam Input manifest");
+  }
   return options;
 }
 
@@ -241,7 +266,21 @@ function collectActions(container, digital, analog, localizationReferences, erro
       : ANALOG_CATEGORIES.has(categoryName)
         ? analog
         : undefined;
-    if (!target) continue;
+    if (!target) {
+      if (ACTION_CONTAINER_METADATA_KEYS.has(categoryName)) {
+        if (category.children) {
+          errors.push(issue(category, `Steam Input metadata "${category.key}" must be a value, not a block.`));
+        }
+        continue;
+      }
+      errors.push(
+        issue(
+          category,
+          `Unknown Steam Input entry "${category.key}" in "${container.key}"; expected Button, StickPadGyro, AnalogTrigger, or supported metadata.`
+        )
+      );
+      continue;
+    }
     if (!category.children) {
       errors.push(issue(category, `Action category \"${category.key}\" must be a block.`));
       continue;
@@ -322,11 +361,26 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
   }
   const base = path.dirname(filename);
   for (const controllerType of configurations.children) {
+    if (!SUPPORTED_CONTROLLER_TYPES.has(lower(controllerType.key))) {
+      errors.push(issue(controllerType, `Unsupported Steam Input controller type "${controllerType.key}".`));
+    }
     if (!controllerType.children) {
       errors.push(issue(controllerType, `Controller configuration \"${controllerType.key}\" must be a block.`));
       continue;
     }
+    const priorities = new Set();
     for (const configuration of controllerType.children) {
+      if (!/^\d+$/.test(configuration.key)) {
+        errors.push(issue(configuration, `Controller configuration priority "${configuration.key}" must be a non-negative integer.`));
+      } else if (priorities.has(configuration.key)) {
+        errors.push(issue(configuration, `Duplicate controller configuration priority "${configuration.key}".`));
+      } else {
+        priorities.add(configuration.key);
+      }
+      if (!configuration.children) {
+        errors.push(issue(configuration, `Configuration ${controllerType.key}/${configuration.key} must be a block.`));
+        continue;
+      }
       const pathNode = child(configuration, "path");
       if (!pathNode?.value) {
         errors.push(issue(configuration, `Configuration ${controllerType.key}/${configuration.key} is missing path.`));
@@ -337,8 +391,12 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
         continue;
       }
       const resolved = path.resolve(base, pathNode.value);
-      if (checkFiles && !fs.existsSync(resolved)) {
-        errors.push(issue(pathNode, `Referenced controller configuration does not exist: ${resolved}`));
+      if (checkFiles) {
+        if (!fs.existsSync(resolved)) {
+          errors.push(issue(pathNode, `Referenced controller configuration does not exist: ${resolved}`));
+        } else if (!fs.statSync(resolved).isFile()) {
+          errors.push(issue(pathNode, `Referenced controller configuration is not a file: ${resolved}`));
+        }
       }
     }
   }
@@ -531,7 +589,7 @@ function lower(value) {
 }
 
 function compareText(left, right) {
-  return left.localeCompare(right, "en");
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function sortedUnique(values) {
@@ -540,6 +598,62 @@ function sortedUnique(values) {
 
 function quoteArg(value) {
   return /\s/.test(value) ? JSON.stringify(value) : value;
+}
+
+function canonicalPathForComparison(filename) {
+  let resolved = path.resolve(filename);
+  try {
+    resolved = fs.realpathSync.native(resolved);
+  } catch {
+    try {
+      resolved = path.join(fs.realpathSync.native(path.dirname(resolved)), path.basename(resolved));
+    } catch {
+      // The normalized absolute path still catches an identical not-yet-created output.
+    }
+  }
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function pathsReferToSameFile(left, right) {
+  if (canonicalPathForComparison(left) === canonicalPathForComparison(right)) return true;
+  try {
+    const leftStat = fs.statSync(left, { bigint: true });
+    const rightStat = fs.statSync(right, { bigint: true });
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+  } catch {
+    return false;
+  }
+}
+
+function writeFileAtomic(filename, content) {
+  const directory = path.dirname(filename);
+  const basename = path.basename(filename);
+  const existingMode = fs.existsSync(filename) ? fs.statSync(filename).mode : 0o666;
+  let temporaryPath;
+  let descriptor;
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      temporaryPath = path.join(directory, `.${basename}.${process.pid}.${Date.now()}.${attempt}.tmp`);
+      try {
+        descriptor = fs.openSync(temporaryPath, "wx", existingMode);
+        break;
+      } catch (error) {
+        if (error?.code !== "EEXIST") throw error;
+      }
+    }
+    if (descriptor === undefined || !temporaryPath) {
+      throw new Error(`Could not allocate a temporary output beside ${filename}`);
+    }
+    fs.writeFileSync(descriptor, content, "utf8");
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporaryPath, filename);
+    temporaryPath = undefined;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    if (temporaryPath) fs.rmSync(temporaryPath, { force: true });
+  }
 }
 
 function runSelfTest() {
@@ -595,6 +709,25 @@ function runSelfTest() {
     );
     const badResult = inspectManifest(bad, { checkFiles: true });
     assert.ok(badResult.errors.some((entry) => /English fallback/.test(entry.message)));
+
+    const misspelledCategory = path.join(root, "misspelled-category.vdf");
+    fs.writeFileSync(
+      misspelledCategory,
+      '"In Game Actions" { "actions" { "Game" { "Buttons" { "Fire" "Fire" } } } }'
+    );
+    const misspelledCategoryResult = inspectManifest(misspelledCategory, { checkFiles: true });
+    assert.ok(misspelledCategoryResult.errors.some((entry) => /Unknown Steam Input entry "Buttons"/.test(entry.message)));
+
+    const badConfiguration = path.join(root, "bad-configuration.vdf");
+    fs.writeFileSync(
+      badConfiguration,
+      '"Action Manifest" { "configurations" { "controller_xboxon" { "first" { "path" "." } } } "actions" { "Game" { "Button" { "Fire" "Fire" } } } }'
+    );
+    const badConfigurationResult = inspectManifest(badConfiguration, { checkFiles: true });
+    assert.ok(badConfigurationResult.errors.some((entry) => /Unsupported Steam Input controller type/.test(entry.message)));
+    assert.ok(badConfigurationResult.errors.some((entry) => /must be a non-negative integer/.test(entry.message)));
+    assert.ok(badConfigurationResult.errors.some((entry) => /is not a file/.test(entry.message)));
+
     assert.throws(
       () => parseKeyValues('"broken" { "x"', "broken.vdf"),
       /Missing value or block|Unclosed KeyValues block/
@@ -605,6 +738,22 @@ function runSelfTest() {
     assert.equal(mainForTest(["generate", manifest, "--out", output, "--check"]), 0);
     fs.appendFileSync(output, "// stale\n");
     assert.equal(mainForTest(["generate", manifest, "--out", output, "--check"]), 1);
+    assert.equal(mainForTest(["generate", manifest, "--out", output]), 0);
+    assert.equal(mainForTest(["generate", manifest, "--out", output, "--check"]), 0);
+    assert.throws(
+      () => parseArgs(["generate", manifest, "--out", manifest]),
+      /must not overwrite the Steam Input manifest/
+    );
+    const hardLinkedManifest = path.join(root, "hard-linked-manifest.vdf");
+    fs.linkSync(manifest, hardLinkedManifest);
+    assert.throws(
+      () => parseArgs(["generate", manifest, "--out", hardLinkedManifest]),
+      /must not overwrite the Steam Input manifest/
+    );
+    assert.deepEqual(
+      fs.readdirSync(root).filter((entry) => entry.endsWith(".tmp")),
+      []
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

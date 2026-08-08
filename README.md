@@ -134,6 +134,11 @@ input.dispose();
 steamworks.shutdown();
 ```
 
+Calling `activateActionSet()` immediately after `start()` is safe. If Steam has
+not loaded the named action-set handle yet, the session queues that activation
+and applies it as soon as a later frame or configuration callback resolves the
+handle.
+
 Omit `manifestPath` in a deployed Steam build so Steam uses the depot
 configuration. Use an absolute override only during development. Electron
 games keep this session in main and use the bounded transport from

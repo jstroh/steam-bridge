@@ -7868,8 +7868,10 @@ game_server_inventory_wrapper!(
 );
 
 #[napi(js_name = "inputInit")]
-pub fn input_init() -> Result<(), Error> {
-    let ok = unsafe { sys::SteamAPI_ISteamInput_Init(steam_input()?, false) };
+pub fn input_init(explicitly_call_run_frame: Option<bool>) -> Result<(), Error> {
+    let ok = unsafe {
+        sys::SteamAPI_ISteamInput_Init(steam_input()?, explicitly_call_run_frame.unwrap_or(false))
+    };
     if ok {
         Ok(())
     } else {
@@ -8074,12 +8076,12 @@ pub fn input_poll_snapshot(
     let count =
         unsafe { sys::SteamAPI_ISteamInput_GetConnectedControllers(input, handles.as_mut_ptr()) };
     handles.truncate((count.max(0) as usize).min(handles.len()));
+    let has_connected_controllers = !handles.is_empty();
     let controllers = handles
         .into_iter()
         .map(|handle| poll_input_controller(input, handle, &digital_actions, &analog_actions, true))
         .collect::<Vec<_>>();
-    let merged = include_merged
-        .unwrap_or(false)
+    let merged = (include_merged.unwrap_or(false) && has_connected_controllers)
         .then(|| poll_input_controller(input, u64::MAX, &digital_actions, &analog_actions, false));
     Ok(InputPollSnapshot {
         sequence: INPUT_POLL_SEQUENCE

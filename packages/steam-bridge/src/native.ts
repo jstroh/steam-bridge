@@ -2267,7 +2267,7 @@ export interface NativeBinding {
   gameServerInventorySubmitUpdateProperties(updateHandle: bigint): number | null | undefined;
   gameServerInventoryInspectItem(itemToken: string): number | null | undefined;
 
-  inputInit(): void;
+  inputInit(explicitlyCallRunFrame?: boolean | null): void;
   inputShutdown(): void;
   inputRunFrame(reserved?: boolean | null): void;
   inputWaitForData(waitForever?: boolean | null, timeoutMs?: number | null): boolean;

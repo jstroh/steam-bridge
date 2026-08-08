@@ -13,6 +13,8 @@ const session = client.input
   })
   .start();
 
+// Safe immediately after start: the session queues this if Steam is still
+// loading the action-set handle, then applies it after resolution.
 session.activateActionSet("gameplay");
 
 export function updateGame(): void {
