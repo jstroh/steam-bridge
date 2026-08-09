@@ -6,15 +6,18 @@ Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
 and cross-platform QA contract are in
 [`steam-input-product-plan.md`](steam-input-product-plan.md) and
-[`../steam-input.md`](../steam-input.md). Stable `0.3.21` includes the raw
+[`../steam-input.md`](../steam-input.md). Stable `0.3.22` includes the raw
 open-enum/lifecycle fixes, bounded asynchronous wait and direct-event queue,
 strict manifest validator/type generator, one-call native batch poll, typed
 `SteamInputSession`, drift-resistant primary selection, authoritative action-
 set and queued-layer state, disconnect release edges, live-rebinding prompts,
 rebinding/output/diagnostics, bounded acknowledged Electron MessagePort
 delivery with strict sequence and failure containment, a secure Electron
-inspector, a Node diagnostic runner, and the public guide. Physical controller
-button/glyph/output/rebinding behavior and macOS/Deck physical-controller lanes
+inspector, a Node diagnostic runner, the public guide, and the package-wide
+native-loader, integer/buffer-boundary, request-lifetime, capture-retry,
+symlink, release-artifact, and recursive-JSON hardening recorded below.
+Physical controller button/glyph/output/rebinding behavior and macOS/Deck
+physical-controller lanes
 remain unclaimed until the required hardware is available; the Windows
 software, packaging, real-game, and ordinary-overlay gates are complete.
 
@@ -25,11 +28,11 @@ anchor, architecture decisions, or validation results stated here.
 
 ### 2026-08-09 package-wide bug-free goal checkpoint
 
-The active goal is now package-wide rather than limited to Steam Input. Starting
-from stable `0.3.21` plus the already validated uncommitted Steam Input repair
-slice described below, review the complete supported Windows x64, Linux x64 /
-Steam Deck, and macOS arm64 contract: JavaScript/TypeScript APIs, Electron
-transport and security boundaries, native Rust ownership and lifecycle,
+The completed `0.3.22` goal was package-wide rather than limited to Steam Input.
+Starting from stable `0.3.21` plus the already validated Steam Input repair
+slice described below, the pass reviewed the complete supported Windows x64,
+Linux x64 / Steam Deck, and macOS arm64 contract: JavaScript/TypeScript APIs,
+Electron transport and security boundaries, native Rust ownership and lifecycle,
 platform presenters and input, packaging/release tooling, public documentation,
 and regression coverage. Fix every reproducible or source-proven P0-P3 defect,
 verify each changed lane proportionally, and repeat adversarial review until no
@@ -101,15 +104,61 @@ and closed the remaining native-loader directory/script/symlink acceptance and
 packed-smoke symlink-following gaps. No known actionable P0-P3 defect remains
 in the reviewed source or current-host artifact.
 
-This is a package-hardening checkpoint, not an immutable release
-qualification. A Windows-host attempt to compile the Linux target stopped
+This package-hardening checkpoint is now qualified by the immutable `0.3.22`
+release record below. A Windows-host attempt to compile the Linux target stopped
 before source compilation because the machine has no `x86_64-linux-gnu-gcc`;
 do not record that toolchain absence as a product failure or as Linux artifact
 proof. Fresh macOS arm64 and Linux x64 native artifacts, physical-controller
 hardware lanes, and any complete live presentation matrix remain release-time
 CI / host gates. No presenter architecture or valid-frame behavior changed in
 this slice, so settled live matrices were not repeated and no app, Steam,
-display, lock, or sleep state was touched.
+display, lock, or sleep state was touched during source review. Release-time CI
+and the exact Windows candidate proof subsequently completed as recorded below.
+
+### 2026-08-09 v0.3.22 stable release checkpoint
+
+Patch `0.3.22` is published at immutable tag and commit `v0.3.22` /
+`92060b209492f747a9cb9af60141f184162f5f30`. Exact-head CI run
+`31307861255`, tag Release assembly run `31307865028`, tag CI run
+`31307865020`, and trusted npm publication run `31310298876` all passed. The
+publication job restored and revalidated the exact audited tag artifact and
+candidate-bound Windows receipt through the protected `npm-production`
+environment. Its temporary compressed-proof secret was deleted after
+publication.
+
+npm `latest` and the stable GitHub Release resolve to `0.3.22`; the package has
+a verified registry signature and provenance attestation. The npm and audited
+tag tarball is 10,710,062 bytes with SHA-256
+`d2874b676b118b545a1ffd416e4677f69a3984ec08f3c1f089021259b95150b9`
+and registry integrity
+`sha512-m7drGMUdP4YNvWG73ch0NTz92JIm0tecE15rvcbf8wvvP1H5p94dHmz1XNNXiWzmCUcK0SfbQTxecmpFjxI6kw==`.
+The audited Windows bundle is 403,268,096 bytes with SHA-256
+`d3b4ccbd862d0563deaff0a3323163e75786e3447d9b78574bc98d74fea31f62`.
+The package audit SHA-256 is
+`cab5a1155c13c7bdff72f21b1982f09b3fae89a03f3407401fe38e294ca27616`;
+the candidate binding SHA-256 is
+`7069152b982f353cb878a9845376e2cb4c023be050fd19142ef01503c8f7cb78`;
+the receipt semantic SHA-256 is
+`10a3f039c027a4aa553aac5308b34c798a41fa901182e742bf2301350a0455d4`;
+the receipt file SHA-256 is
+`bd0f56dff6e632e6cdc18604c76205760352728353c567804ede268f03a5b98b`.
+
+The release passed 424 JavaScript/TypeScript tests (422 passes and two expected
+Windows symlink-permission skips), 51 Rust tests, supported-platform checks,
+formatting, native checks, API audit, package smoke, npm/RustSec audit, and
+exact Electron/native-load verification for all 1,148 methods under stable
+Electron 43.3.0. The exact audited package installed into the configured
+Fantasy Online 2 consumer and passed actual-game startup, native menus, visible
+cursor, title drag, resize and exact 640x480 minimum, 1280x720 restoration,
+maximize, minimize, focus return, fullscreen restoration, rounded corners,
+ordinary Friends overlay alignment and close, and clean shutdown at 125% DPI.
+Its receipt records 205 qualified live-game samples at 59.9 FPS median paint
+and present, and 129 active-overlay samples at 59.6 FPS median present against
+60 Hz, with zero crashes, stderr, device losses, recoveries, frame-latency
+timeouts, slow texture copies, or target/display desynchronization. Candidate
+write protection remained intact after the live run. The five public GitHub
+Release assets match their retained local SHA-256 digests, and the registry
+tarball is byte-identical to the CI artifact.
 
 ### 2026-08-08 active Steam Input bug-free review checkpoint
 
