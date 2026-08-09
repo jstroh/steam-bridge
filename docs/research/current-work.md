@@ -22,6 +22,42 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
+### 2026-08-08 post-v0.3.20 deep-review worktree
+
+The active worktree keeps the settled child/native-host overlay architecture
+and fixes defects found in the Steam Input product and release gates:
+
+- the manifest validator now enforces Valve's actual action shapes, localized
+  `#` titles, StickPadGyro modes, controller-mapping roots, duplicate/collision
+  rules, canonical priorities, and cross-platform Windows paths;
+- native and JavaScript action limits come from the bundled `SteamInput006`
+  contract (256 digital and 24 analog), and the packed-package smoke gate uses
+  those same values instead of the obsolete 128/16 web-reference limits;
+- session definitions are immutable snapshots, unresolved sets and layers are
+  queued/cancellable, raw frame advancement cannot race a session, invalid
+  runtime names and lossy handles fail closed, and startup preserves both the
+  primary and cleanup failures;
+- disconnected-primary selection, no-controller output helpers, event snapshot
+  isolation, and synchronous/asynchronous listener failure containment are
+  regression-covered;
+- selected action sets persist across frames and controller hot-plug, prompt
+  origins are re-queried per display request, analog drift cannot steal the
+  primary prompt device, and all-controller layer cancellation clears matching
+  per-controller queues;
+- Electron input delivery rejects non-monotonic frames, contains send/listener/
+  acknowledgement failures, closes both sides of failed handoffs, and fences
+  queued messages from replaced renderer ports;
+- the runnable Node and Electron examples share the exact manifest definition,
+  and renderer requests now have one-in-flight backpressure instead of building
+  an unbounded IPC queue.
+
+Automated qualification is green at 417/417 JavaScript/TypeScript tests and
+49/49 Rust tests. The full `npm test`, strict Clippy, `api:check`,
+`check:platform`, `native:fmt`, `native:check`, `package:smoke`, example syntax,
+and `git diff --check` gates pass on Windows under stable Electron 43.3.0.
+Physical-controller action, glyph, output, and rebinding behavior remains
+unclaimed until a controller-backed cross-platform release-candidate pass.
+
 ### 2026-08-08 v0.3.20 stable release checkpoint
 
 Patch `0.3.20` is published at immutable tag and commit `v0.3.20` /

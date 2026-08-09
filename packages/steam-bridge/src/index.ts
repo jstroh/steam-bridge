@@ -4099,6 +4099,12 @@ export interface SteamInputSessionOptions<TDefinition extends SteamInputDefiniti
   /** Absolute development/package path. Omit when Steamworks supplies the deployed manifest. */
   manifestPath?: string | null;
   controllers?: SteamInputControllerMode;
+  /**
+   * Analog magnitude required before a controller can become the primary
+   * controller. This affects controller/prompt selection only; sampled analog
+   * values are never altered. Defaults to 0.1 to ignore ordinary stick drift.
+   */
+  activeControllerAnalogThreshold?: number;
 }
 
 export interface SteamInputDigitalFrameState {
@@ -4182,6 +4188,7 @@ export interface SteamInputSessionDiagnostics {
   disposed: boolean;
   manifestPath: string | null;
   controllerMode: SteamInputControllerMode;
+  activeControllerAnalogThreshold: number;
   unresolvedActionSets: string[];
   unresolvedActionLayers: string[];
   unresolvedDigitalActions: string[];
@@ -4202,6 +4209,15 @@ export type SteamInputSessionEventName =
   | "gamepad-slot-changed"
   | "active-controller-changed"
   | "diagnostic";
+
+const STEAM_INPUT_SESSION_EVENT_NAMES: ReadonlySet<SteamInputSessionEventName> = new Set([
+  "controller-connected",
+  "controller-disconnected",
+  "configuration-loaded",
+  "gamepad-slot-changed",
+  "active-controller-changed",
+  "diagnostic"
+]);
 
 export interface SteamInputSessionEventMap<
   TDefinition extends SteamInputDefinition = SteamInputDefinition
@@ -6882,6 +6898,11 @@ export const InputTypeCode = {
 
 export const STEAM_INPUT_HANDLE_ALL_CONTROLLERS = 0xffff_ffff_ffff_ffffn;
 export const STEAM_INPUT_MAX_COUNT = 16;
+// SteamInput006 values from the bundled Steamworks SDK header. Valve's web
+// reference still lists the older SteamInput001 limits (128/16).
+export const STEAM_INPUT_MAX_DIGITAL_ACTIONS = 256;
+export const STEAM_INPUT_MAX_ANALOG_ACTIONS = 24;
+const STEAM_INPUT_MAX_WAIT_MS = 60_000;
 
 export const InputActionEventType = {
   DigitalAction: 0,
@@ -7648,12 +7669,13 @@ function forceReleaseSteamInputReferences(): void {
   if (firstError !== undefined) throw firstError;
 }
 
-type SteamInputSessionListener = (value: unknown) => void;
+type SteamInputSessionListener = (value: unknown) => void | PromiseLike<void>;
 
 export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
   readonly definition: TDefinition;
   readonly manifestPath: string | null;
   readonly controllerMode: SteamInputControllerMode;
+  readonly activeControllerAnalogThreshold: number;
 
   private started = false;
   private disposed = false;
@@ -7668,8 +7690,8 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
   private readonly analogActionHandles = new Map<string, bigint>();
   private readonly callbacks: CallbackHandle[] = [];
   private readonly listeners = new Map<SteamInputSessionEventName, Set<SteamInputSessionListener>>();
-  private readonly promptCache = new Map<string, SteamInputPrompt>();
-  private readonly pendingActionSetActivations = new Map<bigint, string>();
+  private readonly selectedActionSets = new Map<bigint, string>();
+  private readonly pendingActionLayerActivations = new Map<bigint, Set<string>>();
   private readonly emittedDiagnostics = new Set<string>();
   private allDefinitionHandlesResolved = false;
   private pollDigitalHandles: bigint[] = [];
@@ -7688,15 +7710,18 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
 
   constructor(options: SteamInputSessionOptions<TDefinition>) {
     validateSteamInputDefinition(options.definition);
-    this.definition = options.definition;
-    this.actionSetEntries = definitionEntries(options.definition.actionSets);
-    this.actionLayerEntries = definitionEntries(options.definition.actionLayers ?? {});
-    this.digitalEntries = definitionEntries(options.definition.digital);
-    this.analogEntries = definitionEntries(options.definition.analog);
+    this.definition = snapshotSteamInputDefinition(options.definition);
+    this.actionSetEntries = definitionEntries(this.definition.actionSets);
+    this.actionLayerEntries = definitionEntries(this.definition.actionLayers ?? {});
+    this.digitalEntries = definitionEntries(this.definition.digital);
+    this.analogEntries = definitionEntries(this.definition.analog);
     this.controllerMode = options.controllers ?? "individual";
     if (!(["individual", "merged", "both"] as const).includes(this.controllerMode)) {
       throw new Error(`Invalid Steam Input controller mode: ${String(options.controllers)}`);
     }
+    this.activeControllerAnalogThreshold = inputActivityThreshold(
+      options.activeControllerAnalogThreshold ?? 0.1
+    );
     if (options.manifestPath == null) {
       this.manifestPath = null;
     } else {
@@ -7733,7 +7758,16 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       this.resolveHandles();
       return this;
     } catch (error) {
-      this.dispose();
+      try {
+        this.dispose();
+      } catch (cleanupError) {
+        const message = error instanceof Error ? error.message : String(error);
+        const combinedError = new Error(
+          `Steam Input session startup failed and cleanup also failed: ${message}`
+        ) as Error & { errors: unknown[] };
+        combinedError.errors = [error, cleanupError];
+        throw combinedError;
+      }
       throw error;
     }
   }
@@ -7741,6 +7775,7 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
   update(): SteamInputFrame<TDefinition> {
     this.assertStarted();
     if (!this.allDefinitionHandlesResolved) this.resolveHandles();
+    this.applySelectedActionSets();
 
     const snapshot = native().inputPollSnapshot(
       this.pollDigitalHandles,
@@ -7761,7 +7796,10 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
         });
       }
       const previous = this.previousControllers.get(controller.handle);
-      if (previous && controllerFrameHasActivity(controller, previous)) {
+      if (
+        previous &&
+        controllerFrameHasActivity(controller, previous, this.activeControllerAnalogThreshold)
+      ) {
         this.setPrimaryController(controller.handle, controller);
       }
     }
@@ -7769,7 +7807,8 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       if (!nextControllerMap.has(handle)) {
         const previous = this.previousControllers.get(handle) ?? null;
         this.knownControllerHandles.delete(handle);
-        this.pendingActionSetActivations.delete(handle);
+        this.selectedActionSets.delete(handle);
+        this.pendingActionLayerActivations.delete(handle);
         this.emit("controller-disconnected", {
           handle,
           lastController: previous ? cloneSteamInputControllerFrame(previous) : null,
@@ -7821,8 +7860,11 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
 
   on<TEvent extends SteamInputSessionEventName>(
     event: TEvent,
-    handler: (value: SteamInputSessionEventMap<TDefinition>[TEvent]) => void
+    handler: (value: SteamInputSessionEventMap<TDefinition>[TEvent]) => void | PromiseLike<void>
   ): CallbackHandle {
+    if (!STEAM_INPUT_SESSION_EVENT_NAMES.has(event)) {
+      throw new Error(`Unknown Steam Input session event: ${String(event)}`);
+    }
     if (typeof handler !== "function") throw new TypeError("Steam Input session event handler must be a function");
     let handlers = this.listeners.get(event);
     if (!handlers) {
@@ -7850,13 +7892,16 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       throw new Error(`Unknown Steam Input action set: ${actionSet}`);
     }
     const controllerHandle = inputControllerHandle(controller);
+    if (controllerHandle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS) {
+      this.selectedActionSets.clear();
+    }
+    this.selectedActionSets.set(controllerHandle, actionSet);
     let actionSetHandle = this.actionSetHandles.get(actionSet);
     if (!actionSetHandle || actionSetHandle === 0n) {
       this.resolveHandles();
       actionSetHandle = this.actionSetHandles.get(actionSet);
     }
     if (!actionSetHandle || actionSetHandle === 0n) {
-      this.pendingActionSetActivations.set(controllerHandle, actionSet);
       this.diagnostic(
         "STEAM_INPUT_ACTION_SET_QUEUED",
         "info",
@@ -7865,7 +7910,6 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       );
       return;
     }
-    this.pendingActionSetActivations.delete(controllerHandle);
     native().inputActivateActionSet(controllerHandle, actionSetHandle);
   }
 
@@ -7874,8 +7918,30 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     controller?: SteamInputControllerFrame<TDefinition> | bigint | null
   ): void {
     this.assertStarted();
-    const handle = this.requireResolvedHandle(this.actionLayerHandles, actionLayer, "action layer");
-    native().inputActivateActionSetLayer(inputControllerHandle(controller), handle);
+    this.assertDefinitionKey(this.actionLayerEntries, actionLayer, "action layer");
+    const controllerHandle = inputControllerHandle(controller);
+    let handle = this.actionLayerHandles.get(actionLayer);
+    if (!handle || handle === 0n) {
+      this.resolveHandles();
+      handle = this.actionLayerHandles.get(actionLayer);
+    }
+    if (!handle || handle === 0n) {
+      let layers = this.pendingActionLayerActivations.get(controllerHandle);
+      if (!layers) {
+        layers = new Set();
+        this.pendingActionLayerActivations.set(controllerHandle, layers);
+      }
+      layers.add(actionLayer);
+      this.diagnostic(
+        "STEAM_INPUT_ACTION_LAYER_QUEUED",
+        "info",
+        `Steam Input action layer "${actionLayer}" is still loading and will be activated when its handle resolves.`,
+        { actionLayer, controllerHandle: controllerHandle.toString() }
+      );
+      return;
+    }
+    this.removePendingActionLayerActivation(controllerHandle, actionLayer);
+    native().inputActivateActionSetLayer(controllerHandle, handle);
   }
 
   deactivateActionLayer(
@@ -7883,13 +7949,26 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     controller?: SteamInputControllerFrame<TDefinition> | bigint | null
   ): void {
     this.assertStarted();
-    const handle = this.requireResolvedHandle(this.actionLayerHandles, actionLayer, "action layer");
-    native().inputDeactivateActionSetLayer(inputControllerHandle(controller), handle);
+    this.assertDefinitionKey(this.actionLayerEntries, actionLayer, "action layer");
+    const controllerHandle = inputControllerHandle(controller);
+    this.removePendingActionLayerActivation(controllerHandle, actionLayer);
+    let handle = this.actionLayerHandles.get(actionLayer);
+    if (!handle || handle === 0n) {
+      this.resolveHandles();
+      handle = this.actionLayerHandles.get(actionLayer);
+    }
+    // An unresolved layer cannot have been activated through this session. A
+    // matching queued activation was cancelled above, so deactivation is a
+    // safe no-op until Steam finishes loading the manifest.
+    if (!handle || handle === 0n) return;
+    native().inputDeactivateActionSetLayer(controllerHandle, handle);
   }
 
   deactivateAllActionLayers(controller?: SteamInputControllerFrame<TDefinition> | bigint | null): void {
     this.assertStarted();
-    native().inputDeactivateAllActionSetLayers(inputControllerHandle(controller));
+    const controllerHandle = inputControllerHandle(controller);
+    this.clearPendingActionLayerActivations(controllerHandle);
+    native().inputDeactivateAllActionSetLayers(controllerHandle);
   }
 
   getDigitalPrompt(
@@ -7942,14 +8021,18 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     leftIntensity: number,
     rightIntensity: number,
     controller?: SteamInputControllerFrame<TDefinition> | bigint | null
-  ): void {
+  ): boolean {
     this.assertStarted();
-    const handle = this.requireConcreteControllerHandle(controller);
+    const left = normalizedIntensityU16(leftIntensity, "left vibration intensity");
+    const right = normalizedIntensityU16(rightIntensity, "right vibration intensity");
+    const handle = this.resolveOutputControllerHandle("send vibration", controller);
+    if (handle == null) return false;
     native().inputTriggerVibration(
       handle,
-      normalizedIntensityU16(leftIntensity, "left vibration intensity"),
-      normalizedIntensityU16(rightIntensity, "right vibration intensity")
+      left,
+      right
     );
+    return true;
   }
 
   setLedColor(
@@ -7957,27 +8040,35 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     green: number,
     blue: number,
     controller?: SteamInputControllerFrame<TDefinition> | bigint | null
-  ): void {
+  ): boolean {
     this.assertStarted();
-    const handle = this.requireConcreteControllerHandle(controller);
+    const normalizedRed = inputColorChannel(red, "red");
+    const normalizedGreen = inputColorChannel(green, "green");
+    const normalizedBlue = inputColorChannel(blue, "blue");
+    const handle = this.resolveOutputControllerHandle("set an LED color", controller);
+    if (handle == null) return false;
     native().inputSetLedColor(
       handle,
-      inputColorChannel(red, "red"),
-      inputColorChannel(green, "green"),
-      inputColorChannel(blue, "blue"),
+      normalizedRed,
+      normalizedGreen,
+      normalizedBlue,
       InputLedFlag.SetColor
     );
+    return true;
   }
 
-  restoreLedColor(controller?: SteamInputControllerFrame<TDefinition> | bigint | null): void {
+  restoreLedColor(controller?: SteamInputControllerFrame<TDefinition> | bigint | null): boolean {
     this.assertStarted();
+    const handle = this.resolveOutputControllerHandle("restore the LED color", controller);
+    if (handle == null) return false;
     native().inputSetLedColor(
-      this.requireConcreteControllerHandle(controller),
+      handle,
       0,
       0,
       0,
       InputLedFlag.RestoreUserDefault
     );
+    return true;
   }
 
   getDiagnostics(): SteamInputSessionDiagnostics {
@@ -7986,6 +8077,7 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       disposed: this.disposed,
       manifestPath: this.manifestPath,
       controllerMode: this.controllerMode,
+      activeControllerAnalogThreshold: this.activeControllerAnalogThreshold,
       unresolvedActionSets: unresolvedDefinitionEntryNames(this.actionSetEntries, this.actionSetHandles),
       unresolvedActionLayers: unresolvedDefinitionEntryNames(this.actionLayerEntries, this.actionLayerHandles),
       unresolvedDigitalActions: unresolvedDefinitionEntryNames(this.digitalEntries, this.digitalActionHandles),
@@ -8012,8 +8104,8 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       }
     }
     this.listeners.clear();
-    this.promptCache.clear();
-    this.pendingActionSetActivations.clear();
+    this.selectedActionSets.clear();
+    this.pendingActionLayerActivations.clear();
     this.previousControllers.clear();
     this.knownControllerHandles.clear();
     if (activeSteamInputSession === (this as unknown as SteamInputSession<SteamInputDefinition>)) {
@@ -8084,9 +8176,6 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       (value) => requiredBigIntLike(value, "Steam Input action layer handle")
     );
     const revision = source.bindingRevision ?? source.binding_revision;
-    if (previous && !sameInputBindingRevision(previous.bindingRevision, revision ?? null)) {
-      this.promptCache.clear();
-    }
     return {
       handle,
       inputType: normalizeInputType(source.inputType ?? source.input_type ?? "Unknown"),
@@ -8119,12 +8208,28 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     }
   ): SteamInputPrompt | null {
     this.assertStarted();
+    this.assertDefinitionKey(
+      kind === "digital" ? this.digitalEntries : this.analogEntries,
+      action,
+      `${kind} action`
+    );
+    if (options.actionSet != null) {
+      this.assertDefinitionKey(this.actionSetEntries, options.actionSet, "action set");
+    }
     const controllerHandle = this.resolveConcreteControllerHandle(options.controller);
     if (controllerHandle == null) return null;
     const controllerFrame = this.previousControllers.get(controllerHandle);
-    const actionSetHandle = options.actionSet
+    const selectedActionSet =
+      this.selectedActionSets.get(controllerHandle) ??
+      this.selectedActionSets.get(STEAM_INPUT_HANDLE_ALL_CONTROLLERS);
+    const selectedActionSetHandle = selectedActionSet == null
+      ? 0n
+      : this.actionSetHandles.get(selectedActionSet) ?? 0n;
+    const actionSetHandle = options.actionSet != null
       ? this.requireResolvedHandle(this.actionSetHandles, options.actionSet, "action set")
-      : controllerFrame?.currentActionSetHandle ?? 0n;
+      : selectedActionSetHandle !== 0n
+        ? selectedActionSetHandle
+        : controllerFrame?.currentActionSetHandle ?? 0n;
     if (actionSetHandle === 0n) {
       this.diagnostic(
         "STEAM_INPUT_ACTION_SET_UNAVAILABLE",
@@ -8137,19 +8242,6 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     const actionHandle = this.requireResolvedHandle(handles, action, `${kind} action`);
     const size = options.size ?? InputGlyphSize.Medium;
     const style = options.style ?? InputGlyphStyle.Knockout;
-    const revision = controllerFrame?.bindingRevision;
-    const cacheKey = [
-      kind,
-      action,
-      controllerHandle.toString(),
-      actionSetHandle.toString(),
-      size,
-      style,
-      revision?.major ?? -1,
-      revision?.minor ?? -1
-    ].join(":");
-    const cached = this.promptCache.get(cacheKey);
-    if (cached) return cloneSteamInputPrompt(cached);
     const controller = new Controller(controllerHandle, controllerFrame?.inputType);
     const origins =
       kind === "digital"
@@ -8175,26 +8267,25 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
         svgPath: native().inputGetGlyphSvgForActionOrigin(origin, style)
       }))
     };
-    this.promptCache.set(cacheKey, prompt);
     return cloneSteamInputPrompt(prompt);
   }
 
   private resolveHandles(): void {
     resolveDefinitionEntryHandles(this.actionSetEntries, this.actionSetHandles, (name) =>
-      BigInt(native().inputGetActionSet(name))
+      requiredBigIntLike(native().inputGetActionSet(name), "Steam Input action-set handle")
     );
     resolveDefinitionEntryHandles(this.actionLayerEntries, this.actionLayerHandles, (name) =>
-      BigInt(native().inputGetActionSet(name))
+      requiredBigIntLike(native().inputGetActionSet(name), "Steam Input action-layer handle")
     );
     resolveDefinitionEntryHandles(this.digitalEntries, this.digitalActionHandles, (name) =>
-      BigInt(native().inputGetDigitalAction(name))
+      requiredBigIntLike(native().inputGetDigitalAction(name), "Steam Input digital-action handle")
     );
     resolveDefinitionEntryHandles(this.analogEntries, this.analogActionHandles, (name) =>
-      BigInt(native().inputGetAnalogAction(name))
+      requiredBigIntLike(native().inputGetAnalogAction(name), "Steam Input analog-action handle")
     );
     this.pollDigitalHandles = resolvedDefinitionHandles(this.digitalEntries, this.digitalActionHandles);
     this.pollAnalogHandles = resolvedDefinitionHandles(this.analogEntries, this.analogActionHandles);
-    this.flushPendingActionSetActivations();
+    this.flushPendingActionLayerActivations();
     const diagnostics = this.getDiagnostics();
     const unresolved = [
       ...diagnostics.unresolvedActionSets,
@@ -8213,18 +8304,61 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     }
   }
 
-  private flushPendingActionSetActivations(): void {
-    for (const [controllerHandle, actionSet] of [...this.pendingActionSetActivations]) {
-      const actionSetHandle = this.actionSetHandles.get(actionSet);
-      if (!actionSetHandle || actionSetHandle === 0n) continue;
-      native().inputActivateActionSet(controllerHandle, actionSetHandle);
-      this.pendingActionSetActivations.delete(controllerHandle);
+  private applySelectedActionSets(): void {
+    const allControllersActionSet = this.selectedActionSets.get(STEAM_INPUT_HANDLE_ALL_CONTROLLERS);
+    if (allControllersActionSet) {
+      this.applySelectedActionSet(STEAM_INPUT_HANDLE_ALL_CONTROLLERS, allControllersActionSet);
+    }
+    for (const [controllerHandle, actionSet] of this.selectedActionSets) {
+      if (controllerHandle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS) continue;
+      this.applySelectedActionSet(controllerHandle, actionSet);
     }
   }
 
+  private applySelectedActionSet(controllerHandle: bigint, actionSet: string): boolean {
+    const actionSetHandle = this.actionSetHandles.get(actionSet);
+    if (!actionSetHandle || actionSetHandle === 0n) return false;
+    native().inputActivateActionSet(controllerHandle, actionSetHandle);
+    return true;
+  }
+
+  private flushPendingActionLayerActivations(): void {
+    for (const [controllerHandle, actionLayers] of [...this.pendingActionLayerActivations]) {
+      for (const actionLayer of [...actionLayers]) {
+        const actionLayerHandle = this.actionLayerHandles.get(actionLayer);
+        if (!actionLayerHandle || actionLayerHandle === 0n) continue;
+        native().inputActivateActionSetLayer(controllerHandle, actionLayerHandle);
+        actionLayers.delete(actionLayer);
+      }
+      if (actionLayers.size === 0) this.pendingActionLayerActivations.delete(controllerHandle);
+    }
+  }
+
+  private removePendingActionLayerActivation(controllerHandle: bigint, actionLayer: string): void {
+    if (controllerHandle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS) {
+      for (const [targetHandle, layers] of this.pendingActionLayerActivations) {
+        layers.delete(actionLayer);
+        if (layers.size === 0) this.pendingActionLayerActivations.delete(targetHandle);
+      }
+      return;
+    }
+    const layers = this.pendingActionLayerActivations.get(controllerHandle);
+    if (!layers) return;
+    layers.delete(actionLayer);
+    if (layers.size === 0) this.pendingActionLayerActivations.delete(controllerHandle);
+  }
+
+  private clearPendingActionLayerActivations(controllerHandle: bigint): void {
+    if (controllerHandle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS) {
+      this.pendingActionLayerActivations.clear();
+      return;
+    }
+    this.pendingActionLayerActivations.delete(controllerHandle);
+  }
+
   private handleDeviceConnected(event: SteamInputDeviceConnectedEvent): void {
-    this.promptCache.clear();
     this.resolveHandles();
+    this.applySelectedActionSets();
     const handle = event.connectedDeviceHandle;
     if (!this.knownControllerHandles.has(handle)) {
       this.knownControllerHandles.add(handle);
@@ -8233,9 +8367,9 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
   }
 
   private handleDeviceDisconnected(event: SteamInputDeviceDisconnectedEvent): void {
-    this.promptCache.clear();
     const handle = event.disconnectedDeviceHandle;
-    this.pendingActionSetActivations.delete(handle);
+    this.selectedActionSets.delete(handle);
+    this.pendingActionLayerActivations.delete(handle);
     if (this.knownControllerHandles.delete(handle)) {
       const previous = this.previousControllers.get(handle) ?? null;
       this.emit("controller-disconnected", {
@@ -8248,17 +8382,21 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       });
     }
     this.previousControllers.delete(handle);
-    if (this.primaryControllerHandle === handle) this.setPrimaryController(null, null);
+    if (this.primaryControllerHandle === handle) {
+      const nextPrimary = [...this.previousControllers.values()].find(
+        (controller) => controller.handle !== STEAM_INPUT_HANDLE_ALL_CONTROLLERS
+      ) ?? null;
+      this.setPrimaryController(nextPrimary?.handle ?? null, nextPrimary);
+    }
   }
 
   private handleConfigurationLoaded(event: SteamInputConfigurationLoadedEvent): void {
-    this.promptCache.clear();
     this.resolveHandles();
+    this.applySelectedActionSets();
     this.emit("configuration-loaded", event);
   }
 
   private handleGamepadSlotChanged(event: SteamInputGamepadSlotChangeEvent): void {
-    this.promptCache.clear();
     this.emit("gamepad-slot-changed", event);
   }
 
@@ -8280,21 +8418,34 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     controller?: SteamInputControllerFrame<TDefinition> | bigint | null
   ): bigint | null {
     if (typeof controller === "bigint") {
-      return controller === STEAM_INPUT_HANDLE_ALL_CONTROLLERS ? this.primaryControllerHandle : controller;
+      const handle = validInputControllerHandle(controller);
+      return handle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS ? this.primaryControllerHandle : handle;
     }
     if (controller) {
-      return controller.handle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS
+      const handle = validInputControllerHandle(controller.handle);
+      return handle === STEAM_INPUT_HANDLE_ALL_CONTROLLERS
         ? this.primaryControllerHandle
-        : controller.handle;
+        : handle;
     }
-    return this.primaryControllerHandle ?? this.lastFrameValue.controllers[0]?.handle ?? null;
+    if (this.primaryControllerHandle != null) return this.primaryControllerHandle;
+    for (const handle of this.previousControllers.keys()) {
+      if (handle !== STEAM_INPUT_HANDLE_ALL_CONTROLLERS) return handle;
+    }
+    return null;
   }
 
-  private requireConcreteControllerHandle(
+  private resolveOutputControllerHandle(
+    operation: string,
     controller?: SteamInputControllerFrame<TDefinition> | bigint | null
-  ): bigint {
+  ): bigint | null {
     const handle = this.resolveConcreteControllerHandle(controller);
-    if (handle == null) throw new Error("Steam Input requires a connected controller for this operation");
+    if (handle == null) {
+      this.diagnostic(
+        "STEAM_INPUT_NO_CONTROLLER",
+        "warning",
+        `Steam Input cannot ${operation} because no controller is available.`
+      );
+    }
     return handle;
   }
 
@@ -8308,6 +8459,12 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       throw new Error(`Steam Input ${kind} \"${key}\" is unresolved; verify the manifest and controller configuration`);
     }
     return handle;
+  }
+
+  private assertDefinitionKey(entries: Array<[string, string]>, key: string, kind: string): void {
+    if (!entries.some(([candidate]) => candidate === key)) {
+      throw new Error(`Unknown Steam Input ${kind}: ${key}`);
+    }
   }
 
   private diagnostic(
@@ -8328,13 +8485,22 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
   ): void {
     for (const listener of [...(this.listeners.get(event) ?? [])]) {
       try {
-        listener(value);
+        const result = listener(structuredClone(value));
+        if (result && typeof result === "object" && "then" in result) {
+          Promise.resolve(result).catch((error: unknown) => {
+            emitSteamInputListenerWarning(
+              `Steam Input ${event} listener rejected`,
+              "STEAM_INPUT_LISTENER_FAILED",
+              error
+            );
+          });
+        }
       } catch (error) {
-        const cause = error instanceof Error ? error : new Error(String(error));
-        process.emitWarning(`Steam Input ${event} listener failed: ${cause.message}`, {
-          code: "STEAM_INPUT_LISTENER_FAILED",
-          detail: cause.stack
-        });
+        emitSteamInputListenerWarning(
+          `Steam Input ${event} listener failed`,
+          "STEAM_INPUT_LISTENER_FAILED",
+          error
+        );
       }
     }
   }
@@ -8387,11 +8553,26 @@ function validateSteamInputDefinition(definition: SteamInputDefinition): void {
   }
   const digitalNames = definitionEntries(definition.digital);
   const analogNames = definitionEntries(definition.analog);
-  if (digitalNames.length > 128) {
-    throw new Error(`Steam Input supports at most 128 digital actions; received ${digitalNames.length}`);
+  if (digitalNames.length > STEAM_INPUT_MAX_DIGITAL_ACTIONS) {
+    throw new Error(
+      `Steam Input supports at most ${STEAM_INPUT_MAX_DIGITAL_ACTIONS} digital actions; received ${digitalNames.length}`
+    );
   }
-  if (analogNames.length > 16) {
-    throw new Error(`Steam Input supports at most 16 analog actions; received ${analogNames.length}`);
+  if (analogNames.length > STEAM_INPUT_MAX_ANALOG_ACTIONS) {
+    throw new Error(
+      `Steam Input supports at most ${STEAM_INPUT_MAX_ANALOG_ACTIONS} analog actions; received ${analogNames.length}`
+    );
+  }
+  const actionSetNames = new Map(
+    definitionEntries(definition.actionSets).map(([key, name]) => [name.toLocaleLowerCase("en-US"), key] as const)
+  );
+  for (const [key, name] of definitionEntries(definition.actionLayers ?? {})) {
+    const actionSetKey = actionSetNames.get(name.toLocaleLowerCase("en-US"));
+    if (actionSetKey) {
+      throw new Error(
+        `Steam Input action-set handle name "${name}" cannot be both a set (${actionSetKey}) and a layer (${key})`
+      );
+    }
   }
   const digitalByName = new Map(
     digitalNames.map(([key, name]) => [name.toLocaleLowerCase("en-US"), key] as const)
@@ -8408,6 +8589,19 @@ function validateSteamInputDefinition(definition: SteamInputDefinition): void {
 
 function definitionEntries(definition: SteamInputNameMap): Array<[string, string]> {
   return Object.entries(definition);
+}
+
+function snapshotSteamInputDefinition<TDefinition extends SteamInputDefinition>(
+  definition: TDefinition
+): TDefinition {
+  const snapshotMap = (value: SteamInputNameMap | undefined): SteamInputNameMap | undefined =>
+    value == null ? undefined : Object.freeze(Object.fromEntries(Object.entries(value)));
+  return Object.freeze({
+    actionSets: snapshotMap(definition.actionSets),
+    ...(definition.actionLayers == null ? {} : { actionLayers: snapshotMap(definition.actionLayers) }),
+    digital: snapshotMap(definition.digital),
+    analog: snapshotMap(definition.analog)
+  }) as TDefinition;
 }
 
 function unresolvedDefinitionEntryNames(
@@ -8465,8 +8659,16 @@ function keyForHandle(handles: Map<string, bigint>, handle: bigint): string | nu
 function inputControllerHandle<TDefinition extends SteamInputDefinition>(
   controller?: SteamInputControllerFrame<TDefinition> | bigint | null
 ): bigint {
-  if (typeof controller === "bigint") return controller;
-  return controller?.handle ?? STEAM_INPUT_HANDLE_ALL_CONTROLLERS;
+  const handle = typeof controller === "bigint"
+    ? controller
+    : controller?.handle ?? STEAM_INPUT_HANDLE_ALL_CONTROLLERS;
+  return validInputControllerHandle(handle);
+}
+
+function validInputControllerHandle(value: unknown): bigint {
+  const handle = requiredBigIntLike(value, "Steam Input controller handle");
+  if (handle === 0n) throw new RangeError("Steam Input controller handle must be non-zero");
+  return handle;
 }
 
 function normalizedIntensityU16(value: number, label: string): number {
@@ -8555,31 +8757,41 @@ function cloneSteamInputPrompt(prompt: SteamInputPrompt): SteamInputPrompt {
 
 function controllerFrameHasActivity<TDefinition extends SteamInputDefinition>(
   current: SteamInputControllerFrame<TDefinition>,
-  previous: SteamInputControllerFrame<TDefinition>
+  previous: SteamInputControllerFrame<TDefinition>,
+  analogThreshold: number
 ): boolean {
   for (const key in current.digital) {
     if (!Object.prototype.hasOwnProperty.call(current.digital, key)) continue;
     const value = current.digital[key];
-    const before = previous.digital[key as keyof TDefinition["digital"]];
-    if (value.pressedThisFrame || value.releasedThisFrame || value.isDown !== before?.isDown) return true;
+    if (value.pressedThisFrame) return true;
   }
   for (const key in current.analog) {
     if (!Object.prototype.hasOwnProperty.call(current.analog, key)) continue;
     const value = current.analog[key];
     const before = previous.analog[key as keyof TDefinition["analog"]];
-    if (!before) {
-      if (value.active && (Math.abs(value.x) > 0.001 || Math.abs(value.y) > 0.001)) return true;
-      continue;
-    }
-    if (
-      value.active !== before.active ||
-      Math.abs(value.x - before.x) > 0.001 ||
-      Math.abs(value.y - before.y) > 0.001
-    ) {
-      return true;
-    }
+    if (!value.active) continue;
+    const magnitude = Math.hypot(value.x, value.y);
+    if (magnitude < analogThreshold) continue;
+    if (!before?.active || Math.hypot(before.x, before.y) < analogThreshold) return true;
+    if (Math.hypot(value.x - before.x, value.y - before.y) >= analogThreshold) return true;
   }
   return false;
+}
+
+function inputActivityThreshold(value: number): number {
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new RangeError(
+      "Steam Input activeControllerAnalogThreshold must be a finite number greater than 0 and at most 1"
+    );
+  }
+  return value;
+}
+
+function inputGamepadIndex(value: number): number {
+  if (!Number.isInteger(value) || value < 0 || value > 3) {
+    throw new RangeError("Steam Input gamepad index must be an integer from 0 through 3");
+  }
+  return value;
 }
 
 function disconnectedControllerFrame<TDefinition extends SteamInputDefinition>(
@@ -8615,23 +8827,22 @@ function disconnectedControllerFrame<TDefinition extends SteamInputDefinition>(
   };
 }
 
-function sameInputBindingRevision(
-  previous: InputDeviceBindingRevision | null,
-  current: NativeInputDeviceBindingRevision | null
-): boolean {
-  if (previous == null || current == null) return previous == null && current == null;
-  return previous.major === Number(current.major) && previous.minor === Number(current.minor);
-}
-
 export class Controller {
-  constructor(private readonly handle: bigint, private readonly cachedType?: string) {}
+  private readonly handle: bigint;
+
+  constructor(handle: bigint, private readonly cachedType?: string) {
+    this.handle = validInputControllerHandle(handle);
+  }
 
   activateActionSet(actionSetHandle: bigint): void {
     native().inputActivateActionSet(this.handle, actionSetHandle);
   }
 
   getCurrentActionSet(): bigint {
-    return BigInt(native().inputGetCurrentActionSet(this.handle));
+    return requiredBigIntLike(
+      native().inputGetCurrentActionSet(this.handle),
+      "Steam Input current action-set handle"
+    );
   }
 
   activateActionSetLayer(actionSetLayerHandle: bigint): void {
@@ -8647,7 +8858,9 @@ export class Controller {
   }
 
   getActiveActionSetLayers(): bigint[] {
-    return native().inputGetActiveActionSetLayers(this.handle).map(BigInt);
+    return native()
+      .inputGetActiveActionSetLayers(this.handle)
+      .map((value) => requiredBigIntLike(value, "Steam Input active action-layer handle"));
   }
 
   getDigitalActionData(actionHandle: bigint): InputDigitalActionData {
@@ -8761,14 +8974,21 @@ export class Controller {
 }
 
 export class LegacyController {
-  constructor(private readonly handle: bigint, private readonly cachedType?: string) {}
+  private readonly handle: bigint;
+
+  constructor(handle: bigint, private readonly cachedType?: string) {
+    this.handle = validInputControllerHandle(handle);
+  }
 
   activateActionSet(actionSetHandle: bigint): void {
     native().controllerActivateActionSet(this.handle, actionSetHandle);
   }
 
   getCurrentActionSet(): bigint {
-    return BigInt(native().controllerGetCurrentActionSet(this.handle));
+    return requiredBigIntLike(
+      native().controllerGetCurrentActionSet(this.handle),
+      "Steam Controller current action-set handle"
+    );
   }
 
   activateActionSetLayer(actionSetLayerHandle: bigint): void {
@@ -8784,7 +9004,9 @@ export class LegacyController {
   }
 
   getActiveActionSetLayers(): bigint[] {
-    return native().controllerGetActiveActionSetLayers(this.handle).map(BigInt);
+    return native()
+      .controllerGetActiveActionSetLayers(this.handle)
+      .map((value) => requiredBigIntLike(value, "Steam Controller active action-layer handle"));
   }
 
   getDigitalActionData(actionHandle: bigint): InputDigitalActionData {
@@ -22497,25 +22719,42 @@ export const gameServerInventory = {
 };
 
 let nextInputActionEventSubscriberId = 1;
-const inputActionEventSubscribers = new Map<number, (event: InputActionEvent) => void>();
+const inputActionEventSubscribers = new Map<
+  number,
+  (event: InputActionEvent) => void | PromiseLike<void>
+>();
 let inputActionEventNativeHandle: NativeCallbackHandle | undefined;
 
 function dispatchInputActionEvent(event: NativeInputActionEvent): void {
   const normalized = normalizeInputActionEvent(event);
   for (const handler of [...inputActionEventSubscribers.values()]) {
     try {
-      handler(normalized);
+      const result = handler(cloneInputActionEvent(normalized));
+      if (result && typeof result === "object" && "then" in result) {
+        Promise.resolve(result).catch((error: unknown) => {
+          emitSteamInputListenerWarning(
+            "Steam Input action-event listener rejected",
+            "STEAM_INPUT_ACTION_EVENT_LISTENER_FAILED",
+            error
+          );
+        });
+      }
     } catch (error) {
-      const cause = error instanceof Error ? error : new Error(String(error));
-      process.emitWarning(`Steam Input action-event listener failed: ${cause.message}`, {
-        code: "STEAM_INPUT_ACTION_EVENT_LISTENER_FAILED",
-        detail: cause.stack
-      });
+      emitSteamInputListenerWarning(
+        "Steam Input action-event listener failed",
+        "STEAM_INPUT_ACTION_EVENT_LISTENER_FAILED",
+        error
+      );
     }
   }
 }
 
-function registerInputActionEventSubscriber(handler: (event: InputActionEvent) => void): CallbackHandle {
+function registerInputActionEventSubscriber(
+  handler: (event: InputActionEvent) => void | PromiseLike<void>
+): CallbackHandle {
+  if (typeof handler !== "function") {
+    throw new TypeError("Steam Input action-event handler must be a function");
+  }
   const id = nextInputActionEventSubscriberId++;
   inputActionEventSubscribers.set(id, handler);
   try {
@@ -22550,6 +22789,8 @@ function clearInputActionEventSubscribers(): void {
 export const input = {
   STEAM_INPUT_HANDLE_ALL_CONTROLLERS,
   STEAM_INPUT_MAX_COUNT,
+  STEAM_INPUT_MAX_DIGITAL_ACTIONS,
+  STEAM_INPUT_MAX_ANALOG_ACTIONS,
   InputActionEventType,
   InputSourceMode,
   InputActionOrigin,
@@ -22574,6 +22815,7 @@ export const input = {
     return new SteamInputSession(options);
   },
   runFrame(reserved = true): void {
+    assertNoActiveSteamInputSessionFrameAdvance("input.runFrame()");
     native().inputRunFrame(reserved);
   },
   /**
@@ -22586,10 +22828,10 @@ export const input = {
         "Steam Bridge cannot wait forever for Steam Input data on Node's main thread; use input.waitForDataAsync(timeoutMs)."
       );
     }
-    return native().inputWaitForData(waitForever, timeoutMs);
+    return native().inputWaitForData(waitForever, steamInputWaitTimeout(timeoutMs));
   },
   waitForDataAsync(timeoutMs = 0): Promise<boolean> {
-    return native().inputWaitForDataAsync(timeoutMs);
+    return native().inputWaitForDataAsync(steamInputWaitTimeout(timeoutMs));
   },
   newDataAvailable(): boolean {
     return native().inputNewDataAvailable();
@@ -22598,45 +22840,57 @@ export const input = {
     native().inputEnableDeviceCallbacks();
   },
   onDeviceConnected(handler: (event: SteamInputDeviceConnectedEvent) => void): CallbackHandle {
+    if (typeof handler !== "function") throw new TypeError("Steam Input device-connected handler must be a function");
     return onSteamCallback("SteamInputDeviceConnected", (event) => {
       handler(event as SteamInputDeviceConnectedEvent);
     });
   },
   onDeviceDisconnected(handler: (event: SteamInputDeviceDisconnectedEvent) => void): CallbackHandle {
+    if (typeof handler !== "function") throw new TypeError("Steam Input device-disconnected handler must be a function");
     return onSteamCallback("SteamInputDeviceDisconnected", (event) => {
       handler(event as SteamInputDeviceDisconnectedEvent);
     });
   },
   onConfigurationLoaded(handler: (event: SteamInputConfigurationLoadedEvent) => void): CallbackHandle {
+    if (typeof handler !== "function") throw new TypeError("Steam Input configuration-loaded handler must be a function");
     return onSteamCallback("SteamInputConfigurationLoaded", (event) => {
       handler(event as SteamInputConfigurationLoadedEvent);
     });
   },
   onGamepadSlotChange(handler: (event: SteamInputGamepadSlotChangeEvent) => void): CallbackHandle {
+    if (typeof handler !== "function") throw new TypeError("Steam Input gamepad-slot handler must be a function");
     return onSteamCallback("SteamInputGamepadSlotChange", (event) => {
       handler(event as SteamInputGamepadSlotChangeEvent);
     });
   },
-  registerActionEventCallback(handler: (event: InputActionEvent) => void): CallbackHandle {
+  registerActionEventCallback(
+    handler: (event: InputActionEvent) => void | PromiseLike<void>
+  ): CallbackHandle {
     return registerInputActionEventSubscriber(handler);
   },
   setActionManifestFilePath(path: string): boolean {
     return native().inputSetActionManifestFilePath(path);
   },
   getControllers(): Controller[] {
+    assertNoActiveSteamInputSessionFrameAdvance("input.getControllers()");
     return native().inputGetControllers().map((controller: NativeInputControllerInfo) => {
-      return new Controller(BigInt(controller.handle), controller.inputType);
+      return new Controller(
+        requiredBigIntLike(controller.handle, "Steam Input controller handle"),
+        controller.inputType
+      );
     });
   },
   getControllerForGamepadIndex(index: number): Controller | null {
-    const handle = native().inputGetControllerForGamepadIndex(index);
-    return handle == null ? null : new Controller(BigInt(handle));
+    const handle = native().inputGetControllerForGamepadIndex(inputGamepadIndex(index));
+    return handle == null
+      ? null
+      : new Controller(requiredBigIntLike(handle, "Steam Input controller handle"));
   },
   getActionSet(actionSetName: string): bigint {
-    return BigInt(native().inputGetActionSet(actionSetName));
+    return requiredBigIntLike(native().inputGetActionSet(actionSetName), "Steam Input action-set handle");
   },
   getDigitalAction(actionName: string): bigint {
-    return BigInt(native().inputGetDigitalAction(actionName));
+    return requiredBigIntLike(native().inputGetDigitalAction(actionName), "Steam Input digital-action handle");
   },
   getStringForDigitalActionName(actionHandle: bigint): string {
     return native().inputGetStringForDigitalActionName(actionHandle);
@@ -22648,19 +22902,28 @@ export const input = {
     actionName: string
   ): InputDigitalActionData {
     const handle = typeof controller === "bigint" ? controller : controller.getHandle();
-    const actionSetHandle = BigInt(native().inputGetActionSet(actionSetName));
+    const actionSetHandle = requiredBigIntLike(
+      native().inputGetActionSet(actionSetName),
+      "Steam Input action-set handle"
+    );
     native().inputActivateActionSet(handle, actionSetHandle);
-    const actionHandle = BigInt(native().inputGetDigitalAction(actionName));
+    const actionHandle = requiredBigIntLike(
+      native().inputGetDigitalAction(actionName),
+      "Steam Input digital-action handle"
+    );
     return normalizeInputDigitalActionData(native().inputGetDigitalActionData(handle, actionHandle));
   },
   /** Resolve and read one digital action without changing the active action set. Cache a handle or use a session per frame. */
   readDigitalActionStateByName(controller: Controller | bigint, actionName: string): InputDigitalActionData {
     const handle = typeof controller === "bigint" ? controller : controller.getHandle();
-    const actionHandle = BigInt(native().inputGetDigitalAction(actionName));
+    const actionHandle = requiredBigIntLike(
+      native().inputGetDigitalAction(actionName),
+      "Steam Input digital-action handle"
+    );
     return normalizeInputDigitalActionData(native().inputGetDigitalActionData(handle, actionHandle));
   },
   getAnalogAction(actionName: string): bigint {
-    return BigInt(native().inputGetAnalogAction(actionName));
+    return requiredBigIntLike(native().inputGetAnalogAction(actionName), "Steam Input analog-action handle");
   },
   getStringForAnalogActionName(actionHandle: bigint): string {
     return native().inputGetStringForAnalogActionName(actionHandle);
@@ -22713,21 +22976,35 @@ export const controller = {
   },
   getControllers(): LegacyController[] {
     return native().controllerGetControllers().map((controller: NativeInputControllerInfo) => {
-      return new LegacyController(BigInt(controller.handle), controller.inputType);
+      return new LegacyController(
+        requiredBigIntLike(controller.handle, "Steam Controller handle"),
+        controller.inputType
+      );
     });
   },
   getControllerForGamepadIndex(index: number): LegacyController | null {
-    const handle = native().controllerGetControllerForGamepadIndex(index);
-    return handle == null ? null : new LegacyController(BigInt(handle));
+    const handle = native().controllerGetControllerForGamepadIndex(inputGamepadIndex(index));
+    return handle == null
+      ? null
+      : new LegacyController(requiredBigIntLike(handle, "Steam Controller handle"));
   },
   getActionSet(actionSetName: string): bigint {
-    return BigInt(native().controllerGetActionSet(actionSetName));
+    return requiredBigIntLike(
+      native().controllerGetActionSet(actionSetName),
+      "Steam Controller action-set handle"
+    );
   },
   getDigitalAction(actionName: string): bigint {
-    return BigInt(native().controllerGetDigitalAction(actionName));
+    return requiredBigIntLike(
+      native().controllerGetDigitalAction(actionName),
+      "Steam Controller digital-action handle"
+    );
   },
   getAnalogAction(actionName: string): bigint {
-    return BigInt(native().controllerGetAnalogAction(actionName));
+    return requiredBigIntLike(
+      native().controllerGetAnalogAction(actionName),
+      "Steam Controller analog-action handle"
+    );
   },
   getGlyphForActionOrigin(origin: number): string {
     return native().controllerGetGlyphForActionOrigin(origin);
@@ -32109,8 +32386,43 @@ function normalizeBigIntLike(value: unknown): bigint | unknown {
 
 function requiredBigIntLike(value: unknown, label: string): bigint {
   const normalized = normalizeBigIntLike(value);
-  if (typeof normalized === "bigint") return normalized;
+  if (typeof normalized === "bigint" && normalized >= 0n) {
+    if (typeof value !== "number" || (Number.isSafeInteger(value) && value >= 0)) return normalized;
+  }
   throw new TypeError(`${label} must be an unsigned integer`);
+}
+
+function cloneInputActionEvent(event: InputActionEvent): InputActionEvent {
+  return {
+    ...event,
+    ...(event.analogActionData ? { analogActionData: { ...event.analogActionData } } : {}),
+    ...(event.digitalActionData ? { digitalActionData: { ...event.digitalActionData } } : {})
+  };
+}
+
+function emitSteamInputListenerWarning(codePrefix: string, code: string, error: unknown): void {
+  const cause = error instanceof Error ? error : new Error(String(error));
+  process.emitWarning(`${codePrefix}: ${cause.message}`, {
+    code,
+    detail: cause.stack
+  });
+}
+
+function assertNoActiveSteamInputSessionFrameAdvance(operation: string): void {
+  if (activeSteamInputSession) {
+    throw new Error(
+      `${operation} cannot advance Steam Input while a SteamInputSession is active; call session.update() exactly once per game frame`
+    );
+  }
+}
+
+function steamInputWaitTimeout(value: number): number {
+  if (!Number.isInteger(value) || value < 0 || value > STEAM_INPUT_MAX_WAIT_MS) {
+    throw new RangeError(
+      `Steam Input data wait timeout must be an integer from 0 through ${STEAM_INPUT_MAX_WAIT_MS} ms`
+    );
+  }
+  return value;
 }
 
 function normalizeInputType(value: string): InputTypeValue {

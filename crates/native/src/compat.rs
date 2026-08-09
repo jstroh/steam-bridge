@@ -8059,9 +8059,7 @@ pub fn input_poll_snapshot(
         .enumerate()
         .map(|(index, value)| bigint_to_u64(value, &format!("analog action handle {index}")))
         .collect::<Result<Vec<_>, _>>()?;
-    if digital_actions.iter().any(|handle| *handle == 0)
-        || analog_actions.iter().any(|handle| *handle == 0)
-    {
+    if digital_actions.contains(&0) || analog_actions.contains(&0) {
         return Err(Error::from_reason(
             "Steam Input polling does not accept unresolved zero action handles",
         ));
@@ -8102,15 +8100,17 @@ fn validate_input_poll_action_counts(
     digital_action_count: usize,
     analog_action_count: usize,
 ) -> Result<(), Error> {
-    if digital_action_count > 128 {
-        return Err(Error::from_reason(
-            "Steam Input polling accepts at most 128 digital action handles",
-        ));
+    let max_digital_actions = sys::STEAM_INPUT_MAX_DIGITAL_ACTIONS as usize;
+    let max_analog_actions = sys::STEAM_INPUT_MAX_ANALOG_ACTIONS as usize;
+    if digital_action_count > max_digital_actions {
+        return Err(Error::from_reason(format!(
+            "Steam Input polling accepts at most {max_digital_actions} digital action handles"
+        )));
     }
-    if analog_action_count > 16 {
-        return Err(Error::from_reason(
-            "Steam Input polling accepts at most 16 analog action handles",
-        ));
+    if analog_action_count > max_analog_actions {
+        return Err(Error::from_reason(format!(
+            "Steam Input polling accepts at most {max_analog_actions} analog action handles"
+        )));
     }
     Ok(())
 }
@@ -26935,9 +26935,11 @@ mod lifecycle_resource_tests {
         assert!(validate_workshop_playtime_item_count(MAX_WORKSHOP_PLAYTIME_ITEMS + 1).is_err());
 
         assert!(validate_input_poll_action_counts(0, 0).is_ok());
-        assert!(validate_input_poll_action_counts(128, 16).is_ok());
-        assert!(validate_input_poll_action_counts(129, 16).is_err());
-        assert!(validate_input_poll_action_counts(128, 17).is_err());
+        let max_digital = sys::STEAM_INPUT_MAX_DIGITAL_ACTIONS as usize;
+        let max_analog = sys::STEAM_INPUT_MAX_ANALOG_ACTIONS as usize;
+        assert!(validate_input_poll_action_counts(max_digital, max_analog).is_ok());
+        assert!(validate_input_poll_action_counts(max_digital + 1, max_analog).is_err());
+        assert!(validate_input_poll_action_counts(max_digital, max_analog + 1).is_err());
     }
 
     #[test]
@@ -27138,7 +27140,7 @@ mod lifecycle_resource_tests {
                 unsafe { ptr::copy_nonoverlapping(b"part".as_ptr().cast::<i8>(), buffer, 4) };
                 *size = 9;
             } else {
-                unsafe { ptr::copy_nonoverlapping(b"complete\0".as_ptr().cast::<i8>(), buffer, 9) };
+                unsafe { ptr::copy_nonoverlapping(c"complete".as_ptr(), buffer, 9) };
                 *size = 9;
             }
             true
@@ -27155,7 +27157,7 @@ mod lifecycle_resource_tests {
                 unsafe { ptr::copy_nonoverlapping(b"part".as_ptr().cast::<i8>(), buffer, 4) };
                 *size = 4;
             } else {
-                unsafe { ptr::copy_nonoverlapping(b"ok\0".as_ptr().cast::<i8>(), buffer, 3) };
+                unsafe { ptr::copy_nonoverlapping(c"ok".as_ptr(), buffer, 3) };
                 *size = 3;
             }
             true

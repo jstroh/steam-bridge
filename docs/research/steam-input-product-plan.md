@@ -8,7 +8,7 @@ lanes below and is not claimed from a machine with no connected controller.
 
 ## Implementation result
 
-The active worktree at base commit `03c0f02969e1ce4c3f257d92fcdab93cba3e7606`
+The active worktree at base commit `2927d39` (`Record steam-bridge 0.3.20 release`)
 implements every product layer selected by this plan:
 
 - corrected forward-safe raw Steam Input ABI/lifecycle behavior, explicit
@@ -18,9 +18,10 @@ implements every product layer selected by this plan:
   overwrite-safe typed-definition CLI;
 - one-call native frame snapshots and typed `SteamInputSession` state with
   cached handles, edges, two-controller/max-action coverage, disconnect release
-  snapshots, queued unresolved action sets, truthful merged-device semantics,
-  isolated consumer snapshots, active-controller tracking, and diagnostics;
-- revision-aware localized prompts, rebinding, vibration/LED helpers, and
+  snapshots, retained action-set selection across frames/hot-plug, queued
+  unresolved layers, truthful merged-device semantics, isolated consumer
+  snapshots, drift-resistant active-controller tracking, and diagnostics;
+- live-origin localized prompts, rebinding, vibration/LED helpers, and
   explicit failure diagnostics;
 - an acknowledged/coalescing Electron MessagePort transport with renderer and
   peer-port lifecycle cleanup, rollback on failed handoff, and queue metrics;
@@ -28,9 +29,9 @@ implements every product layer selected by this plan:
   runner, a sample manifest/generated definition, and the public human guide.
 
 Final Windows automated evidence on 2026-08-08 is green: `npm test` passed
-400/400 JavaScript/TypeScript tests and 49/49 Rust tests; `package:smoke`,
+417/417 JavaScript/TypeScript tests and 49/49 Rust tests; `package:smoke`,
 `api:check`, `check:platform`, `native:fmt`, `native:check`, and
-`git diff --check` passed. A live App ID 480 lifecycle probe and the runnable
+strict Clippy and `git diff --check` passed. A live App ID 480 lifecycle probe and the runnable
 diagnostic both initialized Steam, produced monotonic batched frames, and shut
 down cleanly. Steam enumerated zero controllers and App ID 480 had no matching
 example actions, so button edges, device glyphs, output, rebinding, and the
@@ -58,8 +59,8 @@ top of the existing raw `client.input` facade. Its public contract should be:
   controller per game frame;
 - digital edge state, controller lifecycle, and the active controller are
   tracked by the session;
-- prompts are derived from the action's current Steam origins and are
-  invalidated when the controller configuration changes;
+- prompts are derived freshly from the action's current Steam origins whenever
+  displayed, so rebinding does not depend on a callback or revision arriving;
 - Steam owns the rebinding UI through `ShowBindingPanel`;
 - Electron gets an optional main-to-renderer transport without loading the
   Steam native addon in two processes; and
@@ -100,8 +101,8 @@ That surface has four important usability problems:
 4. The native addon is process-global and main-thread-only. An Electron game
    must not initialize a second Steam client in its renderer just to read input.
 
-The review also found foundation defects that should be repaired before the new
-surface is built:
+The review also found these foundation defects; the implemented high-level
+surface now repairs or rejects each one:
 
 - `input.runFrame()` currently defaults the SDK's reserved Boolean argument to
   `false`; the current SDK header declares the reserved default as `true`.
@@ -111,7 +112,9 @@ surface is built:
   which can defeat Steam's future-proof glyph path for a newly added device.
 - `getDigitalActionStateByName()` resolves handles on every call and silently
   activates an action set. Reading state should not mutate controller context.
-- `waitForData(true)` is synchronous and can block Node's main thread forever.
+- `waitForData(true)` was synchronous and could block Node's main thread
+  forever. Infinite waits are rejected, and finite synchronous/asynchronous
+  waits are capped at 60 seconds to keep accidental main-thread stalls bounded.
 - Valve exposes only one direct action-event callback. The raw facade mirrors
   that restriction instead of providing one native owner with safe JavaScript
   subscriber multiplexing and bounded delivery.
@@ -142,8 +145,9 @@ button.
 
 The session will not start an arbitrary hidden 60 Hz JavaScript timer. The game
 loop calls `session.update()` once per game frame. That call runs the Steam
-Input frame update once and returns one coherent, batched snapshot. Duplicate
-calls in the same declared frame may be coalesced.
+Input frame update once and returns one coherent, batched snapshot. Each call is
+a real sample; duplicate calls consume separate edge frames and are a caller
+bug, not something the session silently coalesces.
 
 An optional wait-driven native input pump can be considered only after the
 manual batched path is implemented and benchmarked. `BWaitForData` is designed
@@ -162,8 +166,9 @@ authority for complete controller-configuration validation.
 
 The session opens Steam's binding panel and reports whether it opened. It does
 not implement a competing controller-remapping UI. A later
-`SteamInputConfigurationLoaded_t` event is the signal to invalidate prompts and
-refresh configuration metadata.
+`SteamInputConfigurationLoaded_t` event refreshes configuration metadata.
+Prompt origins are re-queried when requested, as Valve recommends, so
+correctness does not depend on that event being delivered first.
 
 ### Derive prompts from action origins
 
@@ -356,17 +361,17 @@ plain JavaScript definition works without code generation.
 
 Acceptance: maximum declared actions across two simulated controllers require
 one native sampling call per game frame; edge transitions occur exactly once;
-hotplug and delayed configuration loading recover without restart; update never
-changes the active action set.
+hotplug and delayed configuration loading recover without restart; update
+reapplies only the action set explicitly selected by the session.
 
 ### P3 - Prompts, rebinding, outputs, and Electron delivery
 
 1. Add action-aware digital and analog prompt descriptors with Steam glyph
    paths, localized strings, all bound origins, and documented custom-art
    fallback.
-2. Cache prompt descriptors by controller, action set, action, style, and
-   binding revision. Invalidate on configuration load, device changes, slot
-   changes, or revision changes.
+2. Re-query prompt origins each time the game requests a displayed prompt, as
+   Valve recommends. The earlier revision-keyed whole-prompt cache was removed
+   because a missing or delayed callback could leave UI stale after rebinding.
 3. Wrap the binding panel with clear unavailable/overlay-disabled diagnostics;
    observe configuration reload rather than pretending the panel has a close
    result Valve does not provide.
@@ -410,7 +415,7 @@ binding panel, and package the same code on every supported platform.
 - merged all-controller mode;
 - action-set switch and ordered layer activation/deactivation;
 - repeated same-set activation and layer idempotence;
-- configuration revision change and prompt-cache invalidation;
+- live rebinding with fresh prompt origins even before callback/revision state;
 - unknown future action origin passed through to Steam glyph helpers;
 - analog source modes, dead values, negative axes, and no `NaN`/infinity;
 - action-event listener multiplexing, slow listener, and bounded queue;

@@ -27,8 +27,9 @@ path as `STEAM_INPUT_MANIFEST`. For a deployed Steam app, omit that override so
 Steam uses the manifest configured for the depot.
 
 The context-isolated Electron inspector demonstrates renderer-cadenced polling,
-bounded MessagePort delivery, prompts, rebinding, and diagnostics without
-exposing `ipcRenderer` or the native Steam client:
+one-in-flight request backpressure, bounded MessagePort delivery, prompts,
+rebinding, and diagnostics without exposing `ipcRenderer` or the native Steam
+client:
 
 ```sh
 npx electron ./electron-main.cjs

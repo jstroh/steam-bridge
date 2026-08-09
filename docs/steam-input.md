@@ -22,11 +22,13 @@ means the main process. Do not initialize Steamworks again in a renderer.
 
 Use Valve's action-manifest format and bundle official controller layouts in
 the same depot. Steam Bridge validates KeyValues syntax, the exact Valve action
-categories and controller-type names, action/set/layer name collisions,
-configuration priorities, action limits, English localization fallbacks,
-parent-set links, and referenced layout files. Generation refuses to overwrite
-the source manifest and replaces an existing output atomically, so an
-interrupted write cannot leave a half-generated definition.
+shapes, categories, input modes, and controller-type names, action/set/layer
+name collisions, canonical configuration priorities, action limits, required
+`#` titles, English localization fallbacks, parent-set links, and referenced
+`controller_mappings` layout files. Windows path separators are preserved.
+Generation refuses to overwrite the source manifest and replaces an existing
+output atomically, so an interrupted write cannot leave a half-generated
+definition.
 
 ```sh
 npx steam-bridge-input validate ./input/steam_input_manifest.vdf
@@ -46,9 +48,10 @@ The generated file exports `steamInputDefinition` through
 so misspelled actions fail TypeScript instead of becoming zero handles at
 runtime.
 
-Valve currently limits a manifest to 128 unique digital actions and 16 unique
-analog actions. Keep a dedicated menu action set, give every referenced title
-an English fallback, and select **Any Future Devices** in the Steamworks Steam
+The bundled `SteamInput006` SDK permits 256 unique digital actions and 24
+unique analog actions. (Valve's older `SteamInput001` web reference still
+shows 128/16.) Keep a dedicated menu action set, give every referenced title an
+English fallback, and select **Any Future Devices** in the Steamworks Steam
 Input settings. See Valve's [getting-started guide](https://partner.steamgames.com/doc/features/steam_controller/getting_started_for_devs)
 and [action-manifest guide](https://partner.steamgames.com/doc/features/steam_controller/action_manifest_file).
 
@@ -64,6 +67,8 @@ const client = steamworks.init(MY_APP_ID);
 const steamInput = client.input.createSession({
   definition: steamInputDefinition,
   controllers: "individual",
+  // Primary-controller/prompt selection only. Gameplay values are untouched.
+  activeControllerAnalogThreshold: 0.1,
   // Development override only. Use an absolute path. Omit this in a deployed
   // Steam build so Steam uses the manifest configured for the depot.
   manifestPath: process.env.STEAM_INPUT_MANIFEST
@@ -104,8 +109,10 @@ function updateGame(): void {
 ```
 
 `update()` calls Valve's `RunFrame(true)`, enumerates controllers once, and
-reads every resolved digital and analog action in one native crossing. Do not
-also call `input.runFrame()` in the same loop.
+reads every resolved digital and analog action in one native crossing. While a
+session is active, Steam Bridge rejects raw `input.runFrame()` and
+`input.getControllers()` calls because both advance Valve's frame state; use
+the session snapshot as the single frame owner.
 
 Digital state has four fields:
 
@@ -131,13 +138,18 @@ When no physical Steam Input controller is connected, the merged view and
 as a device. When devices exist, the merged view carries the active physical
 primary controller's type, gamepad slot, action-set/layer, Remote Play, and
 binding-revision metadata. Returned frames are isolated snapshots: changing a
-consumer-owned object cannot corrupt edge detection, prompt caching, events, or
+consumer-owned object cannot corrupt edge detection, prompt results, events, or
 the next frame.
 
 For local multiplayer, consume `frame.controllers` and assign stable controller
 handles to player seats. For a single-player game, use `primaryController`. It
-starts with the first controller and moves to the controller that produces
-digital or analog activity.
+starts with the first controller and moves on a digital press or intentional
+analog motion. The default `activeControllerAnalogThreshold` is `0.1`, which
+prevents ordinary stick drift or a return-to-neutral edge from stealing the
+primary device and changing UI glyphs. Configure a finite value greater than
+zero and at most one when the game's action scale needs a different selection
+threshold. This heuristic never clamps, rescales, or filters the analog action
+values read by the game.
 
 Steam Input does not replace keyboard, mouse, touch, or accessibility input.
 Valve recommends accepting mixed input instead of disabling one input family
@@ -162,9 +174,21 @@ compatibility but is deprecated because it activates the set as a side effect.
 
 Action handles can legitimately remain zero while Steam is still loading a
 configuration. `activateActionSet()` queues an unresolved named set per target
-controller, emits `STEAM_INPUT_ACTION_SET_QUEUED`, and applies the newest queued
-set after resolution. This makes the common immediate-after-`start()` call safe
-without hiding genuinely unknown names from diagnostics.
+controller, emits `STEAM_INPUT_ACTION_SET_QUEUED`, and applies the newest
+selection after resolution. The selected set remains authoritative and is
+reapplied before later polls and after device/configuration callbacks, matching
+Valve's recommendation to keep the current game-state set active and ensuring
+hot-plugged controllers do not start in the wrong set. Selecting a new set for
+all controllers clears stale per-controller overrides; later per-controller
+selections override that shared default.
+
+`activateActionLayer()` likewise queues unresolved layers. Calling
+`deactivateActionLayer()` cancels that named queued activation, while
+`deactivateAllActionLayers()` cancels every queued layer for the target before
+forwarding the native reset. Disconnect and disposal clear pending work. Unlike
+base action sets, layers are not replayed every frame: Valve documents that
+layer order changes behavior and recommends applying/removing them only on
+specific game-state transitions.
 
 ## Controller prompts and rebinding
 
@@ -183,11 +207,11 @@ if (!steamInput.showBindingPanel()) {
 
 Prompts use the controller's current action set unless `actionSet` is passed.
 They include every bound origin, Valve's localized action/origin labels, and
-Steam-client PNG/SVG glyph paths. Cache entries include device binding
-revision and are cleared by device/configuration/slot callbacks, so a changed
-binding produces new prompt data. Keep a keyboard/mouse fallback in UI when no
-Steam prompt is available. Prompt results are returned as isolated copies, so
-UI code cannot mutate the session's cached prompt.
+Steam-client PNG/SVG glyph paths. Every prompt request re-queries its origins,
+matching Valve's guidance for live rebinding instead of depending on a
+configuration callback or revision value arriving first. Keep a keyboard/mouse
+fallback in UI when no Steam prompt is available. Prompt results are returned
+as isolated copies, so UI code cannot mutate later results.
 
 `showBindingPanel()` opens Steam's controller configurator for a concrete
 controller. It returns `false` and emits a diagnostic if Steam cannot open it;
@@ -227,12 +251,16 @@ warning.disconnect();
 Session events are `controller-connected`, `controller-disconnected`,
 `active-controller-changed`, `configuration-loaded`, `gamepad-slot-changed`,
 and `diagnostic`. Diagnostics report lifecycle state, manifest override,
-controller mode/count, primary handle, last sequence, and every unresolved
-manifest name. Zero handles are retried after updates and Steam device or
-configuration callbacks rather than being treated as permanent failures.
+controller mode/count, primary-selection threshold, primary handle, last
+sequence, and every unresolved manifest name. Zero handles are retried after
+updates and Steam device or configuration callbacks rather than being treated
+as permanent failures.
 When a controller disappears while an action is held, the disconnect event's
 `releasedController` contains a final zeroed snapshot and exactly one release
 edge for each held action. Use it to clear per-player state immediately.
+Each listener receives its own event snapshot. A listener mutation cannot
+change another listener's value, and both synchronous throws and asynchronous
+rejections are contained and reported as process warnings.
 
 ## Electron: bounded main-to-renderer delivery
 
@@ -241,6 +269,10 @@ When gameplay runs in a context-isolated renderer, transfer a private
 flight; while the renderer is behind it replaces old pending frames with the
 newest one. Navigation, renderer failure, `webContents` destruction, or either
 `MessagePort` endpoint closing closes the transport and removes every listener.
+Published sequences must be canonical unsigned integers and strictly increase;
+the renderer acknowledges only validated protocol-versioned frames. Listener,
+port-start, send, and acknowledgement failures are contained and close the
+affected transport instead of escaping an Electron callback.
 
 Main process:
 

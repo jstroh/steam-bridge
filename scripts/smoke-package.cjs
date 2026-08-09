@@ -261,8 +261,8 @@ function runMacosPackageSigningStaticChecks() {
   }
   assert.ok(packageJson.files.includes("bin"), "steam-bridge package must publish verifier CLI files");
   assert.ok(steamInputScript.includes("steam-bridge-input generate"));
-  assert.ok(steamInputScript.includes("MAX_DIGITAL_ACTIONS = 128"));
-  assert.ok(steamInputScript.includes("MAX_ANALOG_ACTIONS = 16"));
+  assert.ok(steamInputScript.includes("MAX_DIGITAL_ACTIONS = 256"));
+  assert.ok(steamInputScript.includes("MAX_ANALOG_ACTIONS = 24"));
   assert.ok(packageJson.files.includes("templates"), "steam-bridge package must publish macOS launcher templates");
   assert.equal(
     examplePackageJson.scripts?.["package:mac"],

@@ -4,20 +4,15 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const steamworks = require("steam-bridge");
 const { createElectronSteamInputTransport } = require("steam-bridge/electron");
+const inputDefinition = require("./definition.cjs");
 
 const APP_ID = Number(process.env.STEAM_APP_ID || 480);
-const definition = steamworks.defineSteamInput({
-  actionSets: { gameplay: "Gameplay" },
-  actionLayers: { menu: "MenuLayer" },
-  digital: { jump: "Jump", pause: "Pause" },
-  analog: { move: "Move" }
-});
+const definition = steamworks.defineSteamInput(inputDefinition);
 
 let client;
 let session;
 let transport;
 let gameWindow;
-let gameplaySetActive = false;
 let shuttingDown = false;
 
 function fromGameRenderer(event) {
@@ -55,6 +50,7 @@ async function start() {
       ? path.resolve(process.env.STEAM_INPUT_MANIFEST)
       : null
   }).start();
+  session.activateActionSet("gameplay");
 
   gameWindow = new BrowserWindow({
     width: 960,
@@ -71,16 +67,17 @@ async function start() {
   transport = createElectronSteamInputTransport(session, gameWindow.webContents);
 
   ipcMain.on("steam-input-example:frame", (event) => {
-    if (!fromGameRenderer(event) || !session || !transport || transport.closed) return;
+    if (!fromGameRenderer(event)) return;
     try {
-      const frame = session.update();
-      if (!gameplaySetActive && session.getDiagnostics().resolvedActionSetCount > 0) {
-        session.activateActionSet("gameplay");
-        gameplaySetActive = true;
+      if (!session || !transport || transport.closed) {
+        throw new Error("Steam Input transport is unavailable");
       }
+      const frame = session.update();
       transport.publish(frame);
     } catch (error) {
       event.sender.send("steam-input-example:error", error instanceof Error ? error.message : String(error));
+    } finally {
+      if (!event.sender.isDestroyed()) event.sender.send("steam-input-example:frame-complete");
     }
   });
   ipcMain.handle("steam-input-example:prompt", (event, action) => {

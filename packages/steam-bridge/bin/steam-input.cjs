@@ -7,10 +7,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const MAX_DIGITAL_ACTIONS = 128;
-const MAX_ANALOG_ACTIONS = 16;
+// SteamInput006 limits from the bundled Steamworks SDK header. Valve's older
+// SteamInput001 web reference still shows 128 digital and 16 analog actions.
+const MAX_DIGITAL_ACTIONS = 256;
+const MAX_ANALOG_ACTIONS = 24;
 const ANALOG_CATEGORIES = new Set(["stickpadgyro", "analogtrigger"]);
 const DIGITAL_CATEGORIES = new Set(["button"]);
+const STICK_PAD_GYRO_INPUT_MODES = new Set(["joystick_move", "absolute_mouse"]);
 const ACTION_CONTAINER_METADATA_KEYS = new Set(["title", "legacy_set", "set_layer", "parent_set_name"]);
 const SUPPORTED_CONTROLLER_TYPES = new Set([
   "controller_neptune",
@@ -186,28 +189,48 @@ function inspectManifest(filename, options = {}) {
   const localizationReferences = [];
   const seenSetNames = new Map();
   const seenLayerNames = new Map();
-  const actionsNode = child(root, "actions");
+  const actionsNodes = childrenNamed(root, "actions");
+  if (actionsNodes.length !== 1) {
+    errors.push(issue(root, `Expected exactly one actions block, found ${actionsNodes.length}.`));
+  }
+  const actionsNode = actionsNodes[0];
   if (!actionsNode?.children) {
     errors.push(issue(root, "Missing required actions block."));
   } else {
     for (const setNode of actionsNode.children) {
       validateUniqueName(setNode, seenSetNames, "action set", errors);
+      if (!setNode.children) {
+        errors.push(issue(setNode, `Action set \"${setNode.key}\" must be a block.`));
+        continue;
+      }
       actionSets.push(setNode.key);
-      collectTitleReference(setNode, localizationReferences);
+      validateLocalizedTitle(setNode, `Action set \"${setNode.key}\"`, localizationReferences, errors);
       collectActions(setNode, digital, analog, localizationReferences, errors);
     }
   }
+  if (actionSets.length === 0) errors.push(issue(actionsNode ?? root, "Manifest must define at least one action set."));
 
-  const layersNode = child(root, "action_layers");
+  const layerNodes = childrenNamed(root, "action_layers");
+  if (layerNodes.length > 1) {
+    errors.push(issue(layerNodes[1], `Expected at most one action_layers block, found ${layerNodes.length}.`));
+  }
+  const layersNode = layerNodes[0];
   if (layersNode?.children) {
     for (const layerNode of layersNode.children) {
       validateUniqueName(layerNode, seenLayerNames, "action layer", errors);
+      if (seenSetNames.has(lower(layerNode.key))) {
+        errors.push(issue(layerNode, `Action layer \"${layerNode.key}\" duplicates an action-set handle name.`));
+      }
+      if (!layerNode.children) {
+        errors.push(issue(layerNode, `Action layer \"${layerNode.key}\" must be a block.`));
+        continue;
+      }
       actionLayers.push(layerNode.key);
-      collectTitleReference(layerNode, localizationReferences);
+      validateLocalizedTitle(layerNode, `Action layer \"${layerNode.key}\"`, localizationReferences, errors);
       const parent = childValue(layerNode, "parent_set_name");
       if (!parent) {
         errors.push(issue(layerNode, `Action layer \"${layerNode.key}\" is missing parent_set_name.`));
-      } else if (!actionSets.includes(parent)) {
+      } else if (!seenSetNames.has(lower(parent))) {
         errors.push(issue(layerNode, `Action layer \"${layerNode.key}\" references unknown parent action set \"${parent}\".`));
       }
       collectActions(layerNode, digital, analog, localizationReferences, errors);
@@ -259,6 +282,7 @@ function collectActions(container, digital, analog, localizationReferences, erro
     errors.push(issue(container, `\"${container.key}\" must be a block.`));
     return;
   }
+  const seenCategories = new Map();
   for (const category of container.children) {
     const categoryName = lower(category.key);
     const target = DIGITAL_CATEGORIES.has(categoryName)
@@ -281,12 +305,63 @@ function collectActions(container, digital, analog, localizationReferences, erro
       );
       continue;
     }
+    const previousCategory = seenCategories.get(categoryName);
+    if (previousCategory) {
+      errors.push(
+        issue(
+          category,
+          `Duplicate action category \"${category.key}\" in \"${container.key}\"; first declared at line ${previousCategory.line}.`
+        )
+      );
+    } else {
+      seenCategories.set(categoryName, category);
+    }
     if (!category.children) {
       errors.push(issue(category, `Action category \"${category.key}\" must be a block.`));
       continue;
     }
     for (const actionNode of category.children) {
       const folded = lower(actionNode.key);
+      let signature;
+      if (categoryName === "stickpadgyro") {
+        if (!actionNode.children) {
+          errors.push(issue(actionNode, `StickPadGyro action \"${actionNode.key}\" must be a block with title and input_mode.`));
+          continue;
+        }
+        const title = validateLocalizedTitle(
+          actionNode,
+          `StickPadGyro action \"${actionNode.key}\"`,
+          localizationReferences,
+          errors
+        );
+        const inputModeNodes = childrenNamed(actionNode, "input_mode");
+        if (inputModeNodes.length !== 1 || inputModeNodes[0].value === undefined) {
+          errors.push(issue(actionNode, `StickPadGyro action \"${actionNode.key}\" must contain exactly one scalar input_mode.`));
+        }
+        const inputMode = lower(inputModeNodes[0]?.value ?? "");
+        if (inputMode && !STICK_PAD_GYRO_INPUT_MODES.has(inputMode)) {
+          errors.push(issue(inputModeNodes[0], `Unsupported StickPadGyro input_mode \"${inputModeNodes[0].value}\".`));
+        }
+        for (const metadata of actionNode.children) {
+          if (lower(metadata.key) !== "title" && lower(metadata.key) !== "input_mode") {
+            errors.push(issue(metadata, `Unknown StickPadGyro action metadata \"${metadata.key}\".`));
+          }
+        }
+        signature = `${categoryName}\0${title ?? ""}\0${inputMode}`;
+      } else {
+        if (actionNode.value === undefined) {
+          errors.push(issue(actionNode, `${category.key} action \"${actionNode.key}\" must be a scalar #localization reference.`));
+          continue;
+        }
+        const title = validateLocalizationReference(
+          actionNode.value,
+          actionNode,
+          `${category.key} action \"${actionNode.key}\"`,
+          localizationReferences,
+          errors
+        );
+        signature = `${categoryName}\0${title ?? ""}`;
+      }
       const previous = target.get(folded);
       if (previous && previous.name !== actionNode.key) {
         errors.push(
@@ -295,35 +370,62 @@ function collectActions(container, digital, analog, localizationReferences, erro
             `Action name \"${actionNode.key}\" differs only by case from \"${previous.name}\"; Steam action lookup is global.`
           )
         );
+      } else if (previous?.container === container) {
+        errors.push(issue(actionNode, `Action \"${actionNode.key}\" is declared more than once in \"${container.key}\".`));
+      } else if (previous && previous.signature !== signature) {
+        errors.push(issue(actionNode, `Global action \"${actionNode.key}\" has an inconsistent category, title, or input_mode.`));
       } else if (!previous) {
-        target.set(folded, { name: actionNode.key, node: actionNode });
-      }
-      if (actionNode.value !== undefined) {
-        collectLocalizationReference(actionNode.value, actionNode, localizationReferences);
-      } else {
-        collectTitleReference(actionNode, localizationReferences);
+        target.set(folded, { name: actionNode.key, node: actionNode, container, signature });
       }
     }
   }
 }
 
-function collectTitleReference(node, references) {
-  const titleNode = child(node, "title");
-  if (titleNode?.value !== undefined) collectLocalizationReference(titleNode.value, titleNode, references);
+function validateLocalizedTitle(node, label, references, errors) {
+  const titleNodes = childrenNamed(node, "title");
+  if (titleNodes.length !== 1 || titleNodes[0].value === undefined) {
+    errors.push(issue(node, `${label} must contain exactly one scalar title.`));
+    return undefined;
+  }
+  return validateLocalizationReference(titleNodes[0].value, titleNodes[0], label, references, errors);
 }
 
-function collectLocalizationReference(value, node, references) {
-  const match = /^#([^,\s]+)/.exec(value.trim());
-  if (match) references.push({ key: match[1], node });
+function validateLocalizationReference(value, node, label, references, errors) {
+  const match = /^#([^,\s]+)$/.exec(value.trim());
+  if (!match) {
+    errors.push(issue(node, `${label} title must be one #localization reference.`));
+    return undefined;
+  }
+  references.push({ key: match[1], node });
+  return match[1];
 }
 
 function validateLocalization(root, references, errors, warnings) {
-  const localization = child(root, "localization");
+  const localizationNodes = childrenNamed(root, "localization");
+  if (localizationNodes.length > 1) {
+    errors.push(issue(localizationNodes[1], `Expected at most one localization block, found ${localizationNodes.length}.`));
+  }
+  const localization = localizationNodes[0];
   if (!localization?.children) {
     if (references.length > 0) errors.push(issue(root, "Localized titles are referenced but the localization block is missing."));
     return;
   }
-  const english = localization.children.find((entry) => lower(entry.key) === "english");
+  const seenLanguages = new Map();
+  for (const language of localization.children) {
+    validateUniqueName(language, seenLanguages, "localization language", errors);
+    if (!language.children) {
+      errors.push(issue(language, `Localization language \"${language.key}\" must be a block.`));
+      continue;
+    }
+    const languageKeys = new Map();
+    for (const entry of language.children) {
+      validateUniqueName(entry, languageKeys, `${language.key} localization key`, errors);
+      if (entry.value === undefined) {
+        errors.push(issue(entry, `Localization key \"${entry.key}\" must be a scalar value.`));
+      }
+    }
+  }
+  const english = seenLanguages.get("english");
   if (!english?.children) {
     errors.push(issue(localization, "Localization must include an English fallback block."));
     return;
@@ -331,11 +433,7 @@ function validateLocalization(root, references, errors, warnings) {
   const keys = new Map();
   for (const entry of english.children) {
     const folded = lower(entry.key);
-    if (keys.has(folded)) {
-      errors.push(issue(entry, `Duplicate English localization key \"${entry.key}\".`));
-    } else {
-      keys.set(folded, entry);
-    }
+    if (!keys.has(folded)) keys.set(folded, entry);
   }
   for (const reference of references) {
     if (!keys.has(lower(reference.key))) {
@@ -348,7 +446,11 @@ function validateLocalization(root, references, errors, warnings) {
 }
 
 function validateConfigurationFiles(root, filename, checkFiles, errors, warnings) {
-  const configurations = child(root, "configurations");
+  const configurationNodes = childrenNamed(root, "configurations");
+  if (configurationNodes.length > 1) {
+    errors.push(issue(configurationNodes[1], `Expected at most one configurations block, found ${configurationNodes.length}.`));
+  }
+  const configurations = configurationNodes[0];
   if (!configurations) {
     if (lower(root.key) === "action manifest") {
       warnings.push(issue(root, "Action Manifest has no configurations block; no official bundled layouts can be verified."));
@@ -360,7 +462,9 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
     return;
   }
   const base = path.dirname(filename);
+  const seenControllerTypes = new Map();
   for (const controllerType of configurations.children) {
+    validateUniqueName(controllerType, seenControllerTypes, "controller configuration type", errors);
     if (!SUPPORTED_CONTROLLER_TYPES.has(lower(controllerType.key))) {
       errors.push(issue(controllerType, `Unsupported Steam Input controller type "${controllerType.key}".`));
     }
@@ -372,21 +476,25 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
     for (const configuration of controllerType.children) {
       if (!/^\d+$/.test(configuration.key)) {
         errors.push(issue(configuration, `Controller configuration priority "${configuration.key}" must be a non-negative integer.`));
-      } else if (priorities.has(configuration.key)) {
-        errors.push(issue(configuration, `Duplicate controller configuration priority "${configuration.key}".`));
       } else {
-        priorities.add(configuration.key);
+        const canonicalPriority = BigInt(configuration.key).toString();
+        if (priorities.has(canonicalPriority)) {
+          errors.push(issue(configuration, `Duplicate controller configuration priority "${configuration.key}".`));
+        } else {
+          priorities.add(canonicalPriority);
+        }
       }
       if (!configuration.children) {
         errors.push(issue(configuration, `Configuration ${controllerType.key}/${configuration.key} must be a block.`));
         continue;
       }
-      const pathNode = child(configuration, "path");
-      if (!pathNode?.value) {
+      const pathNodes = childrenNamed(configuration, "path");
+      const pathNode = pathNodes[0];
+      if (pathNodes.length !== 1 || !pathNode?.value) {
         errors.push(issue(configuration, `Configuration ${controllerType.key}/${configuration.key} is missing path.`));
         continue;
       }
-      if (path.isAbsolute(pathNode.value)) {
+      if (path.isAbsolute(pathNode.value) || path.win32.isAbsolute(pathNode.value) || path.posix.isAbsolute(pathNode.value)) {
         errors.push(issue(pathNode, `Configuration path must be relative to the action manifest: ${pathNode.value}`));
         continue;
       }
@@ -396,9 +504,24 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
           errors.push(issue(pathNode, `Referenced controller configuration does not exist: ${resolved}`));
         } else if (!fs.statSync(resolved).isFile()) {
           errors.push(issue(pathNode, `Referenced controller configuration is not a file: ${resolved}`));
+        } else {
+          validateControllerConfigurationFile(resolved, pathNode, errors);
         }
       }
     }
+  }
+}
+
+function validateControllerConfigurationFile(filename, sourceNode, errors) {
+  try {
+    const source = fs.readFileSync(filename, "utf8").replace(/^\uFEFF/, "");
+    const entries = parseKeyValues(source, filename);
+    const roots = entries.filter((entry) => lower(entry.key) === "controller_mappings");
+    if (roots.length !== 1 || !roots[0].children) {
+      errors.push(issue(sourceNode, `Referenced controller configuration must contain exactly one controller_mappings root: ${filename}`));
+    }
+  } catch (error) {
+    errors.push(issue(sourceNode, `Referenced controller configuration is invalid: ${error.message}`));
   }
 }
 
@@ -534,13 +657,10 @@ function tokenizeKeyValues(source, filename) {
           closed = true;
           break;
         }
-        if (current === "\\") {
-          if (index >= source.length) break;
-          const escaped = advance();
-          value += escaped === "n" ? "\n" : escaped === "t" ? "\t" : escaped;
-        } else {
-          value += current;
-        }
+        // Valve's KeyValues parser leaves escape sequences disabled by default.
+        // Preserve backslashes so Windows-relative configuration paths do not
+        // silently change (for example configs\\xbox.vdf -> configsxbox.vdf).
+        value += current;
       }
       if (!closed) throw syntaxError(filename, { line: tokenLine, column: tokenColumn }, "Unclosed quoted string.");
       tokens.push({ type: "word", value, line: tokenLine, column: tokenColumn });
@@ -556,6 +676,11 @@ function tokenizeKeyValues(source, filename) {
 
 function child(node, name) {
   return node?.children?.find((entry) => lower(entry.key) === lower(name));
+}
+
+function childrenNamed(node, name) {
+  const folded = lower(name);
+  return node?.children?.filter((entry) => lower(entry.key) === folded) ?? [];
 }
 
 function childValue(node, name) {
@@ -728,6 +853,69 @@ function runSelfTest() {
     assert.ok(badConfigurationResult.errors.some((entry) => /must be a non-negative integer/.test(entry.message)));
     assert.ok(badConfigurationResult.errors.some((entry) => /is not a file/.test(entry.message)));
 
+    const malformedActions = path.join(root, "malformed-actions.vdf");
+    fs.writeFileSync(
+      malformedActions,
+      `"In Game Actions" {
+        "actions" { "Game" {
+          "title" "Game"
+          "Button" { "Fire" { "title" "#Action_Fire" } }
+          "StickPadGyro" { "Move" { "title" "#Action_Move" "input_mode" "trackball" } }
+        } }
+        "localization" { "english" { "Action_Fire" "Fire" "Action_Move" "Move" } }
+      }`
+    );
+    const malformedActionsResult = inspectManifest(malformedActions);
+    assert.ok(malformedActionsResult.errors.some((entry) => /title must be one #localization reference/.test(entry.message)));
+    assert.ok(malformedActionsResult.errors.some((entry) => /Button action .* must be a scalar/.test(entry.message)));
+    assert.ok(malformedActionsResult.errors.some((entry) => /Unsupported StickPadGyro input_mode/.test(entry.message)));
+
+    const duplicatePriority = path.join(root, "duplicate-priority.vdf");
+    fs.writeFileSync(
+      duplicatePriority,
+      `"Action Manifest" {
+        "configurations" { "controller_xboxone" {
+          "1" { "path" "xbox.vdf" }
+          "01" { "path" "xbox.vdf" }
+        } }
+        "actions" { "Game" { "title" "#Set_Game" "Button" { "Fire" "#Action_Fire" } } }
+        "localization" { "english" { "Set_Game" "Game" "Action_Fire" "Fire" } }
+      }`
+    );
+    const duplicatePriorityResult = inspectManifest(duplicatePriority, { checkFiles: true });
+    assert.ok(duplicatePriorityResult.errors.some((entry) => /Duplicate controller configuration priority/.test(entry.message)));
+
+    const invalidConfig = path.join(root, "invalid-controller.vdf");
+    fs.writeFileSync(invalidConfig, '"not_controller_mappings" { "version" "3" }');
+    const invalidConfigManifest = path.join(root, "invalid-controller-manifest.vdf");
+    fs.writeFileSync(
+      invalidConfigManifest,
+      `"Action Manifest" {
+        "configurations" { "controller_xboxone" { "0" { "path" "invalid-controller.vdf" } } }
+        "actions" { "Game" { "title" "#Set_Game" "Button" { "Fire" "#Action_Fire" } } }
+        "localization" { "english" { "Set_Game" "Game" "Action_Fire" "Fire" } }
+      }`
+    );
+    const invalidConfigResult = inspectManifest(invalidConfigManifest, { checkFiles: true });
+    assert.ok(invalidConfigResult.errors.some((entry) => /exactly one controller_mappings root/.test(entry.message)));
+
+    const windowsAbsolutePath = path.join(root, "windows-absolute-path.vdf");
+    fs.writeFileSync(
+      windowsAbsolutePath,
+      String.raw`"Action Manifest" {
+        "configurations" { "controller_xboxone" { "0" { "path" "C:\\configs\\xbox.vdf" } } }
+        "actions" { "Game" { "title" "#Set_Game" "Button" { "Fire" "#Action_Fire" } } }
+        "localization" { "english" { "Set_Game" "Game" "Action_Fire" "Fire" } }
+      }`
+    );
+    const windowsAbsolutePathResult = inspectManifest(windowsAbsolutePath);
+    assert.ok(windowsAbsolutePathResult.errors.some((entry) => /path must be relative/.test(entry.message)));
+
+    assert.equal(
+      parseKeyValues(String.raw`"path" "configs\xbox.vdf"`, "windows-path.vdf")[0].value,
+      String.raw`configs\xbox.vdf`
+    );
+
     assert.throws(
       () => parseKeyValues('"broken" { "x"', "broken.vdf"),
       /Missing value or block|Unclosed KeyValues block/
@@ -754,6 +942,23 @@ function runSelfTest() {
       fs.readdirSync(root).filter((entry) => entry.endsWith(".tmp")),
       []
     );
+
+    const exampleDirectory = path.resolve(__dirname, "../../../examples/steam-input");
+    const exampleManifest = path.join(exampleDirectory, "steam_input_manifest.vdf");
+    if (fs.existsSync(exampleManifest)) {
+      const exampleResult = inspectManifest(exampleManifest, { checkFiles: true });
+      assert.deepEqual(exampleResult.errors, []);
+      assert.equal(
+        fs.readFileSync(path.join(exampleDirectory, "steam-input.generated.ts"), "utf8"),
+        generateTypeScriptDefinition(exampleResult, exampleManifest),
+        "the checked-in generated example definition must match its manifest"
+      );
+      const commonJsDefinition = require(path.join(exampleDirectory, "definition.cjs"));
+      assert.deepEqual(Object.values(commonJsDefinition.actionSets).sort(compareText), exampleResult.actionSets);
+      assert.deepEqual(Object.values(commonJsDefinition.actionLayers).sort(compareText), exampleResult.actionLayers);
+      assert.deepEqual(Object.values(commonJsDefinition.digital).sort(compareText), exampleResult.digitalActions);
+      assert.deepEqual(Object.values(commonJsDefinition.analog).sort(compareText), exampleResult.analogActions);
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

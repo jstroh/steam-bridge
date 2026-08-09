@@ -87,6 +87,51 @@ For action manifests, generated TypeScript names, one-call game-frame polling,
 button edges, controller prompts, rebinding, output, diagnostics, and bounded
 Electron delivery, use the [Steam Input guide](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-input.md).
 
+## Steam Input quick start
+
+Generate the game-facing definition from the same Valve manifest shipped in
+the depot:
+
+```sh
+npx steam-bridge-input validate ./input/steam_input_manifest.vdf
+npx steam-bridge-input generate ./input/steam_input_manifest.vdf --out ./src/steam-input.generated.ts
+```
+
+Keep one session beside the initialized client and poll it exactly once per
+game frame:
+
+```ts
+import steamworks from "steam-bridge";
+import { steamInputDefinition } from "./steam-input.generated";
+
+const client = steamworks.init(MY_APP_ID);
+const input = client.input.createSession({
+  definition: steamInputDefinition,
+  controllers: "individual"
+}).start();
+
+input.activateActionSet("gameplay");
+
+function updateGame(): void {
+  const controller = input.update().primaryController;
+  if (controller?.digital.jump.pressedThisFrame) player.jump();
+  if (controller?.analog.move.active) {
+    player.move(controller.analog.move.x, controller.analog.move.y);
+  }
+}
+```
+
+The session retains the selected action set across frames and controller
+hot-plug, ignores ordinary analog drift when choosing the primary prompt
+device, and synthesizes release edges on disconnect. It does not suppress
+keyboard or mouse input. Omit `manifestPath` in production so Steam uses the
+depot configuration; an absolute override is for local development only.
+
+For Electron, keep the native session in main and expose snapshots through the
+bounded `steam-bridge/electron` MessagePort transport. Do not initialize
+Steamworks in a renderer. See the [full guide](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-input.md)
+and [runnable example](https://github.com/jstroh/steam-bridge/tree/main/examples/steam-input).
+
 ## Platform Targets
 
 | Platform | Target |

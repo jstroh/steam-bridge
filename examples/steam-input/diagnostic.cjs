@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const steamworks = require("steam-bridge");
+const inputDefinition = require("./definition.cjs");
 
 const appId = Number(process.env.STEAM_APP_ID || 480);
 const durationMs = Number(process.env.STEAM_INPUT_DURATION_MS || 10_000);
@@ -10,12 +11,7 @@ if (!Number.isSafeInteger(durationMs) || durationMs < 100 || durationMs > 600_00
   throw new Error("STEAM_INPUT_DURATION_MS must be an integer from 100 through 600000");
 }
 
-const definition = steamworks.defineSteamInput({
-  actionSets: { gameplay: "Gameplay" },
-  actionLayers: { menu: "MenuLayer" },
-  digital: { jump: "Jump", pause: "Pause" },
-  analog: { move: "Move" }
-});
+const definition = steamworks.defineSteamInput(inputDefinition);
 const client = steamworks.init(appId);
 const session = client.input.createSession({
   definition,
@@ -24,9 +20,9 @@ const session = client.input.createSession({
     ? path.resolve(process.env.STEAM_INPUT_MANIFEST)
     : null
 }).start();
+session.activateActionSet("gameplay");
 let timer;
 let stopped = false;
-let actionSetActive = false;
 
 function stop(exitCode = 0) {
   if (stopped) return;
@@ -50,10 +46,6 @@ session.on("controller-disconnected", ({ releasedController }) => {
 timer = setInterval(() => {
   try {
     const frame = session.update();
-    if (!actionSetActive && session.getDiagnostics().resolvedActionSetCount > 0) {
-      session.activateActionSet("gameplay");
-      actionSetActive = true;
-    }
     const controller = frame.primaryController;
     if (controller?.digital.jump.pressedThisFrame) console.log("jump pressed");
     if (controller?.digital.pause.pressedThisFrame) console.log("pause pressed");

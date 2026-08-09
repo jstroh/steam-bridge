@@ -130,6 +130,7 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     } catch (error) {
       inFlightSequence = null;
       pendingFrame = frame;
+      closeTransport();
       throw error;
     }
   };
@@ -141,7 +142,15 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     lastAcknowledgedSequence = inFlightSequence;
     acknowledgedFrameCount += 1;
     inFlightSequence = null;
-    sendPendingFrame();
+    try {
+      sendPendingFrame();
+    } catch (error) {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      process.emitWarning(`Electron Steam Input transport failed while sending a pending frame: ${cause.message}`, {
+        code: "STEAM_INPUT_TRANSPORT_SEND_FAILED",
+        detail: cause.stack
+      });
+    }
   };
   const closeTransport = (): void => {
     if (isClosed) return;
@@ -153,7 +162,12 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     webContents.off?.("did-start-navigation", onNavigation);
     mainPort.off?.("message", onMessage);
     mainPort.off?.("close", onPortClosed);
-    mainPort.close();
+    try {
+      mainPort.close();
+    } catch {
+      // The peer may already have closed or neutered the port. Lifecycle state
+      // and listeners are still deterministically released above.
+    }
   };
   const onDestroyed = (): void => closeTransport();
   const onPortClosed = (): void => closeTransport();
@@ -181,6 +195,11 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     webContents.postMessage(channel, { type: "connect", version: 1 }, [messageChannel.port1]);
   } catch (error) {
     closeTransport();
+    try {
+      messageChannel.port1.close();
+    } catch {
+      // The transfer may already have consumed the renderer endpoint.
+    }
     throw error;
   }
 
@@ -193,6 +212,14 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     publish(frame: SteamInputFrame<TDefinition>): void {
       if (isClosed) return;
       const serialized = serializeElectronSteamInputFrame(frame);
+      if (!isElectronSteamInputFrame(serialized)) {
+        throw new TypeError("Electron Steam Input transport requires a valid frame with an unsigned sequence");
+      }
+      if (lastPublishedSequence != null && BigInt(serialized.sequence) <= BigInt(lastPublishedSequence)) {
+        throw new RangeError(
+          `Electron Steam Input frame sequence must increase; received ${serialized.sequence} after ${lastPublishedSequence}`
+        );
+      }
       publishedFrameCount += 1;
       lastPublishedSequence = serialized.sequence;
       if (pendingFrame != null) coalescedFrameCount += 1;
@@ -231,28 +258,79 @@ export function subscribeElectronSteamInput<TDefinition extends SteamInputDefini
   listener: (frame: ElectronSteamInputFrame<TDefinition>) => void,
   options: Pick<ElectronSteamInputTransportOptions, "channel"> = {}
 ): ElectronSteamInputRendererSubscription {
+  if (typeof listener !== "function") {
+    throw new TypeError("Electron Steam Input renderer listener must be a function");
+  }
   const channel = electronSteamInputChannel(options.channel);
   let isClosed = false;
   let rendererPort: ElectronSteamInputRendererPort | null = null;
+  const detachRendererPort = (port: ElectronSteamInputRendererPort, suppressCloseError = false): void => {
+    port.onmessage = null;
+    try {
+      port.close();
+    } catch (error) {
+      if (!suppressCloseError) throw error;
+    }
+  };
   const onConnect = (event: { ports?: ElectronSteamInputRendererPort[] }): void => {
-    if (isClosed) return;
-    const nextPort = event.ports?.[0];
+    const ports = event.ports ?? [];
+    if (isClosed) {
+      for (const port of ports) detachRendererPort(port, true);
+      return;
+    }
+    const nextPort = ports[0];
     if (!nextPort) return;
-    rendererPort?.close();
+    for (const extraPort of ports.slice(1)) detachRendererPort(extraPort, true);
+    if (rendererPort) detachRendererPort(rendererPort, true);
     rendererPort = nextPort;
     nextPort.onmessage = (messageEvent): void => {
+      if (isClosed || rendererPort !== nextPort) return;
       const message = messageEvent.data;
       if (!message || typeof message !== "object") return;
       const value = message as { type?: unknown; version?: unknown; frame?: unknown };
       if (value.type !== "frame" || value.version !== 1 || !isElectronSteamInputFrame(value.frame)) return;
       const frame = value.frame as ElectronSteamInputFrame<TDefinition>;
       try {
-        listener(frame);
-      } finally {
+        const result = listener(frame) as unknown;
+        if (result && typeof result === "object" && "then" in result) {
+          Promise.resolve(result).catch((error: unknown) => {
+            emitElectronSteamInputWarning(
+              "STEAM_INPUT_RENDERER_LISTENER_FAILED",
+              "Electron Steam Input renderer listener rejected",
+              error
+            );
+          });
+        }
+      } catch (error) {
+        emitElectronSteamInputWarning(
+          "STEAM_INPUT_RENDERER_LISTENER_FAILED",
+          "Electron Steam Input renderer listener failed",
+          error
+        );
+      }
+      try {
         nextPort.postMessage({ type: "ack", sequence: frame.sequence });
+      } catch (error) {
+        if (rendererPort === nextPort) rendererPort = null;
+        detachRendererPort(nextPort, true);
+        emitElectronSteamInputWarning(
+          "STEAM_INPUT_RENDERER_ACK_FAILED",
+          "Electron Steam Input renderer acknowledgement failed",
+          error
+        );
       }
     };
-    nextPort.start?.();
+    try {
+      nextPort.start?.();
+    } catch (error) {
+      if (rendererPort === nextPort) rendererPort = null;
+      detachRendererPort(nextPort, true);
+      emitElectronSteamInputWarning(
+        "STEAM_INPUT_RENDERER_PORT_START_FAILED",
+        "Electron Steam Input renderer port failed to start",
+        error
+      );
+    }
   };
   ipcRenderer.on(channel, onConnect);
   return {
@@ -261,8 +339,9 @@ export function subscribeElectronSteamInput<TDefinition extends SteamInputDefini
       isClosed = true;
       if (ipcRenderer.off) ipcRenderer.off(channel, onConnect);
       else ipcRenderer.removeListener?.(channel, onConnect);
-      rendererPort?.close();
+      const currentPort = rendererPort;
       rendererPort = null;
+      if (currentPort) detachRendererPort(currentPort, true);
     },
     get closed(): boolean {
       return isClosed;
@@ -301,7 +380,17 @@ function electronSteamInputMessageData(event: { data?: unknown } | unknown): unk
 function isElectronSteamInputFrame(value: unknown): value is ElectronSteamInputFrame {
   if (!value || typeof value !== "object") return false;
   const frame = value as { sequence?: unknown; controllers?: unknown; mergedController?: unknown };
-  return typeof frame.sequence === "string" && Array.isArray(frame.controllers) && "mergedController" in frame;
+  return (
+    typeof frame.sequence === "string" &&
+    /^(0|[1-9]\d*)$/.test(frame.sequence) &&
+    Array.isArray(frame.controllers) &&
+    "mergedController" in frame
+  );
+}
+
+function emitElectronSteamInputWarning(code: string, message: string, error: unknown): void {
+  const cause = error instanceof Error ? error : new Error(String(error));
+  process.emitWarning(`${message}: ${cause.message}`, { code, detail: cause.stack });
 }
 
 export interface ElectronOverlayOptions {

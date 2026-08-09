@@ -113,10 +113,17 @@ import { steamInputDefinition } from "./steam-input.generated";
 const client = steamworks.init(MY_APP_ID);
 const input = client.input.createSession({
   definition: steamInputDefinition,
-  controllers: "individual"
+  controllers: "individual",
+  // Only controls which device supplies UI prompts; action values are unchanged.
+  activeControllerAnalogThreshold: 0.1
 }).start();
 
 input.activateActionSet("gameplay");
+
+input.on("controller-disconnected", ({ releasedController }) => {
+  // Clear held per-player state with the final synthesized release edges.
+  if (releasedController?.digital.pause.releasedThisFrame) closePauseMenu();
+});
 
 function gameFrame() {
   const controller = input.update().primaryController;
@@ -134,10 +141,18 @@ input.dispose();
 steamworks.shutdown();
 ```
 
-Calling `activateActionSet()` immediately after `start()` is safe. If Steam has
-not loaded the named action-set handle yet, the session queues that activation
-and applies it as soon as a later frame or configuration callback resolves the
-handle.
+Calling `activateActionSet()` immediately after `start()` is safe. The session
+remembers the selected set, retries while Steam loads the handle, and reapplies
+it before later polls and after hot-plug callbacks. This keeps a newly connected
+controller out of an arbitrary/default set. A per-controller selection overrides
+the all-controller default for local multiplayer. Apply action layers only on
+game-state transitions; layer order matters.
+
+Poll `update()` exactly once from the game-frame owner. Use
+`pressedThisFrame`/`releasedThisFrame` for edges, accept keyboard and mouse at
+the same time, and use Valve's returned glyphs instead of assuming Xbox labels.
+The default primary-controller threshold ignores ordinary stick drift without
+changing the analog values delivered to the game.
 
 Omit `manifestPath` in a deployed Steam build so Steam uses the depot
 configuration. Use an absolute override only during development. Electron
