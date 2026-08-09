@@ -6,13 +6,14 @@ Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
 and cross-platform QA contract are in
 [`steam-input-product-plan.md`](steam-input-product-plan.md) and
-[`../steam-input.md`](../steam-input.md). Stable `0.3.20` includes the raw
+[`../steam-input.md`](../steam-input.md). Stable `0.3.21` includes the raw
 open-enum/lifecycle fixes, bounded asynchronous wait and direct-event queue,
-manifest validator/type generator, one-call native batch poll, typed
-`SteamInputSession`, disconnect release state, revision-aware prompts,
+strict manifest validator/type generator, one-call native batch poll, typed
+`SteamInputSession`, drift-resistant primary selection, authoritative action-
+set and queued-layer state, disconnect release edges, live-rebinding prompts,
 rebinding/output/diagnostics, bounded acknowledged Electron MessagePort
-delivery with coalescing metrics, a secure Electron inspector, a Node
-diagnostic runner, and the public guide. Physical controller
+delivery with strict sequence and failure containment, a secure Electron
+inspector, a Node diagnostic runner, and the public guide. Physical controller
 button/glyph/output/rebinding behavior and macOS/Deck physical-controller lanes
 remain unclaimed until the required hardware is available; the Windows
 software, packaging, real-game, and ordinary-overlay gates are complete.
@@ -22,7 +23,47 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-### 2026-08-08 post-v0.3.20 deep-review worktree
+### 2026-08-08 v0.3.21 stable release checkpoint
+
+Patch `0.3.21` is published at immutable tag and commit `v0.3.21` /
+`7f0c3fe6e5f0d9d77ab4e2fe777c921fa0eeaa44`. Exact-head CI run
+`31295100370`, tag Release assembly run `31295258843`, tag CI run
+`31295258845`, and trusted npm publication run `31296391861` all passed. The
+publication job restored and revalidated the exact audited tag artifact and
+candidate-bound Windows receipt through the protected `npm-production`
+environment. Its temporary compressed-proof secret was deleted after
+publication.
+
+npm `latest` and the stable GitHub Release resolve to `0.3.21`; the package has
+SLSA provenance. The npm and audited tag tarball is 10,707,040 bytes with
+SHA-256
+`d95390ca62fe2fcef897a942b888881626e1c97ee000b00a56113d8e97952c05`
+and registry integrity
+`sha512-OEmept3TK86Z3AFppmhevuJJLCX16TOWhGfgnM78CGCTkUqjloP3TUVv3APIltp0m1EUNTucEECl8NIPJkCpJQ==`.
+The audited Windows bundle is 403,243,008 bytes with SHA-256
+`98bed7fcd2f57478b402f03c878bc395eb1d3c2f3831326bb2cb59b8de07dad2`.
+The candidate binding SHA-256 is
+`02ef7e27eabf18b6f439ea5ff19dfd23e725c820f8d43020f768ce0de3a26e4e`;
+the receipt semantic SHA-256 is
+`d349b3100a19e345a674eaeb7623589c7302172b2bed7cb885669be4a0507efb`;
+the receipt file SHA-256 is
+`2eb640a31301a09917fbf5d041d62b66824d894c42c5b3046bb85f1167837df9`.
+
+The release passed 417/417 JavaScript/TypeScript tests, 49/49 Rust tests,
+supported-platform checks, formatting, native checks, API audit, package smoke,
+npm audit, and exact Electron/native-load verification for all 1,146 methods
+under stable Electron 43.3.0. The protected exact candidate installed into the
+configured Fantasy Online 2 consumer passed startup chrome, native menus,
+visible cursor, actual-game login and movement, title drag, resize and exact
+640x480 minimum, 1280x720 restoration, maximize, minimize, focus return,
+fullscreen restoration, rounded corners, ordinary Friends overlay alignment
+and close, and clean shutdown at 125% DPI. Its receipt records 551 active-game
+samples and 21 active-overlay samples with 59.9 FPS median presentation against
+60 Hz, with zero crashes, stderr, device losses, recoveries, native frame-
+latency timeouts, target mismatches, unsynchronized samples, or slow shared-
+texture copies.
+
+### 2026-08-08 v0.3.21 implementation checkpoint
 
 The active worktree keeps the settled child/native-host overlay architecture
 and fixes defects found in the Steam Input product and release gates:
@@ -177,9 +218,10 @@ regeneration. `npm test` is green at 400/400 JavaScript/TypeScript tests and
 remains subject to the existing hardware lanes and is not claimed by this
 automated checkpoint.
 
-Review anchor: `c8baaf9c30252b9c3c25ba3a0c24bb8e94cfeb7a`
-(`Release steam-bridge 0.3.20`). npm `latest` and the stable GitHub Release are
-`0.3.20`; immutable tag `v0.3.20` is bound to that exact commit.
+Review anchor: `7f0c3fe6e5f0d9d77ab4e2fe777c921fa0eeaa44`
+(`Make Steam Input manifest check newline-neutral`). npm `latest` and the
+stable GitHub Release are `0.3.21`; immutable tag `v0.3.21` is bound to that
+exact commit.
 Neither the source commit alone nor an intermediate ad-hoc bundle is a
 publishable candidate. Exact
 `v0.3.0`, `v0.3.1`, `v0.3.2`, and `v0.3.3` are immutable, unpublished,
@@ -193,7 +235,8 @@ Exact `v0.3.7` is also immutable and unpublished. Its release workflow and
 actual-game runtime passed, but its receipt classified one valid 1 FPS -> 60 Hz
 minimize/restore target transition as steady-state pacing. `v0.3.8`, `v0.3.9`,
 `v0.3.10`, `v0.3.12`, `v0.3.15`, `v0.3.17`, `v0.3.18`, `v0.3.19`, and
-`v0.3.20` are published; `v0.3.20` is the current stable release. Exact
+`v0.3.20`, and `v0.3.21` are published; `v0.3.21` is the current stable
+release. Exact
 `v0.3.11` and `v0.3.16` are immutable and unpublished.
 The post-tag `v0.3.11` adversarial review found Web API credential fail-open
 paths and native lifecycle/resource ownership defects, so it must never be
