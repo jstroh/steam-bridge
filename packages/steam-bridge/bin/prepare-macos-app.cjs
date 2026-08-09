@@ -335,7 +335,7 @@ function assertNonEmptyFile(filePath, label) {
 function statNonEmptyFile(filePath, label) {
   let stats;
   try {
-    stats = fs.statSync(filePath);
+    stats = fs.lstatSync(filePath);
   } catch {
     throw new Error(`${label} is missing: ${filePath}`);
   }

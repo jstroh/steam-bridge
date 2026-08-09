@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-08
+Last reviewed: 2026-08-09
 
 Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
@@ -22,6 +22,124 @@ Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-09 package-wide bug-free goal checkpoint
+
+The active goal is now package-wide rather than limited to Steam Input. Starting
+from stable `0.3.21` plus the already validated uncommitted Steam Input repair
+slice described below, review the complete supported Windows x64, Linux x64 /
+Steam Deck, and macOS arm64 contract: JavaScript/TypeScript APIs, Electron
+transport and security boundaries, native Rust ownership and lifecycle,
+platform presenters and input, packaging/release tooling, public documentation,
+and regression coverage. Fix every reproducible or source-proven P0-P3 defect,
+verify each changed lane proportionally, and repeat adversarial review until no
+known actionable P0-P3 remains.
+
+This broader goal does not discard settled architecture or negative evidence.
+Windows remains one standalone D3D application host, Linux/Deck one X11/GLX
+application host, and macOS one AppKit-attached Metal child. Popup/companion
+fallbacks, Windows attached presenters, macOS application-host/OSR experiments,
+Linux sandbox flag removal, prerelease Electron, and lock/sleep QA remain closed
+paths. Already-green live matrices are repeated only when their implementation
+surface changes or when one final immutable release candidate is ready. The
+ledger's external Windows layout/cadence reports and hardware-dependent physical
+controller lanes remain evidence gaps, not permission to weaken gates or claim
+success without the required environment.
+
+The first package-wide finding is an Electron Steam Input lifecycle defect.
+The transport read modern `did-start-navigation` details from the deprecated URL
+argument and closed on same-document history/hash navigation even though the
+renderer document and MessagePort were unchanged. It now reads Electron's
+details event correctly, preserves subframe and same-document navigation under
+both modern and deprecated signatures, and still closes before a replacement
+main-frame document can inherit stale input delivery.
+
+The continuing package-wide pass has also closed the following source-proven
+defects without changing any selected presenter architecture:
+
+- a synchronous `captureFrame()` throw escaped the attached presenter promise
+  chain and closed the presenter instead of entering the existing retry path;
+- raw native overlay uploads accepted dimensions that could wrap or overflow
+  platform byte arithmetic before a buffer-size check;
+- raw screenshot uploads narrowed the Node buffer length with an unchecked
+  `usize`-to-`u32` cast even though Valve's `cubRGB` field is explicitly u32;
+- Workshop query cache/playtime/trend/date fields and item-update preview /
+  content-descriptor fields accepted larger JSON integers and silently wrapped
+  them into Valve's unsigned 32-bit parameters;
+- two SDK-returned pointer lengths were sliced without reasserting Valve's
+  documented 32-byte networking-identity limit or the decrypted ticket buffer
+  boundary;
+- matchmaking server-list result validation could return before Valve's
+  required `ReleaseRequest`, allowing the callback object to be destroyed while
+  its native request was still owned;
+- relative `STEAM_BRIDGE_NATIVE_PATH` values were tested from the process
+  working directory but loaded relative to the bridge module, a broken
+  explicit override silently fell back to bundled binaries, and candidate
+  validation could follow a symlink or let Node resolve a directory / script
+  instead of requiring the documented regular `.node` file;
+- Steam Web API `input_json` conversion could recurse forever on cycles, exceed
+  the JavaScript stack on hostile depth, and mishandle an own `__proto__` key;
+- release assembly, platform packaging, and final packed-package smoke checks
+  followed symlinked executable or native payloads, which could produce
+  non-portable artifacts, validate files outside the extracted package, or
+  chmod a file outside the intended output tree;
+- the new forward-compatible Steam Input type-code surface initially narrowed
+  Valve's raw unsigned 32-bit value to one byte. It now preserves the complete
+  `u32` domain while friendly names remain open-enum safe.
+
+The final reviewed worktree is green for 424 JavaScript/TypeScript tests (422
+passes and two expected Windows symlink-permission skips), 51 Rust tests,
+TypeScript compilation, native formatting/check, Clippy with warnings denied,
+all packaging and release self-tests, the supported-platform policy, and the
+complete Steam API coverage audit. The final optimized Windows addon loads and
+matches all 1,148 required native methods with manifest SHA-256
+`7d79910da02895ec81529091083b993c08c5b1664f6a38bd1295791a56a53d1b`;
+the isolated packed npm consumer and Node 24 CommonJS/ESM runtime smokes pass.
+npm reports zero locked vulnerabilities, and RustSec reports no advisory among
+all 131 locked Rust dependencies. A second adversarial source/diff pass found
+and closed the remaining native-loader directory/script/symlink acceptance and
+packed-smoke symlink-following gaps. No known actionable P0-P3 defect remains
+in the reviewed source or current-host artifact.
+
+This is a package-hardening checkpoint, not an immutable release
+qualification. A Windows-host attempt to compile the Linux target stopped
+before source compilation because the machine has no `x86_64-linux-gnu-gcc`;
+do not record that toolchain absence as a product failure or as Linux artifact
+proof. Fresh macOS arm64 and Linux x64 native artifacts, physical-controller
+hardware lanes, and any complete live presentation matrix remain release-time
+CI / host gates. No presenter architecture or valid-frame behavior changed in
+this slice, so settled live matrices were not repeated and no app, Steam,
+display, lock, or sleep state was touched.
+
+### 2026-08-08 active Steam Input bug-free review checkpoint
+
+The current goal is a bounded adversarial remediation of the stable Steam
+Input surface; it does not reopen or alter any overlay architecture. The clean
+`0.3.21` baseline passed 417 JavaScript/TypeScript tests, 49 Rust tests,
+Clippy with warnings denied, typechecking, the Steam Input CLI self-test, and a
+production dependency audit with zero vulnerabilities before edits.
+
+The confirmed defects fixed in the active worktree are: rejection of
+Valve-documented `os_mouse` and localized button/native-event manifest forms;
+Windows-style
+relative config paths failing validation on POSIX; incomparable native and
+JavaScript monotonic timestamp origins; synchronous session update reentry and
+dispose-during-listener hazards; Electron renderer promises being acknowledged
+before settlement; and future Steam controller input-type numbers being lost
+when their names are not yet known. The public guide will also document
+gamepad text entry, timestamp and lifecycle semantics, asynchronous renderer
+backpressure, and the explicitly tracked Steamworks SDK 1.65 binding gap.
+The implementation touches only the Steam Input CLI, TypeScript public/native
+facades, Electron transport, Rust compatibility binding, focused tests, and
+their public/research documentation. The exact final worktree passed 419/419
+JavaScript/TypeScript tests, 49/49 Rust tests, typechecking, supported-platform
+policy, Steam Input/packaging/release self-tests, native formatting/check,
+Clippy with warnings denied, the 1,148-method Steam API coverage audit, packed
+package smoke, and a production dependency audit with zero vulnerabilities.
+The optimized Windows native addon compiled and loaded with both new controller
+type-code exports present. Final adversarial review found no remaining P0-P3
+defect within this bounded Steam Input scope. Overlay architecture and live
+presentation behavior were not changed or manually retested.
 
 ### 2026-08-08 v0.3.21 stable release checkpoint
 

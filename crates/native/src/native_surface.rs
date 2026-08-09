@@ -2,6 +2,26 @@
 
 use napi::bindgen_prelude::{Buffer, Error};
 
+fn checked_native_overlay_frame_byte_len(
+    width: u32,
+    height: u32,
+    platform: &str,
+) -> Result<usize, Error> {
+    if width == 0 || height == 0 || width > i32::MAX as u32 || height > i32::MAX as u32 {
+        return Err(Error::from_reason(format!(
+            "{platform} native overlay frame dimensions must be non-zero signed 32-bit values"
+        )));
+    }
+    (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(|| {
+            Error::from_reason(format!(
+                "{platform} native overlay frame dimensions overflow"
+            ))
+        })
+}
+
 #[cfg(any(target_os = "linux", test))]
 #[derive(Default)]
 struct ConfigureNotifyCoalescer {
@@ -90,8 +110,9 @@ fn xrandr_mode_refresh_rate(
 #[cfg(test)]
 mod configure_notify_coalescer_tests {
     use super::{
-        input_shape_readback_matches, x11_attached_child_bounds, x11_cardinal32_readback_matches,
-        xrandr_mode_refresh_rate, ConfigureNotifyCoalescer,
+        checked_native_overlay_frame_byte_len, input_shape_readback_matches,
+        x11_attached_child_bounds, x11_cardinal32_readback_matches, xrandr_mode_refresh_rate,
+        ConfigureNotifyCoalescer,
     };
 
     #[test]
@@ -200,11 +221,22 @@ mod configure_notify_coalescer_tests {
         assert!(xrandr_mode_refresh_rate(0, 1088, 1350, 0).is_none());
         assert!(xrandr_mode_refresh_rate(132_000_000, 0, 1350, 0).is_none());
     }
+
+    #[test]
+    fn validates_native_overlay_frame_dimensions_before_byte_arithmetic() {
+        assert_eq!(
+            checked_native_overlay_frame_byte_len(2, 3, "Test").unwrap(),
+            24
+        );
+        assert!(checked_native_overlay_frame_byte_len(0, 1, "Test").is_err());
+        assert!(checked_native_overlay_frame_byte_len(1, 0, "Test").is_err());
+        assert!(checked_native_overlay_frame_byte_len(u32::MAX, u32::MAX, "Test").is_err());
+    }
 }
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::{Buffer, Error};
+    use super::{checked_native_overlay_frame_byte_len, Buffer, Error};
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel, BOOL, NO, YES};
     use objc::{class, msg_send, sel, sel_impl};
@@ -700,13 +732,7 @@ mod macos {
     pub fn update_frame(buffer: Buffer, width: u32, height: u32) -> Result<(), Error> {
         ensure_main_thread()?;
 
-        if width == 0 || height == 0 {
-            return Err(Error::from_reason(
-                "Native overlay frame dimensions must be non-zero",
-            ));
-        }
-
-        let expected_len = width as usize * height as usize * 4;
+        let expected_len = checked_native_overlay_frame_byte_len(width, height, "macOS")?;
         if buffer.len() < expected_len {
             return Err(Error::from_reason(format!(
                 "Native overlay frame buffer is too small: got {}, expected at least {}",
@@ -1534,7 +1560,7 @@ pub use macos::*;
 
 #[cfg(target_os = "windows")]
 mod windows {
-    use super::{Buffer, Error};
+    use super::{checked_native_overlay_frame_byte_len, Buffer, Error};
     use crate::windows_d3d11::{self, FrameLatencyWaitHandle, WindowsD3d11Renderer};
     use once_cell::sync::Lazy;
     use serde::{Deserialize, Serialize};
@@ -2471,9 +2497,9 @@ mod windows {
     }
 
     pub fn update_frame(buffer: Buffer, width: u32, height: u32) -> Result<(), Error> {
-        let width = width.max(1).min(i32::MAX as u32) as i32;
-        let height = height.max(1).min(i32::MAX as u32) as i32;
-        let expected_len = width as usize * height as usize * 4;
+        let expected_len = checked_native_overlay_frame_byte_len(width, height, "Windows")?;
+        let width = width as i32;
+        let height = height as i32;
         if buffer.len() < expected_len {
             return Err(Error::from_reason(format!(
                 "Windows native overlay frame needs {expected_len} BGRA bytes, received {}",
@@ -5326,8 +5352,9 @@ pub use windows::*;
 #[cfg(target_os = "linux")]
 mod linux {
     use super::{
-        input_shape_readback_matches, x11_attached_child_bounds, x11_cardinal32_readback_matches,
-        xrandr_mode_refresh_rate, Buffer, ConfigureNotifyCoalescer, Error,
+        checked_native_overlay_frame_byte_len, input_shape_readback_matches,
+        x11_attached_child_bounds, x11_cardinal32_readback_matches, xrandr_mode_refresh_rate,
+        Buffer, ConfigureNotifyCoalescer, Error,
     };
     use libloading::Library;
     use once_cell::sync::Lazy;
@@ -6272,15 +6299,7 @@ mod linux {
     }
 
     pub fn update_frame(buffer: Buffer, width: u32, height: u32) -> Result<(), Error> {
-        if width == 0 || height == 0 || width > c_int::MAX as u32 || height > c_int::MAX as u32 {
-            return Err(Error::from_reason(
-                "Linux native overlay frame dimensions must be non-zero signed 32-bit values",
-            ));
-        }
-        let expected_len = (width as usize)
-            .checked_mul(height as usize)
-            .and_then(|pixels| pixels.checked_mul(4))
-            .ok_or_else(|| Error::from_reason("Linux native overlay frame dimensions overflow"))?;
+        let expected_len = checked_native_overlay_frame_byte_len(width, height, "Linux")?;
         if buffer.len() < expected_len {
             return Err(Error::from_reason(format!(
                 "Linux native overlay frame needs {expected_len} BGRA bytes, received {}",

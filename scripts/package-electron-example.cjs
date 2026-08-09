@@ -501,7 +501,7 @@ function copyStagePackageArtifacts(stageDir, artifactSources) {
       continue;
     }
     fs.copyFileSync(source, destination);
-    fs.chmodSync(destination, fs.statSync(source).mode);
+    fs.chmodSync(destination, fs.lstatSync(source).mode);
   }
 }
 
@@ -514,7 +514,8 @@ function isCurrentHostTarget(target) {
 }
 
 function isNonEmptyFile(filePath) {
-  return fs.existsSync(filePath) && fs.statSync(filePath).isFile() && fs.statSync(filePath).size > 0;
+  const stat = fs.lstatSync(filePath, { throwIfNoEntry: false });
+  return Boolean(stat?.isFile() && stat.size > 0);
 }
 
 function cleanPackageArtifacts() {

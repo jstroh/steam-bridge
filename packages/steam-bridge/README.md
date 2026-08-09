@@ -821,6 +821,12 @@ The published package includes:
 `STEAMWORKS_SDK_PATH` is needed only when building the native addon from
 source.
 
+`STEAM_BRIDGE_NATIVE_PATH` is a development-only override for selecting one
+exact `.node` addon. Relative values resolve from the process working directory.
+When the variable is set, Steam Bridge fails closed if that file is missing or
+cannot load instead of silently falling back to a packaged addon; unset it for
+normal packaged and release verification.
+
 Electron packagers must keep the native addon and its matching Steam runtime
 libraries outside ASAR. The repository's
 [packaged Electron example](https://github.com/jstroh/steam-bridge/tree/main/examples/electron-basic)

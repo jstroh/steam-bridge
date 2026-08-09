@@ -172,14 +172,17 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
   const onDestroyed = (): void => closeTransport();
   const onPortClosed = (): void => closeTransport();
   const onNavigation = (...args: unknown[]): void => {
-    const navigationDetails = args[1];
+    const navigationDetails = args[0];
+    const deprecatedIsInPlace = args[2];
     const explicitIsMainFrame = args[3];
-    if (explicitIsMainFrame === false) return;
+    if (deprecatedIsInPlace === true || explicitIsMainFrame === false) return;
     if (
       navigationDetails &&
       typeof navigationDetails === "object" &&
-      "isMainFrame" in navigationDetails &&
-      (navigationDetails as { isMainFrame?: unknown }).isMainFrame === false
+      (("isSameDocument" in navigationDetails &&
+        (navigationDetails as { isSameDocument?: unknown }).isSameDocument === true) ||
+        ("isMainFrame" in navigationDetails &&
+          (navigationDetails as { isMainFrame?: unknown }).isMainFrame === false))
     ) {
       return;
     }
@@ -255,7 +258,7 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
  */
 export function subscribeElectronSteamInput<TDefinition extends SteamInputDefinition>(
   ipcRenderer: ElectronSteamInputIpcRenderer,
-  listener: (frame: ElectronSteamInputFrame<TDefinition>) => void,
+  listener: (frame: ElectronSteamInputFrame<TDefinition>) => void | PromiseLike<void>,
   options: Pick<ElectronSteamInputTransportOptions, "channel"> = {}
 ): ElectronSteamInputRendererSubscription {
   if (typeof listener !== "function") {
@@ -290,35 +293,49 @@ export function subscribeElectronSteamInput<TDefinition extends SteamInputDefini
       const value = message as { type?: unknown; version?: unknown; frame?: unknown };
       if (value.type !== "frame" || value.version !== 1 || !isElectronSteamInputFrame(value.frame)) return;
       const frame = value.frame as ElectronSteamInputFrame<TDefinition>;
-      try {
-        const result = listener(frame) as unknown;
-        if (result && typeof result === "object" && "then" in result) {
-          Promise.resolve(result).catch((error: unknown) => {
-            emitElectronSteamInputWarning(
-              "STEAM_INPUT_RENDERER_LISTENER_FAILED",
-              "Electron Steam Input renderer listener rejected",
-              error
-            );
-          });
+      const acknowledge = (): void => {
+        if (isClosed || rendererPort !== nextPort) return;
+        try {
+          nextPort.postMessage({ type: "ack", sequence: frame.sequence });
+        } catch (error) {
+          if (rendererPort === nextPort) rendererPort = null;
+          detachRendererPort(nextPort, true);
+          emitElectronSteamInputWarning(
+            "STEAM_INPUT_RENDERER_ACK_FAILED",
+            "Electron Steam Input renderer acknowledgement failed",
+            error
+          );
         }
+      };
+      let result: void | PromiseLike<void>;
+      let isThenable = false;
+      try {
+        result = listener(frame);
+        isThenable = Boolean(result && typeof result.then === "function");
       } catch (error) {
         emitElectronSteamInputWarning(
           "STEAM_INPUT_RENDERER_LISTENER_FAILED",
           "Electron Steam Input renderer listener failed",
           error
         );
+        acknowledge();
+        return;
       }
-      try {
-        nextPort.postMessage({ type: "ack", sequence: frame.sequence });
-      } catch (error) {
-        if (rendererPort === nextPort) rendererPort = null;
-        detachRendererPort(nextPort, true);
-        emitElectronSteamInputWarning(
-          "STEAM_INPUT_RENDERER_ACK_FAILED",
-          "Electron Steam Input renderer acknowledgement failed",
-          error
+      if (isThenable) {
+        Promise.resolve(result).then(
+          acknowledge,
+          (error: unknown) => {
+            emitElectronSteamInputWarning(
+              "STEAM_INPUT_RENDERER_LISTENER_FAILED",
+              "Electron Steam Input renderer listener rejected",
+              error
+            );
+            acknowledge();
+          }
         );
+        return;
       }
+      acknowledge();
     };
     try {
       nextPort.start?.();

@@ -140,7 +140,7 @@ function verifyWindowsArtifact(nativePath) {
 
 function assertNonEmptyFile(filePath) {
   assert.ok(fs.existsSync(filePath), `${filePath} does not exist`);
-  const stat = fs.statSync(filePath);
+  const stat = fs.lstatSync(filePath);
   assert.ok(stat.isFile(), `${filePath} is not a file`);
   assert.ok(stat.size > 0, `${filePath} is empty`);
 }

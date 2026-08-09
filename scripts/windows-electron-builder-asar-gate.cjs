@@ -972,13 +972,14 @@ function assertPowerShellParses(filePath) {
 }
 
 function assertNonEmptyFile(filePath, label) {
-  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile() || fs.statSync(filePath).size === 0) {
+  const stat = fs.lstatSync(filePath, { throwIfNoEntry: false });
+  if (!stat?.isFile() || stat.size === 0) {
     throw new Error(`Missing or empty ${label}: ${filePath}`);
   }
 }
 
 function assertDirectory(directory, label) {
-  if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) {
+  if (!fs.lstatSync(directory, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(`Missing ${label}: ${directory}`);
   }
 }

@@ -466,6 +466,8 @@ export interface NativeInventoryPrice {
 export interface NativeInputControllerInfo {
   handle: bigint;
   inputType: string;
+  inputTypeCode?: number;
+  input_type_code?: number;
 }
 
 export interface NativeInputPollDigitalState {
@@ -488,6 +490,8 @@ export interface NativeInputPollControllerSnapshot {
   handle: bigint | string | number;
   inputType?: string;
   input_type?: string;
+  inputTypeCode?: number;
+  input_type_code?: number;
   gamepadIndex?: number;
   gamepad_index?: number;
   currentActionSet?: bigint | string | number;
@@ -2335,6 +2339,7 @@ export interface NativeBinding {
   ): void;
   inputShowBindingPanel(controller: bigint): boolean;
   inputGetControllerType(controller: bigint): string;
+  inputGetControllerTypeCode(controller: bigint): number;
   inputGetControllerForGamepadIndex(index: number): bigint | null | undefined;
   inputGetGamepadIndexForController(controller: bigint): number;
   inputGetStringForXboxOrigin(origin: number): string;
@@ -2381,6 +2386,7 @@ export interface NativeBinding {
   controllerSetLedColor(controller: bigint, red: number, green: number, blue: number, flags?: number | null): void;
   controllerShowBindingPanel(controller: bigint): boolean;
   controllerGetControllerType(controller: bigint): string;
+  controllerGetControllerTypeCode(controller: bigint): number;
   controllerGetControllerForGamepadIndex(index: number): bigint | null | undefined;
   controllerGetGamepadIndexForController(controller: bigint): number;
   controllerGetStringForXboxOrigin(origin: number): string;
@@ -2993,7 +2999,23 @@ export function loadNativeBinding(): NativeBinding {
 
   const errors: string[] = [];
   for (const candidate of nativeCandidates(supportedTarget)) {
-    if (!candidate || !fs.existsSync(candidate)) {
+    let stats: fs.Stats | undefined;
+    try {
+      stats = fs.lstatSync(candidate, { throwIfNoEntry: false });
+    } catch (error) {
+      errors.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    if (!stats) {
+      errors.push(`${candidate}: file does not exist`);
+      continue;
+    }
+    if (!stats.isFile()) {
+      errors.push(`${candidate}: not a regular file`);
+      continue;
+    }
+    if (path.extname(candidate).toLowerCase() !== ".node") {
+      errors.push(`${candidate}: native override must be a .node file`);
       continue;
     }
 
@@ -3027,6 +3049,13 @@ function nativeCandidates(supportedTarget: { target: string; prebuilds: string[]
   const packageRoot = path.resolve(__dirname, "..");
   const repoRoot = path.resolve(packageRoot, "..", "..");
   const unpackedPackageRoot = asarUnpackedMirror(packageRoot);
+  const nativePathOverride = process.env.STEAM_BRIDGE_NATIVE_PATH;
+  if (nativePathOverride) {
+    // `require()` resolves a relative string from this module while filesystem
+    // checks resolve it from cwd. Canonicalize once so both refer to the exact
+    // file the developer selected, and keep an explicit override fail-closed.
+    return [path.resolve(nativePathOverride)];
+  }
   const workspaceCandidates = unpackedPackageRoot
     ? []
     : [
@@ -3035,7 +3064,6 @@ function nativeCandidates(supportedTarget: { target: string; prebuilds: string[]
       ];
 
   return [
-    process.env.STEAM_BRIDGE_NATIVE_PATH || "",
     ...packageRootNativeCandidates(unpackedPackageRoot || packageRoot, supportedTarget.prebuilds),
     ...workspaceCandidates
   ];

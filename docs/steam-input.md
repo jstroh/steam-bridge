@@ -25,7 +25,9 @@ the same depot. Steam Bridge validates KeyValues syntax, the exact Valve action
 shapes, categories, input modes, and controller-type names, action/set/layer
 name collisions, canonical configuration priorities, action limits, required
 `#` titles, English localization fallbacks, parent-set links, and referenced
-`controller_mappings` layout files. Windows path separators are preserved.
+`controller_mappings` layout files. Valve's documented `os_mouse` metadata and
+localized button/native mouse-event form are accepted. Windows path separators
+are preserved in the parsed manifest and resolve correctly on every host OS.
 Generation refuses to overwrite the source manifest and replaces an existing
 output atomically, so an interrupted write cannot leave a half-generated
 definition.
@@ -114,6 +116,13 @@ session is active, Steam Bridge rejects raw `input.runFrame()` and
 `input.getControllers()` calls because both advance Valve's frame state; use
 the session snapshot as the single frame owner.
 
+`capturedAtNs` is sampled from Node's monotonic `process.hrtime` clock as soon
+as the native batch returns; `receivedAtNs` uses that same clock after the
+public frame is assembled. Their difference is therefore meaningful and
+measures bridge normalization/delivery time. The absolute values have an
+arbitrary process-local origin and are not wall-clock or controller-hardware
+timestamps.
+
 Digital state has four fields:
 
 - `active`: the action is available in the current Steam Input configuration;
@@ -140,6 +149,12 @@ primary controller's type, gamepad slot, action-set/layer, Remote Play, and
 binding-revision metadata. Returned frames are isolated snapshots: changing a
 consumer-owned object cannot corrupt edge detection, prompt results, events, or
 the next frame.
+
+Each controller also exposes both `inputType` and `inputTypeCode`. The friendly
+name becomes `"Unknown"` when a newer Steam client reports a controller that
+the bundled SDK does not name yet, while the raw numeric `ESteamInputType` value
+is preserved in `inputTypeCode`. Low-level `Controller` objects provide the
+same distinction through `getType()` and `getTypeCode()`.
 
 For local multiplayer, consume `frame.controllers` and assign stable controller
 handles to player seats. For a single-player game, use `primaryController`. It
@@ -234,6 +249,31 @@ API. Invalid ranges throw before reaching native code. Use the lower-level
 `Controller` methods for extended vibration, DualSense trigger effects, motion,
 or specialized haptics.
 
+## Controller text entry
+
+Full-controller games should open Steam's text-entry UI automatically when a
+controller focuses a field instead of requiring the player to reach for a
+keyboard. The one-shot helper resolves to the submitted text, or `null` when
+the player cancels:
+
+```ts
+const name = await client.utils.showGamepadTextInput(
+  client.utils.GamepadTextInputMode.Normal,
+  client.utils.GamepadTextInputLineMode.SingleLine,
+  "Character name",
+  32,
+  currentName
+);
+```
+
+For an already focused on-screen field, use
+`showFloatingGamepadTextInput(mode, x, y, width, height)` with the field's
+Steam-facing rectangle and listen for
+`onFloatingGamepadTextInputDismissed(...)`; call
+`dismissFloatingGamepadTextInput()` if the field or window closes first. These
+helpers complement ordinary keyboard/mouse text input rather than replacing
+it. Keep the client alive until the returned Promise settles.
+
 ## Events and diagnostics
 
 ```ts
@@ -261,6 +301,14 @@ edge for each held action. Use it to clear per-player state immediately.
 Each listener receives its own event snapshot. A listener mutation cannot
 change another listener's value, and both synchronous throws and asynchronous
 rejections are contained and reported as process warnings.
+Listeners are invoked synchronously when an event is emitted. Frame-derived
+events run inside their owning `session.update()`; calling `session.update()`
+recursively from one of those listeners throws before another native poll can
+occur. Calling `dispose()` from a frame-derived listener is supported: disposal
+is marked immediately and native teardown is deferred until the current update
+unwinds, so a successful update commits its frame before teardown. Native
+device/configuration callbacks can emit between session updates as the ordinary
+Steam callback pump runs.
 
 ## Electron: bounded main-to-renderer delivery
 
@@ -270,9 +318,17 @@ flight; while the renderer is behind it replaces old pending frames with the
 newest one. Navigation, renderer failure, `webContents` destruction, or either
 `MessagePort` endpoint closing closes the transport and removes every listener.
 Published sequences must be canonical unsigned integers and strictly increase;
-the renderer acknowledges only validated protocol-versioned frames. Listener,
-port-start, send, and acknowledgement failures are contained and close the
-affected transport instead of escaping an Electron callback.
+the renderer acknowledges only validated protocol-versioned frames. A
+synchronous listener is acknowledged after it returns; an asynchronous
+listener keeps the one-frame backpressure active until its Promise settles.
+Rejection is warned and then acknowledged so one bad consumer cannot deadlock
+the stream. Keep the listener lightweight, and move durable work out of the
+frame path. Listener, port-start, send, and acknowledgement failures are
+contained and close the affected transport instead of escaping an Electron
+callback.
+Subframe and same-document navigations retain the live port because they do not
+replace the renderer document; a new main-frame document, renderer failure, or
+`webContents` destruction closes it.
 
 Main process:
 

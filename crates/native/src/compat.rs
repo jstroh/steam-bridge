@@ -655,6 +655,7 @@ const PARTY_METADATA_BUFFER_SIZE: usize = 4096;
 const FRIEND_FLAG_IMMEDIATE: u32 = 4;
 const MAX_API_CALL_RESULT_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_CONFIG_VALUE_BYTES: u32 = 1024 * 1024;
+const MAX_NETWORKING_IDENTITY_GENERIC_BYTES: usize = 32;
 const MAX_LEGACY_NETWORKING_PACKET_BYTES: u32 = 1024 * 1024;
 const MAX_NETWORKING_POP_COUNT: u32 = 65_536;
 const MAX_HTTP_HEADER_BYTES: u32 = 1024 * 1024;
@@ -1241,6 +1242,7 @@ pub struct InputDeviceBindingRevision {
 pub struct InputControllerInfo {
     pub handle: BigInt,
     pub input_type: String,
+    pub input_type_code: u32,
 }
 
 #[derive(Debug)]
@@ -1266,6 +1268,7 @@ pub struct InputPollAnalogState {
 pub struct InputPollControllerSnapshot {
     pub handle: BigInt,
     pub input_type: String,
+    pub input_type_code: u32,
     pub gamepad_index: i32,
     pub current_action_set: BigInt,
     pub active_action_set_layers: Vec<BigInt>,
@@ -8031,12 +8034,14 @@ pub fn input_get_controllers() -> Result<Vec<InputControllerInfo>, Error> {
     handles.truncate(count.max(0) as usize);
     Ok(handles
         .into_iter()
-        .map(|handle| InputControllerInfo {
-            input_type: input_type_name(unsafe {
-                steam_api_isteam_input_get_input_type_for_handle_raw(input, handle)
-            })
-            .to_owned(),
-            handle: handle.into(),
+        .map(|handle| {
+            let input_type_code =
+                unsafe { steam_api_isteam_input_get_input_type_for_handle_raw(input, handle) };
+            InputControllerInfo {
+                input_type: input_type_name(input_type_code).to_owned(),
+                input_type_code,
+                handle: handle.into(),
+            }
         })
         .collect())
 }
@@ -8172,16 +8177,15 @@ fn poll_input_controller(
     } else {
         None
     };
+    let input_type_code = if include_metadata {
+        unsafe { steam_api_isteam_input_get_input_type_for_handle_raw(input, handle) }
+    } else {
+        sys::ESteamInputType::k_ESteamInputType_Unknown as u32
+    };
     InputPollControllerSnapshot {
         handle: handle.into(),
-        input_type: if include_metadata {
-            input_type_name(unsafe {
-                steam_api_isteam_input_get_input_type_for_handle_raw(input, handle)
-            })
-            .to_owned()
-        } else {
-            "Unknown".to_owned()
-        },
+        input_type: input_type_name(input_type_code).to_owned(),
+        input_type_code,
         gamepad_index: if include_metadata {
             unsafe { sys::SteamAPI_ISteamInput_GetGamepadIndexForController(input, handle) }
         } else {
@@ -8660,6 +8664,16 @@ pub fn input_get_controller_type(controller: BigInt) -> Result<String, Error> {
     .to_owned())
 }
 
+#[napi(js_name = "inputGetControllerTypeCode")]
+pub fn input_get_controller_type_code(controller: BigInt) -> Result<u32, Error> {
+    Ok(unsafe {
+        steam_api_isteam_input_get_input_type_for_handle_raw(
+            steam_input()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
+}
+
 #[napi(js_name = "inputGetControllerForGamepadIndex")]
 pub fn input_get_controller_for_gamepad_index(index: i32) -> Result<Option<BigInt>, Error> {
     let handle =
@@ -8787,12 +8801,15 @@ pub fn controller_get_controllers() -> Result<Vec<InputControllerInfo>, Error> {
     handles.truncate(count.max(0) as usize);
     Ok(handles
         .into_iter()
-        .map(|handle| InputControllerInfo {
-            input_type: input_type_name(unsafe {
+        .map(|handle| {
+            let input_type_code = unsafe {
                 steam_api_isteam_controller_get_input_type_for_handle_raw(controller, handle)
-            })
-            .to_owned(),
-            handle: handle.into(),
+            };
+            InputControllerInfo {
+                input_type: input_type_name(input_type_code).to_owned(),
+                input_type_code,
+                handle: handle.into(),
+            }
         })
         .collect())
 }
@@ -9139,6 +9156,16 @@ pub fn controller_get_controller_type(controller: BigInt) -> Result<String, Erro
         )
     })
     .to_owned())
+}
+
+#[napi(js_name = "controllerGetControllerTypeCode")]
+pub fn controller_get_controller_type_code(controller: BigInt) -> Result<u32, Error> {
+    Ok(unsafe {
+        steam_api_isteam_controller_get_input_type_for_handle_raw(
+            steam_controller()?,
+            bigint_to_u64(controller, "controller handle")?,
+        )
+    })
 }
 
 #[napi(js_name = "controllerGetControllerForGamepadIndex")]
@@ -9957,11 +9984,12 @@ pub fn screenshots_write_screenshot(rgb: Buffer, width: i32, height: i32) -> Res
     if rgb.is_empty() {
         return Err(Error::from_reason("screenshot RGB buffer is empty"));
     }
+    let rgb_len = len_to_u32(rgb.len(), "screenshot RGB data")?;
     Ok(unsafe {
         sys::SteamAPI_ISteamScreenshots_WriteScreenshot(
             steam_screenshots()?,
             rgb.as_ptr().cast::<c_void>() as *mut c_void,
-            rgb.len() as u32,
+            rgb_len,
             width,
             height,
         )
@@ -14324,8 +14352,13 @@ pub fn networking_utils_identity_get_generic_bytes(
     if bytes.is_null() || size <= 0 {
         return Ok(None);
     }
+    let size = bounded_i32_collection_count(
+        size,
+        MAX_NETWORKING_IDENTITY_GENERIC_BYTES,
+        "generic networking identity byte count",
+    )?;
     Ok(Some(
-        unsafe { std::slice::from_raw_parts(bytes, size as usize) }
+        unsafe { std::slice::from_raw_parts(bytes, size) }
             .to_vec()
             .into(),
     ))
@@ -15855,7 +15888,12 @@ pub fn encrypted_app_ticket_get_user_variable_data(
     if user_data.is_null() || user_data_len == 0 {
         return Ok(None);
     }
-    let bytes = unsafe { std::slice::from_raw_parts(user_data, user_data_len as usize) };
+    let user_data_len = bounded_u32_collection_count(
+        user_data_len,
+        ticket.len(),
+        "encrypted app ticket user-data length",
+    )?;
+    let bytes = unsafe { std::slice::from_raw_parts(user_data, user_data_len) };
     Ok(Some(bytes.to_vec().into()))
 }
 
@@ -17315,7 +17353,8 @@ async fn workshop_update_item_inner(
         |ugc, handle, value| unsafe { sys::SteamAPI_ISteamUGC_SetItemPreview(ugc, handle, value) },
     )?;
 
-    if let Some(visibility) = update_details.get("visibility").and_then(Value::as_u64) {
+    if let Some(visibility) = update_details.get("visibility") {
+        let visibility = json_u32(visibility, "workshop visibility")?;
         let visibility = match visibility {
             0 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityPublic,
             1 => sys::ERemoteStoragePublishedFileVisibility::k_ERemoteStoragePublishedFileVisibilityFriendsOnly,
@@ -17394,8 +17433,9 @@ async fn workshop_update_item_inner(
             };
             let preview_type = preview
                 .get("type")
-                .and_then(Value::as_u64)
-                .map(|value| item_preview_type_from_u32(value as u32))
+                .map(|value| {
+                    json_u32(value, "workshop preview type").and_then(item_preview_type_from_u32)
+                })
                 .transpose()?
                 .unwrap_or(sys::EItemPreviewType::k_EItemPreviewType_Image);
             let path = CString::new(path).map_err(|_| {
@@ -17466,8 +17506,9 @@ async fn workshop_update_item_inner(
         .get("removePreviews")
         .and_then(Value::as_array)
     {
-        for index in indexes.iter().filter_map(Value::as_u64) {
-            unsafe { sys::SteamAPI_ISteamUGC_RemoveItemPreview(ugc, handle, index as u32) };
+        for index in indexes {
+            let index = json_u32(index, "workshop preview index")?;
+            unsafe { sys::SteamAPI_ISteamUGC_RemoveItemPreview(ugc, handle, index) };
         }
     }
 
@@ -17475,12 +17516,13 @@ async fn workshop_update_item_inner(
         .get("contentDescriptors")
         .and_then(Value::as_array)
     {
-        for descriptor in descriptors.iter().filter_map(Value::as_u64) {
+        for descriptor in descriptors {
+            let descriptor = json_u32(descriptor, "workshop content descriptor")?;
             unsafe {
                 sys::SteamAPI_ISteamUGC_AddContentDescriptor(
                     ugc,
                     handle,
-                    ugc_content_descriptor_from_u32(descriptor as u32)?,
+                    ugc_content_descriptor_from_u32(descriptor)?,
                 )
             };
         }
@@ -17490,12 +17532,13 @@ async fn workshop_update_item_inner(
         .get("removeContentDescriptors")
         .and_then(Value::as_array)
     {
-        for descriptor in descriptors.iter().filter_map(Value::as_u64) {
+        for descriptor in descriptors {
+            let descriptor = json_u32(descriptor, "workshop content descriptor")?;
             unsafe {
                 sys::SteamAPI_ISteamUGC_RemoveContentDescriptor(
                     ugc,
                     handle,
-                    ugc_content_descriptor_from_u32(descriptor as u32)?,
+                    ugc_content_descriptor_from_u32(descriptor)?,
                 )
             };
         }
@@ -24817,9 +24860,18 @@ async fn request_matchmaking_server_list(
                     return Err(error);
                 }
             };
-            let request = request_handle as sys::HServerListRequest;
-            let result = match wait_result {
-                Ok(response_code) => {
+            // Valve requires ReleaseRequest before the callback object is
+            // destroyed. Keep that ordering fail-safe even when validation or
+            // result collection below returns an error.
+            let request_guard = crate::resource::NativeResourceHandle::new(
+                request_handle,
+                0,
+                servers as usize,
+                release_owned_matchmaking_server_list_request,
+            );
+            let request = request_guard.get() as sys::HServerListRequest;
+            match wait_result {
+                Ok(response_code) => (|| -> Result<MatchmakingServerListResult, Error> {
                     let count = bounded_i32_collection_count(
                         unsafe {
                             sys::SteamAPI_ISteamMatchmakingServers_GetServerCount(servers, request)
@@ -24851,18 +24903,25 @@ async fn request_matchmaking_server_list(
                         failed,
                         servers: items,
                     })
-                }
+                })(),
                 Err(err) => {
                     unsafe { sys::SteamAPI_ISteamMatchmakingServers_CancelQuery(servers, request) };
                     Err(err)
                 }
-            };
-            unsafe { sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(servers, request) };
-            result
+            }
         }
     };
     drop_matchmaking_server_list_response(response);
     result
+}
+
+fn release_owned_matchmaking_server_list_request(servers: usize, request: usize) {
+    unsafe {
+        sys::SteamAPI_ISteamMatchmakingServers_ReleaseRequest(
+            servers as *mut sys::ISteamMatchmakingServers,
+            request as sys::HServerListRequest,
+        )
+    };
 }
 
 fn open_matchmaking_server_list_request(
@@ -26145,9 +26204,16 @@ fn ugc_content_descriptor_from_u32(value: u32) -> Result<sys::EUGCContentDescrip
 fn value_u32(data: &Value, key: &str, label: &str) -> Result<u32, Error> {
     let value = data
         .get(key)
-        .and_then(Value::as_u64)
         .ok_or_else(|| Error::from_reason(format!("{label} is required")))?;
-    u32::try_from(value).map_err(|_| Error::from_reason(format!("{label} is too large")))
+    json_u32(value, label)
+}
+
+fn json_u32(value: &Value, label: &str) -> Result<u32, Error> {
+    let value = value
+        .as_u64()
+        .ok_or_else(|| Error::from_reason(format!("{label} must be an unsigned 32-bit integer")))?;
+    u32::try_from(value)
+        .map_err(|_| Error::from_reason(format!("{label} must be an unsigned 32-bit integer")))
 }
 
 fn string_pairs_from_value(value: &Value, label: &str) -> Result<Vec<(String, String)>, Error> {
@@ -26212,8 +26278,10 @@ fn apply_query_config(
     let Some(config) = config else {
         return Ok(());
     };
-    if let Some(value) = config.get("cachedResponseMaxAge").and_then(Value::as_u64) {
-        unsafe { sys::SteamAPI_ISteamUGC_SetAllowCachedResponse(ugc, handle, value as u32) };
+    if let Some(value) =
+        workshop_query_config_u32(config, &["cachedResponseMaxAge"], "cachedResponseMaxAge")?
+    {
+        unsafe { sys::SteamAPI_ISteamUGC_SetAllowCachedResponse(ugc, handle, value) };
     }
     if let Some(value) = config.get("includeMetadata").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetReturnMetadata(ugc, handle, value) };
@@ -26242,8 +26310,10 @@ fn apply_query_config(
     if let Some(value) = config.get("onlyTotal").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetReturnTotalOnly(ugc, handle, value) };
     }
-    if let Some(value) = config.get("playtimeStatsDays").and_then(Value::as_u64) {
-        unsafe { sys::SteamAPI_ISteamUGC_SetReturnPlaytimeStats(ugc, handle, value as u32) };
+    if let Some(value) =
+        workshop_query_config_u32(config, &["playtimeStatsDays"], "playtimeStatsDays")?
+    {
+        unsafe { sys::SteamAPI_ISteamUGC_SetReturnPlaytimeStats(ugc, handle, value) };
     }
     if let Some(value) = config.get("admin").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetAdminQuery(ugc, handle, value) };
@@ -26251,8 +26321,10 @@ fn apply_query_config(
     if let Some(value) = config.get("matchAnyTag").and_then(Value::as_bool) {
         unsafe { sys::SteamAPI_ISteamUGC_SetMatchAnyTag(ugc, handle, value) };
     }
-    if let Some(value) = config.get("rankedByTrendDays").and_then(Value::as_u64) {
-        unsafe { sys::SteamAPI_ISteamUGC_SetRankedByTrendDays(ugc, handle, value as u32) };
+    if let Some(value) =
+        workshop_query_config_u32(config, &["rankedByTrendDays"], "rankedByTrendDays")?
+    {
+        unsafe { sys::SteamAPI_ISteamUGC_SetRankedByTrendDays(ugc, handle, value) };
     }
     if let Some(language) = config.get("language").and_then(Value::as_str) {
         let language = CString::new(language)
@@ -26320,43 +26392,58 @@ fn apply_query_config(
             };
         }
     }
-    let created_after = config
-        .get("createdAfter")
-        .or_else(|| config.get("timeCreatedStart"))
-        .and_then(Value::as_u64);
-    let created_before = config
-        .get("createdBefore")
-        .or_else(|| config.get("timeCreatedEnd"))
-        .and_then(Value::as_u64);
+    let created_after = workshop_query_config_u32(
+        config,
+        &["createdAfter", "timeCreatedStart"],
+        "createdAfter",
+    )?;
+    let created_before = workshop_query_config_u32(
+        config,
+        &["createdBefore", "timeCreatedEnd"],
+        "createdBefore",
+    )?;
     if created_after.is_some() || created_before.is_some() {
         unsafe {
             sys::SteamAPI_ISteamUGC_SetTimeCreatedDateRange(
                 ugc,
                 handle,
-                created_after.unwrap_or(0) as u32,
-                created_before.unwrap_or(u32::MAX as u64) as u32,
+                created_after.unwrap_or(0),
+                created_before.unwrap_or(u32::MAX),
             )
         };
     }
-    let updated_after = config
-        .get("updatedAfter")
-        .or_else(|| config.get("timeUpdatedStart"))
-        .and_then(Value::as_u64);
-    let updated_before = config
-        .get("updatedBefore")
-        .or_else(|| config.get("timeUpdatedEnd"))
-        .and_then(Value::as_u64);
+    let updated_after = workshop_query_config_u32(
+        config,
+        &["updatedAfter", "timeUpdatedStart"],
+        "updatedAfter",
+    )?;
+    let updated_before = workshop_query_config_u32(
+        config,
+        &["updatedBefore", "timeUpdatedEnd"],
+        "updatedBefore",
+    )?;
     if updated_after.is_some() || updated_before.is_some() {
         unsafe {
             sys::SteamAPI_ISteamUGC_SetTimeUpdatedDateRange(
                 ugc,
                 handle,
-                updated_after.unwrap_or(0) as u32,
-                updated_before.unwrap_or(u32::MAX as u64) as u32,
+                updated_after.unwrap_or(0),
+                updated_before.unwrap_or(u32::MAX),
             )
         };
     }
     Ok(())
+}
+
+fn workshop_query_config_u32(
+    config: &Value,
+    keys: &[&str],
+    label: &str,
+) -> Result<Option<u32>, Error> {
+    let Some(value) = keys.iter().find_map(|key| config.get(*key)) else {
+        return Ok(None);
+    };
+    json_u32(value, &format!("workshop query {label}")).map(Some)
 }
 
 fn collect_query_items(
@@ -26882,6 +26969,43 @@ mod lifecycle_resource_tests {
         assert!(validate_workshop_query_item_count(1).is_ok());
         assert!(validate_workshop_query_item_count(1_000).is_ok());
         assert!(validate_workshop_query_item_count(1_001).is_err());
+    }
+
+    #[test]
+    fn workshop_query_u32_fields_reject_wrapping_or_malformed_values() {
+        let maximum = serde_json::json!({ "createdAfter": u32::MAX });
+        assert_eq!(
+            workshop_query_config_u32(&maximum, &["createdAfter"], "createdAfter").unwrap(),
+            Some(u32::MAX)
+        );
+
+        for invalid in [
+            serde_json::json!({ "createdAfter": u64::from(u32::MAX) + 1 }),
+            serde_json::json!({ "createdAfter": -1 }),
+            serde_json::json!({ "createdAfter": 1.5 }),
+            serde_json::json!({ "createdAfter": "1" }),
+        ] {
+            assert!(
+                workshop_query_config_u32(&invalid, &["createdAfter"], "createdAfter").is_err()
+            );
+        }
+
+        let legacy_alias = serde_json::json!({ "timeCreatedStart": 42 });
+        assert_eq!(
+            workshop_query_config_u32(
+                &legacy_alias,
+                &["createdAfter", "timeCreatedStart"],
+                "createdAfter"
+            )
+            .unwrap(),
+            Some(42)
+        );
+
+        assert_eq!(
+            json_u32(&serde_json::json!(u32::MAX), "test field").unwrap(),
+            u32::MAX
+        );
+        assert!(json_u32(&serde_json::json!(u64::from(u32::MAX) + 1), "test field").is_err());
     }
 
     #[test]

@@ -584,7 +584,8 @@ function fakePeBuffer(trailer, imports = [], delayImports = []) {
 }
 
 function assertDirectory(directory, label) {
-  if (!directory || !fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) {
+  const stat = directory ? fs.lstatSync(directory, { throwIfNoEntry: false }) : undefined;
+  if (!stat?.isDirectory()) {
     throw new Error(`${label} is missing: ${directory || "<unset>"}.`);
   }
 }
@@ -596,7 +597,8 @@ function assertNonEmptyFile(filePath, label) {
 }
 
 function isNonEmptyFile(filePath) {
-  return fs.existsSync(filePath) && fs.statSync(filePath).isFile() && fs.statSync(filePath).size > 0;
+  const stat = fs.lstatSync(filePath, { throwIfNoEntry: false });
+  return Boolean(stat?.isFile() && stat.size > 0);
 }
 
 function normalizeRelativePath(value) {

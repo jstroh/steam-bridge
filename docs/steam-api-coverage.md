@@ -149,7 +149,8 @@ covered.
   DualSense trigger-effect forwarding, motion data, haptics, LED controls,
   cached revision-aware prompts and glyphs, normalized vibration and LED
   output, binding panels, diagnostics, remote-play session IDs, session configuration, controller
-  type, deprecated `ISteamController` compatibility helpers, and text input
+  type names with forward-compatible raw type numbers, deprecated
+  `ISteamController` compatibility helpers, and text input
   helpers.
 - Matchmaking/lobbies: favorite/history server storage, lobby list filters,
   create, join, list, leave, member/owner helpers, lobby and member data,
@@ -229,6 +230,14 @@ covered.
   interfaces.
 
 ## Not Yet Complete
+
+- Valve released Steamworks SDK 1.65 on July 23, 2026 with new Steam Input
+  action origins and hardware/Proton APIs for Switch 2, Steam Controller, and
+  Steam Frame Controller devices. The current `steamworks-sys 0.13.0` headers
+  do not contain those additions yet. Steam Bridge preserves unknown action
+  origins and controller type numbers so newer values are not collapsed while
+  the binding upgrade is tracked, but named constants and the new 1.65 calls
+  remain pending. See Valve's [SDK 1.65 announcement](https://steamcommunity.com/groups/steamworks/announcements/detail/678504885369439021).
 
 - Remaining modern networking surfaces: field-level parsed relay-auth-ticket
   payloads. `steamworks-sys 0.13` exposes the ticket out-parameter but keeps

@@ -219,7 +219,10 @@ function readFilePrefix(filePath: string, maxBytes: number): string {
 function assertRegularNonEmptyFile(filePath: string, label: string): void {
   let stats: fs.Stats;
   try {
-    stats = fs.statSync(filePath);
+    // Do not follow a packaged-output symlink: it would leave a non-portable
+    // launcher payload and chmodSync() below could mutate a file outside the
+    // app output directory.
+    stats = fs.lstatSync(filePath);
   } catch {
     throw new Error(`${label} is missing: ${filePath}`);
   }

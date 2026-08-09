@@ -4138,6 +4138,8 @@ export type SteamInputAnalogFrameMap<TDefinition extends SteamInputDefinition> =
 export interface SteamInputControllerFrame<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
   readonly handle: bigint;
   readonly inputType: InputTypeValue;
+  /** Raw ESteamInputType value, preserved even when inputType is Unknown. */
+  readonly inputTypeCode: number;
   readonly gamepadIndex: number;
   readonly currentActionSet: keyof TDefinition["actionSets"] | null;
   readonly currentActionSetHandle: bigint;
@@ -7679,6 +7681,8 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
 
   private started = false;
   private disposed = false;
+  private updateInProgress = false;
+  private disposePending = false;
   private ownsInputReference = false;
   private readonly actionSetEntries: Array<[string, string]>;
   private readonly actionLayerEntries: Array<[string, string]>;
@@ -7773,7 +7777,20 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
   }
 
   update(): SteamInputFrame<TDefinition> {
+    if (this.updateInProgress) {
+      throw new Error("SteamInputSession.update() cannot be called reentrantly");
+    }
     this.assertStarted();
+    this.updateInProgress = true;
+    try {
+      return this.updateFrame();
+    } finally {
+      this.updateInProgress = false;
+      if (this.disposePending) this.finishDispose();
+    }
+  }
+
+  private updateFrame(): SteamInputFrame<TDefinition> {
     if (!this.allDefinitionHandlesResolved) this.resolveHandles();
     this.applySelectedActionSets();
 
@@ -7783,6 +7800,7 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       true,
       this.controllerMode !== "individual"
     );
+    const capturedAtNs = process.hrtime.bigint();
     const rawControllers = snapshot.controllers ?? [];
     const nextControllers = rawControllers.map((controller) => this.normalizeControllerFrame(controller));
     const nextControllerMap = new Map(nextControllers.map((controller) => [controller.handle, controller]));
@@ -7839,10 +7857,7 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
           : physicalPrimary;
     const frame: SteamInputFrame<TDefinition> = {
       sequence: requiredBigIntLike(snapshot.sequence, "Steam Input snapshot sequence"),
-      capturedAtNs: requiredBigIntLike(
-        snapshot.capturedAtNs ?? snapshot.captured_at_ns ?? 0,
-        "Steam Input snapshot capture time"
-      ),
+      capturedAtNs,
       receivedAtNs: process.hrtime.bigint(),
       controllers: publicControllers,
       mergedController: merged,
@@ -8096,6 +8111,15 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     if (this.disposed) return;
     this.disposed = true;
     this.started = false;
+    if (this.updateInProgress) {
+      this.disposePending = true;
+      return;
+    }
+    this.finishDispose();
+  }
+
+  private finishDispose(): void {
+    this.disposePending = false;
     for (const callback of this.callbacks.splice(0)) {
       try {
         callback.disconnect();
@@ -8176,9 +8200,14 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
       (value) => requiredBigIntLike(value, "Steam Input action layer handle")
     );
     const revision = source.bindingRevision ?? source.binding_revision;
+    const inputType = normalizeInputType(source.inputType ?? source.input_type ?? "Unknown");
     return {
       handle,
-      inputType: normalizeInputType(source.inputType ?? source.input_type ?? "Unknown"),
+      inputType,
+      inputTypeCode: normalizeInputTypeCode(
+        source.inputTypeCode ?? source.input_type_code,
+        inputType
+      ),
       gamepadIndex: Number(source.gamepadIndex ?? source.gamepad_index ?? -1),
       currentActionSet: keyForHandle(this.actionSetHandles, currentActionSetHandle) as
         | keyof TDefinition["actionSets"]
@@ -8242,7 +8271,11 @@ export class SteamInputSession<TDefinition extends SteamInputDefinition = SteamI
     const actionHandle = this.requireResolvedHandle(handles, action, `${kind} action`);
     const size = options.size ?? InputGlyphSize.Medium;
     const style = options.style ?? InputGlyphStyle.Knockout;
-    const controller = new Controller(controllerHandle, controllerFrame?.inputType);
+    const controller = new Controller(
+      controllerHandle,
+      controllerFrame?.inputType,
+      controllerFrame?.inputTypeCode
+    );
     const origins =
       kind === "digital"
         ? controller.getDigitalActionOrigins(actionSetHandle, actionHandle)
@@ -8712,6 +8745,7 @@ function mergeSteamInputControllerMetadata<TDefinition extends SteamInputDefinit
   return {
     ...merged,
     inputType: primary.inputType,
+    inputTypeCode: primary.inputTypeCode,
     gamepadIndex: primary.gamepadIndex,
     currentActionSet: primary.currentActionSet,
     currentActionSetHandle: primary.currentActionSetHandle,
@@ -8829,9 +8863,13 @@ function disconnectedControllerFrame<TDefinition extends SteamInputDefinition>(
 
 export class Controller {
   private readonly handle: bigint;
+  private readonly cachedTypeCode?: number;
 
-  constructor(handle: bigint, private readonly cachedType?: string) {
+  constructor(handle: bigint, private readonly cachedType?: string, cachedTypeCode?: number) {
     this.handle = validInputControllerHandle(handle);
+    this.cachedTypeCode = cachedTypeCode == null
+      ? undefined
+      : normalizeInputTypeCode(cachedTypeCode, normalizeInputType(cachedType ?? "Unknown"));
   }
 
   activateActionSet(actionSetHandle: bigint): void {
@@ -8955,6 +8993,10 @@ export class Controller {
     return normalizeInputType(this.cachedType ?? native().inputGetControllerType(this.handle));
   }
 
+  getTypeCode(): number {
+    return this.cachedTypeCode ?? normalizeInputTypeCode(native().inputGetControllerTypeCode(this.handle));
+  }
+
   getGamepadIndex(): number {
     return native().inputGetGamepadIndexForController(this.handle);
   }
@@ -8975,9 +9017,13 @@ export class Controller {
 
 export class LegacyController {
   private readonly handle: bigint;
+  private readonly cachedTypeCode?: number;
 
-  constructor(handle: bigint, private readonly cachedType?: string) {
+  constructor(handle: bigint, private readonly cachedType?: string, cachedTypeCode?: number) {
     this.handle = validInputControllerHandle(handle);
+    this.cachedTypeCode = cachedTypeCode == null
+      ? undefined
+      : normalizeInputTypeCode(cachedTypeCode, normalizeInputType(cachedType ?? "Unknown"));
   }
 
   activateActionSet(actionSetHandle: bigint): void {
@@ -9076,6 +9122,10 @@ export class LegacyController {
 
   getType(): InputTypeValue {
     return normalizeInputType(this.cachedType ?? native().controllerGetControllerType(this.handle));
+  }
+
+  getTypeCode(): number {
+    return this.cachedTypeCode ?? normalizeInputTypeCode(native().controllerGetControllerTypeCode(this.handle));
   }
 
   getGamepadIndex(): number {
@@ -10072,7 +10122,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     return syncStatus.active !== true || syncStatus.ownershipUncertain === true;
   };
   const continuousPresentRequested = options.continuousPresent === true;
-  const restoreFocusDelayMs = Math.max(0, options.restoreFocusDelayMs ?? 250);
+  const restoreFocusDelayMs = Math.max(0, finiteNumber(options.restoreFocusDelayMs, 250));
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
   const startedAt = Date.now();
   const activationWarmupMs = normalizeNativeOverlayActivationWarmupMs(
@@ -14486,8 +14536,8 @@ export function attachOverlayPresenter(options: NativeOverlayPresenterOptions = 
 
     const generation = ++frameCaptureGeneration;
     frameCaptureInFlight = true;
-    void options
-      .captureFrame()
+    void Promise.resolve()
+      .then(() => options.captureFrame!())
       .then((frame) => {
         if (
           closed ||
@@ -22876,7 +22926,8 @@ export const input = {
     return native().inputGetControllers().map((controller: NativeInputControllerInfo) => {
       return new Controller(
         requiredBigIntLike(controller.handle, "Steam Input controller handle"),
-        controller.inputType
+        controller.inputType,
+        controller.inputTypeCode ?? controller.input_type_code
       );
     });
   },
@@ -22978,7 +23029,8 @@ export const controller = {
     return native().controllerGetControllers().map((controller: NativeInputControllerInfo) => {
       return new LegacyController(
         requiredBigIntLike(controller.handle, "Steam Controller handle"),
-        controller.inputType
+        controller.inputType,
+        controller.inputTypeCode ?? controller.input_type_code
       );
     });
   },
@@ -29715,7 +29767,18 @@ function steamWebApiInputJsonValue(input: SteamWebApiInputJsonValue): string {
   return JSON.stringify(steamWebApiJsonReady(input));
 }
 
-function steamWebApiJsonReady(value: SteamWebApiInputJsonValue): unknown {
+const MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH = 128;
+
+function steamWebApiJsonReady(
+  value: SteamWebApiInputJsonValue,
+  depth = 0,
+  ancestors: Set<object> = new Set()
+): unknown {
+  if (depth > MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH) {
+    throw new Error(
+      `Steam Web API JSON exceeds the maximum serialization depth of ${MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH}.`
+    );
+  }
   if (value === undefined) {
     return undefined;
   }
@@ -29726,17 +29789,33 @@ function steamWebApiJsonReady(value: SteamWebApiInputJsonValue): unknown {
     assertLosslessSteamWebApiNumber(value);
   }
   if (Array.isArray(value)) {
-    return value.map(steamWebApiJsonReady);
+    if (ancestors.has(value)) {
+      throw new Error("Steam Web API JSON must not contain circular references.");
+    }
+    ancestors.add(value);
+    try {
+      return value.map((entry) => steamWebApiJsonReady(entry, depth + 1, ancestors));
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (value !== null && typeof value === "object") {
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      const ready = steamWebApiJsonReady(entry);
-      if (ready !== undefined) {
-        output[key] = ready;
-      }
+    if (ancestors.has(value)) {
+      throw new Error("Steam Web API JSON must not contain circular references.");
     }
-    return output;
+    ancestors.add(value);
+    try {
+      const output: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+      for (const [key, entry] of Object.entries(value)) {
+        const ready = steamWebApiJsonReady(entry, depth + 1, ancestors);
+        if (ready !== undefined) {
+          output[key] = ready;
+        }
+      }
+      return output;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   return value;
 }
@@ -29799,8 +29878,6 @@ interface SteamWebApiBodyCredentialInspection {
 interface SteamWebApiHeaderCredentialInspection {
   sensitiveValues: string[];
 }
-
-const MAX_STEAM_WEB_API_JSON_INSPECTION_DEPTH = 128;
 
 function assertSteamWebApiHeadersDoNotContainKey(headers: Record<string, string>): void {
   if (Object.keys(headers).some((name) => name.toLowerCase() === "x-webapi-key")) {
@@ -32427,6 +32504,16 @@ function steamInputWaitTimeout(value: number): number {
 
 function normalizeInputType(value: string): InputTypeValue {
   return Object.values(InputType).includes(value as InputTypeValue) ? (value as InputTypeValue) : InputType.Unknown;
+}
+
+function normalizeInputTypeCode(value: unknown, fallbackType: InputTypeValue = InputType.Unknown): number {
+  if (value == null) {
+    return InputTypeCode[fallbackType as keyof typeof InputTypeCode] ?? InputTypeCode.Unknown;
+  }
+  if (!Number.isInteger(value) || Number(value) < 0 || Number(value) > 0xffff_ffff) {
+    throw new RangeError("Steam Input controller type code must be an unsigned 32-bit integer");
+  }
+  return Number(value);
 }
 
 function normalizeInputDigitalActionData(data: NativeInputDigitalActionData): InputDigitalActionData {

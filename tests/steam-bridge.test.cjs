@@ -3112,8 +3112,8 @@ function createFakeNative(overrides = {}) {
     },
     inputGetControllers() {
       return [
-        { handle: "123", inputType: "PS5Controller" },
-        { handle: 456n, inputType: "FlightStick" }
+        { handle: "123", inputType: "PS5Controller", inputTypeCode: 13 },
+        { handle: 456n, inputType: "FlightStick", inputTypeCode: 65_536 }
       ];
     },
     inputPollSequence: 0n,
@@ -3124,7 +3124,8 @@ function createFakeNative(overrides = {}) {
       fake.inputPollSequence += 1n;
       const controller = {
         handle: "123",
-        input_type: "PS5Controller",
+        input_type: "FutureController",
+        input_type_code: 42,
         gamepad_index: 0,
         current_action_set: "10",
         active_action_set_layers: [],
@@ -3152,6 +3153,7 @@ function createFakeNative(overrides = {}) {
               ...controller,
               handle: "18446744073709551615",
               input_type: "Unknown",
+              input_type_code: 0,
               gamepad_index: -1,
               current_action_set: "0",
               active_action_set_layers: [],
@@ -3338,6 +3340,10 @@ function createFakeNative(overrides = {}) {
       calls.push({ method: "inputGetControllerType", args: [controller] });
       return "PS5Controller";
     },
+    inputGetControllerTypeCode(controller) {
+      calls.push({ method: "inputGetControllerTypeCode", args: [controller] });
+      return 13;
+    },
     inputGetGamepadIndexForController(controller) {
       calls.push({ method: "inputGetGamepadIndexForController", args: [controller] });
       return 0;
@@ -3383,7 +3389,7 @@ function createFakeNative(overrides = {}) {
     },
     controllerGetControllers() {
       calls.push({ method: "controllerGetControllers", args: [] });
-      return [{ handle: "789", inputType: "SteamController" }];
+      return [{ handle: "789", inputType: "SteamController", inputTypeCode: 1 }];
     },
     controllerGetControllerForGamepadIndex(index) {
       calls.push({ method: "controllerGetControllerForGamepadIndex", args: [index] });
@@ -3493,6 +3499,10 @@ function createFakeNative(overrides = {}) {
     controllerGetControllerType(controller) {
       calls.push({ method: "controllerGetControllerType", args: [controller] });
       return "SteamController";
+    },
+    controllerGetControllerTypeCode(controller) {
+      calls.push({ method: "controllerGetControllerTypeCode", args: [controller] });
+      return 1;
     },
     controllerGetGamepadIndexForController(controller) {
       calls.push({ method: "controllerGetGamepadIndexForController", args: [controller] });
@@ -4284,6 +4294,59 @@ test("native loader prefers the physical ASAR-unpacked addon mirror", (t) => {
   );
 });
 
+test("native loader resolves an explicit relative override once and fails closed when it is missing", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  setProcessArchForTest(t, "x64");
+  const previousNativePath = process.env.STEAM_BRIDGE_NATIVE_PATH;
+  t.after(() => {
+    if (previousNativePath === undefined) delete process.env.STEAM_BRIDGE_NATIVE_PATH;
+    else process.env.STEAM_BRIDGE_NATIVE_PATH = previousNativePath;
+    clearSteamBridgeCache();
+  });
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-relative-native-"));
+  t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+  const addonPath = path.join(tempRoot, "selected.node");
+  fs.writeFileSync(addonPath, "selected addon");
+  const previousNodeLoader = Module._extensions[".node"];
+  Module._extensions[".node"] = (module, filename) => {
+    module.exports = { loadedFrom: filename };
+  };
+  t.after(() => {
+    Module._extensions[".node"] = previousNodeLoader;
+  });
+
+  process.env.STEAM_BRIDGE_NATIVE_PATH = path.relative(process.cwd(), addonPath);
+  clearSteamBridgeCache();
+  assert.equal(
+    fs.realpathSync(require(distFile("native.js")).loadNativeBinding().loadedFrom),
+    fs.realpathSync(addonPath)
+  );
+
+  process.env.STEAM_BRIDGE_NATIVE_PATH = path.relative(process.cwd(), path.join(tempRoot, "missing.node"));
+  clearSteamBridgeCache();
+  assert.throws(
+    () => require(distFile("native.js")).loadNativeBinding(),
+    /missing\.node: file does not exist/
+  );
+
+  process.env.STEAM_BRIDGE_NATIVE_PATH = tempRoot;
+  clearSteamBridgeCache();
+  assert.throws(
+    () => require(distFile("native.js")).loadNativeBinding(),
+    /not a regular file/
+  );
+
+  const javascriptPath = path.join(tempRoot, "selected.cjs");
+  fs.writeFileSync(javascriptPath, "module.exports = { loadedFrom: __filename };\n");
+  process.env.STEAM_BRIDGE_NATIVE_PATH = javascriptPath;
+  clearSteamBridgeCache();
+  assert.throws(
+    () => require(distFile("native.js")).loadNativeBinding(),
+    /native override must be a \.node file/
+  );
+});
+
 test("macOS signing verifier checks launcher identity marker", (t) => {
   const verifier = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"));
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-signing-identity-"));
@@ -4356,6 +4419,35 @@ test("macOS preparation staging replaces stale Electron and recovers interrupted
     /launcher[\s\S]*renamed Electron executable is missing/
   );
   assert.match(fs.readFileSync(appExe, "utf8"), /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
+});
+
+test("macOS preparation and signing checks reject symlinked executable payloads", (t) => {
+  if (process.platform === "win32") {
+    t.skip("ordinary Windows CI users cannot create symlinks without additional privileges");
+    return;
+  }
+  const preparer = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "prepare-macos-app.cjs"));
+  const verifier = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "verify-macos-signing.cjs"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-macos-link-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const externalExecutable = path.join(tempDir, "external-electron");
+  const appExe = path.join(tempDir, "Example");
+  fs.writeFileSync(externalExecutable, `binary ${verifier.STEAM_BRIDGE_MACOS_LAUNCHER_ID}`);
+  fs.symlinkSync(externalExecutable, appExe, "file");
+
+  assert.throws(
+    () => preparer.stageMacosElectronExecutable(
+      { appExe, electronExe: `${appExe}.electron` },
+      { dryRun: false },
+      { log() {} }
+    ),
+    /current app executable is not a file/
+  );
+  assert.throws(
+    () => verifier.verifySteamLauncherIdentity(appExe, "native launcher"),
+    /native launcher is not a file/
+  );
+  assert.match(fs.readFileSync(externalExecutable, "utf8"), /STEAM_BRIDGE_MACOS_ENV_LAUNCHER_V1/);
 });
 
 test("electron-builder helper skips non-mac targets without spawning", (t) => {
@@ -4651,6 +4743,32 @@ test("electron-builder Linux helper reports missing executable names clearly", (
       }),
     /could not determine the Linux executable name/
   );
+});
+
+test("electron-builder Linux helper rejects symlinked executable payloads", (t) => {
+  if (process.platform === "win32") {
+    t.skip("ordinary Windows CI users cannot create symlinks without additional privileges");
+    return;
+  }
+  const builder = require(distFile("electron-builder.js"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-linux-link-"));
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const externalExecutable = path.join(tempDir, "external-electron");
+  const appOutDir = path.join(tempDir, "out");
+  const executablePath = path.join(appOutDir, "SteamBridgeSmoke");
+  fs.mkdirSync(appOutDir);
+  fs.writeFileSync(externalExecutable, "electron");
+  fs.symlinkSync(externalExecutable, executablePath, "file");
+
+  assert.throws(
+    () => builder.prepareLinuxSteamAppAfterPack({
+      appOutDir,
+      electronPlatformName: "linux",
+      packager: { executableName: "SteamBridgeSmoke" }
+    }),
+    /current Linux app executable is not a regular file/
+  );
+  assert.equal(fs.readFileSync(externalExecutable, "utf8"), "electron");
 });
 
 test("smoke result verifier accepts passive notification evidence with lifecycle callbacks", (t) => {
@@ -13383,8 +13501,13 @@ test("Linux GLX host uploads a complete BGRA game frame before Steam swaps", () 
   }
 
   const update = linuxSource.slice(updateStart, updateEnd);
-  assert.match(update, /checked_mul\(height as usize\)/);
-  assert.match(update, /checked_mul\(4\)/);
+  const frameLengthGuard = nativeSource.slice(
+    nativeSource.indexOf("fn checked_native_overlay_frame_byte_len("),
+    nativeSource.indexOf("#[cfg(any(target_os = \"linux\", test))]")
+  );
+  assert.match(frameLengthGuard, /checked_mul\(height as usize\)/);
+  assert.match(frameLengthGuard, /checked_mul\(4\)/);
+  assert.match(update, /checked_native_overlay_frame_byte_len\(width, height, "Linux"\)/);
   assert.match(update, /source_frame = Some\(LinuxFrameUpload/);
   assert.match(update, /source_frame_dirty = true/);
 
@@ -26608,6 +26731,74 @@ test("attached Linux presenter captures Chromium before opaque GLX presentation"
   presenter.close();
 });
 
+test("attached Linux presenter recovers when captureFrame throws synchronously", async (t) => {
+  setProcessPlatformForTest(t, "linux");
+
+  let hostOpen = false;
+  let captureCount = 0;
+  const hostHandle = Buffer.from([7, 6, 5, 4, 0, 0, 0, 0]);
+  const frame = Buffer.from([1, 2, 3, 255]);
+  const fake = createFakeNative({
+    attachNativeOverlayHostView(nativeWindowHandle) {
+      hostOpen = true;
+      this.calls.push({ method: "attachNativeOverlayHostView", args: [nativeWindowHandle] });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    showNativeOverlayHostView() {
+      this.calls.push({ method: "showNativeOverlayHostView", args: [] });
+    },
+    setNativeOverlayHostInputPassthrough(passThrough) {
+      this.calls.push({ method: "setNativeOverlayHostInputPassthrough", args: [passThrough] });
+    },
+    setNativeOverlayHostOpacity(opaque) {
+      this.calls.push({ method: "setNativeOverlayHostOpacity", args: [opaque] });
+    },
+    updateNativeOverlayHostFrame(data, width, height) {
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [data, width, height] });
+    },
+    detachNativeOverlayHostView() {
+      hostOpen = false;
+      this.calls.push({ method: "detachNativeOverlayHostView", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return false;
+    },
+    isNativeOverlayHostViewOpen() {
+      return hostOpen;
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  const presenter = steam.overlay.attachPresenter({
+    nativeWindowHandle: hostHandle,
+    pollIntervalMs: 10000,
+    activeGraceMs: 0,
+    captureFrame() {
+      captureCount += 1;
+      if (captureCount === 1) {
+        throw new Error("synchronous capture failure");
+      }
+      return Promise.resolve({ data: frame, width: 1, height: 1 });
+    }
+  });
+
+  assert.doesNotThrow(() => presenter.prepareForOverlay());
+  assert.equal(
+    await waitForCondition(
+      () => fake.calls.some((call) => call.method === "updateNativeOverlayHostFrame"),
+      500,
+      5
+    ),
+    true
+  );
+  assert.ok(captureCount >= 2);
+  assert.equal(presenter.snapshot().closed, false);
+  presenter.close();
+});
+
 test("native overlay presenter primes passive notifications without a blind frame loop", async (t) => {
   setProcessPlatformForTest(t, "linux");
   let hostOpen = false;
@@ -28529,7 +28720,10 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   const controllers = steam.input.getControllers();
   assert.equal(controllers[0].getHandle(), 123n);
   assert.equal(controllers[0].getType(), steam.InputType.PS5Controller);
+  assert.equal(controllers[0].getTypeCode(), steam.InputTypeCode.PS5Controller);
   assert.equal(controllers[1].getType(), steam.InputType.Unknown);
+  assert.equal(controllers[1].getTypeCode(), 65_536, "future u32 controller type codes must survive unknown names");
+  assert.equal(steam.input.getControllerForGamepadIndex(0)?.getTypeCode(), steam.InputTypeCode.PS5Controller);
   assert.equal(steam.input.STEAM_INPUT_HANDLE_ALL_CONTROLLERS, 18446744073709551615n);
   assert.equal(steam.input.STEAM_INPUT_MAX_COUNT, 16);
   assert.equal(steam.input.STEAM_INPUT_MAX_DIGITAL_ACTIONS, 256);
@@ -28787,7 +28981,9 @@ test("cloud, input, and networking facades coerce native values", async (t) => {
   const legacyControllers = steam.controller.getControllers();
   assert.equal(legacyControllers[0].getHandle(), 789n);
   assert.equal(legacyControllers[0].getType(), steam.InputType.SteamController);
+  assert.equal(legacyControllers[0].getTypeCode(), steam.InputTypeCode.SteamController);
   assert.equal(steam.controller.getControllerForGamepadIndex(0)?.getHandle(), 789n);
+  assert.equal(steam.controller.getControllerForGamepadIndex(0)?.getTypeCode(), steam.InputTypeCode.SteamController);
   assert.equal(steam.controller.getControllerForGamepadIndex(1), null);
   assert.throws(() => steam.controller.getControllerForGamepadIndex(1.5), /integer from 0 through 3/);
   const legacyActionSet = steam.controller.getActionSet("legacy-gameplay");
@@ -28854,13 +29050,22 @@ test("SteamInputSession batches frames, computes edges, manages prompts, and own
   assert.equal(fake.calls.filter((call) => call.method === "inputInit").length, 1);
   assert.deepEqual(fake.calls.find((call) => call.method === "inputInit").args, [true]);
 
+  const beforeFirstUpdate = process.hrtime.bigint();
   const first = session.update();
+  const afterFirstUpdate = process.hrtime.bigint();
   assert.equal(first.sequence, 1n);
+  assert.ok(first.capturedAtNs >= beforeFirstUpdate);
+  assert.ok(first.receivedAtNs >= first.capturedAtNs);
+  assert.ok(first.receivedAtNs <= afterFirstUpdate);
+  assert.notEqual(first.capturedAtNs, 1_000_000n, "native and JavaScript clock origins must not be mixed");
   assert.equal(first.controllers.length, 1);
+  assert.equal(first.controllers[0].inputType, steam.InputType.Unknown);
+  assert.equal(first.controllers[0].inputTypeCode, 42, "future controller type codes must survive frame normalization");
   assert.equal(first.controllers[0].digital.jump.isDown, false);
   assert.equal(first.controllers[0].digital.jump.pressedThisFrame, false);
   assert.equal(first.mergedController.handle, steam.STEAM_INPUT_HANDLE_ALL_CONTROLLERS);
   assert.equal(first.mergedController.inputType, first.primaryController.inputType);
+  assert.equal(first.mergedController.inputTypeCode, first.primaryController.inputTypeCode);
   assert.equal(first.mergedController.currentActionSetHandle, first.primaryController.currentActionSetHandle);
 
   fake.inputPollDigitalDown = true;
@@ -29016,6 +29221,41 @@ test("SteamInputSession listeners receive isolated snapshots and contain async f
   assert.equal(warnings[0].options.code, "STEAM_INPUT_LISTENER_FAILED");
   assert.match(warnings[0].message, /async session consumer failed/);
   session.dispose();
+});
+
+test("SteamInputSession rejects recursive polls and defers listener disposal until the frame commits", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const session = steam.input.createSession({
+    definition: steam.defineSteamInput({
+      actionSets: { gameplay: "gameplay" },
+      digital: { jump: "jump" },
+      analog: {}
+    })
+  });
+  let nestedUpdateError;
+  session.on("controller-connected", () => {
+    try {
+      session.update();
+    } catch (error) {
+      nestedUpdateError = error;
+    }
+    session.dispose();
+  });
+
+  session.start();
+  const frame = session.update();
+  assert.match(nestedUpdateError?.message ?? "", /cannot be called reentrantly/);
+  assert.equal(frame.sequence, 1n);
+  assert.equal(session.lastFrame.sequence, 1n);
+  assert.equal(fake.calls.filter((call) => call.method === "inputPollSnapshot").length, 1);
+  assert.equal(fake.calls.filter((call) => call.method === "inputShutdown").length, 1);
+  assert.deepEqual(
+    { started: session.getDiagnostics().started, disposed: session.getDiagnostics().disposed },
+    { started: false, disposed: true }
+  );
+  assert.throws(() => session.update(), /start\(\) must be called before use/);
 });
 
 test("SteamInputSession retries pending handles without inventing input edges", (t) => {
@@ -29997,7 +30237,26 @@ test("Electron Steam Input transport is acknowledged, coalesced, and renderer-sc
     /frame sequence must increase/
   );
 
-  webContentsListeners.get("did-start-navigation")({}, {}, false, true);
+  webContentsListeners.get("did-start-navigation")(
+    { isSameDocument: false, isMainFrame: false },
+    "https://example.invalid/frame",
+    false,
+    false
+  );
+  assert.equal(transport.closed, false, "subframe navigation must not close the renderer transport");
+  webContentsListeners.get("did-start-navigation")(
+    { isSameDocument: true, isMainFrame: true },
+    "https://example.invalid/#next",
+    true,
+    true
+  );
+  assert.equal(transport.closed, false, "same-document navigation must retain the renderer transport");
+  webContentsListeners.get("did-start-navigation")(
+    { isSameDocument: false, isMainFrame: true },
+    "https://example.invalid/replaced",
+    false,
+    true
+  );
   assert.equal(transport.closed, true);
   subscription.close();
   assert.equal(subscription.closed, true);
@@ -30088,6 +30347,63 @@ test("Electron Steam Input renderer subscriptions contain listener and port fail
   assert.equal(warnings[0].options.code, "STEAM_INPUT_RENDERER_LISTENER_FAILED");
   assert.doesNotThrow(() => subscription.close());
   assert.equal(closeCount, 1);
+});
+
+test("Electron Steam Input renderer acknowledgements wait for async listeners to settle", async (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  const originalEmitWarning = process.emitWarning;
+  const warnings = [];
+  process.emitWarning = (message, options) => warnings.push({ message, options });
+  t.after(() => {
+    process.emitWarning = originalEmitWarning;
+  });
+  let connectListener;
+  const ipcRenderer = {
+    on(_channel, listener) {
+      connectListener = listener;
+    },
+    off() {}
+  };
+  const acknowledgements = [];
+  const port = {
+    onmessage: null,
+    postMessage(value) {
+      acknowledgements.push(value);
+    },
+    start() {},
+    close() {}
+  };
+  const pendingListeners = [];
+  const subscription = electronInput.subscribeElectronSteamInput(
+    ipcRenderer,
+    () => new Promise((resolve, reject) => pendingListeners.push({ resolve, reject }))
+  );
+  connectListener({ ports: [port] });
+
+  port.onmessage({ data: { type: "frame", version: 1, frame: { sequence: "1", controllers: [], mergedController: null } } });
+  assert.deepEqual(acknowledgements, [], "an unresolved renderer listener must retain transport backpressure");
+  pendingListeners.shift().resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(acknowledgements, [{ type: "ack", sequence: "1" }]);
+
+  port.onmessage({ data: { type: "frame", version: 1, frame: { sequence: "2", controllers: [], mergedController: null } } });
+  assert.equal(acknowledgements.length, 1);
+  pendingListeners.shift().reject(new Error("async renderer failed"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(acknowledgements.at(-1), { type: "ack", sequence: "2" });
+  assert.equal(warnings.at(-1).options.code, "STEAM_INPUT_RENDERER_LISTENER_FAILED");
+
+  port.onmessage({ data: { type: "frame", version: 1, frame: { sequence: "3", controllers: [], mergedController: null } } });
+  subscription.close();
+  pendingListeners.shift().resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    acknowledgements,
+    [{ type: "ack", sequence: "1" }, { type: "ack", sequence: "2" }],
+    "a closed subscription must not acknowledge stale work"
+  );
 });
 
 test("Electron Steam Input transport closes cleanly when a pending-frame send fails", (t) => {
@@ -37584,6 +37900,52 @@ test("web API serialization rejects lossy integers across query, list, and input
     }),
     /steamid=76561198073424621/
   );
+});
+
+test("web API input_json serialization rejects cycles and preserves prototype-named fields", async (t) => {
+  const steam = loadSteamWithFakeNative(createFakeNative());
+  const fetchCalls = [];
+  const client = steam.createSteamWebApiClient({
+    fetch: async (url, init = {}) => {
+      fetchCalls.push({ url, init });
+      return { ok: true, status: 200, headers: { forEach() {} }, async text() { return "{}"; } };
+    }
+  });
+  t.after(clearSteamBridgeCache);
+
+  const cyclicDeviceDetails = {};
+  cyclicDeviceDetails.self = cyclicDeviceDetails;
+  assert.throws(
+    () => client.authenticationService.beginAuthSessionViaQr({
+      deviceFriendlyName: "Steam Bridge Test",
+      platformType: 2,
+      deviceDetails: cyclicDeviceDetails,
+      websiteId: "steam-bridge"
+    }),
+    /must not contain circular references/
+  );
+
+  let deeplyNested = {};
+  for (let depth = 0; depth < 130; depth += 1) deeplyNested = { nested: deeplyNested };
+  assert.throws(
+    () => client.authenticationService.beginAuthSessionViaQr({
+      deviceFriendlyName: "Steam Bridge Test",
+      platformType: 2,
+      deviceDetails: deeplyNested,
+      websiteId: "steam-bridge"
+    }),
+    /maximum serialization depth/
+  );
+
+  const prototypeNamedFields = JSON.parse('{"__proto__":{"safe":true},"constructor":"value"}');
+  await client.authenticationService.beginAuthSessionViaQr({
+    deviceFriendlyName: "Steam Bridge Test",
+    platformType: 2,
+    deviceDetails: prototypeNamedFields,
+    websiteId: "steam-bridge"
+  });
+  const input = JSON.parse(new URLSearchParams(fetchCalls[0].init.body).get("input_json"));
+  assert.deepEqual(input.device_details, prototypeNamedFields);
 });
 
 test("web API client protects and redacts caller-provided headers", async (t) => {

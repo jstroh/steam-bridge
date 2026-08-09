@@ -8,7 +8,7 @@ const { spawnSync } = require("node:child_process");
 const tarballArguments = process.argv.slice(2);
 assert.equal(tarballArguments.length, 1, "usage: smoke-node-runtime.cjs <steam-bridge.tgz>");
 const tarball = path.resolve(tarballArguments[0]);
-assert.ok(fs.statSync(tarball).isFile(), `package tarball does not exist: ${tarball}`);
+assert.ok(fs.lstatSync(tarball).isFile(), `package tarball does not exist: ${tarball}`);
 
 const consumerRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-node-runtime-"));
 try {

@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const assert = require("node:assert/strict");
@@ -50,7 +51,7 @@ for (const [target, files] of Object.entries(targets)) {
     const destination = path.join(packageDir, fileName);
     assertFile(source);
     fs.copyFileSync(source, destination);
-    fs.chmodSync(destination, fs.statSync(source).mode);
+    fs.chmodSync(destination, fs.lstatSync(source).mode);
     console.log(`Copied ${path.relative(repoRoot, destination)}`);
   }
 
@@ -85,7 +86,7 @@ function isGeneratedPackageArtifact(fileName) {
 
 function assertNoUnexpectedFiles(directory, expectedFiles) {
   const expected = new Set(expectedFiles);
-  const actual = fs.readdirSync(directory).filter((entry) => fs.statSync(path.join(directory, entry)).isFile());
+  const actual = fs.readdirSync(directory);
   const unexpected = actual.filter((entry) => !expected.has(entry));
 
   if (unexpected.length > 0) {
@@ -94,14 +95,14 @@ function assertNoUnexpectedFiles(directory, expectedFiles) {
 }
 
 function assertDirectory(directory) {
-  const stat = fs.statSync(directory);
+  const stat = fs.lstatSync(directory);
   if (!stat.isDirectory()) {
     throw new Error(`${directory} is not a directory`);
   }
 }
 
 function assertFile(filePath) {
-  const stat = fs.statSync(filePath);
+  const stat = fs.lstatSync(filePath);
   if (!stat.isFile() || stat.size === 0) {
     throw new Error(`${filePath} is missing or empty`);
   }
@@ -137,7 +138,56 @@ function runArgumentSelfTest() {
   assert.equal(readArtifactsDirectoryArg(["--artifacts-dir", "first", "second"]), undefined);
   assert.equal(readArtifactsDirectoryArg(["first", "second"]), undefined);
   assert.equal(readArtifactsDirectoryArg(["--other", "release-artifacts"]), undefined);
+  runFilesystemBoundarySelfTest();
   console.log("Release artifact argument self-test passed.");
+}
+
+function runFilesystemBoundarySelfTest() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-release-artifacts-"));
+  try {
+    const artifacts = path.join(root, "artifacts");
+    fs.mkdirSync(artifacts);
+    const payload = path.join(artifacts, "payload.node");
+    fs.writeFileSync(payload, "native payload");
+    assertDirectory(artifacts);
+    assertFile(payload);
+    assertNoUnexpectedFiles(artifacts, ["payload.node"]);
+
+    const empty = path.join(artifacts, "empty.node");
+    fs.writeFileSync(empty, "");
+    assert.throws(() => assertFile(empty), /missing or empty/);
+    assert.throws(() => assertNoUnexpectedFiles(artifacts, ["payload.node"]), /unexpected files: empty\.node/);
+    fs.rmSync(empty);
+
+    const unexpectedDirectory = path.join(artifacts, "nested");
+    fs.mkdirSync(unexpectedDirectory);
+    assert.throws(() => assertNoUnexpectedFiles(artifacts, ["payload.node"]), /unexpected files: nested/);
+    fs.rmdirSync(unexpectedDirectory);
+
+    const linkedPayload = path.join(artifacts, "linked.node");
+    if (tryCreateSymlink(payload, linkedPayload, "file")) {
+      assert.throws(() => assertFile(linkedPayload), /missing or empty/);
+    }
+
+    const linkedDirectory = path.join(root, "linked-artifacts");
+    if (tryCreateSymlink(artifacts, linkedDirectory, process.platform === "win32" ? "junction" : "dir")) {
+      assert.throws(() => assertDirectory(linkedDirectory), /is not a directory/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function tryCreateSymlink(target, linkPath, type) {
+  try {
+    fs.symlinkSync(target, linkPath, type);
+    return true;
+  } catch (error) {
+    if (error?.code === "EPERM" || error?.code === "EACCES") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function run(command, args) {

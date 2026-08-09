@@ -5140,14 +5140,14 @@ void steamId;
 }
 
 function assertNonEmptyFile(filePath) {
-  const stat = fs.statSync(filePath);
-  assert.ok(stat.isFile(), `${filePath} is not a file`);
+  const stat = fs.lstatSync(filePath);
+  assert.ok(stat.isFile() && !stat.isSymbolicLink(), `${filePath} is not a regular file`);
   assert.ok(stat.size > 0, `${filePath} is empty`);
 }
 
 function assertExecutableFile(filePath) {
-  const stat = fs.statSync(filePath);
-  assert.ok(stat.isFile(), `${filePath} is not a file`);
+  const stat = fs.lstatSync(filePath);
+  assert.ok(stat.isFile() && !stat.isSymbolicLink(), `${filePath} is not a regular file`);
   if (process.platform !== "win32") {
     assert.ok((stat.mode & 0o111) !== 0, `${filePath} is not executable`);
   }

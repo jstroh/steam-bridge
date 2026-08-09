@@ -342,25 +342,32 @@ function collectActions(container, digital, analog, localizationReferences, erro
         if (inputMode && !STICK_PAD_GYRO_INPUT_MODES.has(inputMode)) {
           errors.push(issue(inputModeNodes[0], `Unsupported StickPadGyro input_mode \"${inputModeNodes[0].value}\".`));
         }
+        const osMouseNodes = childrenNamed(actionNode, "os_mouse");
+        if (osMouseNodes.length > 1 || (osMouseNodes.length === 1 && osMouseNodes[0].value === undefined)) {
+          errors.push(issue(actionNode, `StickPadGyro action \"${actionNode.key}\" may contain at most one scalar os_mouse value.`));
+        } else if (osMouseNodes.length === 1 && osMouseNodes[0].value !== "1") {
+          errors.push(issue(osMouseNodes[0], `StickPadGyro os_mouse must be \"1\" when present.`));
+        }
         for (const metadata of actionNode.children) {
-          if (lower(metadata.key) !== "title" && lower(metadata.key) !== "input_mode") {
+          if (lower(metadata.key) !== "title" && lower(metadata.key) !== "input_mode" && lower(metadata.key) !== "os_mouse") {
             errors.push(issue(metadata, `Unknown StickPadGyro action metadata \"${metadata.key}\".`));
           }
         }
-        signature = `${categoryName}\0${title ?? ""}\0${inputMode}`;
+        signature = `${categoryName}\0${title ?? ""}\0${inputMode}\0${osMouseNodes[0]?.value ?? ""}`;
       } else {
         if (actionNode.value === undefined) {
           errors.push(issue(actionNode, `${category.key} action \"${actionNode.key}\" must be a scalar #localization reference.`));
           continue;
         }
-        const title = validateLocalizationReference(
+        const reference = validateLocalizationReference(
           actionNode.value,
           actionNode,
           `${category.key} action \"${actionNode.key}\"`,
           localizationReferences,
-          errors
+          errors,
+          categoryName === "button"
         );
-        signature = `${categoryName}\0${title ?? ""}`;
+        signature = `${categoryName}\0${reference?.key ?? ""}\0${reference?.nativeEvent ?? ""}`;
       }
       const previous = target.get(folded);
       if (previous && previous.name !== actionNode.key) {
@@ -373,7 +380,7 @@ function collectActions(container, digital, analog, localizationReferences, erro
       } else if (previous?.container === container) {
         errors.push(issue(actionNode, `Action \"${actionNode.key}\" is declared more than once in \"${container.key}\".`));
       } else if (previous && previous.signature !== signature) {
-        errors.push(issue(actionNode, `Global action \"${actionNode.key}\" has an inconsistent category, title, or input_mode.`));
+        errors.push(issue(actionNode, `Global action \"${actionNode.key}\" has inconsistent category or action metadata.`));
       } else if (!previous) {
         target.set(folded, { name: actionNode.key, node: actionNode, container, signature });
       }
@@ -387,17 +394,21 @@ function validateLocalizedTitle(node, label, references, errors) {
     errors.push(issue(node, `${label} must contain exactly one scalar title.`));
     return undefined;
   }
-  return validateLocalizationReference(titleNodes[0].value, titleNodes[0], label, references, errors);
+  return validateLocalizationReference(titleNodes[0].value, titleNodes[0], label, references, errors)?.key;
 }
 
-function validateLocalizationReference(value, node, label, references, errors) {
-  const match = /^#([^,\s]+)$/.exec(value.trim());
+function validateLocalizationReference(value, node, label, references, errors, allowNativeEvent = false) {
+  const match = /^#([^,\s]+)(?:,\s*(mouse_button\s+[A-Za-z0-9_]+))?$/i.exec(value.trim());
   if (!match) {
     errors.push(issue(node, `${label} title must be one #localization reference.`));
     return undefined;
   }
+  if (match[2] && !allowNativeEvent) {
+    errors.push(issue(node, `${label} may not declare a native mouse event.`));
+    return undefined;
+  }
   references.push({ key: match[1], node });
-  return match[1];
+  return { key: match[1], nativeEvent: match[2]?.toLowerCase() };
 }
 
 function validateLocalization(root, references, errors, warnings) {
@@ -498,7 +509,7 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
         errors.push(issue(pathNode, `Configuration path must be relative to the action manifest: ${pathNode.value}`));
         continue;
       }
-      const resolved = path.resolve(base, pathNode.value);
+      const resolved = path.resolve(base, pathNode.value.replace(/[\\/]+/g, path.sep));
       if (checkFiles) {
         if (!fs.existsSync(resolved)) {
           errors.push(issue(pathNode, `Referenced controller configuration does not exist: ${resolved}`));
@@ -794,17 +805,17 @@ function runSelfTest() {
   "configurations" { "controller_xboxone" { "0" { "path" "xbox.vdf" } } }
   "actions"
   {
-    "Menu" { "title" "#Set_Menu" "Button" { "Accept" "#Action_Accept" } }
+    "Menu" { "title" "#Set_Menu" "Button" { "Accept" "#Action_Accept, mouse_button LEFT" } }
     "Gameplay"
     {
       "title" "#Set_Gameplay"
-      "StickPadGyro" { "Move" { "title" "#Action_Move" "input_mode" "joystick_move" } }
+      "StickPadGyro" { "Move" { "title" "#Action_Move" "input_mode" "joystick_move" "os_mouse" "1" } }
       "Button" { "Jump" "#Action_Jump" }
     }
   }
   "action_layers"
   {
-    "Inventory" { "title" "#Layer_Inventory" "parent_set_name" "Gameplay" "Button" { "Accept" "#Action_Accept" } }
+    "Inventory" { "title" "#Layer_Inventory" "parent_set_name" "Gameplay" "Button" { "Accept" "#Action_Accept, mouse_button LEFT" } }
   }
   "localization"
   {
@@ -870,6 +881,25 @@ function runSelfTest() {
     assert.ok(malformedActionsResult.errors.some((entry) => /Button action .* must be a scalar/.test(entry.message)));
     assert.ok(malformedActionsResult.errors.some((entry) => /Unsupported StickPadGyro input_mode/.test(entry.message)));
 
+    const invalidNativeMetadata = path.join(root, "invalid-native-metadata.vdf");
+    fs.writeFileSync(
+      invalidNativeMetadata,
+      `"In Game Actions" {
+        "actions" { "Game" {
+          "Button" { "Fire" "#Action_Fire, keyboard SPACE" }
+          "AnalogTrigger" { "Throttle" "#Action_Throttle, mouse_button LEFT" }
+          "StickPadGyro" { "Move" { "title" "#Action_Move" "input_mode" "joystick_move" "os_mouse" "yes" } }
+        } }
+        "localization" { "english" {
+          "Action_Fire" "Fire" "Action_Throttle" "Throttle" "Action_Move" "Move"
+        } }
+      }`
+    );
+    const invalidNativeMetadataResult = inspectManifest(invalidNativeMetadata);
+    assert.ok(invalidNativeMetadataResult.errors.some((entry) => /title must be one #localization reference/.test(entry.message)));
+    assert.ok(invalidNativeMetadataResult.errors.some((entry) => /may not declare a native mouse event/.test(entry.message)));
+    assert.ok(invalidNativeMetadataResult.errors.some((entry) => /os_mouse must be "1" when present/.test(entry.message)));
+
     const duplicatePriority = path.join(root, "duplicate-priority.vdf");
     fs.writeFileSync(
       duplicatePriority,
@@ -915,6 +945,20 @@ function runSelfTest() {
       parseKeyValues(String.raw`"path" "configs\xbox.vdf"`, "windows-path.vdf")[0].value,
       String.raw`configs\xbox.vdf`
     );
+
+    const nestedConfigDirectory = path.join(root, "configs");
+    fs.mkdirSync(nestedConfigDirectory);
+    fs.writeFileSync(path.join(nestedConfigDirectory, "xbox.vdf"), '"controller_mappings" { "version" "3" }\n');
+    const windowsRelativePath = path.join(root, "windows-relative-path.vdf");
+    fs.writeFileSync(
+      windowsRelativePath,
+      String.raw`"Action Manifest" {
+        "configurations" { "controller_xboxone" { "0" { "path" "configs\xbox.vdf" } } }
+        "actions" { "Game" { "title" "#Set_Game" "Button" { "Fire" "#Action_Fire" } } }
+        "localization" { "english" { "Set_Game" "Game" "Action_Fire" "Fire" } }
+      }`
+    );
+    assert.deepEqual(inspectManifest(windowsRelativePath, { checkFiles: true }).errors, []);
 
     assert.throws(
       () => parseKeyValues('"broken" { "x"', "broken.vdf"),
