@@ -949,8 +949,10 @@ function runSelfTest() {
       const exampleResult = inspectManifest(exampleManifest, { checkFiles: true });
       assert.deepEqual(exampleResult.errors, []);
       assert.equal(
-        fs.readFileSync(path.join(exampleDirectory, "steam-input.generated.ts"), "utf8"),
-        generateTypeScriptDefinition(exampleResult, exampleManifest),
+        normalizeLineEndings(
+          fs.readFileSync(path.join(exampleDirectory, "steam-input.generated.ts"), "utf8")
+        ),
+        normalizeLineEndings(generateTypeScriptDefinition(exampleResult, exampleManifest)),
         "the checked-in generated example definition must match its manifest"
       );
       const commonJsDefinition = require(path.join(exampleDirectory, "definition.cjs"));
@@ -962,6 +964,10 @@ function runSelfTest() {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+}
+
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/g, "\n");
 }
 
 function mainForTest(args) {
