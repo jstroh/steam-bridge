@@ -9,9 +9,13 @@ import {
   getKWinWaylandOverlayHostSyncStatus
 } from "./electron";
 import {
+  observeAdaptiveOverlayFrameRate,
   nextOverlayFrameDelayMs,
+  resetAdaptiveOverlayFrameRate,
   resetOverlayFrameDeadline,
   resolveManagedOverlayDisplayFrameRate,
+  type AdaptiveOverlayFrameRateSample,
+  type AdaptiveOverlayFrameRateState,
   type OverlayFrameDeadlineState
 } from "./overlay-cadence";
 import {
@@ -1628,6 +1632,15 @@ export interface NativeOverlaySessionOptions {
    * while their source frame is static. Defaults to false.
    */
   continuousPresent?: boolean;
+  /**
+   * On Windows, lower an unsustainable display-rate OSR/DXGI pipeline to an
+   * exact VBlank divisor after sustained measured overload. This is opt-in and
+   * requires onFrameRateChanged so the Electron producer and native presenter
+   * always change cadence together.
+   */
+  adaptiveFrameRate?: boolean;
+  /** Synchronize the Electron offscreen producer when adaptiveFrameRate changes. */
+  onFrameRateChanged?: (event: NativeOverlayFrameRateChange) => void;
   clientWidth?: number;
   clientHeight?: number;
   /** Minimum standalone native-host client size in logical pixels. */
@@ -1670,6 +1683,17 @@ export interface NativeOverlaySessionOptions {
    * to call. The positive IsOverlayEnabled handshake is still required.
    */
   activationWarmupMs?: number;
+}
+
+export interface NativeOverlayFrameRateChange {
+  reason: "sustained-overload";
+  requestedFrameRate: number;
+  previousFrameRate: number;
+  frameRate: number;
+  displayRefreshRate: number;
+  presentSyncInterval: number;
+  sourceFrameRate: number;
+  presentFrameRate: number;
 }
 
 export interface NativeOverlayMenuItem {
@@ -1810,6 +1834,11 @@ export interface NativeOverlaySessionSnapshot {
   nativeFrameWaitTimeoutCount?: number;
   /** Current target presentation rate. */
   frameRate: number;
+  /** Display-rate target requested by the application before adaptive fallback. */
+  requestedFrameRate: number;
+  adaptiveFrameRate: boolean;
+  adaptiveFrameRateChangeCount: number;
+  lastFrameRateChange?: NativeOverlayFrameRateChange;
   /** Current native session timer interval. */
   pumpIntervalMs: number;
   /** Number of synchronous native shared-texture update attempts. */
@@ -10071,7 +10100,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const title = options.title ?? "Steam Bridge Native Overlay";
   const backend = resolveNativeOverlayBackend(options);
   let frameRate = resolveNativeOverlayFrameRate(options);
+  let requestedFrameRate = frameRate;
   let pumpIntervalMs = resolveNativeOverlayPumpIntervalMs(options);
+  if (options.adaptiveFrameRate === true && typeof options.onFrameRateChanged !== "function") {
+    throw new TypeError(
+      "Steam Bridge adaptiveFrameRate requires onFrameRateChanged to synchronize the Electron producer."
+    );
+  }
+  const adaptiveFrameRate = options.adaptiveFrameRate === true && backend === "windows-d3d11";
   const clientWidth = normalizeNativeOverlayClientDimension(options.clientWidth);
   const clientHeight = normalizeNativeOverlayClientDimension(options.clientHeight);
   const minClientWidth = normalizeNativeOverlayClientDimension(options.minClientWidth);
@@ -10148,6 +10184,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let lastSharedTextureUpdateDurationMs: number | undefined;
   let maxSharedTextureUpdateDurationMs: number | undefined;
   let lastError: unknown;
+  const adaptiveFrameRateState: AdaptiveOverlayFrameRateState = {
+    consecutiveOverloadSamples: 0
+  };
+  let lastAdaptiveFrameRateSampleAt = 0;
+  let adaptiveFrameRateChangeCount = 0;
+  let lastFrameRateChange: NativeOverlayFrameRateChange | undefined;
   let overlayActive = false;
   let overlayWasActive = false;
   let overlayActiveApplied: boolean | undefined;
@@ -10249,6 +10291,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       try {
         const binding = native();
         binding.pumpNativeOverlayProbeWindow();
+        sampleAdaptiveFrameRate();
         nativeFramePending = usesWindowsStandaloneHost
           && binding.isNativeOverlayHostFramePending?.() === true;
       } catch (error) {
@@ -10313,6 +10356,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       overlayWasActive,
       lastOverlayEvent,
       frameRate,
+      requestedFrameRate,
+      adaptiveFrameRate,
+      adaptiveFrameRateChangeCount,
+      lastFrameRateChange,
       pumpIntervalMs,
       sharedTextureUpdateCount,
       lastSharedTextureUpdateDurationMs,
@@ -10550,14 +10597,74 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     syncCursorHidden();
   };
 
+  function sampleAdaptiveFrameRate(): void {
+    if (!adaptiveFrameRate || closed) {
+      return;
+    }
+    const sampledAtMs = Date.now();
+    if (sampledAtMs - lastAdaptiveFrameRateSampleAt < 1_000) {
+      return;
+    }
+    lastAdaptiveFrameRateSampleAt = sampledAtMs;
+    const diagnostics = getNativeOverlayHostDiagnostics();
+    const sample = adaptiveOverlayFrameRateSampleFromDiagnostics(
+      diagnostics,
+      sampledAtMs,
+      requestedFrameRate,
+      frameRate
+    );
+    if (!sample) {
+      resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
+      return;
+    }
+    const decision = observeAdaptiveOverlayFrameRate(adaptiveFrameRateState, sample);
+    if (!decision || decision.frameRate === frameRate) {
+      return;
+    }
+
+    const event: NativeOverlayFrameRateChange = {
+      reason: "sustained-overload",
+      requestedFrameRate,
+      previousFrameRate: frameRate,
+      frameRate: decision.frameRate,
+      displayRefreshRate: decision.displayRefreshRate,
+      presentSyncInterval: decision.presentSyncInterval,
+      sourceFrameRate: decision.sourceFrameRate,
+      presentFrameRate: decision.presentFrameRate
+    };
+    try {
+      options.onFrameRateChanged?.(event);
+    } catch (error) {
+      lastError = error;
+      resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
+      return;
+    }
+
+    frameRate = decision.frameRate;
+    pumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(frameRate);
+    adaptiveFrameRateChangeCount += 1;
+    lastFrameRateChange = event;
+    resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
+    syncContinuousPresent();
+    schedulePumpTimer();
+  }
+
   const setFrameRate = (nextFrameRate: number): void => {
     const normalizedFrameRate = normalizeNativeOverlayFrameRate(nextFrameRate);
     const nextPumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(normalizedFrameRate);
-    if (frameRate === normalizedFrameRate && pumpIntervalMs === nextPumpIntervalMs) {
+    if (
+      requestedFrameRate === normalizedFrameRate &&
+      frameRate === normalizedFrameRate &&
+      pumpIntervalMs === nextPumpIntervalMs
+    ) {
       return;
     }
+    requestedFrameRate = normalizedFrameRate;
     frameRate = normalizedFrameRate;
     pumpIntervalMs = nextPumpIntervalMs;
+    resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
+    lastAdaptiveFrameRateSampleAt = 0;
+    continuousPresentFrameRateApplied = undefined;
     syncContinuousPresent();
     schedulePumpTimer();
     emitStateChange();
@@ -12138,7 +12245,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function setNativeContinuousPresent(continuous: boolean): void {
-    const appliedFrameRate = continuous && backend === "macos-metal" ? frameRate : 0;
+    const appliedFrameRate = backend === "windows-d3d11"
+      ? frameRate
+      : continuous && backend === "macos-metal"
+        ? frameRate
+        : 0;
     if (
       closed ||
       !ownsNativeOverlaySurface(surfaceLease) ||
@@ -13129,6 +13240,51 @@ function resolveNativeOverlayPumpIntervalMs(options: NativeOverlaySessionOptions
     return nativeOverlayPumpIntervalForFrameRate(normalizeNativeOverlayFrameRate(options.frameRate));
   }
   return normalizeNativeOverlayPumpInterval(options.pumpIntervalMs ?? 33);
+}
+
+function adaptiveOverlayFrameRateSampleFromDiagnostics(
+  diagnostics: NativeOverlayHostDiagnostics | undefined,
+  sampledAtMs: number,
+  requestedFrameRate: number,
+  effectiveFrameRate: number
+): AdaptiveOverlayFrameRateSample | undefined {
+  const root = diagnosticRecord(diagnostics);
+  const renderer = diagnosticRecord(root?.renderer);
+  const timing = diagnosticRecord(renderer?.timing);
+  if (renderer?.backend !== "windows-d3d11" || timing?.frameStatisticsAvailable !== true) {
+    return undefined;
+  }
+  const surfaceGeneration = diagnosticFiniteNumber(root?.surfaceInstanceGeneration);
+  const displayRefreshRate = diagnosticFiniteNumber(root?.displayRefreshRate);
+  const sourceFrameCount = diagnosticFiniteNumber(renderer.sharedTextureImportCount);
+  const presentCount = diagnosticFiniteNumber(timing.frameStatisticsPresentCount);
+  if (
+    surfaceGeneration === undefined ||
+    displayRefreshRate === undefined ||
+    sourceFrameCount === undefined ||
+    presentCount === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    sampledAtMs,
+    surfaceGeneration,
+    displayRefreshRate,
+    requestedFrameRate,
+    effectiveFrameRate,
+    sourceFrameCount,
+    presentCount
+  };
+}
+
+function diagnosticRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function diagnosticFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function normalizeNativeOverlayFrameDimension(value: number, label: string): number {

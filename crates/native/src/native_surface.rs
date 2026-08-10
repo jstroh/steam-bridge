@@ -1768,6 +1768,7 @@ mod windows {
         cursor_display_count: Option<i32>,
         transparent_cursor: HCURSOR,
         continuous_present_requested: bool,
+        target_frame_rate: Option<f64>,
         full_screen: bool,
         windowed_style: Option<u32>,
         windowed_placement: Option<WINDOWPLACEMENT>,
@@ -2171,8 +2172,20 @@ mod windows {
         })
     }
 
-    pub fn set_continuous_present(continuous: bool, _frame_rate: Option<f64>) -> Result<(), Error> {
-        with_surface(|surface| {
+    pub fn set_continuous_present(continuous: bool, frame_rate: Option<f64>) -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            let target_frame_rate = frame_rate.filter(|value| value.is_finite() && *value > 0.0);
+            surface.target_frame_rate = target_frame_rate;
+            let display_refresh_rate =
+                window_display_diagnostics(surface.hwnd).and_then(|display| display.refresh_rate);
+            if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                renderer.set_present_sync_interval(
+                    windows_d3d11::present_sync_interval_for_frame_rate(
+                        display_refresh_rate,
+                        target_frame_rate,
+                    ),
+                );
+            }
             if surface.continuous_present_requested != continuous {
                 surface.continuous_present_requested = continuous;
                 // Steam composites its UI into the presented backbuffer. When
@@ -2868,6 +2881,10 @@ mod windows {
                     "displayWorkAreaClamped".to_owned(),
                     json!(STANDALONE_DISPLAY_CLAMPED.load(Ordering::Relaxed)),
                 );
+                object.insert(
+                    "targetFrameRate".to_owned(),
+                    json!(surface.target_frame_rate),
+                );
                 object.insert("keyboardLayout".to_owned(), json!(keyboard_layout));
                 object.insert(
                     "foregroundKeyboardLayout".to_owned(),
@@ -3021,6 +3038,7 @@ mod windows {
             cursor_display_count: None,
             transparent_cursor,
             continuous_present_requested: false,
+            target_frame_rate: None,
             full_screen: false,
             windowed_style: None,
             windowed_placement: None,
@@ -3286,6 +3304,8 @@ mod windows {
                 "bufferCount": 2,
                 "gdiCompatible": false,
                 "frameLatencyWaitable": renderer.frame_latency_waitable(),
+                "maximumFrameLatency": 2,
+                "presentSyncInterval": renderer.present_sync_interval(),
                 "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),
                 "timing": {
                     "asyncFrameLatencyReadyCount": renderer.async_frame_latency_ready_count(),

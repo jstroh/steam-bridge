@@ -564,9 +564,31 @@ mixed-DPI desktops. `displayDeviceName` identifies the selected Windows
 display for diagnostics. Fall back to Electron's display rate if Windows
 returns its driver-default `0` or `1` sentinel. The Windows standalone host
 uses a DXGI frame-latency waitable swap chain as its presentation boundary and
-submits tear-free frames with `Present(1)`. Waiting on DXGI before each frame
-avoids relying on JavaScript timer precision while still following the active
-display's refresh cadence.
+submits tear-free frames with `Present(1)` by default. Waiting on DXGI before
+each frame avoids relying on JavaScript timer precision while still following
+the active display's refresh cadence.
+
+High-refresh systems can opt into coordinated adaptive cadence. If the
+measured Electron shared-texture producer and DXGI presenter remain below 85%
+of a 120 Hz or faster display-rate target for three consecutive samples, Steam
+Bridge selects the smallest exact VBlank divisor that the pipeline can sustain.
+For example, a saturated 200 Hz pipeline that presents near 118 FPS settles at
+100 FPS with `Present(2)`. The callback must immediately apply the same rate to
+Electron's offscreen producer; Steam Bridge rejects adaptive mode without it.
+The lower cadence remains stable until an explicit display/rate change, which
+avoids repeatedly switching rates while gameplay is busy. Snapshots expose the
+application's `requestedFrameRate`, current `frameRate`, adaptation count, and
+last change.
+
+```ts
+const session = steamworks.overlay.startNativeOverlaySession({
+  frameRate: displayRefreshRate,
+  adaptiveFrameRate: process.platform === "win32",
+  onFrameRateChanged(event) {
+    offscreenWindow.webContents.setFrameRate(event.frameRate);
+  }
+});
+```
 New CPU frames and shared textures are marked dirty and, when
 `continuousPresent` is `false`, coalesce into one Windows pump on the next main-
 loop turn. The native upload/copy still completes synchronously, so Electron's

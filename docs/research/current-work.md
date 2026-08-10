@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-10
 
 Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
@@ -25,6 +25,50 @@ Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-10 Windows high-refresh adaptive-cadence repair (unreleased)
+
+A production player report supplied a bounded renderer trace from a Windows
+RTX 4060 laptop driving 2560 by 1440 at 200 Hz. Chromium remained on ANGLE
+D3D11 with hardware acceleration and shared textures; there was no CPU bitmap
+fallback, device loss, import failure, recovery, slow GPU copy, or wait timeout.
+Across six 30-second samples, Electron imported about 175.4 shared textures per
+second while DXGI completed only about 118.2 presents per second, including 48
+gaps over 100 ms and a 694 ms maximum. This is a sustained producer/presenter
+cadence mismatch, not evidence for software rendering or a damaged GPU.
+
+The unreleased repair adds an opt-in Windows adaptive cadence controller to the
+native overlay session. It samples existing cumulative native counters at most
+once per second and reacts only when an active 120 Hz-or-faster pipeline stays
+below 85% of its display-rate target for three consecutive samples. It then
+selects the smallest exact VBlank divisor the measured pipeline can sustain,
+updates Electron through the required `onFrameRateChanged` callback, and updates
+the DXGI presenter to the matching `Present(2..4)` sync interval. A 200 Hz / 118
+FPS path therefore settles at a stable 100 FPS rather than continuing to miss a
+200 FPS target. Healthy 120/165 Hz, static content, transient stalls, 60/75 Hz,
+and non-Windows presenters retain their existing cadence. Adaptation does not
+oscillate back upward while the workload is busy; an explicit display/rate
+change resets it.
+
+The configured consumer now opts into that coordinated path and records a
+bounded `frame-rate-change` event plus requested/effective target, VBlank sync
+interval, maximum frame latency, source/pump/present/refresh rates, copy/import
+counts, window/display state, and privacy-safe process-class load in its existing
+256 KiB diagnostics file. A source-linked local Steam actual-game smoke on the
+60 Hz Windows host entered live gameplay and held about 59.4-60.8 source/present
+FPS with `Present(1)`, hardware shared textures, zero CPU uploads, zero device
+loss/recovery, and zero slow copies. The exact 200 Hz reporter hardware remains
+the required external candidate retest before `WIN-MOVEMENT-CADENCE-001` can be
+settled. Stable npm remains `0.3.22`; these changes are not published.
+
+The reviewed source is green for TypeScript compilation, supported-platform
+policy, Steam API coverage, native formatting/check, all release/package-gate
+self-tests, 428 JavaScript/TypeScript tests (426 passes and two expected Windows
+symlink-permission skips), 53 Rust tests, and the isolated packed-package smoke
+under stable Electron 43.3.0. The configured consumer is green for 366 tests,
+targeted ESLint, syntax checking, and TypeScript compilation. The full FOV4
+lint command still traverses pre-existing generated QA/site artifacts with
+unrelated findings; the two changed source/test files are clean.
 
 ### 2026-08-09 package-wide bug-free goal checkpoint
 

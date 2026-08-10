@@ -476,6 +476,17 @@ export interface ElectronNativeOverlaySessionOptions {
   frameRate?: number;
   pumpIntervalMs?: number;
   continuousPresent?: boolean;
+  adaptiveFrameRate?: boolean;
+  onFrameRateChanged?: (event: {
+    reason: "sustained-overload";
+    requestedFrameRate: number;
+    previousFrameRate: number;
+    frameRate: number;
+    displayRefreshRate: number;
+    presentSyncInterval: number;
+    sourceFrameRate: number;
+    presentFrameRate: number;
+  }) => void;
   nativeWindowHandle?: Buffer;
   getBounds?: () => ElectronOverlayBounds | undefined;
   getFullScreen?: () => boolean;

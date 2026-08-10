@@ -93,6 +93,30 @@ pub fn is_device_lost_error(error: &str) -> bool {
         .any(|code| error.to_ascii_uppercase().contains(code))
 }
 
+pub fn present_sync_interval_for_frame_rate(
+    display_refresh_rate: Option<u32>,
+    target_frame_rate: Option<f64>,
+) -> u32 {
+    let (Some(display_refresh_rate), Some(target_frame_rate)) =
+        (display_refresh_rate, target_frame_rate)
+    else {
+        return 1;
+    };
+    if display_refresh_rate < 2 || !target_frame_rate.is_finite() || target_frame_rate <= 0.0 {
+        return 1;
+    }
+
+    for sync_interval in 1..=4 {
+        let synchronized_frame_rate = display_refresh_rate as f64 / sync_interval as f64;
+        let relative_error =
+            (synchronized_frame_rate - target_frame_rate).abs() / synchronized_frame_rate;
+        if relative_error <= 0.02 {
+            return sync_interval;
+        }
+    }
+    1
+}
+
 const VERTEX_SHADER: &[u8] = br#"
 struct VertexOutput {
     float4 position : SV_POSITION;
@@ -153,6 +177,7 @@ pub struct WindowsD3d11Renderer {
     feature_level: D3D_FEATURE_LEVEL,
     adapter_name: String,
     last_present: i32,
+    present_sync_interval: u32,
     frame_latency_waitable_object: HANDLE,
     frame_latency_wait_generation: u64,
     frame_latency_ready_permits: u32,
@@ -397,6 +422,7 @@ impl WindowsD3d11Renderer {
             feature_level,
             adapter_name,
             last_present: 0,
+            present_sync_interval: 1,
             frame_latency_waitable_object: HANDLE::default(),
             frame_latency_wait_generation: 0,
             frame_latency_ready_permits: 0,
@@ -823,6 +849,7 @@ impl WindowsD3d11Renderer {
     ) -> Result<(), String> {
         let width = self.width;
         let height = self.height;
+        let present_sync_interval = self.present_sync_interval;
         let mut replacement = Self::new_for_shared_texture(
             hwnd,
             width,
@@ -833,6 +860,7 @@ impl WindowsD3d11Renderer {
             content_rect,
             presentation_rect,
         )?;
+        replacement.set_present_sync_interval(present_sync_interval);
         self.context.ClearState();
         self.context.Flush();
         self.render_target = None;
@@ -846,7 +874,8 @@ impl WindowsD3d11Renderer {
                 Ok(())
             }
             Err(error) => {
-                if let Ok(restored) = Self::new(hwnd, width, height) {
+                if let Ok(mut restored) = Self::new(hwnd, width, height) {
+                    restored.set_present_sync_interval(present_sync_interval);
                     *self = restored;
                 }
                 Err(error)
@@ -968,7 +997,7 @@ impl WindowsD3d11Renderer {
         // recommends only with explicit tearing support, which this tear-free
         // desktop/streaming host intentionally does not request.
         let present_started_at = Instant::now();
-        let result = swap_chain.Present(1, DXGI_PRESENT(0));
+        let result = swap_chain.Present(self.present_sync_interval, DXGI_PRESENT(0));
         let present_duration_ms = present_started_at.elapsed().as_secs_f64() * 1_000.0;
         self.last_present_duration_ms = present_duration_ms;
         self.max_present_duration_ms = self.max_present_duration_ms.max(present_duration_ms);
@@ -1055,6 +1084,14 @@ impl WindowsD3d11Renderer {
 
     pub fn last_present(&self) -> i32 {
         self.last_present
+    }
+
+    pub fn set_present_sync_interval(&mut self, sync_interval: u32) {
+        self.present_sync_interval = sync_interval.clamp(1, 4);
+    }
+
+    pub fn present_sync_interval(&self) -> u32 {
+        self.present_sync_interval
     }
 
     pub fn frame_latency_waitable(&self) -> bool {
@@ -1420,7 +1457,7 @@ fn intersect_rect(
 
 #[cfg(test)]
 mod tests {
-    use super::is_device_lost_error;
+    use super::{is_device_lost_error, present_sync_interval_for_frame_rate};
 
     #[test]
     fn classifies_recoverable_dxgi_device_loss_codes() {
@@ -1436,5 +1473,47 @@ mod tests {
         assert!(!is_device_lost_error(
             "IDXGISwapChain::ResizeBuffers failed: invalid call (0x887A0001)"
         ));
+    }
+
+    #[test]
+    fn maps_supported_frame_rates_to_exact_vblank_divisors() {
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(200), Some(200.0)),
+            1
+        );
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(200), Some(100.0)),
+            2
+        );
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(165), Some(83.0)),
+            2
+        );
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(165), Some(55.0)),
+            3
+        );
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(120), Some(30.0)),
+            4
+        );
+    }
+
+    #[test]
+    fn leaves_non_divisor_and_invalid_rates_on_the_next_vblank() {
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(165), Some(120.0)),
+            1
+        );
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(200), Some(60.0)),
+            1
+        );
+        assert_eq!(present_sync_interval_for_frame_rate(None, Some(100.0)), 1);
+        assert_eq!(present_sync_interval_for_frame_rate(Some(200), None), 1);
+        assert_eq!(
+            present_sync_interval_for_frame_rate(Some(200), Some(f64::NAN)),
+            1
+        );
     }
 }
