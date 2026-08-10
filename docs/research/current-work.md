@@ -26,7 +26,7 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-### 2026-08-10 Windows high-refresh adaptive-cadence repair (unreleased)
+### 2026-08-10 Windows high-refresh adaptive-cadence repair (0.3.23 candidate)
 
 A production player report supplied a bounded renderer trace from a Windows
 RTX 4060 laptop driving 2560 by 1440 at 200 Hz. Chromium remained on ANGLE
@@ -37,9 +37,9 @@ second while DXGI completed only about 118.2 presents per second, including 48
 gaps over 100 ms and a 694 ms maximum. This is a sustained producer/presenter
 cadence mismatch, not evidence for software rendering or a damaged GPU.
 
-The unreleased repair adds an opt-in Windows adaptive cadence controller to the
-native overlay session. It samples existing cumulative native counters at most
-once per second and reacts only when an active 120 Hz-or-faster pipeline stays
+The `0.3.23` release candidate adds an opt-in Windows adaptive cadence
+controller to the native overlay session. It samples existing cumulative native
+counters at most once per second and reacts only when an active 120 Hz-or-faster pipeline stays
 below 85% of its display-rate target for three consecutive samples. It then
 selects the smallest exact VBlank divisor the measured pipeline can sustain,
 updates Electron through the required `onFrameRateChanged` callback, and updates
@@ -59,7 +59,8 @@ counts, window/display state, and privacy-safe process-class load in its existin
 FPS with `Present(1)`, hardware shared textures, zero CPU uploads, zero device
 loss/recovery, and zero slow copies. The exact 200 Hz reporter hardware remains
 the required external candidate retest before `WIN-MOVEMENT-CADENCE-001` can be
-settled. Stable npm remains `0.3.22`; these changes are not published.
+settled. Stable npm remains `0.3.22`; the maintainer authorized an emergency
+`0.3.23` production release on 2026-08-10.
 
 The reviewed source is green for TypeScript compilation, supported-platform
 policy, Steam API coverage, native formatting/check, all release/package-gate
@@ -68,7 +69,9 @@ symlink-permission skips), 53 Rust tests, and the isolated packed-package smoke
 under stable Electron 43.3.0. The configured consumer is green for 366 tests,
 targeted ESLint, syntax checking, and TypeScript compilation. The full FOV4
 lint command still traverses pre-existing generated QA/site artifacts with
-unrelated findings; the two changed source/test files are clean.
+unrelated findings; the two changed source/test files are clean. The next
+release boundary is the immutable tag artifact, exact-candidate Windows live
+proof, and protected npm publication.
 
 ### 2026-08-09 package-wide bug-free goal checkpoint
 
