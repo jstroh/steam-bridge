@@ -6,7 +6,7 @@ Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
 and cross-platform QA contract are in
 [`steam-input-product-plan.md`](steam-input-product-plan.md) and
-[`../steam-input.md`](../steam-input.md). Stable `0.3.22` includes the raw
+[`../steam-input.md`](../steam-input.md). Stable `0.3.23` includes the raw
 open-enum/lifecycle fixes, bounded asynchronous wait and direct-event queue,
 strict manifest validator/type generator, one-call native batch poll, typed
 `SteamInputSession`, drift-resistant primary selection, authoritative action-
@@ -26,7 +26,7 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-### 2026-08-10 Windows high-refresh adaptive-cadence repair (0.3.23 candidate)
+### 2026-08-10 v0.3.23 stable Windows high-refresh adaptive-cadence repair
 
 A production player report supplied a bounded renderer trace from a Windows
 RTX 4060 laptop driving 2560 by 1440 at 200 Hz. Chromium remained on ANGLE
@@ -37,7 +37,7 @@ second while DXGI completed only about 118.2 presents per second, including 48
 gaps over 100 ms and a 694 ms maximum. This is a sustained producer/presenter
 cadence mismatch, not evidence for software rendering or a damaged GPU.
 
-The `0.3.23` release candidate adds an opt-in Windows adaptive cadence
+The `0.3.23` release adds an opt-in Windows adaptive cadence
 controller to the native overlay session. It samples existing cumulative native
 counters at most once per second and reacts only when an active 120 Hz-or-faster pipeline stays
 below 85% of its display-rate target for three consecutive samples. It then
@@ -59,8 +59,7 @@ counts, window/display state, and privacy-safe process-class load in its existin
 FPS with `Present(1)`, hardware shared textures, zero CPU uploads, zero device
 loss/recovery, and zero slow copies. The exact 200 Hz reporter hardware remains
 the required external candidate retest before `WIN-MOVEMENT-CADENCE-001` can be
-settled. Stable npm remains `0.3.22`; the maintainer authorized an emergency
-`0.3.23` production release on 2026-08-10.
+settled.
 
 The reviewed source is green for TypeScript compilation, supported-platform
 policy, Steam API coverage, native formatting/check, all release/package-gate
@@ -69,9 +68,32 @@ symlink-permission skips), 53 Rust tests, and the isolated packed-package smoke
 under stable Electron 43.3.0. The configured consumer is green for 366 tests,
 targeted ESLint, syntax checking, and TypeScript compilation. The full FOV4
 lint command still traverses pre-existing generated QA/site artifacts with
-unrelated findings; the two changed source/test files are clean. The next
-release boundary is the immutable tag artifact, exact-candidate Windows live
-proof, and protected npm publication.
+unrelated findings; the two changed source/test files are clean.
+
+Patch `0.3.23` is published at immutable tag and commit `v0.3.23` /
+`77a733352817a34b9ab3b1e338a3ec9e49115e88`. Main CI run `31427737193`, tag
+CI run `31427743152`, tag Release run `31427743170`, and trusted npm
+publication run `31429577738` all passed. The publication job restored and
+revalidated the exact audited tag artifact and candidate-bound Windows receipt
+through the protected `npm-production` environment; its temporary proof secret
+was deleted after publication. npm `latest` and the stable GitHub Release
+resolve to `0.3.23`.
+
+The published tarball is 10,715,835 bytes with SHA-256
+`1407033b9b8662f3a61ce8db524fd8f8cd9498cceb05e34b5e394ff6adf45950`.
+The audited Windows bundle is 403,289,088 bytes with SHA-256
+`45c2e07c5b5f13a30bcfefe2df5ca5139a29a0db2dc3db45e83ead0a2d87f895`;
+the candidate content fingerprint is
+`3fe4fd1e23e0f0f883baecd2c3d3959daef1a1cf53d865d0e246d8c2bc4d326d`;
+and the candidate-bound receipt file SHA-256 is
+`e854a6f3e0b3ccd100333bb2c4de8f97c5c045a896534158a40eb54fd8cd2ff4`.
+The protected exact candidate passed actual gameplay and ordinary Friends
+overlay presentation at 3200 by 1800 physical pixels on the 60 Hz Windows
+host, including move, resize, exact 640 by 480 logical minimum, maximize,
+minimize, fullscreen, restore, input, focus, overlay close, and clean shutdown.
+Game median paint/present were 59.8/59.7 FPS and overlay median present was
+57.8 FPS, with zero crashes, stderr, device losses, recoveries, slow texture
+copies, or frame-latency timeouts.
 
 ### 2026-08-09 package-wide bug-free goal checkpoint
 
