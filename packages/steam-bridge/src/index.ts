@@ -10244,7 +10244,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const stateListeners = new Set<() => void>();
 
   const windowsNativeFrameFallbackIntervalMs = (): number =>
-    Math.max(1, Math.min(4, pumpIntervalMs / 2));
+    // Windows timers commonly return roughly one millisecond after their
+    // requested deadline. Compensate only for that observed timer latency;
+    // DXGI_PRESENT_DO_NOT_WAIT remains the actual queue boundary.
+    Math.max(1, pumpIntervalMs - 1);
+  const qaForceWindowsNativeFrameWaitTimeout =
+    process.env.STEAM_BRIDGE_QA_FORCE_FRAME_WAIT_TIMEOUT === "1";
+  const windowsNativeFrameWaitTimeoutMs = qaForceWindowsNativeFrameWaitTimeout ? 0 : 25;
 
   const pump = (): void => {
     if (closed) {
@@ -10284,7 +10290,18 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       try {
         const binding = native();
         binding.pumpNativeOverlayProbeWindow();
+        if (
+          usesWindowsStandaloneHost
+          && binding.isNativeOverlayHostFrameLatencyWaitBypassed?.() === true
+        ) {
+          // The native surface outlives individual JavaScript presenter
+          // sessions. Carry its one-way timeout fallback into a replacement
+          // session so the scheduler cannot resume the stale waitable-object
+          // path or its immediate pump loop after navigation.
+          nativeFrameWaitUnavailable = true;
+        }
         nativeFramePending = usesWindowsStandaloneHost
+          && !nativeFrameWaitUnavailable
           && binding.isNativeOverlayHostFramePending?.() === true;
       } catch (error) {
         // X11 can deliver WM_DELETE_WINDOW and DestroyNotify in the same pump.
@@ -11351,8 +11368,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     try {
       // One missed DXGI signal must not retain a game frame for a visible
       // tenth of a second. A driver that cannot signal within this bounded
-      // window is handled by the nonblocking native poll fallback below.
-      waitPromise = waitForFrameReady.call(binding, 25);
+      // window is handled by the native nonblocking Present fallback below.
+      waitPromise = waitForFrameReady.call(binding, windowsNativeFrameWaitTimeoutMs);
     } catch (error) {
       nativeFrameWaitInFlight = false;
       nativeFrameWaitUnavailable = true;
@@ -11385,11 +11402,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
             return;
           }
-          if (nativeFramePending) {
+          if (nativeFramePending || qaForceWindowsNativeFrameWaitTimeout) {
             // Do not chain another blocking wait after an unresolved timeout.
             // Some drivers leave this duplicated auto-reset handle unsignaled
-            // while Present itself remains usable. Poll the same native
-            // readiness object without blocking until this session closes.
+            // while Present itself remains usable. The timed native wait has
+            // disabled that stale gate; bounded timer-driven nonblocking
+            // Present now paces this session.
             nativeFrameWaitUnavailable = true;
           }
           schedulePumpTimer();
@@ -11522,14 +11540,16 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       // that runtime state needs the same immediate wake-up or Windows timer
       // jitter is added to Steam's hooked Present and drops below high-refresh
       // display rates after live mode transitions.
-      if (displaySynchronizedStandaloneHost) {
+      if (displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable) {
         pumpImmediate = setImmediate(runScheduledPump);
         pumpImmediate.unref?.();
       } else {
         const completedAt = performance.now();
         const cadenceIntervalMs = backend === "macos-metal" && continuousPresentApplied === true
           ? Math.max(pumpIntervalMs, 1000 / 30)
-          : pumpIntervalMs;
+          : usesWindowsStandaloneHost && nativeFrameWaitUnavailable
+            ? windowsNativeFrameFallbackIntervalMs()
+            : pumpIntervalMs;
         const cadenceDeadline = (scheduledDueAt ?? pumpStartedAt) + cadenceIntervalMs;
         armPumpTimer(cadenceDeadline > completedAt
           ? cadenceDeadline

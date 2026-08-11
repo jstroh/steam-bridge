@@ -1835,6 +1835,7 @@ export interface NativeBinding {
   pumpNativeOverlayProbeWindow(): void;
   pumpNativeOverlayHostView(): void;
   isNativeOverlayHostFramePending(): boolean;
+  isNativeOverlayHostFrameLatencyWaitBypassed(): boolean;
   waitForNativeOverlayHostFrameReady(timeoutMs?: number): Promise<boolean>;
   showNativeOverlayHostView(): void;
   hideNativeOverlayHostView(): void;

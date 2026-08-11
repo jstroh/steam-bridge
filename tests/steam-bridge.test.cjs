@@ -972,6 +972,10 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
     path.join(repoRoot, "crates", "native", "src", "windows_d3d11.rs"),
     "utf8"
   );
+  const nativeSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "native", "src", "lib.rs"),
+    "utf8"
+  );
 
   assert.match(source, /WS_OVERLAPPEDWINDOW \| WS_CLIPSIBLINGS \| WS_CLIPCHILDREN/);
   assert.match(source, /AdjustWindowRectExForDpi\(&mut adjusted, style, 0, ex_style, dpi\)/);
@@ -1039,12 +1043,26 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /SetMaximumFrameLatency\(2\)/);
   assert.match(d3dSource, /DuplicateHandle\(/);
   assert.match(d3dSource, /frame_latency_ready_permits/);
+  assert.match(d3dSource, /frame_latency_wait_bypassed/);
   assert.match(source, /pub fn begin_frame_latency_wait\(/);
   assert.match(source, /pub fn grant_frame_latency_ready\(/);
+  assert.match(source, /pub fn bypass_frame_latency_wait\(/);
+  assert.match(nativeSource, /if timeout_ms == Some\(0\)[\s\S]*?bypass_frame_latency_wait/);
   assert.match(d3dSource, /WaitForSingleObjectEx\(/);
   assert.match(d3dSource, /FRAME_LATENCY_WAIT_POLL_MS: u32 = 0/);
   assert.match(d3dSource, /wait_result == WAIT_TIMEOUT[\s\S]*?return Ok\(None\)/);
-  assert.match(d3dSource, /\.Present\(self\.present_sync_interval, DXGI_PRESENT\(0\)\)/);
+  assert.match(
+    d3dSource,
+    /if self\.frame_latency_wait_bypassed \{[\s\S]*?self\.last_frame_latency_wait_duration_ms = 0\.0;/
+  );
+  assert.match(d3dSource, /pub fn bypass_frame_latency_wait\(/);
+  assert.match(d3dSource, /DXGI_PRESENT_DO_NOT_WAIT/);
+  assert.match(d3dSource, /result == DXGI_ERROR_WAS_STILL_DRAWING/);
+  assert.match(source, /"frameLatencyWaitBypassed"/);
+  assert.match(nativeSource, /isNativeOverlayHostFrameLatencyWaitBypassed/);
+  assert.match(bridgeSource, /isNativeOverlayHostFrameLatencyWaitBypassed/);
+  assert.match(bridgeSource, /nativeFrameWaitUnavailable = true;/);
+  assert.match(d3dSource, /swap_chain\.Present\(present_sync_interval, present_flags\)/);
   assert.match(d3dSource, /present_sync_interval_for_frame_rate/);
   assert.match(source, /renderer\.set_present_sync_interval\(/);
   assert.match(
@@ -1054,14 +1072,17 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(bridgeSource, /binding\.isNativeOverlayHostFramePending\?\.\(\) === true/);
   assert.match(bridgeSource, /binding\.waitForNativeOverlayHostFrameReady/);
   assert.match(bridgeSource, /function armWindowsNativeFrameReadyWait\(\)/);
-  assert.match(bridgeSource, /waitForFrameReady\.call\(binding, 25\)/);
+  assert.match(
+    bridgeSource,
+    /STEAM_BRIDGE_QA_FORCE_FRAME_WAIT_TIMEOUT[\s\S]*?waitForFrameReady\.call\(binding, windowsNativeFrameWaitTimeoutMs\)/
+  );
   assert.match(bridgeSource, /nativeFrameWaitUnavailable = true/);
   assert.match(bridgeSource, /windowsNativeFrameFallbackIntervalMs\(\)/);
   assert.match(bridgeSource, /let pumpImmediate: NodeJS\.Immediate \| undefined/);
   assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
   assert.match(
     bridgeSource,
-    /if \(displaySynchronizedStandaloneHost\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
+    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
   );
   assert.match(d3dSource, /D3D11_QUERY_EVENT/);
   assert.match(d3dSource, /CopySubresourceRegion\(/);

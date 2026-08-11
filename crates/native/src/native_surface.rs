@@ -1730,19 +1730,24 @@ mod windows {
         handle: FrameLatencyWaitHandle,
     }
 
+    #[derive(Clone, Copy)]
     pub struct FrameLatencyReadyToken {
         surface_generation: u64,
         renderer_generation: u64,
     }
 
     impl FrameLatencyWaitRequest {
-        pub fn wait(self, timeout_ms: u32) -> Result<Option<FrameLatencyReadyToken>, String> {
-            let renderer_generation = self.handle.generation();
-            let ready = self.handle.wait(timeout_ms)?;
-            Ok(ready.then_some(FrameLatencyReadyToken {
+        pub fn token(&self) -> FrameLatencyReadyToken {
+            FrameLatencyReadyToken {
                 surface_generation: self.surface_generation,
-                renderer_generation,
-            }))
+                renderer_generation: self.handle.generation(),
+            }
+        }
+
+        pub fn wait(self, timeout_ms: u32) -> Result<Option<FrameLatencyReadyToken>, String> {
+            let token = self.token();
+            let ready = self.handle.wait(timeout_ms)?;
+            Ok(ready.then_some(token))
         }
     }
     #[link(name = "opengl32")]
@@ -2471,6 +2476,20 @@ mod windows {
             })
     }
 
+    pub fn frame_latency_wait_bypassed() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| {
+                matches!(
+                    &surface.renderer,
+                    WindowsSurfaceRenderer::D3d11 { renderer, .. }
+                        if renderer.frame_latency_wait_bypassed()
+                )
+            })
+    }
+
     pub fn begin_frame_latency_wait() -> Result<Option<FrameLatencyWaitRequest>, Error> {
         let guard = SURFACE
             .lock()
@@ -2507,6 +2526,22 @@ mod windows {
             return false;
         };
         renderer.grant_frame_latency_ready_permit(token.renderer_generation)
+    }
+
+    pub fn bypass_frame_latency_wait(token: FrameLatencyReadyToken) -> bool {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard
+            .as_mut()
+            .filter(|surface| surface.instance_generation == token.surface_generation)
+        else {
+            return false;
+        };
+        let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer else {
+            return false;
+        };
+        renderer.bypass_frame_latency_wait(token.renderer_generation)
     }
 
     pub fn update_frame(buffer: Buffer, width: u32, height: u32) -> Result<(), Error> {
@@ -3304,6 +3339,7 @@ mod windows {
                 "bufferCount": 2,
                 "gdiCompatible": false,
                 "frameLatencyWaitable": renderer.frame_latency_waitable(),
+                "frameLatencyWaitBypassed": renderer.frame_latency_wait_bypassed(),
                 "maximumFrameLatency": 2,
                 "presentSyncInterval": renderer.present_sync_interval(),
                 "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),

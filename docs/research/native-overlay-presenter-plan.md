@@ -2031,6 +2031,15 @@ diagnostic OpenGL backend cannot enter the async wait loop. This keeps swap-
 chain contents persistent for desktop capture while DXGI, rather than
 JavaScript timer precision, supplies the display-paced boundary.
 
+Some production drivers leave the duplicated waitable handle unsignaled while
+the swap chain itself remains usable. One 25 ms timeout permanently bypasses
+that handle for the exact renderer generation and switches to nonblocking
+`Present(0, DXGI_PRESENT_DO_NOT_WAIT)`. Replacement JavaScript presenter
+sessions query the native bypass state and retain the bounded timer path; they
+cannot resume the immediate waitable-object loop. The timer compensates only
+for the measured one-millisecond Windows wake latency, and a full flip queue is
+reported as not ready rather than blocking Electron's message thread.
+
 Cold managed readiness has its own positive contract. Steam initialization and
 callback registration happen before Electron graphics-device creation. When the
 Windows persistent presenter still reports the overlay unavailable, a managed

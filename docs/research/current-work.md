@@ -49,31 +49,35 @@ retaining the legacy option fields as inert source-compatible inputs.
 An older diagnostic session also reproduces the independent DXGI wait failure:
 shared-texture imports remained near display cadence while native presentation
 stayed around 4-5 FPS and the JavaScript wait-timeout counter reached thousands.
-The scheduler repair bounds the asynchronous wait to 25 ms. If a real
-dirty frame remains after that timeout, the session permanently rejects the
-unsignaled async handle and uses a 1-4 ms nonblocking native readiness poll.
-It cannot chain another blocking timeout. Session diagnostics now expose the
-fallback state.
+The scheduler repair bounds the asynchronous wait to 25 ms. If a real dirty
+frame remains after that timeout, the native surface permanently bypasses the
+unsignaled waitable object and presents with `Present(0,
+DXGI_PRESENT_DO_NOT_WAIT)`. A replacement JavaScript presenter synchronizes
+that one-way native state instead of accidentally restarting the immediate
+pump loop. A bounded timer compensates for the observed one-millisecond Windows
+timer wake latency, while `DXGI_ERROR_WAS_STILL_DRAWING` remains an ordinary
+not-ready result. The path cannot chain another blocking timeout. Session and
+native diagnostics expose the fallback state.
 
-The source-linked configured consumer then ran on the available 165 Hz Windows
-display. All 42 captured high-refresh samples retained a 165 FPS target. Among
-35 settled gameplay samples, renderer and shared-texture production stayed near
-165 FPS and native presentation had a 162.8 FPS median (98.7% of refresh); the
-final sample presented at 164.5 FPS. One asynchronous DXGI wait expired, the
-new fallback engaged, and its timeout count remained exactly one for the rest
-of the run. There was no device loss, recovery, slow texture copy, or automatic
-frame-rate change. This closes the available source-linked 165 Hz repair gate;
-the exact 144/180/200 Hz reporter hardware still needs release-candidate
+The source-linked configured consumer then forced this exact timeout path on
+the available 165 Hz Windows display. Across 30 settled post-recovery gameplay
+samples, renderer paint had a 164.45 FPS median and native presentation had a
+160.75 FPS median (97.4% of refresh); the maximum sampled Present call was
+0.878 ms and the pump never exceeded 163.4 FPS. The timeout count remained
+exactly one, the fallback stayed active, and every sample retained the 165 FPS
+target. The same candidate opened and closed the real Steam Friends overlay,
+minimized, restored to about 164 FPS, and shut down cleanly without a hang,
+device loss, or recovery. This closes the available source-linked 165 Hz repair
+gate; exact 144/180/200 Hz reporter hardware still needs production
 confirmation.
 
-The maintainer authorized an emergency Windows production release. Package
-`0.3.24` is the candidate boundary for this correction; it is not stable or
-published until the immutable tag artifact passes its exact packaged-consumer
-Windows proof and the protected npm publication workflow. The source is green
-for 424 JavaScript tests (two ordinary Windows permission skips), 53 Rust
-tests, TypeScript/build, supported-platform policy, Steam API coverage, native
-format/check, packed-package smoke, and the configured consumer's 377 tests,
-typecheck, and focused ESLint.
+The maintainer authorized an emergency Windows production release but
+explicitly prohibited another npm publication. The configured consumer will
+embed this exact reviewed source and optimized Windows addon while retaining
+its `steam-bridge` `0.3.24` dependency metadata for traceability. No npm tag,
+package publication, or registry mutation belongs to this release. Final full
+repository and packaged-consumer gates remain required before the Windows-only
+Steam depot upload.
 
 ### 2026-08-10 v0.3.23 stable Windows high-refresh adaptive-cadence repair
 

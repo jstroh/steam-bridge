@@ -1093,6 +1093,19 @@ pub fn is_native_overlay_host_frame_pending() -> bool {
     }
 }
 
+#[napi(js_name = "isNativeOverlayHostFrameLatencyWaitBypassed")]
+pub fn is_native_overlay_host_frame_latency_wait_bypassed() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::frame_latency_wait_bypassed()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
 #[napi(js_name = "waitForNativeOverlayHostFrameReady")]
 pub async fn wait_for_native_overlay_host_frame_ready(
     timeout_ms: Option<u32>,
@@ -1102,6 +1115,11 @@ pub async fn wait_for_native_overlay_host_frame_ready(
         let Some(request) = native_surface::begin_frame_latency_wait()? else {
             return Ok(false);
         };
+        let wait_token = request.token();
+        if timeout_ms == Some(0) {
+            native_surface::bypass_frame_latency_wait(wait_token);
+            return Ok(false);
+        }
         let timeout_ms = timeout_ms.unwrap_or(100).clamp(1, 1_000);
         let ready_token = tokio::task::spawn_blocking(move || request.wait(timeout_ms))
             .await
@@ -1109,9 +1127,13 @@ pub async fn wait_for_native_overlay_host_frame_ready(
                 Error::from_reason(format!("DXGI frame latency worker failed: {error}"))
             })?
             .map_err(Error::from_reason)?;
-        Ok(ready_token
-            .map(native_surface::grant_frame_latency_ready)
-            .unwrap_or(false))
+        Ok(match ready_token {
+            Some(token) => native_surface::grant_frame_latency_ready(token),
+            None => {
+                native_surface::bypass_frame_latency_wait(wait_token);
+                false
+            }
+        })
     }
 
     #[cfg(not(target_os = "windows"))]

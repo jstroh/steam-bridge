@@ -29,10 +29,10 @@ use windows::Win32::Graphics::Dxgi::Common::{
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory6,
     IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_CREATE_FACTORY_FLAGS,
-    DXGI_FRAME_STATISTICS, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER,
-    DXGI_PRESENT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
-    DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-    DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    DXGI_ERROR_WAS_STILL_DRAWING, DXGI_FRAME_STATISTICS, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+    DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT, DXGI_PRESENT_DO_NOT_WAIT, DXGI_SCALING_STRETCH,
+    DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
+    DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
 use windows::Win32::System::Threading::{GetCurrentProcess, WaitForSingleObjectEx};
 
@@ -181,6 +181,7 @@ pub struct WindowsD3d11Renderer {
     frame_latency_waitable_object: HANDLE,
     frame_latency_wait_generation: u64,
     frame_latency_ready_permits: u32,
+    frame_latency_wait_bypassed: bool,
     async_frame_latency_ready_count: u64,
     frame_latency_wait_timeout_count: u64,
     frame_latency_not_ready_count: u64,
@@ -426,6 +427,7 @@ impl WindowsD3d11Renderer {
             frame_latency_waitable_object: HANDLE::default(),
             frame_latency_wait_generation: 0,
             frame_latency_ready_permits: 0,
+            frame_latency_wait_bypassed: false,
             async_frame_latency_ready_count: 0,
             frame_latency_wait_timeout_count: 0,
             frame_latency_not_ready_count: 0,
@@ -534,6 +536,7 @@ impl WindowsD3d11Renderer {
         self.frame_latency_wait_generation =
             NEXT_FRAME_LATENCY_WAIT_GENERATION.fetch_add(1, Ordering::Relaxed);
         self.frame_latency_ready_permits = 0;
+        self.frame_latency_wait_bypassed = false;
         self.swap_chain = Some(swap_chain);
         self.render_target = Some(render_target);
         Ok(())
@@ -885,7 +888,12 @@ impl WindowsD3d11Renderer {
 
     pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<Option<i32>, String> {
         let render_started_at = Instant::now();
-        if self.frame_latency_ready_permits > 0 {
+        if self.frame_latency_wait_bypassed {
+            // The waitable object stopped signaling after a native window
+            // transition. The timer-driven nonblocking Present fallback now
+            // provides bounded retries; do not poll the stale signal again.
+            self.last_frame_latency_wait_duration_ms = 0.0;
+        } else if self.frame_latency_ready_permits > 0 {
             // The async worker consumed the auto-reset waitable-object signal.
             // Spend its matching permit instead of polling the same handle a
             // second time and incorrectly treating the frame as not ready.
@@ -991,13 +999,18 @@ impl WindowsD3d11Renderer {
             .swap_chain
             .as_ref()
             .ok_or_else(|| "D3D11 swap chain is unavailable".to_owned())?;
-        // The frame-latency waitable object starts each frame only after the
-        // previous presentation completes. Sync to the next vertical blank as
-        // well: flip-model Present(0) is an unsynchronized path that Microsoft
-        // recommends only with explicit tearing support, which this tear-free
-        // desktop/streaming host intentionally does not request.
+        // The healthy path is paced by both the frame-latency handle and
+        // Present(1). If a driver stops signaling that handle, never let
+        // Steam's Present hook synchronously stall Electron's message thread:
+        // the fallback is timer-paced and submits without waiting. Windowed
+        // flip-model composition remains owned by DWM.
+        let (present_sync_interval, present_flags) = if self.frame_latency_wait_bypassed {
+            (0, DXGI_PRESENT_DO_NOT_WAIT)
+        } else {
+            (self.present_sync_interval, DXGI_PRESENT(0))
+        };
         let present_started_at = Instant::now();
-        let result = swap_chain.Present(self.present_sync_interval, DXGI_PRESENT(0));
+        let result = swap_chain.Present(present_sync_interval, present_flags);
         let present_duration_ms = present_started_at.elapsed().as_secs_f64() * 1_000.0;
         self.last_present_duration_ms = present_duration_ms;
         self.max_present_duration_ms = self.max_present_duration_ms.max(present_duration_ms);
@@ -1011,6 +1024,11 @@ impl WindowsD3d11Renderer {
             self.render_over_25_ms_count = self.render_over_25_ms_count.saturating_add(1);
         }
         self.last_present = result.0;
+        if result == DXGI_ERROR_WAS_STILL_DRAWING {
+            self.frame_latency_not_ready_count =
+                self.frame_latency_not_ready_count.saturating_add(1);
+            return Ok(None);
+        }
         if result.is_err() && result != DXGI_STATUS_OCCLUDED {
             return Err(format!(
                 "IDXGISwapChain::Present failed: 0x{:08X}",
@@ -1101,7 +1119,7 @@ impl WindowsD3d11Renderer {
     pub fn duplicate_frame_latency_wait_handle(
         &self,
     ) -> Result<Option<FrameLatencyWaitHandle>, String> {
-        if self.frame_latency_waitable_object.is_invalid() {
+        if self.frame_latency_waitable_object.is_invalid() || self.frame_latency_wait_bypassed {
             return Ok(None);
         }
 
@@ -1129,6 +1147,7 @@ impl WindowsD3d11Renderer {
         if generation == 0
             || generation != self.frame_latency_wait_generation
             || self.frame_latency_waitable_object.is_invalid()
+            || self.frame_latency_wait_bypassed
         {
             return false;
         }
@@ -1137,6 +1156,22 @@ impl WindowsD3d11Renderer {
         self.async_frame_latency_ready_count =
             self.async_frame_latency_ready_count.saturating_add(1);
         true
+    }
+
+    pub fn bypass_frame_latency_wait(&mut self, generation: u64) -> bool {
+        if generation == 0
+            || generation != self.frame_latency_wait_generation
+            || self.frame_latency_waitable_object.is_invalid()
+        {
+            return false;
+        }
+        self.frame_latency_wait_bypassed = true;
+        self.frame_latency_ready_permits = 0;
+        true
+    }
+
+    pub fn frame_latency_wait_bypassed(&self) -> bool {
+        self.frame_latency_wait_bypassed
     }
 
     pub fn async_frame_latency_ready_count(&self) -> u64 {

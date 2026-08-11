@@ -357,6 +357,18 @@ The diagnostic animation is gated by an environment flag and is absent from
 normal development and release execution; static production content can paint
 less often without implying that the display changed refresh rate.
 
+A 2026-08-11 production corpus invalidated adaptive exact-divisor downshifts and
+exposed an independent unsignaled frame-latency handle. The current repair
+keeps the requested display rate, bounds the asynchronous wait to 25 ms, then
+permanently uses nonblocking `Present(0, DXGI_PRESENT_DO_NOT_WAIT)` for that
+renderer generation. Replacement JavaScript sessions synchronize the native
+bypass state and use a bounded, timer-compensated fallback instead of resuming
+the immediate loop. A deterministic 165 Hz actual-game proof recorded 30
+settled fallback samples with 164.45 FPS median paint, 160.75 FPS median native
+presentation, 0.878 ms maximum sampled Present, one total timeout, and zero
+device loss; real Steam overlay open/close and minimize/restore remained
+responsive and returned to about 164 FPS.
+
 The same run added a real Win32 File/Edit/View menu to the top-level host and
 routed command IDs back through native input events. The menu preserved an
 exact 1280 by 720 client at 96 DPI, native diagnostics retained a 640 by 480
