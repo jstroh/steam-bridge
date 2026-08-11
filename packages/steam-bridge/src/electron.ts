@@ -476,7 +476,9 @@ export interface ElectronNativeOverlaySessionOptions {
   frameRate?: number;
   pumpIntervalMs?: number;
   continuousPresent?: boolean;
+  /** @deprecated Automatic frame-rate downshifts are disabled. */
   adaptiveFrameRate?: boolean;
+  /** @deprecated Retained for source compatibility; it is no longer called. */
   onFrameRateChanged?: (event: {
     reason: "sustained-overload";
     requestedFrameRate: number;

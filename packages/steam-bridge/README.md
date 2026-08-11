@@ -568,25 +568,18 @@ submits tear-free frames with `Present(1)` by default. Waiting on DXGI before
 each frame avoids relying on JavaScript timer precision while still following
 the active display's refresh cadence.
 
-High-refresh systems can opt into coordinated adaptive cadence. If the
-measured Electron shared-texture producer and DXGI presenter remain below 85%
-of a 120 Hz or faster display-rate target for three consecutive samples, Steam
-Bridge selects the smallest exact VBlank divisor that the pipeline can sustain.
-For example, a saturated 200 Hz pipeline that presents near 118 FPS settles at
-100 FPS with `Present(2)`. The callback must immediately apply the same rate to
-Electron's offscreen producer; Steam Bridge rejects adaptive mode without it.
-The lower cadence remains stable until an explicit display/rate change, which
-avoids repeatedly switching rates while gameplay is busy. Snapshots expose the
-application's `requestedFrameRate`, current `frameRate`, adaptation count, and
-last change.
+Steam Bridge does not automatically lower a high-refresh target. Production
+telemetry showed that a temporary load or presentation stall could be mistaken
+for sustainable throughput and permanently pin 144/165/180 Hz displays to an
+exact VBlank divisor as low as one quarter of refresh. The legacy
+`adaptiveFrameRate` and `onFrameRateChanged` options remain accepted for source
+compatibility but are disabled; session snapshots report
+`adaptiveFrameRate: false` and a zero change count. Keep Electron and the native
+host on the active display rate through `setFrameRate(...)`.
 
 ```ts
 const session = steamworks.overlay.startNativeOverlaySession({
-  frameRate: displayRefreshRate,
-  adaptiveFrameRate: process.platform === "win32",
-  onFrameRateChanged(event) {
-    offscreenWindow.webContents.setFrameRate(event.frameRate);
-  }
+  frameRate: displayRefreshRate
 });
 ```
 New CPU frames and shared textures are marked dirty and, when
@@ -603,6 +596,13 @@ window by one pixel. Set
 keep exposing a retained frame while the Electron source is static. It is
 `false` by default. DXGI gates continuous Windows presentation to the display
 instead of relying on millisecond timer precision.
+
+The asynchronous DXGI wait is bounded to 25 ms. If a dirty frame remains after
+one expired wait, the session rejects that wait handle and uses a 1-4 ms
+nonblocking readiness poll for the remainder of the session. This prevents a
+driver-specific unsignaled handle from chaining 100 ms waits and collapsing
+presentation to single-digit FPS. Snapshots expose
+`nativeFrameWaitTimeoutCount` and `nativeFrameWaitFallback`.
 
 Steam can hook both the hidden Electron offscreen surface and the visible
 native host when they live in the same Windows process. If the offscreen paint

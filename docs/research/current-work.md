@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-10
+Last reviewed: 2026-08-11
 
 Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
@@ -25,6 +25,55 @@ Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-11 Windows production cadence correction (0.3.24 candidate)
+
+A new bounded production corpus contains 613 records from 45 Windows sessions
+across nine rotated diagnostics files. It invalidates the `0.3.23` conclusion
+that exact VBlank downshifts are an acceptable high-refresh repair. Among the
+eight sessions whose current build identity is complete, seven adapted below
+the selected display refresh. Observed terminal targets include 144 -> 48,
+144 -> 36, 165 -> 41, 180 -> 60, 200 -> 100, and 200 -> 67. Across the larger
+current/current-like subset, 17 of 21 sessions ended below full refresh and nine
+ended at one quarter refresh. Stable counters at those lower rates prove only
+that the cap was enforced; they do not prove healthy presentation.
+
+The corpus separates two defects. First, the controller combined source and
+present rates, so loading, game-state, or renderer stalls could lower a healthy
+presenter. One 180 Hz transition selected 60 FPS even though DXGI was still
+presenting near 180 FPS. Second, the controller had no upward recovery, so one
+temporary observation could permanently pin the process until a display/rate
+reset. The active repair disables automatic target rewriting entirely while
+retaining the legacy option fields as inert source-compatible inputs.
+
+An older diagnostic session also reproduces the independent DXGI wait failure:
+shared-texture imports remained near display cadence while native presentation
+stayed around 4-5 FPS and the JavaScript wait-timeout counter reached thousands.
+The scheduler repair bounds the asynchronous wait to 25 ms. If a real
+dirty frame remains after that timeout, the session permanently rejects the
+unsignaled async handle and uses a 1-4 ms nonblocking native readiness poll.
+It cannot chain another blocking timeout. Session diagnostics now expose the
+fallback state.
+
+The source-linked configured consumer then ran on the available 165 Hz Windows
+display. All 42 captured high-refresh samples retained a 165 FPS target. Among
+35 settled gameplay samples, renderer and shared-texture production stayed near
+165 FPS and native presentation had a 162.8 FPS median (98.7% of refresh); the
+final sample presented at 164.5 FPS. One asynchronous DXGI wait expired, the
+new fallback engaged, and its timeout count remained exactly one for the rest
+of the run. There was no device loss, recovery, slow texture copy, or automatic
+frame-rate change. This closes the available source-linked 165 Hz repair gate;
+the exact 144/180/200 Hz reporter hardware still needs release-candidate
+confirmation.
+
+The maintainer authorized an emergency Windows production release. Package
+`0.3.24` is the candidate boundary for this correction; it is not stable or
+published until the immutable tag artifact passes its exact packaged-consumer
+Windows proof and the protected npm publication workflow. The source is green
+for 424 JavaScript tests (two ordinary Windows permission skips), 53 Rust
+tests, TypeScript/build, supported-platform policy, Steam API coverage, native
+format/check, packed-package smoke, and the configured consumer's 377 tests,
+typecheck, and focused ESLint.
 
 ### 2026-08-10 v0.3.23 stable Windows high-refresh adaptive-cadence repair
 

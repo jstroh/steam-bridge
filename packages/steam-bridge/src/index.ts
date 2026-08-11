@@ -9,13 +9,9 @@ import {
   getKWinWaylandOverlayHostSyncStatus
 } from "./electron";
 import {
-  observeAdaptiveOverlayFrameRate,
   nextOverlayFrameDelayMs,
-  resetAdaptiveOverlayFrameRate,
   resetOverlayFrameDeadline,
   resolveManagedOverlayDisplayFrameRate,
-  type AdaptiveOverlayFrameRateSample,
-  type AdaptiveOverlayFrameRateState,
   type OverlayFrameDeadlineState
 } from "./overlay-cadence";
 import {
@@ -1633,13 +1629,12 @@ export interface NativeOverlaySessionOptions {
    */
   continuousPresent?: boolean;
   /**
-   * On Windows, lower an unsustainable display-rate OSR/DXGI pipeline to an
-   * exact VBlank divisor after sustained measured overload. This is opt-in and
-   * requires onFrameRateChanged so the Electron producer and native presenter
-   * always change cadence together.
+   * @deprecated Automatic frame-rate downshifts are disabled. They could
+   * permanently mistake loading or presentation stalls for a sustainable
+   * cadence and pin high-refresh displays to a quarter of their refresh rate.
    */
   adaptiveFrameRate?: boolean;
-  /** Synchronize the Electron offscreen producer when adaptiveFrameRate changes. */
+  /** @deprecated Retained for source compatibility; it is no longer called. */
   onFrameRateChanged?: (event: NativeOverlayFrameRateChange) => void;
   clientWidth?: number;
   clientHeight?: number;
@@ -1832,9 +1827,11 @@ export interface NativeOverlaySessionSnapshot {
   pumpDurationOver25MsCount?: number;
   /** Number of bounded Windows DXGI readiness waits that expired before a slot was signaled. */
   nativeFrameWaitTimeoutCount?: number;
+  /** The Windows presenter rejected async DXGI waits and is using bounded polling. */
+  nativeFrameWaitFallback?: boolean;
   /** Current target presentation rate. */
   frameRate: number;
-  /** Display-rate target requested by the application before adaptive fallback. */
+  /** Display-rate target requested by the application. */
   requestedFrameRate: number;
   adaptiveFrameRate: boolean;
   adaptiveFrameRateChangeCount: number;
@@ -10102,12 +10099,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let frameRate = resolveNativeOverlayFrameRate(options);
   let requestedFrameRate = frameRate;
   let pumpIntervalMs = resolveNativeOverlayPumpIntervalMs(options);
-  if (options.adaptiveFrameRate === true && typeof options.onFrameRateChanged !== "function") {
-    throw new TypeError(
-      "Steam Bridge adaptiveFrameRate requires onFrameRateChanged to synchronize the Electron producer."
-    );
-  }
-  const adaptiveFrameRate = options.adaptiveFrameRate === true && backend === "windows-d3d11";
+  // Retain the two legacy options in the public shape, but never let transient
+  // source or presenter stalls rewrite the application's display-rate target.
+  const adaptiveFrameRate = false;
   const clientWidth = normalizeNativeOverlayClientDimension(options.clientWidth);
   const clientHeight = normalizeNativeOverlayClientDimension(options.clientHeight);
   const minClientWidth = normalizeNativeOverlayClientDimension(options.minClientWidth);
@@ -10184,12 +10178,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let lastSharedTextureUpdateDurationMs: number | undefined;
   let maxSharedTextureUpdateDurationMs: number | undefined;
   let lastError: unknown;
-  const adaptiveFrameRateState: AdaptiveOverlayFrameRateState = {
-    consecutiveOverloadSamples: 0
-  };
-  let lastAdaptiveFrameRateSampleAt = 0;
-  let adaptiveFrameRateChangeCount = 0;
-  let lastFrameRateChange: NativeOverlayFrameRateChange | undefined;
+  const adaptiveFrameRateChangeCount = 0;
+  const lastFrameRateChange: NativeOverlayFrameRateChange | undefined = undefined;
   let overlayActive = false;
   let overlayWasActive = false;
   let overlayActiveApplied: boolean | undefined;
@@ -10253,6 +10243,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let activeCheckoutReservation: NativeOverlayCheckoutReservationState | undefined;
   const stateListeners = new Set<() => void>();
 
+  const windowsNativeFrameFallbackIntervalMs = (): number =>
+    Math.max(1, Math.min(4, pumpIntervalMs / 2));
+
   const pump = (): void => {
     if (closed) {
       return;
@@ -10291,7 +10284,6 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       try {
         const binding = native();
         binding.pumpNativeOverlayProbeWindow();
-        sampleAdaptiveFrameRate();
         nativeFramePending = usesWindowsStandaloneHost
           && binding.isNativeOverlayHostFramePending?.() === true;
       } catch (error) {
@@ -10380,6 +10372,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       maxPumpDurationMs,
       pumpDurationOver25MsCount,
       nativeFrameWaitTimeoutCount,
+      nativeFrameWaitFallback: nativeFrameWaitUnavailable,
       lastError,
       nativeSurfaceLeaseGeneration: surfaceLease?.generation,
       nativeSurfaceOwner,
@@ -10597,58 +10590,6 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     syncCursorHidden();
   };
 
-  function sampleAdaptiveFrameRate(): void {
-    if (!adaptiveFrameRate || closed) {
-      return;
-    }
-    const sampledAtMs = Date.now();
-    if (sampledAtMs - lastAdaptiveFrameRateSampleAt < 1_000) {
-      return;
-    }
-    lastAdaptiveFrameRateSampleAt = sampledAtMs;
-    const diagnostics = getNativeOverlayHostDiagnostics();
-    const sample = adaptiveOverlayFrameRateSampleFromDiagnostics(
-      diagnostics,
-      sampledAtMs,
-      requestedFrameRate,
-      frameRate
-    );
-    if (!sample) {
-      resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
-      return;
-    }
-    const decision = observeAdaptiveOverlayFrameRate(adaptiveFrameRateState, sample);
-    if (!decision || decision.frameRate === frameRate) {
-      return;
-    }
-
-    const event: NativeOverlayFrameRateChange = {
-      reason: "sustained-overload",
-      requestedFrameRate,
-      previousFrameRate: frameRate,
-      frameRate: decision.frameRate,
-      displayRefreshRate: decision.displayRefreshRate,
-      presentSyncInterval: decision.presentSyncInterval,
-      sourceFrameRate: decision.sourceFrameRate,
-      presentFrameRate: decision.presentFrameRate
-    };
-    try {
-      options.onFrameRateChanged?.(event);
-    } catch (error) {
-      lastError = error;
-      resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
-      return;
-    }
-
-    frameRate = decision.frameRate;
-    pumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(frameRate);
-    adaptiveFrameRateChangeCount += 1;
-    lastFrameRateChange = event;
-    resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
-    syncContinuousPresent();
-    schedulePumpTimer();
-  }
-
   const setFrameRate = (nextFrameRate: number): void => {
     const normalizedFrameRate = normalizeNativeOverlayFrameRate(nextFrameRate);
     const nextPumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(normalizedFrameRate);
@@ -10662,8 +10603,6 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     requestedFrameRate = normalizedFrameRate;
     frameRate = normalizedFrameRate;
     pumpIntervalMs = nextPumpIntervalMs;
-    resetAdaptiveOverlayFrameRate(adaptiveFrameRateState);
-    lastAdaptiveFrameRateSampleAt = 0;
     continuousPresentFrameRateApplied = undefined;
     syncContinuousPresent();
     schedulePumpTimer();
@@ -11410,7 +11349,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     nativeFrameWaitInFlight = true;
     let waitPromise: Promise<boolean>;
     try {
-      waitPromise = waitForFrameReady.call(binding, 100);
+      // One missed DXGI signal must not retain a game frame for a visible
+      // tenth of a second. A driver that cannot signal within this bounded
+      // window is handled by the nonblocking native poll fallback below.
+      waitPromise = waitForFrameReady.call(binding, 25);
     } catch (error) {
       nativeFrameWaitInFlight = false;
       nativeFrameWaitUnavailable = true;
@@ -11434,14 +11376,21 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
             // readiness signal and clear the native dirty bit while this
             // worker is waiting. Refresh the native state before deciding to
             // re-arm; otherwise the cached JavaScript `nativeFramePending`
-            // value can start an endless chain of 100 ms waits and retain an
-            // old game frame on screen.
+            // value could start an endless chain of blocking waits and retain
+            // an old game frame on screen.
             pump();
           } catch {
             return;
           }
           if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
             return;
+          }
+          if (nativeFramePending) {
+            // Do not chain another blocking wait after an unresolved timeout.
+            // Some drivers leave this duplicated auto-reset handle unsignaled
+            // while Present itself remains usable. Poll the same native
+            // readiness object without blocking until this session closes.
+            nativeFrameWaitUnavailable = true;
           }
           schedulePumpTimer();
           return;
@@ -11559,7 +11508,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         // presenter as soon as DXGI releases a flip-queue slot. Old native
         // binaries retain the short nonblocking polling fallback.
         if (!armWindowsNativeFrameReadyWait()) {
-          armPumpTimer(performance.now() + 1);
+          armPumpTimer(performance.now() + windowsNativeFrameFallbackIntervalMs());
         }
         return;
       }
@@ -11591,7 +11540,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       ? Math.max(pumpIntervalMs, 1000 / 30)
       : pumpIntervalMs;
     armPumpTimer(performance.now() + (
-      nativeFramePending && usesWindowsStandaloneHost ? 1 : initialIntervalMs
+      nativeFramePending && usesWindowsStandaloneHost
+        ? windowsNativeFrameFallbackIntervalMs()
+        : initialIntervalMs
     ));
   }
 
@@ -13240,51 +13191,6 @@ function resolveNativeOverlayPumpIntervalMs(options: NativeOverlaySessionOptions
     return nativeOverlayPumpIntervalForFrameRate(normalizeNativeOverlayFrameRate(options.frameRate));
   }
   return normalizeNativeOverlayPumpInterval(options.pumpIntervalMs ?? 33);
-}
-
-function adaptiveOverlayFrameRateSampleFromDiagnostics(
-  diagnostics: NativeOverlayHostDiagnostics | undefined,
-  sampledAtMs: number,
-  requestedFrameRate: number,
-  effectiveFrameRate: number
-): AdaptiveOverlayFrameRateSample | undefined {
-  const root = diagnosticRecord(diagnostics);
-  const renderer = diagnosticRecord(root?.renderer);
-  const timing = diagnosticRecord(renderer?.timing);
-  if (renderer?.backend !== "windows-d3d11" || timing?.frameStatisticsAvailable !== true) {
-    return undefined;
-  }
-  const surfaceGeneration = diagnosticFiniteNumber(root?.surfaceInstanceGeneration);
-  const displayRefreshRate = diagnosticFiniteNumber(root?.displayRefreshRate);
-  const sourceFrameCount = diagnosticFiniteNumber(renderer.sharedTextureImportCount);
-  const presentCount = diagnosticFiniteNumber(timing.frameStatisticsPresentCount);
-  if (
-    surfaceGeneration === undefined ||
-    displayRefreshRate === undefined ||
-    sourceFrameCount === undefined ||
-    presentCount === undefined
-  ) {
-    return undefined;
-  }
-  return {
-    sampledAtMs,
-    surfaceGeneration,
-    displayRefreshRate,
-    requestedFrameRate,
-    effectiveFrameRate,
-    sourceFrameCount,
-    presentCount
-  };
-}
-
-function diagnosticRecord(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-}
-
-function diagnosticFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function normalizeNativeOverlayFrameDimension(value: number, label: string): number {

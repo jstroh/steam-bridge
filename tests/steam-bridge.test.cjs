@@ -1054,7 +1054,9 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(bridgeSource, /binding\.isNativeOverlayHostFramePending\?\.\(\) === true/);
   assert.match(bridgeSource, /binding\.waitForNativeOverlayHostFrameReady/);
   assert.match(bridgeSource, /function armWindowsNativeFrameReadyWait\(\)/);
-  assert.match(bridgeSource, /nativeFramePending && usesWindowsStandaloneHost \? 1 : initialIntervalMs/);
+  assert.match(bridgeSource, /waitForFrameReady\.call\(binding, 25\)/);
+  assert.match(bridgeSource, /nativeFrameWaitUnavailable = true/);
+  assert.match(bridgeSource, /windowsNativeFrameFallbackIntervalMs\(\)/);
   assert.match(bridgeSource, /let pumpImmediate: NodeJS\.Immediate \| undefined/);
   assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
   assert.match(
@@ -9969,102 +9971,6 @@ test("overlay cadence subtracts frame work and skips missed deadlines", () => {
   assert.equal(resolveManagedOverlayDisplayFrameRate(true, 0, 89.87), 89.87);
   assert.equal(resolveManagedOverlayDisplayFrameRate(false, 120, 89.87), 120);
   assert.equal(resolveManagedOverlayDisplayFrameRate(false, 0, 89.87), 89.87);
-});
-
-test("adaptive Windows overlay cadence selects a stable VBlank divisor only after sustained overload", () => {
-  const {
-    observeAdaptiveOverlayFrameRate,
-    resetAdaptiveOverlayFrameRate
-  } = require(distFile("overlay-cadence.js"));
-  const state = { consecutiveOverloadSamples: 0 };
-  const sample = (sampledAtMs, sourceFrameCount, presentCount, overrides = {}) => ({
-    sampledAtMs,
-    surfaceGeneration: 1,
-    displayRefreshRate: 200,
-    requestedFrameRate: 200,
-    effectiveFrameRate: 200,
-    sourceFrameCount,
-    presentCount,
-    ...overrides
-  });
-
-  assert.equal(observeAdaptiveOverlayFrameRate(state, sample(0, 0, 0)), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(state, sample(1000, 175, 118)), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(state, sample(2000, 350, 236)), undefined);
-  assert.deepEqual(observeAdaptiveOverlayFrameRate(state, sample(3000, 525, 354)), {
-    frameRate: 100,
-    presentSyncInterval: 2,
-    displayRefreshRate: 200,
-    sourceFrameRate: 175,
-    presentFrameRate: 118
-  });
-
-  resetAdaptiveOverlayFrameRate(state);
-  assert.equal(observeAdaptiveOverlayFrameRate(state, sample(4000, 525, 354, {
-    effectiveFrameRate: 100
-  })), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(state, sample(5000, 625, 454, {
-    effectiveFrameRate: 100
-  })), undefined);
-  assert.equal(state.consecutiveOverloadSamples, 0);
-
-  const severeState = { consecutiveOverloadSamples: 0 };
-  assert.equal(observeAdaptiveOverlayFrameRate(severeState, sample(0, 0, 0)), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(severeState, sample(1000, 40, 40)), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(severeState, sample(2000, 80, 80)), undefined);
-  assert.deepEqual(observeAdaptiveOverlayFrameRate(severeState, sample(3000, 120, 120)), {
-    frameRate: 50,
-    presentSyncInterval: 4,
-    displayRefreshRate: 200,
-    sourceFrameRate: 40,
-    presentFrameRate: 40
-  });
-});
-
-test("adaptive Windows overlay cadence preserves healthy, static, and transient paths", () => {
-  const { observeAdaptiveOverlayFrameRate } = require(distFile("overlay-cadence.js"));
-  const healthyState = { consecutiveOverloadSamples: 0 };
-  const healthy = (sampledAtMs, count) => ({
-    sampledAtMs,
-    surfaceGeneration: 1,
-    displayRefreshRate: 165,
-    requestedFrameRate: 165,
-    effectiveFrameRate: 165,
-    sourceFrameCount: count,
-    presentCount: count
-  });
-  for (let second = 0; second <= 4; second += 1) {
-    assert.equal(observeAdaptiveOverlayFrameRate(healthyState, healthy(second * 1000, second * 164)), undefined);
-  }
-
-  const staticState = { consecutiveOverloadSamples: 0 };
-  const staticSample = (sampledAtMs) => ({
-    sampledAtMs,
-    surfaceGeneration: 1,
-    displayRefreshRate: 200,
-    requestedFrameRate: 200,
-    effectiveFrameRate: 200,
-    sourceFrameCount: 0,
-    presentCount: 0
-  });
-  for (let second = 0; second <= 4; second += 1) {
-    assert.equal(observeAdaptiveOverlayFrameRate(staticState, staticSample(second * 1000)), undefined);
-  }
-
-  const transientState = { consecutiveOverloadSamples: 0 };
-  const transient = (sampledAtMs, sourceFrameCount, presentCount) => ({
-    sampledAtMs,
-    surfaceGeneration: 1,
-    displayRefreshRate: 200,
-    requestedFrameRate: 200,
-    effectiveFrameRate: 200,
-    sourceFrameCount,
-    presentCount
-  });
-  assert.equal(observeAdaptiveOverlayFrameRate(transientState, transient(0, 0, 0)), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(transientState, transient(1000, 175, 118)), undefined);
-  assert.equal(observeAdaptiveOverlayFrameRate(transientState, transient(2000, 375, 318)), undefined);
-  assert.equal(transientState.consecutiveOverloadSamples, 0);
 });
 
 test("KWin script lifecycle rejects a negative loadScript id without running an object", (t) => {
@@ -25433,7 +25339,7 @@ function createFrameDrivenPumpTestNative() {
   return { fake, pumpedSources };
 }
 
-test("Windows frame readiness waits stay singular, retry timeouts, and stop after close", async (t) => {
+test("Windows frame readiness waits stay singular and fall back after an unresolved timeout", async (t) => {
   setProcessPlatformForTest(t, "win32");
 
   let probeOpen = false;
@@ -25490,7 +25396,7 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady")
       .map((call) => call.args),
-    [[100]]
+    [[25]]
   );
 
   session.updateFrame({ data: Buffer.from([3, 0, 0, 0]), width: 1, height: 1 });
@@ -25506,28 +25412,25 @@ test("Windows frame readiness waits stay singular, retry timeouts, and stop afte
     "a bounded timeout must refresh native pending state before it re-arms"
   );
   assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
-  assert.equal(waitResolvers.length, 1, "a bounded timeout must re-arm while a frame is pending");
+  assert.equal(waitResolvers.length, 0, "an unresolved timeout must not start another blocking wait");
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
   assert.equal(
     fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length,
-    2
+    1
   );
 
   framePending = false;
-  waitResolvers.shift()(true);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(session.snapshot().pumpCount, initialPumpCount + 4);
+  await new Promise((resolve) => setTimeout(resolve, 10));
 
   session.updateFrame({ data: Buffer.from([4, 0, 0, 0]), width: 1, height: 1 });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(waitResolvers.length, 1);
+  assert.equal(waitResolvers.length, 0);
   const pumpCountBeforeClose = session.snapshot().pumpCount;
   session.close();
   assert.doesNotThrow(
     () => steam.shutdown(),
     "the duplicated DXGI wait does not own Steam lifecycle state after session close"
   );
-  framePending = false;
-  waitResolvers.shift()(true);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(session.snapshot().pumpCount, pumpCountBeforeClose);
 });
@@ -25591,10 +25494,11 @@ test("Windows frame readiness timeout stops retrying after a message-path presen
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+  assert.equal(session.snapshot().nativeFrameWaitFallback, false);
   assert.equal(
     fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length,
     1,
-    "the stale JavaScript pending flag must not re-arm another 100 ms wait"
+    "the stale JavaScript pending flag must not enter fallback or re-arm another wait"
   );
   assert.equal(waitResolvers.length, 0);
 });
@@ -26370,7 +26274,7 @@ test("native overlay session retargets an active macOS MTKView without toggling 
   assert.deepEqual(continuousPresentCalls(), [[true, 30], [true, 60], [false, 0]]);
 });
 
-test("Windows native session synchronizes frame rate even without continuous presentation", (t) => {
+test("Windows native session keeps the requested frame rate and ignores legacy adaptive options", (t) => {
   setProcessPlatformForTest(t, "win32");
 
   let probeOpen = false;
@@ -26398,17 +26302,10 @@ test("Windows native session synchronizes frame rate even without continuous pre
   const steam = loadSteamWithFakeNative(fake);
   t.after(clearSteamBridgeCache);
 
-  assert.throws(
-    () => steam.overlay.startNativeOverlaySession({
-      frameRate: 200,
-      adaptiveFrameRate: true
-    }),
-    /requires onFrameRateChanged/
-  );
-
   const session = steam.overlay.startNativeOverlaySession({
     frameRate: 200,
-    continuousPresent: false
+    continuousPresent: false,
+    adaptiveFrameRate: true
   });
   const cadenceCalls = () => fake.calls
     .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
@@ -26424,7 +26321,7 @@ test("Windows native session synchronizes frame rate even without continuous pre
   session.close();
 });
 
-test("Windows native session coordinates adaptive producer and presenter fallback", (t) => {
+test("Windows native session never downshifts after sustained low source or present counters", (t) => {
   setProcessPlatformForTest(t, "win32");
   const originalDateNow = Date.now;
   let nowMs = 0;
@@ -26492,25 +26389,16 @@ test("Windows native session coordinates adaptive producer and presenter fallbac
     session.pump();
   }
 
-  assert.equal(changes.length, 1);
-  assert.deepEqual(changes[0], {
-    reason: "sustained-overload",
-    requestedFrameRate: 200,
-    previousFrameRate: 200,
-    frameRate: 100,
-    displayRefreshRate: 200,
-    presentSyncInterval: 2,
-    sourceFrameRate: 175,
-    presentFrameRate: 118
-  });
+  assert.equal(changes.length, 0);
   assert.equal(session.snapshot().requestedFrameRate, 200);
-  assert.equal(session.snapshot().frameRate, 100);
-  assert.equal(session.snapshot().adaptiveFrameRateChangeCount, 1);
+  assert.equal(session.snapshot().frameRate, 200);
+  assert.equal(session.snapshot().adaptiveFrameRate, false);
+  assert.equal(session.snapshot().adaptiveFrameRateChangeCount, 0);
   assert.deepEqual(
     fake.calls
       .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
       .map((call) => call.args),
-    [[false, 200], [false, 100]]
+    [[false, 200]]
   );
 
   session.setFrameRate(100);
@@ -26523,7 +26411,7 @@ test("Windows native session coordinates adaptive producer and presenter fallbac
     fake.calls
       .filter((call) => call.method === "setNativeOverlayHostContinuousPresent")
       .map((call) => call.args),
-    [[false, 200], [false, 100], [false, 100], [false, 200]]
+    [[false, 200], [false, 100], [false, 200]]
   );
   session.close();
 });
