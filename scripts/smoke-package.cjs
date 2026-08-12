@@ -4951,6 +4951,7 @@ const legacyElectronOverlayMetadata: ElectronSteamOverlaySnapshot["electronOverl
   scrubSteamOverlayChildProcessEnv: true,
   scrubbedEnvKeys: [],
   restoreFocusDelayMs: 0,
+  windowsSharedTextureResumeDelayMs: 0,
   activationBoostMs: 0,
   activeGraceMs: 0,
   activationWarmupMs: 0,
