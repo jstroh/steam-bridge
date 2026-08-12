@@ -2305,6 +2305,7 @@ function passiveNotificationPresenterFixture() {
       scrubSteamOverlayChildProcessEnv: true,
       scrubbedEnvKeys: [],
       restoreFocusDelayMs: 0,
+      windowsSharedTextureResumeDelayMs: 0,
       activationBoostMs: 0,
       activeGraceMs: 0,
       overlayShortcut: {
@@ -2508,6 +2509,7 @@ function nativeHostUnavailablePresenterFixture(reason = "macos-screen-locked", m
       scrubSteamOverlayChildProcessEnv: true,
       scrubbedEnvKeys: [],
       restoreFocusDelayMs: 0,
+      windowsSharedTextureResumeDelayMs: 0,
       activationBoostMs: 0,
       activeGraceMs: 0,
       overlayShortcut: {
@@ -17409,6 +17411,7 @@ test("electron steam overlay manager owns one presenter and routes opens", async
     scrubSteamOverlayChildProcessEnv: true,
     scrubbedEnvKeys: [],
     restoreFocusDelayMs: 0,
+    windowsSharedTextureResumeDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
     activationWarmupMs: 0,
@@ -18270,6 +18273,10 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
     overlay.snapshot().electronOverlay.restoreFocusDelayMs,
     process.platform === "win32" ? 250 : 0
   );
+  assert.equal(
+    overlay.snapshot().electronOverlay.windowsSharedTextureResumeDelayMs,
+    process.platform === "win32" ? 1500 : 0
+  );
   assert.equal(overlay.snapshot().electronOverlay.activationBoostMs, 0);
   assert.equal(overlay.snapshot().electronOverlay.activeGraceMs, 0);
 
@@ -18695,6 +18702,7 @@ test("electron steam overlay manager can fall back to native overlay sessions", 
     scrubSteamOverlayChildProcessEnv: true,
     scrubbedEnvKeys: [],
     restoreFocusDelayMs: 0,
+    windowsSharedTextureResumeDelayMs: 0,
     activationBoostMs: 0,
     activeGraceMs: 0,
     activationWarmupMs: 0,
@@ -24977,6 +24985,7 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
   const session = steam.overlay.startNativeOverlaySession({
     pumpIntervalMs: 10000,
     restoreFocusDelayMs: 20,
+    windowsSharedTextureResumeDelayMs: 20,
     clientWidth: 1024,
     clientHeight: 768,
     minClientWidth: 640,

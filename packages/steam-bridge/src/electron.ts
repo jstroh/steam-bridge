@@ -495,6 +495,7 @@ export interface ElectronNativeOverlaySessionOptions {
   useStandaloneLinuxHost?: boolean;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
+  windowsSharedTextureResumeDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
 }
 
@@ -507,6 +508,7 @@ export interface ElectronOverlayPresenterOptions {
   captureFrame?: () => Promise<ElectronOverlayFrame | undefined>;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
+  windowsSharedTextureResumeDelayMs?: number;
   idleFps?: number;
   needsPresentFps?: number;
   activeOverlayFps?: number;

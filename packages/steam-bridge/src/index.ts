@@ -1670,6 +1670,12 @@ export interface NativeOverlaySessionOptions {
   onInputEvent?: (event: NativeOverlayInputEvent) => void;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
+  /**
+   * Windows-only delay after Steam releases focus/capture before Electron GPU
+   * textures are submitted to the native HWND again. Steam can retain its
+   * Present hook after the visible input handoff; the default is 1500 ms.
+   */
+  windowsSharedTextureResumeDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
   /**
    * Cold-start floor applied before checkout reservations report the Steam
@@ -1846,6 +1852,8 @@ export interface NativeOverlaySessionSnapshot {
   postOverlaySharedTextureDropCount: number;
   /** Windows is waiting for native focus or capture release after Steam closes. */
   windowsOverlayHandoffPending?: boolean;
+  /** Configured Windows post-overlay GPU-texture quarantine in milliseconds. */
+  windowsSharedTextureResumeDelayMs?: number;
   /** Duration of the latest synchronous native shared-texture update attempt. */
   lastSharedTextureUpdateDurationMs?: number;
   /** Longest synchronous native shared-texture update attempt in this session. */
@@ -1944,6 +1952,8 @@ export interface NativeOverlayPresenterOptions {
   captureFrame?: NativeOverlayFrameProvider;
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
+  /** @see NativeOverlaySessionOptions.windowsSharedTextureResumeDelayMs */
+  windowsSharedTextureResumeDelayMs?: number;
   idleFps?: number;
   needsPresentFps?: number;
   activeOverlayFps?: number;
@@ -2267,6 +2277,7 @@ export interface ElectronSteamOverlaySnapshot extends NativeOverlayPresenterSnap
     scrubSteamOverlayChildProcessEnv: boolean;
     scrubbedEnvKeys: string[];
     restoreFocusDelayMs: number;
+    windowsSharedTextureResumeDelayMs: number;
     activationBoostMs: number;
     activeGraceMs: number;
     /**
@@ -10159,6 +10170,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   };
   const continuousPresentRequested = options.continuousPresent === true;
   const restoreFocusDelayMs = Math.max(0, finiteNumber(options.restoreFocusDelayMs, 250));
+  const windowsSharedTextureResumeDelayMs = Math.max(
+    restoreFocusDelayMs,
+    finiteNumber(options.windowsSharedTextureResumeDelayMs, 1500)
+  );
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
   const startedAt = Date.now();
   const activationWarmupMs = normalizeNativeOverlayActivationWarmupMs(
@@ -10385,7 +10400,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       sharedTextureDropCount,
       postOverlaySharedTextureDropCount,
       ...(usesWindowsStandaloneHost
-        ? { windowsOverlayHandoffPending }
+        ? { windowsOverlayHandoffPending, windowsSharedTextureResumeDelayMs }
         : {}),
       lastSharedTextureUpdateDurationMs,
       maxSharedTextureUpdateDurationMs,
@@ -10736,7 +10751,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
             windowsSharedTextureResumeAt = Number.POSITIVE_INFINITY;
           } else if (windowsOverlayReturnBoundaryObserved) {
             windowsOverlayHandoffPending = false;
-            windowsSharedTextureResumeAt = Date.now() + restoreFocusDelayMs;
+            windowsSharedTextureResumeAt = Date.now() + windowsSharedTextureResumeDelayMs;
           } else {
             windowsOverlayHandoffPending = true;
             windowsSharedTextureResumeAt = Number.POSITIVE_INFINITY;
@@ -12884,7 +12899,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         windowsOverlayReturnBoundaryObserved = true;
         if (!overlayActive) {
           windowsOverlayHandoffPending = false;
-          windowsSharedTextureResumeAt = Date.now() + restoreFocusDelayMs;
+          windowsSharedTextureResumeAt = Date.now() + windowsSharedTextureResumeDelayMs;
         }
       }
       if (typeof options.onInputEvent !== "function") {
@@ -16972,6 +16987,13 @@ function createElectronSteamOverlayWithLease(
     0,
     finiteNumber(presenterOptions.restoreFocusDelayMs, process.platform === "win32" ? 250 : 0)
   );
+  const windowsSharedTextureResumeDelayMs = Math.max(
+    restoreFocusDelayMs,
+    finiteNumber(
+      presenterOptions.windowsSharedTextureResumeDelayMs,
+      process.platform === "win32" ? 1500 : restoreFocusDelayMs
+    )
+  );
   const activationBoostMs = Math.max(0, finiteNumber(presenterOptions.activationBoostMs, 0));
   const activeGraceMs = Math.max(0, finiteNumber(presenterOptions.activeGraceMs, 0));
   const tracksDisplayFrameRate =
@@ -16980,6 +17002,7 @@ function createElectronSteamOverlayWithLease(
   const managedPresenterOptions = {
     ...presenterOptions,
     restoreFocusDelayMs,
+    windowsSharedTextureResumeDelayMs,
     activationBoostMs,
     activeGraceMs
   };
@@ -17796,6 +17819,7 @@ function createElectronSteamOverlayWithLease(
           scrubSteamOverlayChildProcessEnv,
           scrubbedEnvKeys: [...scrubbedEnvKeys],
           restoreFocusDelayMs,
+          windowsSharedTextureResumeDelayMs,
           activationBoostMs,
           activeGraceMs,
           activationWarmupMs,

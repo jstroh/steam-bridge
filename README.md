@@ -194,8 +194,9 @@ The important rules are simple:
 - Close Chromium DevTools during live Steam overlay testing.
 - On Windows, let the managed session discard offscreen textures while Steam
   owns the overlay and until the native game window has actually regained
-  focus or Steam has released mouse capture. Keep rendering; the next normal
-  paint replaces the retained frame.
+  focus or Steam has released mouse capture. Keep rendering; the managed
+  post-overlay texture quarantine retains the last clean frame until Steam has
+  released its HWND Present hook, then the next normal paint replaces it.
 
 ### Managed routes on Linux and macOS
 
