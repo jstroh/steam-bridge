@@ -1,7 +1,7 @@
 {
   "name": "steam-bridge-electron-example",
   "private": true,
-  "version": "0.3.26",
+  "version": "0.3.27",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
