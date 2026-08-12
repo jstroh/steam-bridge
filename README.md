@@ -11,11 +11,11 @@ native binaries for Windows, Linux/Steam Deck, and Apple Silicon macOS.
 npm install steam-bridge
 ```
 
-Steam Bridge handles Steam initialization, callback dispatch, native library
-loading, achievements, stats, cloud saves, inventory, input, networking,
-matchmaking, Workshop/UGC, game servers, overlays, and the Steam Web API. A
-normal package install includes the supported native addons and Valve runtime
-libraries; application developers do not need a local Steamworks SDK.
+Steam Bridge handles Steam initialization, callbacks, achievements, stats,
+cloud saves, inventory, input, networking, matchmaking, Workshop/UGC, game
+servers, overlays, and the Steam Web API. Published packages include the native
+addons and Valve runtime libraries for every supported target, so application
+developers do not need a local Steamworks SDK.
 
 ## Start here
 
@@ -192,6 +192,10 @@ The important rules are simple:
 - The macOS surface stays an AppKit child. In fullscreen it remains transparent
   so Steam's translucent pixels composite over the live game.
 - Close Chromium DevTools during live Steam overlay testing.
+- On Windows, let the managed session discard offscreen textures while Steam
+  owns the overlay and until the native game window has actually regained
+  focus or Steam has released mouse capture. Keep rendering; the next normal
+  paint replaces the retained frame.
 
 ### Managed routes on Linux and macOS
 
@@ -340,6 +344,9 @@ retry a desktop route indefinitely or create a second window as a fallback.
 - Cover ordinary and high refresh, low resolution, DPI/scale, drag, resize,
   minimum size, maximize, minimize, focus, fullscreen, overlay open/close, and
   clean shutdown.
+- Treat shared-texture copy timeouts, adapter switches, device recovery, and
+  post-overlay frame drops as separate diagnostics; one is not evidence for
+  another.
 - Never complete a purchase or subscription during QA.
 
 ## Documentation

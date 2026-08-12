@@ -1840,6 +1840,12 @@ export interface NativeOverlaySessionSnapshot {
   pumpIntervalMs: number;
   /** Number of synchronous native shared-texture update attempts. */
   sharedTextureUpdateCount: number;
+  /** Frames discarded while Steam owns the Windows host or releases its overlay hook. */
+  sharedTextureDropCount: number;
+  /** Discarded Windows frames received during the bounded post-overlay focus handoff. */
+  postOverlaySharedTextureDropCount: number;
+  /** Windows is waiting for native focus or capture release after Steam closes. */
+  windowsOverlayHandoffPending?: boolean;
   /** Duration of the latest synchronous native shared-texture update attempt. */
   lastSharedTextureUpdateDurationMs?: number;
   /** Longest synchronous native shared-texture update attempt in this session. */
@@ -10175,12 +10181,17 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpDurationOver25MsCount = 0;
   let lastFrameDrivenPumpAt: number | undefined;
   let sharedTextureUpdateCount = 0;
+  let sharedTextureDropCount = 0;
+  let postOverlaySharedTextureDropCount = 0;
   let lastSharedTextureUpdateDurationMs: number | undefined;
   let maxSharedTextureUpdateDurationMs: number | undefined;
   let lastError: unknown;
   const adaptiveFrameRateChangeCount = 0;
   const lastFrameRateChange: NativeOverlayFrameRateChange | undefined = undefined;
   let overlayActive = false;
+  let windowsSharedTextureResumeAt = 0;
+  let windowsOverlayReturnBoundaryObserved = true;
+  let windowsOverlayHandoffPending = false;
   let overlayWasActive = false;
   let overlayActiveApplied: boolean | undefined;
   let cursorHiddenRequested = false;
@@ -10371,6 +10382,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       lastFrameRateChange,
       pumpIntervalMs,
       sharedTextureUpdateCount,
+      sharedTextureDropCount,
+      postOverlaySharedTextureDropCount,
+      ...(usesWindowsStandaloneHost
+        ? { windowsOverlayHandoffPending }
+        : {}),
       lastSharedTextureUpdateDurationMs,
       maxSharedTextureUpdateDurationMs,
       nativeProbeOpen,
@@ -10524,6 +10540,24 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       height,
       "presentationRect"
     );
+    if (
+      usesWindowsStandaloneHost
+      && (
+        overlayActive
+        || windowsOverlayHandoffPending
+        || Date.now() < windowsSharedTextureResumeAt
+      )
+    ) {
+      // Steam can keep its Present hook in the HWND briefly after the inactive
+      // callback. Do not submit or adapter-switch on a texture produced during
+      // that focus handoff; retain the last clean game frame and let the next
+      // normal Electron paint replace it.
+      sharedTextureDropCount += 1;
+      if (!overlayActive) {
+        postOverlaySharedTextureDropCount += 1;
+      }
+      return;
+    }
     if (Buffer.isBuffer(texture.handle)) {
       const update = binding.updateNativeOverlayHostSharedTexture;
       if (typeof update !== "function") {
@@ -10695,6 +10729,19 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       lastOverlayEvent = event;
       if (typeof event.active === "boolean") {
         overlayActive = event.active;
+        if (usesWindowsStandaloneHost) {
+          if (event.active) {
+            windowsOverlayReturnBoundaryObserved = false;
+            windowsOverlayHandoffPending = true;
+            windowsSharedTextureResumeAt = Number.POSITIVE_INFINITY;
+          } else if (windowsOverlayReturnBoundaryObserved) {
+            windowsOverlayHandoffPending = false;
+            windowsSharedTextureResumeAt = Date.now() + restoreFocusDelayMs;
+          } else {
+            windowsOverlayHandoffPending = true;
+            windowsSharedTextureResumeAt = Number.POSITIVE_INFINITY;
+          }
+        }
       }
       if (!syncNativeOverlayActive()) {
         applyFailClosedHostPolicy(true);
@@ -12790,7 +12837,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       lastError = error;
       return;
     }
-    if (!Array.isArray(parsed) || typeof options.onInputEvent !== "function") {
+    if (!Array.isArray(parsed)) {
       return;
     }
 
@@ -12829,6 +12876,20 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           ? { commandId: source.commandId }
           : {})
       };
+      if (
+        usesWindowsStandaloneHost
+        && windowsOverlayHandoffPending
+        && (event.kind === "focus" || event.kind === "captureLost")
+      ) {
+        windowsOverlayReturnBoundaryObserved = true;
+        if (!overlayActive) {
+          windowsOverlayHandoffPending = false;
+          windowsSharedTextureResumeAt = Date.now() + restoreFocusDelayMs;
+        }
+      }
+      if (typeof options.onInputEvent !== "function") {
+        continue;
+      }
       try {
         options.onInputEvent(event);
       } catch (error) {

@@ -24973,6 +24973,7 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
   const receivedInputEvents = [];
   const session = steam.overlay.startNativeOverlaySession({
     pumpIntervalMs: 10000,
+    restoreFocusDelayMs: 20,
     clientWidth: 1024,
     clientHeight: 768,
     minClientWidth: 640,
@@ -25040,8 +25041,57 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     [false, true, true]
   );
   session.setCursorHidden(true);
+  const sharedHandle = Buffer.from([9, 8, 7, 6, 5, 4, 3, 2]);
+  queuedInputEvents.push({
+    kind: "captureLost",
+    capturedAtMs: 900,
+    message: 533,
+    wparam: 0,
+    lparam: 0,
+    shift: false,
+    control: false,
+    alt: false,
+    clientWidth: 1024,
+    clientHeight: 768
+  });
+  session.pump();
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  assert.equal(
+    fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture").length,
+    1,
+    "ordinary Windows capture release must not arm the overlay handoff gate"
+  );
   fake.callbacks.get(331)({ active: true, app_id: 480 });
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
   fake.callbacks.get(331)({ active: false, app_id: 480 });
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  assert.equal(
+    fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture").length,
+    1,
+    "Windows must retain the clean frame through Steam's overlay and focus-return handoff"
+  );
+  assert.equal(session.snapshot().sharedTextureDropCount, 2);
+  assert.equal(session.snapshot().postOverlaySharedTextureDropCount, 1);
+  assert.equal(session.snapshot().windowsOverlayHandoffPending, true);
+  queuedInputEvents.push({
+    kind: "captureLost",
+    capturedAtMs: 1000,
+    message: 533,
+    wparam: 0,
+    lparam: 0,
+    shift: false,
+    control: false,
+    alt: false,
+    clientWidth: 1024,
+    clientHeight: 768
+  });
+  session.pump();
+  assert.equal(session.snapshot().windowsOverlayHandoffPending, false);
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  assert.equal(session.snapshot().sharedTextureDropCount, 3);
+  assert.equal(session.snapshot().postOverlaySharedTextureDropCount, 2);
+  receivedInputEvents.length = 0;
+  await new Promise((resolve) => setTimeout(resolve, 25));
   assert.deepEqual(
     fake.calls.filter((call) => call.method === "setNativeOverlayHostOverlayActive").map((call) => call.args[0]),
     [false, true, false]
@@ -25115,7 +25165,6 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
   const upload = fake.calls.find((call) => call.method === "updateNativeOverlayHostFrame");
   assert.equal(upload.args[0], frame);
   assert.deepEqual(upload.args.slice(1), [1, 1]);
-  const sharedHandle = Buffer.from([9, 8, 7, 6, 5, 4, 3, 2]);
   session.updateSharedTexture({
     handle: sharedHandle,
     width: 1024,
@@ -25124,12 +25173,12 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     presentationRect: { x: 1, y: 2, width: 1023, height: 766 }
   });
   let sharedUploads = fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture");
-  const sharedUpload = sharedUploads[0];
+  const sharedUpload = sharedUploads.at(-1);
   assert.equal(sharedUpload.args[0], sharedHandle);
   assert.deepEqual(sharedUpload.args.slice(1), [1024, 768, 4, 5, 1000, 700, 1, 2, 1023, 766]);
   session.updateSharedTexture({ handle: sharedHandle, width: 320, height: 240 });
   sharedUploads = fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture");
-  assert.deepEqual(sharedUploads[1].args.slice(1), [320, 240, 0, 0, 320, 240, 0, 0, 320, 240]);
+  assert.deepEqual(sharedUploads.at(-1).args.slice(1), [320, 240, 0, 0, 320, 240, 0, 0, 320, 240]);
   assert.throws(
     () => session.updateFrame({ data: frame, width: Number.NaN, height: 1 }),
     /frame width must be a finite number/
@@ -25163,7 +25212,10 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     pumpsBeforeFrame
   );
   const uploadSnapshot = session.snapshot();
-  assert.equal(uploadSnapshot.sharedTextureUpdateCount, 2);
+  assert.equal(uploadSnapshot.sharedTextureUpdateCount, 3);
+  assert.equal(uploadSnapshot.sharedTextureDropCount, 3);
+  assert.equal(uploadSnapshot.postOverlaySharedTextureDropCount, 2);
+  assert.equal(uploadSnapshot.windowsOverlayHandoffPending, false);
   assert.equal(typeof uploadSnapshot.lastSharedTextureUpdateDurationMs, "number");
   assert.equal(uploadSnapshot.lastSharedTextureUpdateDurationMs >= 0, true);
   assert.equal(

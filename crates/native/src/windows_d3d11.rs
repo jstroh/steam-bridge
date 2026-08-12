@@ -93,6 +93,15 @@ pub fn is_device_lost_error(error: &str) -> bool {
         .any(|code| error.to_ascii_uppercase().contains(code))
 }
 
+pub fn is_shared_texture_adapter_open_error(error: &str) -> bool {
+    // A shared handle that cannot be opened by the current D3D11 device can
+    // legitimately belong to another adapter. Validation, copy-query, and
+    // timeout failures happen after the handle was opened and must never be
+    // mistaken for an adapter mismatch: rebuilding the HWND swap chain from
+    // inside one of those transient failures can race Steam's overlay hook.
+    error.contains("ID3D11Device1::OpenSharedResource1 failed:")
+}
+
 pub fn present_sync_interval_for_frame_rate(
     display_refresh_rate: Option<u32>,
     target_frame_rate: Option<f64>,
@@ -1492,7 +1501,10 @@ fn intersect_rect(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_device_lost_error, present_sync_interval_for_frame_rate};
+    use super::{
+        is_device_lost_error, is_shared_texture_adapter_open_error,
+        present_sync_interval_for_frame_rate,
+    };
 
     #[test]
     fn classifies_recoverable_dxgi_device_loss_codes() {
@@ -1507,6 +1519,19 @@ mod tests {
         ));
         assert!(!is_device_lost_error(
             "IDXGISwapChain::ResizeBuffers failed: invalid call (0x887A0001)"
+        ));
+    }
+
+    #[test]
+    fn only_adapter_open_failures_request_shared_texture_device_switches() {
+        assert!(is_shared_texture_adapter_open_error(
+            "ID3D11Device1::OpenSharedResource1 failed: invalid argument (0x80070057)"
+        ));
+        assert!(!is_shared_texture_adapter_open_error(
+            "Timed out waiting 500 ms for the Electron shared texture copy"
+        ));
+        assert!(!is_shared_texture_adapter_open_error(
+            "Electron shared texture is 1x1, expected 1280x720"
         ));
     }
 

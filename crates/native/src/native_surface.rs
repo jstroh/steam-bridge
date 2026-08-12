@@ -2679,12 +2679,18 @@ mod windows {
                 let import_detected_device_loss = import_error
                     .as_deref()
                     .is_some_and(windows_d3d11::is_device_lost_error);
+                let import_requires_adapter_switch = import_error
+                    .as_deref()
+                    .is_some_and(windows_d3d11::is_shared_texture_adapter_open_error);
                 if import_detected_device_loss {
                     *device_lost = true;
                     *device_lost_count = (*device_lost_count).saturating_add(1);
                     *last_frame_upload = false;
                 }
-                if recovering_device || import_error.is_some() {
+                if recovering_device
+                    || import_detected_device_loss
+                    || import_requires_adapter_switch
+                {
                     renderer
                         .switch_to_shared_texture_adapter(
                             hwnd.cast(),
@@ -2695,6 +2701,13 @@ mod windows {
                             presentation_rect,
                         )
                         .map_err(Error::from_reason)?;
+                } else if let Some(error) = import_error {
+                    // The current device opened the handle, so validation or
+                    // copy-query failures are not evidence of an adapter
+                    // mismatch. Preserve the existing device and swap chain;
+                    // the producer may submit a fresh texture on its next
+                    // paint after a transient Steam overlay transition.
+                    return Err(Error::from_reason(error));
                 }
                 if recovering_device || import_detected_device_loss {
                     *device_lost = false;

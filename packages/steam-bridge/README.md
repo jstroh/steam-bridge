@@ -608,11 +608,25 @@ Steam can hook both the hidden Electron offscreen surface and the visible
 native host when they live in the same Windows process. If the offscreen paint
 already contains Steam UI, forwarding it while the host hook is also active
 composites the overlay twice; different source and host sizes make the duplicate
-obvious. Track `onGameOverlayActivated(...)` in this topology. While it reports
-active, release incoming Electron paint textures without forwarding them so the
-session retains its last clean game frame and Steam composites only into the
-visible host. When it reports inactive, invalidate the offscreen
-`webContents` once to resume fresh game frames.
+obvious. The managed session therefore discards Windows shared textures while
+Steam reports the overlay active, until the native game HWND receives a real
+focus-return or mouse-capture-release event, and for the configured
+`restoreFocusDelayMs` (250 ms by default) after that boundary. Steam's inactive
+callback alone is not sufficient: it can arrive while the overlay still owns
+the HWND Present hook. Steam may also retain Win32 focus throughout an
+in-process overlay, so capture release is an equally important boundary. The
+last clean game frame stays retained; the next normal Electron paint replaces
+it after the handoff. Callers should still release every Electron texture in
+`finally` and can invalidate the offscreen `webContents` once on deactivation
+to request a fresh frame.
+
+Session snapshots distinguish native `sharedTextureUpdateCount` attempts from
+`sharedTextureDropCount`; `postOverlaySharedTextureDropCount` isolates the
+bounded focus-return handoff. A texture-copy timeout after the handle opens is
+reported as a copy failure and preserves the existing device and swap chain. It
+does not trigger a destructive adapter switch. During diagnosis,
+`windowsOverlayHandoffPending` tells whether the session is deliberately
+retaining the old frame while it waits for the native return boundary.
 
 ```ts
 const session = steamworks.overlay.startNativeOverlaySession({
