@@ -195,8 +195,10 @@ The important rules are simple:
 - On Windows, let the managed session discard offscreen textures while Steam
   owns the overlay and until the native game window has actually regained
   focus or Steam has released mouse capture. Keep rendering; the managed
-  post-overlay texture quarantine retains the last clean frame until Steam has
-  released its HWND Present hook, then the next normal paint replaces it.
+  post-overlay texture quarantine retains the last clean frame for five seconds
+  by default. This covers the measured interval in which Steam can keep its HWND
+  Present hook after the visible overlay closes; the next normal paint then
+  replaces the retained frame.
 
 ### Managed routes on Linux and macOS
 

@@ -611,17 +611,17 @@ composites the overlay twice; different source and host sizes make the duplicate
 obvious. The managed session therefore discards Windows shared textures while
 Steam reports the overlay active, until the native game HWND receives a real
 focus-return or mouse-capture-release event. It then retains the clean frame
-for `windowsSharedTextureResumeDelayMs` (1500 ms by default and never shorter
+for `windowsSharedTextureResumeDelayMs` (5000 ms by default and never shorter
 than `restoreFocusDelayMs`) before accepting a new GPU texture. This separate
-quarantine matters because Steam can retain the HWND Present hook for more than
-a second after the visible input handoff; submitting sooner can block a D3D11
-copy and provoke an unsafe swap-chain recovery. Steam's inactive callback alone
-is not sufficient, and Steam may retain Win32 focus throughout an in-process
-overlay, so capture release is an equally important boundary. The next normal
-Electron paint replaces the retained frame after the quarantine. Callers should
-still release every Electron texture in
-`finally` and can invalidate the offscreen `webContents` once on deactivation
-to request a fresh frame.
+quarantine matters because live Steam testing has observed the HWND Present
+hook remain attached for more than two seconds after the visible input handoff;
+submitting sooner can block a D3D11 copy and provoke an unsafe swap-chain
+recovery. Steam's inactive callback alone is not sufficient, and Steam may
+retain Win32 focus throughout an in-process overlay, so capture release is an
+equally important boundary. The next normal Electron paint replaces the
+retained frame after the quarantine. Callers should still release every
+Electron texture in `finally` and can invalidate the offscreen `webContents`
+once on deactivation to request a fresh frame.
 
 Session snapshots distinguish native `sharedTextureUpdateCount` attempts from
 `sharedTextureDropCount`; `postOverlaySharedTextureDropCount` isolates the

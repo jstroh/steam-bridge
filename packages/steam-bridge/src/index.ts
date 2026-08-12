@@ -1673,7 +1673,7 @@ export interface NativeOverlaySessionOptions {
   /**
    * Windows-only delay after Steam releases focus/capture before Electron GPU
    * textures are submitted to the native HWND again. Steam can retain its
-   * Present hook after the visible input handoff; the default is 1500 ms.
+   * Present hook after the visible input handoff; the default is 5000 ms.
    */
   windowsSharedTextureResumeDelayMs?: number;
   hideNativeHostOnOverlayDeactivate?: boolean;
@@ -10172,7 +10172,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const restoreFocusDelayMs = Math.max(0, finiteNumber(options.restoreFocusDelayMs, 250));
   const windowsSharedTextureResumeDelayMs = Math.max(
     restoreFocusDelayMs,
-    finiteNumber(options.windowsSharedTextureResumeDelayMs, 1500)
+    finiteNumber(options.windowsSharedTextureResumeDelayMs, 5000)
   );
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
   const startedAt = Date.now();
@@ -16991,7 +16991,7 @@ function createElectronSteamOverlayWithLease(
     restoreFocusDelayMs,
     finiteNumber(
       presenterOptions.windowsSharedTextureResumeDelayMs,
-      process.platform === "win32" ? 1500 : restoreFocusDelayMs
+      process.platform === "win32" ? 5000 : restoreFocusDelayMs
     )
   );
   const activationBoostMs = Math.max(0, finiteNumber(presenterOptions.activationBoostMs, 0));

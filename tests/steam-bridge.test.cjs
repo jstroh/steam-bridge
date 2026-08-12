@@ -18275,7 +18275,7 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
   );
   assert.equal(
     overlay.snapshot().electronOverlay.windowsSharedTextureResumeDelayMs,
-    process.platform === "win32" ? 1500 : 0
+    process.platform === "win32" ? 5000 : 0
   );
   assert.equal(overlay.snapshot().electronOverlay.activationBoostMs, 0);
   assert.equal(overlay.snapshot().electronOverlay.activeGraceMs, 0);
