@@ -18266,7 +18266,10 @@ test("electron steam overlay open holds the presenter until Steam reports shown"
     pollIntervalMs: 10000
   });
 
-  assert.equal(overlay.snapshot().electronOverlay.restoreFocusDelayMs, 0);
+  assert.equal(
+    overlay.snapshot().electronOverlay.restoreFocusDelayMs,
+    process.platform === "win32" ? 250 : 0
+  );
   assert.equal(overlay.snapshot().electronOverlay.activationBoostMs, 0);
   assert.equal(overlay.snapshot().electronOverlay.activeGraceMs, 0);
 

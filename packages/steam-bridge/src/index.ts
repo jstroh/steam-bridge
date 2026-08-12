@@ -16965,7 +16965,13 @@ function createElectronSteamOverlayWithLease(
   const presenterMode = resolveElectronSteamOverlayPresenterMode(modeOption);
   const shortcut = normalizeElectronSteamOverlayShortcut(overlayShortcut);
   let scrubbedEnvKeys: string[] = [];
-  const restoreFocusDelayMs = Math.max(0, finiteNumber(presenterOptions.restoreFocusDelayMs, 0));
+  // Steam can retain its Present hook briefly after the Windows game HWND
+  // regains focus. Match the standalone presenter's guarded default instead of
+  // overriding it with an immediate texture resume at the Electron wrapper.
+  const restoreFocusDelayMs = Math.max(
+    0,
+    finiteNumber(presenterOptions.restoreFocusDelayMs, process.platform === "win32" ? 250 : 0)
+  );
   const activationBoostMs = Math.max(0, finiteNumber(presenterOptions.activationBoostMs, 0));
   const activeGraceMs = Math.max(0, finiteNumber(presenterOptions.activeGraceMs, 0));
   const tracksDisplayFrameRate =
