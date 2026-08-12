@@ -26,7 +26,7 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-### 2026-08-11 Windows production cadence correction (0.3.24 candidate)
+### 2026-08-11 Windows production cadence correction (0.3.25 candidate)
 
 A new bounded production corpus contains 613 records from 45 Windows sessions
 across nine rotated diagnostics files. It invalidates the `0.3.23` conclusion
@@ -71,13 +71,17 @@ device loss, or recovery. This closes the available source-linked 165 Hz repair
 gate; exact 144/180/200 Hz reporter hardware still needs production
 confirmation.
 
-The maintainer authorized an emergency Windows production release but
-explicitly prohibited another npm publication. The configured consumer will
-embed this exact reviewed source and optimized Windows addon while retaining
-its `steam-bridge` `0.3.24` dependency metadata for traceability. No npm tag,
-package publication, or registry mutation belongs to this release. Final full
-repository and packaged-consumer gates remain required before the Windows-only
-Steam depot upload.
+The maintainer first authorized an emergency Windows production release without
+an npm publication. The configured consumer embedded the exact reviewed source
+and optimized Windows addon under `steam-bridge` `0.3.24` dependency metadata;
+fov4-steam `0.1.3` then passed the Windows package gate and went live in merged
+Steam BuildID `24681882`. The maintainer subsequently authorized publishing the
+tested repair. Because immutable tag `v0.3.24` predates the final fallback
+scheduler fix, the exact production-tested source is now the `0.3.25` candidate.
+The smoke example moves from stable Electron `43.3.0` to stable `43.4.0` so the
+latest-stable CI gate can run; this does not require the configured consumer to
+change Electron. Full repository, cross-platform release, exact Windows
+candidate, trusted npm publication, and registry-consumer gates remain required.
 
 ### 2026-08-10 v0.3.23 stable Windows high-refresh adaptive-cadence repair
 
