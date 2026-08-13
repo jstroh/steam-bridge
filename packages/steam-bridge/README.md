@@ -514,46 +514,65 @@ const gameWindow = new BrowserWindow({
 });
 ```
 
-For every frame paint event, pass the frame texture's
+For every Windows frame paint event, pass the frame texture's
 `textureInfo.handle.ntHandle`, coded width and height, and
 `textureInfo.contentRect` (or the paint event's dirty rectangle) to
-`session.updateSharedTexture()`. Chromium can allocate a coded texture one
+`session.updateSharedTextureAsync()`. Chromium can allocate a coded texture one
 logical pixel larger than the application viewport. When it does, pass a
 `presentationRect` for the exact viewport in physical pixels; Steam Bridge crops
 that region before fitting it to the native client. If omitted, the full coded
 texture is presented for backward compatibility.
 
 ```ts
-session.updateSharedTexture({
-  handle: textureInfo.handle.ntHandle,
-  width: textureInfo.codedSize.width,
-  height: textureInfo.codedSize.height,
-  contentRect: textureInfo.contentRect,
-  presentationRect: {
-    x: 0,
-    y: 0,
-    width: Math.min(
-      textureInfo.codedSize.width,
-      Math.round(viewportWidth * offscreenScaleFactor)
-    ),
-    height: Math.min(
-      textureInfo.codedSize.height,
-      Math.round(viewportHeight * offscreenScaleFactor)
-    )
+try {
+  const frame = {
+    handle: textureInfo.handle.ntHandle,
+    width: textureInfo.codedSize.width,
+    height: textureInfo.codedSize.height,
+    contentRect: textureInfo.contentRect,
+    presentationRect: {
+      x: 0,
+      y: 0,
+      width: Math.min(
+        textureInfo.codedSize.width,
+        Math.round(viewportWidth * offscreenScaleFactor)
+      ),
+      height: Math.min(
+        textureInfo.codedSize.height,
+        Math.round(viewportHeight * offscreenScaleFactor)
+      )
+    }
+  };
+  if (session.updateSharedTextureAsync) {
+    await session.updateSharedTextureAsync(frame);
+  } else {
+    session.updateSharedTexture(frame);
   }
-});
+} finally {
+  texture.release();
+}
 ```
 
 Electron only guarantees that the update region was populated, so Steam Bridge
 copies it into a retained bridge-owned texture without erasing unchanged pixels.
-The call uses a bounded GPU query wait and fails instead of hanging if the copy
-does not complete; release Electron's texture in a `finally` block after it
-returns. Steam Bridge then uses the matching high-performance DXGI adapter,
+On Windows 10/11, the asynchronous method signals a D3D11 fence and resolves
+only after the GPU no longer reads Electron's pooled producer texture. Keep the
+texture alive until that Promise settles, then release it in `finally`. A
+`false` result means the fixed completion queue was full and the prior native
+frame was deliberately retained. Accepted waits run in one dedicated native
+FIFO completion dispatcher, never Node's shared worker pool. Drivers without
+D3D11 fence support reject the asynchronous method before copying; the original
+`updateSharedTexture()` method remains available for older synchronous
+consumers. Steam Bridge then uses the matching high-performance DXGI adapter,
 crops the explicit presentation region, preserves that region's aspect ratio,
 and presents through a two-buffer flip-sequential swap chain.
-`updateFrame()` remains available as a BGRA CPU fallback. Session snapshots
-report `sharedTextureUpdateCount`, `lastSharedTextureUpdateDurationMs`, and
-`maxSharedTextureUpdateDurationMs` for this synchronous native copy boundary.
+`updateFrame()` remains available for callers that intentionally supply BGRA
+pixels. Session snapshots report `sharedTextureUpdateCount`,
+`lastSharedTextureUpdateDurationMs`, and
+`maxSharedTextureUpdateDurationMs` for the synchronous submission boundary;
+`nativeHostDiagnostics.sharedTextureCopy` reports asynchronous completion mode,
+end-to-end latency, dispatcher delay, process-wide in-flight depth, timeouts,
+and saturation drops.
 
 Set `frameRate` to the active display's refresh rate and update it with
 `session.setFrameRate(...)` when the native host moves to another monitor. On
@@ -584,9 +603,8 @@ const session = steamworks.overlay.startNativeOverlaySession({
 ```
 New CPU frames and shared textures are marked dirty and, when
 `continuousPresent` is `false`, coalesce into one Windows pump on the next main-
-loop turn. The native upload/copy still completes synchronously, so Electron's
-paint callback can safely release its texture immediately after the update
-returns; only the DXGI wait and `Present` move out of that callback. The session
+loop turn. The asynchronous shared-texture path schedules that pump when its
+D3D11 fence completes, without blocking Electron's paint callback. The session
 timer remains the retained-frame and Steam-overlay fallback. While continuous
 presentation or Steam's active overlay owns presentation, frame uploads do not
 start a second pump. This removes phase-sensitive paint/Present backpressure;

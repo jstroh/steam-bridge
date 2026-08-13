@@ -1561,7 +1561,10 @@ pub use macos::*;
 #[cfg(target_os = "windows")]
 mod windows {
     use super::{checked_native_overlay_frame_byte_len, Buffer, Error};
-    use crate::windows_d3d11::{self, FrameLatencyWaitHandle, WindowsD3d11Renderer};
+    use crate::windows_d3d11::{
+        self, FrameLatencyWaitHandle, SharedTextureCopyWaitHandle, SharedTextureImportSubmission,
+        WindowsD3d11Renderer,
+    };
     use once_cell::sync::Lazy;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -1748,6 +1751,24 @@ mod windows {
             let token = self.token();
             let ready = self.handle.wait(timeout_ms)?;
             Ok(ready.then_some(token))
+        }
+    }
+
+    pub struct SharedTextureUpdateRequest {
+        accepted: bool,
+        copy_wait: Option<SharedTextureCopyWaitHandle>,
+    }
+
+    impl SharedTextureUpdateRequest {
+        pub fn is_accepted(&self) -> bool {
+            self.accepted
+        }
+
+        pub fn wait(self) -> Result<bool, String> {
+            if let Some(copy_wait) = self.copy_wait {
+                copy_wait.wait()?;
+            }
+            Ok(self.accepted)
         }
     }
     #[link(name = "opengl32")]
@@ -2578,6 +2599,69 @@ mod windows {
         presentation_width: Option<u32>,
         presentation_height: Option<u32>,
     ) -> Result<(), Error> {
+        begin_shared_texture_update_internal(
+            handle_buffer,
+            width,
+            height,
+            content_x,
+            content_y,
+            content_width,
+            content_height,
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+            false,
+        )?
+        .wait()
+        .map(|_| ())
+        .map_err(Error::from_reason)
+    }
+
+    pub fn begin_shared_texture_update(
+        handle_buffer: Buffer,
+        width: u32,
+        height: u32,
+        content_x: Option<u32>,
+        content_y: Option<u32>,
+        content_width: Option<u32>,
+        content_height: Option<u32>,
+        presentation_x: Option<u32>,
+        presentation_y: Option<u32>,
+        presentation_width: Option<u32>,
+        presentation_height: Option<u32>,
+    ) -> Result<SharedTextureUpdateRequest, Error> {
+        begin_shared_texture_update_internal(
+            handle_buffer,
+            width,
+            height,
+            content_x,
+            content_y,
+            content_width,
+            content_height,
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn begin_shared_texture_update_internal(
+        handle_buffer: Buffer,
+        width: u32,
+        height: u32,
+        content_x: Option<u32>,
+        content_y: Option<u32>,
+        content_width: Option<u32>,
+        content_height: Option<u32>,
+        presentation_x: Option<u32>,
+        presentation_y: Option<u32>,
+        presentation_width: Option<u32>,
+        presentation_height: Option<u32>,
+        asynchronous_completion: bool,
+    ) -> Result<SharedTextureUpdateRequest, Error> {
         let handle_size = mem::size_of::<usize>();
         if handle_buffer.len() < handle_size {
             return Err(Error::from_reason(format!(
@@ -2653,6 +2737,8 @@ mod windows {
             .as_mut()
             .ok_or_else(|| Error::from_reason("Native overlay host is not open"))?;
         let hwnd = surface.hwnd;
+        let mut accepted = true;
+        let mut copy_wait = None;
         match &mut surface.renderer {
             WindowsSurfaceRenderer::D3d11 {
                 renderer,
@@ -2663,8 +2749,16 @@ mod windows {
                 ..
             } => unsafe {
                 let recovering_device = *device_lost;
-                let import_error = if recovering_device {
-                    None
+                let import_result = if recovering_device {
+                    Ok(SharedTextureImportSubmission::Dropped)
+                } else if asynchronous_completion {
+                    renderer.begin_import_shared_texture(
+                        handle,
+                        width,
+                        height,
+                        content_rect,
+                        presentation_rect,
+                    )
                 } else {
                     renderer
                         .import_shared_texture(
@@ -2674,13 +2768,17 @@ mod windows {
                             content_rect,
                             presentation_rect,
                         )
-                        .err()
+                        .map(|_| SharedTextureImportSubmission::Accepted(None))
                 };
-                let import_detected_device_loss = import_error
-                    .as_deref()
+                let import_detected_device_loss = import_result
+                    .as_ref()
+                    .err()
+                    .map(String::as_str)
                     .is_some_and(windows_d3d11::is_device_lost_error);
-                let import_requires_adapter_switch = import_error
-                    .as_deref()
+                let import_requires_adapter_switch = import_result
+                    .as_ref()
+                    .err()
+                    .map(String::as_str)
                     .is_some_and(windows_d3d11::is_shared_texture_adapter_open_error);
                 if import_detected_device_loss {
                     *device_lost = true;
@@ -2701,19 +2799,26 @@ mod windows {
                             presentation_rect,
                         )
                         .map_err(Error::from_reason)?;
-                } else if let Some(error) = import_error {
-                    // The current device opened the handle, so validation or
-                    // copy-query failures are not evidence of an adapter
-                    // mismatch. Preserve the existing device and swap chain;
-                    // the producer may submit a fresh texture on its next
-                    // paint after a transient Steam overlay transition.
-                    return Err(Error::from_reason(error));
+                } else {
+                    match import_result {
+                        Ok(SharedTextureImportSubmission::Accepted(wait)) => copy_wait = wait,
+                        Ok(SharedTextureImportSubmission::Dropped) => accepted = false,
+                        Err(error) => {
+                            // The current device opened the handle, so validation
+                            // or copy-completion failures are not evidence of an
+                            // adapter mismatch. Preserve the existing device and
+                            // let the producer submit a fresh texture.
+                            return Err(Error::from_reason(error));
+                        }
+                    }
                 }
                 if recovering_device || import_detected_device_loss {
                     *device_lost = false;
                     *device_recovery_count = (*device_recovery_count).saturating_add(1);
                 }
-                *last_frame_upload = true;
+                if accepted {
+                    *last_frame_upload = true;
+                }
             },
             WindowsSurfaceRenderer::OpenGl { .. } => {
                 return Err(Error::from_reason(
@@ -2721,13 +2826,16 @@ mod windows {
                 ));
             }
         }
-        surface.source_frame = None;
-        // Importing updates the retained D3D source, but a non-continuous
-        // session still needs its next pump to present that new source. Keep
-        // shared-texture semantics aligned with update_frame instead of
-        // silently freezing unless continuous presentation is enabled.
-        surface.source_frame_dirty = true;
-        Ok(())
+        if accepted {
+            surface.source_frame = None;
+            // Importing updates the retained D3D source, but a non-continuous
+            // session still needs its next pump to present that new source.
+            surface.source_frame_dirty = true;
+        }
+        Ok(SharedTextureUpdateRequest {
+            accepted,
+            copy_wait,
+        })
     }
 
     pub fn close() {
@@ -3382,6 +3490,21 @@ mod windows {
                     "maxRepeatedRefreshesPerSample": renderer.max_repeated_refreshes_per_sample(),
                 },
                 "sharedTextureCopySlowCount": renderer.shared_texture_copy_slow_count(),
+                "sharedTextureCopy": {
+                    "completionMode": renderer.shared_texture_copy_completion_mode(),
+                    "completedCount": renderer.shared_texture_copy_completed_count(),
+                    "timeoutCount": renderer.shared_texture_copy_timeout_count(),
+                    "lastDispatchDelayMs": renderer.last_shared_texture_copy_dispatch_delay_ms(),
+                    "maxDispatchDelayMs": renderer.max_shared_texture_copy_dispatch_delay_ms(),
+                    "lastDurationMs": renderer.last_shared_texture_copy_duration_ms(),
+                    "maxDurationMs": renderer.max_shared_texture_copy_duration_ms(),
+                    "inFlight": crate::native_overlay_shared_texture_copy_job_count(),
+                    "maxInFlight": crate::native_overlay_shared_texture_copy_job_max(),
+                    "saturationDropCount": crate::native_overlay_shared_texture_copy_saturation_drop_count(),
+                    "rendererInFlight": renderer.shared_texture_copies_in_flight(),
+                    "rendererMaxInFlight": renderer.max_shared_texture_copies_in_flight(),
+                    "rendererSaturationDropCount": renderer.shared_texture_copy_saturation_drop_count(),
+                },
                 "sharedTextureFullCopyCount": renderer.shared_texture_full_copy_count(),
                 "sharedTexturePartialCopyCount": renderer.shared_texture_partial_copy_count(),
                 "sharedTextureStorageRecreateCount": renderer.shared_texture_storage_recreate_count(),

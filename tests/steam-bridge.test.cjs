@@ -1089,6 +1089,23 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /wait_for_shared_texture_copy\(\)/);
   assert.match(d3dSource, /SHARED_TEXTURE_COPY_TIMEOUT_MS/);
   assert.match(d3dSource, /\.GetData\(/);
+  assert.match(d3dSource, /CreateFence\(0, D3D11_FENCE_FLAG_NONE/);
+  assert.match(d3dSource, /ID3D11DeviceContext4::Signal/);
+  assert.match(d3dSource, /SetEventOnCompletion/);
+  assert.match(d3dSource, /SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 4/);
+  assert.match(d3dSource, /SharedTextureImportSubmission::Dropped/);
+  assert.match(nativeSource, /beginNativeOverlayHostSharedTextureCopy/);
+  assert.match(nativeSource, /steam-bridge-d3d11-copy/);
+  assert.match(nativeSource, /NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT: usize = 4/);
+  assert.match(nativeSource, /try_reserve_native_overlay_shared_texture_copy_job/);
+  assert.doesNotMatch(nativeSource, /NativeOverlaySharedTextureCopyTask/);
+  assert.doesNotMatch(nativeSource, /AsyncTask|impl Task for/);
+  assert.ok(
+    nativeSource.indexOf("if !request.is_accepted()")
+      < nativeSource.indexOf("dispatcher.send(job)"),
+    "saturated frames must be rejected before the dedicated completion dispatcher"
+  );
+  assert.match(bridgeSource, /updateSharedTextureAsync/);
   assert.match(source, /renderer\.upload_cpu_frame/);
   assert.match(source, /renderer\.has_source\(\)/);
   assert.match(source, /ex_style &= !\(WS_EX_TOOLWINDOW \| WS_EX_NOACTIVATE \| WS_EX_TOPMOST\)/);
@@ -1111,7 +1128,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /deviceLostCount/);
   assert.match(source, /deviceRecoveryCount/);
   assert.match(source, /windows_d3d11::is_device_lost_error/);
-  assert.match(source, /let import_detected_device_loss = import_error/);
+  assert.match(source, /let import_detected_device_loss = import_result/);
   assert.match(source, /if import_detected_device_loss \{/);
   assert.match(source, /if recovering_device \|\| import_detected_device_loss \{/);
   assert.match(source, /if IsIconic\(surface\.hwnd\) != 0 \{\s*return Ok\(\(\)\);/);
@@ -25611,6 +25628,128 @@ test("Windows frame-driven pump coalesces to the newest retained source", async 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
   assert.deepEqual(pumpedSources, [2]);
+});
+
+test("Windows asynchronous shared-texture submission waits for GPU ownership completion", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  let completeCopy;
+  fake.beginNativeOverlayHostSharedTextureCopy = function (handle, ...args) {
+    const completion = args.pop();
+    this.calls.push({ method: "beginNativeOverlayHostSharedTextureCopy", args: [handle, ...args] });
+    completeCopy = () => completion([{ accepted: true }]);
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  const completion = session.updateSharedTextureAsync({
+    handle: Buffer.alloc(8, 7),
+    width: 1280,
+    height: 720,
+  });
+  const submittedSnapshot = session.snapshot();
+  assert.equal(submittedSnapshot.pumpCount, initialPumpCount);
+  assert.equal(submittedSnapshot.sharedTextureUpdateCount, 1);
+  assert.equal(typeof submittedSnapshot.lastSharedTextureUpdateDurationMs, "number");
+  assert.equal(
+    fake.calls.filter((call) => call.method === "beginNativeOverlayHostSharedTextureCopy").length,
+    1
+  );
+
+  completeCopy();
+  assert.equal(await completion, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
+  assert.equal(session.snapshot().sharedTextureUpdateCount, 1);
+});
+
+test("Windows asynchronous shared-texture saturation retains the prior frame without pumping", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  fake.beginNativeOverlayHostSharedTextureCopy = function (handle, ...args) {
+    args.pop();
+    this.calls.push({ method: "beginNativeOverlayHostSharedTextureCopy", args: [handle, ...args] });
+    return false;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const initialPumpCount = session.snapshot().pumpCount;
+  const submissions = Array.from({ length: 64 }, (_, index) => (
+    session.updateSharedTextureAsync({
+      handle: Buffer.alloc(8, index),
+      width: 1,
+      height: 1,
+    })
+  ));
+  assert.deepEqual(await Promise.all(submissions), Array(64).fill(false));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().pumpCount, initialPumpCount);
+  assert.equal(session.snapshot().sharedTextureDropCount, 64);
+});
+
+test("Windows asynchronous shared-texture completion rejects native errors and malformed payloads", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const completions = [];
+  fake.beginNativeOverlayHostSharedTextureCopy = function (handle, ...args) {
+    const completion = args.pop();
+    this.calls.push({ method: "beginNativeOverlayHostSharedTextureCopy", args: [handle, ...args] });
+    completions.push(completion);
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const nativeFailure = session.updateSharedTextureAsync({
+    handle: Buffer.alloc(8, 10),
+    width: 1,
+    height: 1,
+  });
+  completions.shift()({ error: "copy failed" });
+  await assert.rejects(nativeFailure, /copy failed/);
+
+  const malformed = session.updateSharedTextureAsync({
+    handle: Buffer.alloc(8, 11),
+    width: 1,
+    height: 1,
+  });
+  completions.shift()({ accepted: false });
+  await assert.rejects(malformed, /completion result was malformed/);
+});
+
+test("asynchronous shared-texture API remains compatible with an older synchronous native payload", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  assert.equal(
+    await session.updateSharedTextureAsync({ handle: Buffer.alloc(8, 9), width: 1, height: 1 }),
+    true
+  );
+  assert.equal(
+    fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture").length,
+    1
+  );
 });
 
 test("closing a Windows session cancels its queued frame-driven pump", async (t) => {

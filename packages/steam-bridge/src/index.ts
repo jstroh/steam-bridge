@@ -1920,6 +1920,13 @@ export interface NativeOverlaySession extends CallbackHandle {
   notifyBoundsChanged(): void;
   updateFrame(frame: NativeOverlayFrame): void;
   updateSharedTexture(texture: NativeOverlaySharedTexture): void;
+  /**
+   * Submit a Windows Electron shared texture without blocking the JavaScript
+   * thread. Resolves only after the GPU no longer reads the producer texture;
+   * callers must retain and release Electron's texture around this Promise.
+   * `false` means bounded backpressure intentionally retained the prior frame.
+   */
+  updateSharedTextureAsync?(texture: NativeOverlaySharedTexture): Promise<boolean>;
   setCursorHidden(hidden: boolean): void;
   setFrameRate(frameRate: number): void;
   setFullScreen(fullScreen: boolean): void;
@@ -9801,6 +9808,61 @@ export function updateNativeOverlayHostSharedTexture(
   });
 }
 
+export function updateNativeOverlayHostSharedTextureAsync(
+  handle: Buffer,
+  width: number,
+  height: number,
+  contentRect?: NativeOverlayBounds,
+  presentationRect?: NativeOverlayBounds
+): Promise<boolean> {
+  assertRawNativeOverlaySurfaceAccess();
+  const binding = native();
+  const beginCopy = binding.beginNativeOverlayHostSharedTextureCopy;
+  if (typeof beginCopy !== "function") {
+    updateNativeOverlayHostSharedTexture(handle, width, height, contentRect, presentationRect);
+    return Promise.resolve(true);
+  }
+  const normalizedWidth = normalizeNativeOverlayFrameDimension(width, "shared texture width");
+  const normalizedHeight = normalizeNativeOverlayFrameDimension(height, "shared texture height");
+  const normalizedContentRect = normalizeNativeOverlayContentRect(
+    contentRect,
+    normalizedWidth,
+    normalizedHeight
+  );
+  const normalizedPresentationRect = normalizeNativeOverlayContentRect(
+    presentationRect,
+    normalizedWidth,
+    normalizedHeight,
+    "presentationRect"
+  );
+  return new Promise<boolean>((resolve, reject) => {
+    const accepted = beginCopy.call(
+      binding,
+      handle,
+      normalizedWidth,
+      normalizedHeight,
+      normalizedContentRect.x,
+      normalizedContentRect.y,
+      normalizedContentRect.width,
+      normalizedContentRect.height,
+      normalizedPresentationRect.x,
+      normalizedPresentationRect.y,
+      normalizedPresentationRect.width,
+      normalizedPresentationRect.height,
+      (result) => {
+        try {
+          resolve(normalizeNativeSharedTextureCopyCompletion(result));
+        } catch (error) {
+          reject(error);
+        }
+      }
+    );
+    if (!accepted) {
+      resolve(false);
+    }
+  });
+}
+
 export function closeNativeOverlayProbeWindow(): void {
   runRawNativeOverlaySurfaceClose("probe", () => native().closeNativeOverlayProbeWindow());
 }
@@ -10651,6 +10713,97 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     presentFrameDrivenUpload();
   };
 
+  const updateSharedTextureAsync = (texture: NativeOverlaySharedTexture): Promise<boolean> => {
+    if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+      throw new Error("Steam Bridge native overlay session is closed.");
+    }
+    if (!texture || typeof texture !== "object") {
+      throw new TypeError("Steam Bridge shared texture metadata must be an object.");
+    }
+    if (!Buffer.isBuffer(texture.handle)) {
+      updateSharedTexture(texture);
+      return Promise.resolve(true);
+    }
+
+    const binding = native();
+    const width = normalizeNativeOverlayFrameDimension(texture.width, "shared texture width");
+    const height = normalizeNativeOverlayFrameDimension(texture.height, "shared texture height");
+    const contentRect = normalizeNativeOverlayContentRect(texture.contentRect, width, height);
+    const presentationRect = normalizeNativeOverlayContentRect(
+      texture.presentationRect,
+      width,
+      height,
+      "presentationRect"
+    );
+    if (
+      usesWindowsStandaloneHost
+      && (
+        overlayActive
+        || windowsOverlayHandoffPending
+        || Date.now() < windowsSharedTextureResumeAt
+      )
+    ) {
+      sharedTextureDropCount += 1;
+      if (!overlayActive) {
+        postOverlaySharedTextureDropCount += 1;
+      }
+      return Promise.resolve(false);
+    }
+
+    const beginCopy = binding.beginNativeOverlayHostSharedTextureCopy;
+    if (typeof beginCopy !== "function") {
+      updateSharedTexture(texture);
+      return Promise.resolve(true);
+    }
+    const updateStartedAt = performance.now();
+    let completion: Promise<boolean>;
+    try {
+      completion = new Promise<boolean>((resolve, reject) => {
+        const accepted = beginCopy.call(
+          binding,
+          texture.handle as Buffer,
+          width,
+          height,
+          contentRect.x,
+          contentRect.y,
+          contentRect.width,
+          contentRect.height,
+          presentationRect.x,
+          presentationRect.y,
+          presentationRect.width,
+          presentationRect.height,
+          (result) => {
+            try {
+              resolve(normalizeNativeSharedTextureCopyCompletion(result));
+            } catch (error) {
+              reject(error);
+            }
+          }
+        );
+        if (!accepted) {
+          resolve(false);
+        }
+      });
+      // This legacy diagnostic measures time spent synchronously inside the
+      // JavaScript/native submission boundary. Fence completion is deliberately
+      // asynchronous and is reported separately by nativeHostDiagnostics under
+      // sharedTextureCopy, so do not fold the Promise lifetime into this value.
+      recordSharedTextureUpdateDuration(updateStartedAt);
+    } catch (error) {
+      recordSharedTextureUpdateDuration(updateStartedAt);
+      throw error;
+    }
+    return Promise.resolve(completion)
+      .then((accepted) => {
+        if (accepted) {
+          presentFrameDrivenUpload();
+          return true;
+        }
+        sharedTextureDropCount += 1;
+        return false;
+      });
+  };
+
   const setCursorHidden = (hidden: boolean): void => {
     cursorHiddenRequested = Boolean(hidden);
     syncCursorHidden();
@@ -10806,6 +10959,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     pump,
     updateFrame,
     updateSharedTexture,
+    updateSharedTextureAsync,
     setCursorHidden,
     setFrameRate,
     setFullScreen,
@@ -25076,6 +25230,7 @@ export const overlay = {
   setNativeOverlayHostBounds,
   updateNativeOverlayHostFrame,
   updateNativeOverlayHostSharedTexture,
+  updateNativeOverlayHostSharedTextureAsync,
   closeNativeOverlayProbeWindow,
   detachNativeOverlayHostView,
   isNativeOverlayProbeWindowOpen,
@@ -31922,6 +32077,20 @@ function unwrapNativeCallbackArgument(event: unknown): unknown {
   return event;
 }
 
+function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
+  result = unwrapNativeCallbackArgument(result);
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    const completion = result as Record<string, unknown>;
+    if (completion.accepted === true && completion.error === undefined) {
+      return true;
+    }
+    if (typeof completion.error === "string" && completion.error.length > 0) {
+      throw new Error(completion.error);
+    }
+  }
+  throw new Error("The D3D11 shared-texture completion result was malformed.");
+}
+
 function resolveSteamCallbackId(steamCallback: SteamCallbackName | SteamCallbackId | number): number {
   if (typeof steamCallback === "string") {
     const callbackId = SteamCallback[steamCallback as SteamCallbackName];
@@ -33822,6 +33991,7 @@ const defaultExport = {
   setNativeOverlayHostBounds,
   updateNativeOverlayHostFrame,
   updateNativeOverlayHostSharedTexture,
+  updateNativeOverlayHostSharedTextureAsync,
   closeNativeOverlayProbeWindow,
   detachNativeOverlayHostView,
   isNativeOverlayProbeWindowOpen,

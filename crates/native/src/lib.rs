@@ -65,6 +65,97 @@ static BREAKPAD_CRASH_HANDLER_STRINGS: Lazy<Mutex<Option<BreakpadCrashHandlerStr
 type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, false>;
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
 
+#[cfg(target_os = "windows")]
+const NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT: usize = 4;
+
+#[cfg(target_os = "windows")]
+static NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(target_os = "windows")]
+static NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_MAX: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(target_os = "windows")]
+static NATIVE_OVERLAY_SHARED_TEXTURE_COPY_SATURATION_DROP_COUNT: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(target_os = "windows")]
+struct NativeOverlaySharedTextureCopyPermit;
+
+#[cfg(target_os = "windows")]
+impl Drop for NativeOverlaySharedTextureCopyPermit {
+    fn drop(&mut self) {
+        NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_COUNT
+            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn try_reserve_native_overlay_shared_texture_copy_job(
+) -> Option<NativeOverlaySharedTextureCopyPermit> {
+    let prior = NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_COUNT
+        .fetch_update(
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+            |count| (count < NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT).then_some(count + 1),
+        )
+        .ok()?;
+    NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_MAX
+        .fetch_max(prior + 1, std::sync::atomic::Ordering::Relaxed);
+    Some(NativeOverlaySharedTextureCopyPermit)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn native_overlay_shared_texture_copy_job_count() -> usize {
+    NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_COUNT.load(std::sync::atomic::Ordering::Acquire)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn native_overlay_shared_texture_copy_job_max() -> usize {
+    NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_MAX.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn native_overlay_shared_texture_copy_saturation_drop_count() -> u64 {
+    NATIVE_OVERLAY_SHARED_TEXTURE_COPY_SATURATION_DROP_COUNT
+        .load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(target_os = "windows")]
+struct NativeOverlaySharedTextureCopyJob {
+    request: native_surface::SharedTextureUpdateRequest,
+    completion: FatalThreadsafeFunction<serde_json::Value>,
+    _permit: NativeOverlaySharedTextureCopyPermit,
+}
+
+#[cfg(target_os = "windows")]
+fn complete_native_overlay_shared_texture_copy(job: NativeOverlaySharedTextureCopyJob) {
+    let result = match job.request.wait() {
+        Ok(true) => serde_json::json!({ "accepted": true }),
+        Ok(false) => serde_json::json!({ "accepted": false }),
+        Err(error) => serde_json::json!({ "error": error }),
+    };
+    job.completion
+        .call(result, ThreadsafeFunctionCallMode::NonBlocking);
+}
+
+#[cfg(target_os = "windows")]
+static NATIVE_OVERLAY_SHARED_TEXTURE_COPY_DISPATCHER: Lazy<
+    Result<std::sync::mpsc::Sender<NativeOverlaySharedTextureCopyJob>, String>,
+> = Lazy::new(|| {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("steam-bridge-d3d11-copy".to_owned())
+        .spawn(move || {
+            while let Ok(job) = receiver.recv() {
+                complete_native_overlay_shared_texture_copy(job);
+            }
+        })
+        .map(|_| sender)
+        .map_err(|error| format!("Failed to start the D3D11 copy completion dispatcher: {error}"))
+});
+
 struct BreakpadCrashHandlerStrings {
     version: CString,
     date: CString,
@@ -1519,6 +1610,89 @@ pub fn update_native_overlay_host_shared_texture(
         presentation_width,
         presentation_height,
     )
+}
+
+#[napi(js_name = "beginNativeOverlayHostSharedTextureCopy")]
+pub fn begin_native_overlay_host_shared_texture_copy(
+    handle: Buffer,
+    width: u32,
+    height: u32,
+    content_x: Option<u32>,
+    content_y: Option<u32>,
+    content_width: Option<u32>,
+    content_height: Option<u32>,
+    presentation_x: Option<u32>,
+    presentation_y: Option<u32>,
+    presentation_width: Option<u32>,
+    presentation_height: Option<u32>,
+    #[napi(ts_arg_type = "(result: any) => void")] completion: JsCallback<'_, serde_json::Value>,
+) -> Result<bool, Error> {
+    #[cfg(target_os = "windows")]
+    {
+        let dispatcher = NATIVE_OVERLAY_SHARED_TEXTURE_COPY_DISPATCHER
+            .as_ref()
+            .map_err(|error| Error::from_reason(error.clone()))?
+            .clone();
+        let Some(permit) = try_reserve_native_overlay_shared_texture_copy_job() else {
+            NATIVE_OVERLAY_SHARED_TEXTURE_COPY_SATURATION_DROP_COUNT
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return Ok(false);
+        };
+        let threadsafe_completion: FatalThreadsafeFunction<serde_json::Value> = completion
+            .build_threadsafe_function::<serde_json::Value>()
+            .build_callback(|ctx| Ok(vec![ctx.value]))?;
+        let request = native_surface::begin_shared_texture_update(
+            handle,
+            width,
+            height,
+            content_x,
+            content_y,
+            content_width,
+            content_height,
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+        )?;
+        if !request.is_accepted() {
+            return Ok(false);
+        }
+        let job = NativeOverlaySharedTextureCopyJob {
+            request,
+            completion: threadsafe_completion,
+            _permit: permit,
+        };
+        if let Err(error) = dispatcher.send(job) {
+            // The process-wide dispatcher has no ordinary shutdown path. If it
+            // becomes unavailable unexpectedly, preserve producer ownership by
+            // completing this one copy before returning rather than dropping
+            // its fence wait. This branch is unreachable unless the immortal
+            // dispatcher thread itself has terminated.
+            complete_native_overlay_shared_texture_copy(error.0);
+        }
+        Ok(true)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (
+            handle,
+            width,
+            height,
+            content_x,
+            content_y,
+            content_width,
+            content_height,
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+            completion,
+        );
+        Err(Error::from_reason(
+            "Asynchronous Electron shared textures are supported only by the Windows D3D11 native host",
+        ))
+    }
 }
 
 #[napi(js_name = "updateNativeOverlayHostLinuxDmaBufSharedTexture")]

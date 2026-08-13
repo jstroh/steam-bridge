@@ -1879,6 +1879,20 @@ export interface NativeBinding {
     presentationWidth?: number,
     presentationHeight?: number
   ): void;
+  beginNativeOverlayHostSharedTextureCopy(
+    handle: Buffer,
+    width: number,
+    height: number,
+    contentX: number | undefined,
+    contentY: number | undefined,
+    contentWidth: number | undefined,
+    contentHeight: number | undefined,
+    presentationX: number | undefined,
+    presentationY: number | undefined,
+    presentationWidth: number | undefined,
+    presentationHeight: number | undefined,
+    completion: (result: unknown) => void
+  ): boolean;
   updateNativeOverlayHostLinuxDmaBufSharedTexture(
     fd: number,
     stride: number,

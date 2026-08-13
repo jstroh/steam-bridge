@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-11
+Last reviewed: 2026-08-12
 
 Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
@@ -25,6 +25,75 @@ Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-12 Windows asynchronous shared-texture copy checkpoint
+
+A player-supplied bounded production trace on Windows 11 / RTX 4060 Ti / 75 Hz
+isolates a new bottleneck at the Electron-to-native D3D11 copy boundary. The
+renderer targeted 75 FPS, but Electron paint/import and native presentation
+settled near 65-68 FPS. `updateSharedTexture` itself usually occupied
+13.4-14.7 ms and reached 29.1 ms, while native `Present` remained only
+0.04-0.05 ms and the frame-latency, device-loss, import-failure, CPU-upload,
+and software-fallback counters stayed zero. The old synchronous event-query
+spin therefore consumed an entire 13.33 ms frame budget before every Electron
+paint callback could release its pooled producer texture.
+
+The active repair keeps Electron's strict producer-texture lifetime but moves
+GPU completion off the JavaScript thread. On Windows 10/11, D3D11 copies now
+signal a monotonic `ID3D11Fence` and return a Promise backed by one dedicated
+process-wide FIFO native completion thread waiting
+on a reusable auto-reset kernel event. A process-wide four-job permit and each
+renderer's matching four-slot event pool bound retained
+Electron textures and memory; saturation deliberately retains the prior native
+frame rather than blocking, allocating, reading back to CPU, or adapting the
+display target downward. The exact slot is reusable only after its fence wait
+settles. Device removal rejects the Promise. A 500 ms wait is diagnostic only:
+it never grants permission to release a texture that the GPU may still read.
+Devices lacking the Windows fence interfaces reject the asynchronous method
+before issuing a copy. The legacy synchronous entrypoint retains its bounded
+500 ms query timeout only for older explicit callers.
+
+The public session adds optional `updateSharedTextureAsync(texture)`. It
+resolves `true` after an accepted copy no longer reads Electron's texture and
+`false` when bounded backpressure drops the new frame. Callers must retain the
+event texture and invoke `texture.release()` only after settlement. The
+existing synchronous method and Linux/macOS paths remain compatible. Native
+diagnostics now expose completion mode, process-wide and renderer-local
+in-flight/max-in-flight counts, completion/timeout/saturation counts,
+dispatcher delay, and end-to-end asynchronous completion durations measured
+from GPU-copy submission rather than worker dequeue.
+The configured consumer adopts this ownership contract and retains its GPU-only
+policy. The final guarded release binding builds and exports the asynchronous
+method; Rust formatting and compile checks pass; the TypeScript package builds;
+the package unit suite passes 427 tests with two intentional skips; and focused
+tests cover delayed ownership completion, bounded saturation, no premature
+pump, the native callback argument envelope, and compatibility with an older
+synchronous native payload. The normal full JavaScript and Rust suite also
+passed before the final guard-preserving rebuild.
+
+A fresh source-linked actual-game pass then caught one integration defect before
+release: the N-API callback delivered its completion as the binding's ordinary
+single-argument array envelope, while the first JavaScript adapter expected the
+inner object directly. The adapter now unwraps the established envelope and
+strictly accepts only `{ accepted: true }`; its regression test uses the real
+callback shape. The repaired build logged into the configured game, moved by
+point-and-click, resized from a 1280x720 client to 1129x720, maximized/restored,
+entered/exited true 1920x1200 fullscreen, and exited through the native File
+menu with Electron code zero and complete Steam shutdown. Steam retained the
+same process identity throughout.
+
+On the available 1920x1200 165 Hz display, the settled fullscreen telemetry
+reported 165.0 FPS renderer paint, shared-texture delivery, accepted copies,
+and completed copies, with 164.5 FPS native presentation. The path was
+`d3d11-fence-async`; 34,678 copies were accepted and 34,677 completed at the
+last sample with one still in flight. The process-wide depth stayed at its
+four-job ceiling. Fourteen saturation drops occurred only across interactive
+resize/fullscreen transitions and did not persist at steady state. The settled
+last dispatcher delay/completion were 0.673/1.520 ms; transition maxima were
+27.897/29.339 ms. Copy timeouts, bitmap fallback, CPU uploads, device loss, and
+missing GPU frames were all zero. The directly launched source build did not
+receive Steam's global Shift+Tab hook, so that shortcut is left to the packaged
+Steam candidate sanity check; no overlay claim is made from this direct run.
 
 ### 2026-08-11 Windows production cadence correction (0.3.25 candidate)
 

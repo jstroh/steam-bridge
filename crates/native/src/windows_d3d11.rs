@@ -1,7 +1,8 @@
 use std::ffi::c_void;
 use std::slice;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use windows::core::{Interface, PCSTR};
 use windows::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE,
@@ -15,12 +16,13 @@ use windows::Win32::Graphics::Direct3D::{
 };
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11ClassLinkage, ID3D11DepthStencilView, ID3D11Device, ID3D11Device1,
-    ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader, ID3D11Query, ID3D11RenderTargetView,
-    ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
-    D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_COMPARISON_NEVER,
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_QUERY_DESC,
-    D3D11_QUERY_EVENT, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
-    D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT, D3D11_VIEWPORT,
+    ID3D11Device5, ID3D11DeviceContext, ID3D11DeviceContext4, ID3D11Fence, ID3D11InputLayout,
+    ID3D11PixelShader, ID3D11Query, ID3D11RenderTargetView, ID3D11SamplerState,
+    ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader, D3D11_BIND_RENDER_TARGET,
+    D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_COMPARISON_NEVER,
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_FENCE_FLAG_NONE, D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+    D3D11_QUERY_DESC, D3D11_QUERY_EVENT, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION,
+    D3D11_TEXTURE2D_DESC, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT, D3D11_VIEWPORT,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
@@ -34,12 +36,177 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
     DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
-use windows::Win32::System::Threading::{GetCurrentProcess, WaitForSingleObjectEx};
+use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess, WaitForSingleObjectEx};
 
 const FRAME_LATENCY_WAIT_POLL_MS: u32 = 0;
 const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
 const SHARED_TEXTURE_COPY_TIMEOUT_MS: u128 = 500;
+const SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 4;
 static NEXT_FRAME_LATENCY_WAIT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+struct SharedTextureCopySlot {
+    event: HANDLE,
+    in_flight: AtomicBool,
+}
+
+unsafe impl Send for SharedTextureCopySlot {}
+unsafe impl Sync for SharedTextureCopySlot {}
+
+impl Drop for SharedTextureCopySlot {
+    fn drop(&mut self) {
+        if !self.event.is_invalid() {
+            unsafe {
+                let _ = CloseHandle(self.event);
+            }
+            self.event = HANDLE::default();
+        }
+    }
+}
+
+struct SharedTextureCopySlotReservation {
+    slot: Option<Arc<SharedTextureCopySlot>>,
+}
+
+impl SharedTextureCopySlotReservation {
+    fn into_slot(mut self) -> Arc<SharedTextureCopySlot> {
+        self.slot
+            .take()
+            .expect("shared-texture copy reservation must own a slot")
+    }
+}
+
+impl Drop for SharedTextureCopySlotReservation {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot.as_ref() {
+            slot.in_flight.store(false, Ordering::Release);
+        }
+    }
+}
+
+fn try_reserve_shared_texture_copy_slot(
+    slots: &[Arc<SharedTextureCopySlot>],
+) -> Option<SharedTextureCopySlotReservation> {
+    slots.iter().find_map(|slot| {
+        slot.in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+            .then(|| SharedTextureCopySlotReservation {
+                slot: Some(Arc::clone(slot)),
+            })
+    })
+}
+
+#[derive(Default)]
+struct SharedTextureCopyTelemetry {
+    slow_count: AtomicU64,
+    timeout_count: AtomicU64,
+    completed_count: AtomicU64,
+    last_dispatch_delay_micros: AtomicU64,
+    max_dispatch_delay_micros: AtomicU64,
+    last_duration_micros: AtomicU64,
+    max_duration_micros: AtomicU64,
+}
+
+pub struct SharedTextureCopyWaitHandle {
+    device: ID3D11Device,
+    fence: ID3D11Fence,
+    fence_value: u64,
+    slot: Arc<SharedTextureCopySlot>,
+    submitted_at: Instant,
+    telemetry: Arc<SharedTextureCopyTelemetry>,
+}
+
+unsafe impl Send for SharedTextureCopyWaitHandle {}
+
+impl SharedTextureCopyWaitHandle {
+    pub fn wait(self) -> Result<(), String> {
+        let dispatch_delay_micros = self
+            .submitted_at
+            .elapsed()
+            .as_micros()
+            .min(u64::MAX as u128) as u64;
+        self.telemetry
+            .last_dispatch_delay_micros
+            .store(dispatch_delay_micros, Ordering::Relaxed);
+        self.telemetry
+            .max_dispatch_delay_micros
+            .fetch_max(dispatch_delay_micros, Ordering::Relaxed);
+        let started = self.submitted_at;
+        let mut recorded_slow_copy = false;
+        let mut recorded_timeout = false;
+        let event_registered = unsafe {
+            self.fence
+                .SetEventOnCompletion(self.fence_value, self.slot.event)
+                .is_ok()
+        };
+
+        loop {
+            let complete = if event_registered {
+                let wait_result = unsafe { WaitForSingleObjectEx(self.slot.event, 10, false) };
+                if wait_result == WAIT_FAILED {
+                    return Err(
+                        "WaitForSingleObjectEx for the D3D11 shared-texture fence failed"
+                            .to_owned(),
+                    );
+                }
+                if wait_result != WAIT_OBJECT_0 && wait_result != WAIT_TIMEOUT {
+                    return Err(
+                        "WaitForSingleObjectEx for the D3D11 shared-texture fence returned an unexpected result"
+                            .to_owned(),
+                    );
+                }
+                wait_result == WAIT_OBJECT_0
+            } else {
+                unsafe { self.fence.GetCompletedValue() >= self.fence_value }
+            };
+            if complete {
+                let duration_micros = started.elapsed().as_micros().min(u64::MAX as u128) as u64;
+                self.telemetry
+                    .last_duration_micros
+                    .store(duration_micros, Ordering::Relaxed);
+                self.telemetry
+                    .max_duration_micros
+                    .fetch_max(duration_micros, Ordering::Relaxed);
+                self.telemetry
+                    .completed_count
+                    .fetch_add(1, Ordering::Relaxed);
+                return Ok(());
+            }
+
+            let elapsed_ms = started.elapsed().as_millis();
+            if !recorded_slow_copy && elapsed_ms >= SHARED_TEXTURE_COPY_SLOW_MS {
+                self.telemetry.slow_count.fetch_add(1, Ordering::Relaxed);
+                recorded_slow_copy = true;
+            }
+            if !recorded_timeout && elapsed_ms >= SHARED_TEXTURE_COPY_TIMEOUT_MS {
+                // A timeout is diagnostic, not permission to release Electron's
+                // pooled producer texture. Keep ownership until the fence signals
+                // or Windows reports that the device was removed.
+                self.telemetry.timeout_count.fetch_add(1, Ordering::Relaxed);
+                recorded_timeout = true;
+            }
+            if let Err(error) = unsafe { self.device.GetDeviceRemovedReason() } {
+                return Err(format!(
+                    "D3D11 device was removed while waiting for the Electron shared-texture copy: {error}"
+                ));
+            }
+            if !event_registered {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+}
+
+impl Drop for SharedTextureCopyWaitHandle {
+    fn drop(&mut self) {
+        self.slot.in_flight.store(false, Ordering::Release);
+    }
+}
+
+pub enum SharedTextureImportSubmission {
+    Accepted(Option<SharedTextureCopyWaitHandle>),
+    Dropped,
+}
 
 pub struct FrameLatencyWaitHandle {
     handle: HANDLE,
@@ -217,7 +384,13 @@ pub struct WindowsD3d11Renderer {
     repeated_refresh_count: u64,
     max_repeated_refreshes_per_sample: u32,
     shared_texture_copy_query: ID3D11Query,
-    shared_texture_copy_slow_count: u64,
+    shared_texture_copy_fence: Option<ID3D11Fence>,
+    shared_texture_copy_context4: Option<ID3D11DeviceContext4>,
+    shared_texture_copy_slots: Vec<Arc<SharedTextureCopySlot>>,
+    next_shared_texture_copy_fence_value: u64,
+    shared_texture_copy_telemetry: Arc<SharedTextureCopyTelemetry>,
+    shared_texture_copy_saturation_drop_count: u64,
+    max_shared_texture_copies_in_flight: u64,
     shared_texture_full_copy_count: u64,
     shared_texture_partial_copy_count: u64,
     shared_texture_storage_recreate_count: u64,
@@ -357,9 +530,13 @@ impl WindowsD3d11Renderer {
         let context = context.ok_or_else(|| "D3D11CreateDevice returned no context".to_owned())?;
 
         // Electron owns and pools the shared texture handles supplied to the
-        // paint callback. A D3D11 CopyResource call only queues GPU work, so an
-        // event query is required to prove that the bridge-owned copy no
-        // longer reads Electron's texture before the callback releases it.
+        // paint callback. A D3D11 copy only queues GPU work, so completion must
+        // be proven before the callback releases its producer texture. Modern
+        // Windows uses a fence plus a fixed pool of reusable kernel events so
+        // the proof can happen off the Electron main thread. The event query is
+        // retained only for the bounded legacy synchronous entrypoint. The
+        // asynchronous entrypoint fails before copying on a device/driver that
+        // does not expose the Windows 10 D3D11 fence interfaces.
         let query_desc = D3D11_QUERY_DESC {
             Query: D3D11_QUERY_EVENT,
             MiscFlags: 0,
@@ -372,6 +549,37 @@ impl WindowsD3d11Renderer {
             })?;
         let shared_texture_copy_query = shared_texture_copy_query
             .ok_or_else(|| "CreateQuery for shared texture copies returned no query".to_owned())?;
+        let shared_texture_copy_fence_support = (|| -> Result<_, String> {
+            let device5: ID3D11Device5 = device
+                .cast()
+                .map_err(|error| format!("ID3D11Device5 is unavailable: {error}"))?;
+            let context4: ID3D11DeviceContext4 = context
+                .cast()
+                .map_err(|error| format!("ID3D11DeviceContext4 is unavailable: {error}"))?;
+            let mut fence = None;
+            device5
+                .CreateFence(0, D3D11_FENCE_FLAG_NONE, &mut fence)
+                .map_err(|error| format!("ID3D11Device5::CreateFence failed: {error}"))?;
+            let fence = fence.ok_or_else(|| "CreateFence returned no fence".to_owned())?;
+            let mut slots = Vec::with_capacity(SHARED_TEXTURE_COPY_SLOT_COUNT);
+            for _ in 0..SHARED_TEXTURE_COPY_SLOT_COUNT {
+                let event = CreateEventW(None, false, false, None).map_err(|error| {
+                    format!("CreateEventW for shared-texture fence failed: {error}")
+                })?;
+                slots.push(Arc::new(SharedTextureCopySlot {
+                    event,
+                    in_flight: AtomicBool::new(false),
+                }));
+            }
+            Ok((fence, context4, slots))
+        })()
+        .ok();
+        let (shared_texture_copy_fence, shared_texture_copy_context4, shared_texture_copy_slots) =
+            match shared_texture_copy_fence_support {
+                Some((fence, context4, slots)) => (Some(fence), Some(context4), slots),
+                None => (None, None, Vec::new()),
+            };
+        let shared_texture_copy_telemetry = Arc::new(SharedTextureCopyTelemetry::default());
 
         let vertex_shader_bytes = compile_shader(VERTEX_SHADER, b"vs_4_0\0")?;
         let pixel_shader_bytes = compile_shader(PIXEL_SHADER, b"ps_4_0\0")?;
@@ -463,7 +671,13 @@ impl WindowsD3d11Renderer {
             repeated_refresh_count: 0,
             max_repeated_refreshes_per_sample: 0,
             shared_texture_copy_query,
-            shared_texture_copy_slow_count: 0,
+            shared_texture_copy_fence,
+            shared_texture_copy_context4,
+            shared_texture_copy_slots,
+            next_shared_texture_copy_fence_value: 0,
+            shared_texture_copy_telemetry,
+            shared_texture_copy_saturation_drop_count: 0,
+            max_shared_texture_copies_in_flight: 0,
             shared_texture_full_copy_count: 0,
             shared_texture_partial_copy_count: 0,
             shared_texture_storage_recreate_count: 0,
@@ -651,6 +865,49 @@ impl WindowsD3d11Renderer {
         content_rect: (u32, u32, u32, u32),
         presentation_rect: (u32, u32, u32, u32),
     ) -> Result<(), String> {
+        match self.import_shared_texture_internal(
+            handle,
+            expected_width,
+            expected_height,
+            content_rect,
+            presentation_rect,
+            false,
+        )? {
+            SharedTextureImportSubmission::Accepted(Some(wait)) => wait.wait(),
+            SharedTextureImportSubmission::Accepted(None) => Ok(()),
+            SharedTextureImportSubmission::Dropped => {
+                Err("Synchronous Electron shared-texture copy was unexpectedly dropped".to_owned())
+            }
+        }
+    }
+
+    pub unsafe fn begin_import_shared_texture(
+        &mut self,
+        handle: usize,
+        expected_width: u32,
+        expected_height: u32,
+        content_rect: (u32, u32, u32, u32),
+        presentation_rect: (u32, u32, u32, u32),
+    ) -> Result<SharedTextureImportSubmission, String> {
+        self.import_shared_texture_internal(
+            handle,
+            expected_width,
+            expected_height,
+            content_rect,
+            presentation_rect,
+            true,
+        )
+    }
+
+    unsafe fn import_shared_texture_internal(
+        &mut self,
+        handle: usize,
+        expected_width: u32,
+        expected_height: u32,
+        content_rect: (u32, u32, u32, u32),
+        presentation_rect: (u32, u32, u32, u32),
+        asynchronous_completion: bool,
+    ) -> Result<SharedTextureImportSubmission, String> {
         if handle == 0 {
             return Err("Electron shared texture handle is null".to_owned());
         }
@@ -720,6 +977,52 @@ impl WindowsD3d11Renderer {
             || self.source_sample_count != desc.SampleDesc.Count
             || self.source_sample_quality != desc.SampleDesc.Quality
             || self.source_texture.is_none();
+        let presentation_changed = self.last_shared_texture_presentation_rect
+            != [
+                presentation_x,
+                presentation_y,
+                presentation_width,
+                presentation_height,
+            ];
+        let copy_rect = if storage_recreated || presentation_changed {
+            Some(presentation_rect)
+        } else {
+            intersect_rect(content_rect, presentation_rect)
+        };
+        if asynchronous_completion
+            && copy_rect.is_some()
+            && (self.shared_texture_copy_fence.is_none()
+                || self.shared_texture_copy_context4.is_none())
+        {
+            // Fail before CopySubresourceRegion takes ownership of the producer
+            // texture. The legacy synchronous method remains available to an
+            // explicit older caller, but the asynchronous contract must never
+            // hide a main-thread query wait behind a Promise.
+            return Err(
+                "The Windows D3D11 device does not support asynchronous shared-texture fences"
+                    .to_owned(),
+            );
+        }
+        let copy_slot_reservation = if asynchronous_completion && copy_rect.is_some() {
+            let Some(reservation) =
+                try_reserve_shared_texture_copy_slot(&self.shared_texture_copy_slots)
+            else {
+                self.shared_texture_copy_saturation_drop_count = self
+                    .shared_texture_copy_saturation_drop_count
+                    .saturating_add(1);
+                return Ok(SharedTextureImportSubmission::Dropped);
+            };
+            let in_flight = self
+                .shared_texture_copy_slots
+                .iter()
+                .filter(|slot| slot.in_flight.load(Ordering::Acquire))
+                .count() as u64;
+            self.max_shared_texture_copies_in_flight =
+                self.max_shared_texture_copies_in_flight.max(in_flight);
+            Some(reservation)
+        } else {
+            None
+        };
         if storage_recreated {
             self.shared_texture_storage_recreate_count =
                 self.shared_texture_storage_recreate_count.saturating_add(1);
@@ -755,19 +1058,9 @@ impl WindowsD3d11Renderer {
             self.source_texture = Some(owned_texture);
             self.source_view = Some(view);
         }
-        let presentation_changed = self.last_shared_texture_presentation_rect
-            != [
-                presentation_x,
-                presentation_y,
-                presentation_width,
-                presentation_height,
-            ];
-        let copy_rect = if storage_recreated || presentation_changed {
-            Some(presentation_rect)
-        } else {
-            intersect_rect(content_rect, presentation_rect)
-        };
+        let mut copy_wait = None;
         if let Some((copy_x, copy_y, copy_width, copy_height)) = copy_rect {
+            let copy_submitted_at = Instant::now();
             let source_box = D3D11_BOX {
                 left: copy_x,
                 top: copy_y,
@@ -788,7 +1081,38 @@ impl WindowsD3d11Renderer {
                 0,
                 Some(&source_box),
             );
-            self.wait_for_shared_texture_copy()?;
+            if let Some(reservation) = copy_slot_reservation {
+                self.next_shared_texture_copy_fence_value = self
+                    .next_shared_texture_copy_fence_value
+                    .checked_add(1)
+                    .ok_or_else(|| "D3D11 shared-texture fence value overflowed".to_owned())?;
+                let fence_value = self.next_shared_texture_copy_fence_value;
+                let fence = self
+                    .shared_texture_copy_fence
+                    .as_ref()
+                    .expect("shared-texture fence disappeared after slot reservation")
+                    .clone();
+                self.shared_texture_copy_context4
+                    .as_ref()
+                    .expect("shared-texture fence context disappeared after slot reservation")
+                    .Signal(&fence, fence_value)
+                    .map_err(|error| {
+                        format!(
+                            "ID3D11DeviceContext4::Signal for shared texture copy failed: {error}"
+                        )
+                    })?;
+                self.context.Flush();
+                copy_wait = Some(SharedTextureCopyWaitHandle {
+                    device: self.device.clone(),
+                    fence,
+                    fence_value,
+                    slot: reservation.into_slot(),
+                    submitted_at: copy_submitted_at,
+                    telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
+                });
+            } else {
+                self.wait_for_shared_texture_copy()?;
+            }
             if copy_rect == Some(presentation_rect) {
                 self.shared_texture_full_copy_count =
                     self.shared_texture_full_copy_count.saturating_add(1);
@@ -812,7 +1136,7 @@ impl WindowsD3d11Renderer {
             presentation_height,
         ];
         self.shared_texture_import_count = self.shared_texture_import_count.saturating_add(1);
-        Ok(())
+        Ok(SharedTextureImportSubmission::Accepted(copy_wait))
     }
 
     unsafe fn wait_for_shared_texture_copy(&mut self) -> Result<(), String> {
@@ -834,14 +1158,28 @@ impl WindowsD3d11Renderer {
                     format!("ID3D11DeviceContext::GetData for shared texture copy failed: {error}")
                 })?;
             if completed != 0 {
+                let duration_micros = started.elapsed().as_micros().min(u64::MAX as u128) as u64;
+                self.shared_texture_copy_telemetry
+                    .last_duration_micros
+                    .store(duration_micros, Ordering::Relaxed);
+                self.shared_texture_copy_telemetry
+                    .max_duration_micros
+                    .fetch_max(duration_micros, Ordering::Relaxed);
+                self.shared_texture_copy_telemetry
+                    .completed_count
+                    .fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
             if !recorded_slow_copy && started.elapsed().as_millis() >= SHARED_TEXTURE_COPY_SLOW_MS {
-                self.shared_texture_copy_slow_count =
-                    self.shared_texture_copy_slow_count.saturating_add(1);
+                self.shared_texture_copy_telemetry
+                    .slow_count
+                    .fetch_add(1, Ordering::Relaxed);
                 recorded_slow_copy = true;
             }
             if started.elapsed().as_millis() >= SHARED_TEXTURE_COPY_TIMEOUT_MS {
+                self.shared_texture_copy_telemetry
+                    .timeout_count
+                    .fetch_add(1, Ordering::Relaxed);
                 return Err(format!(
                     "Timed out waiting {SHARED_TEXTURE_COPY_TIMEOUT_MS} ms for the Electron shared texture copy"
                 ));
@@ -1280,7 +1618,72 @@ impl WindowsD3d11Renderer {
     }
 
     pub fn shared_texture_copy_slow_count(&self) -> u64 {
-        self.shared_texture_copy_slow_count
+        self.shared_texture_copy_telemetry
+            .slow_count
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn shared_texture_copy_timeout_count(&self) -> u64 {
+        self.shared_texture_copy_telemetry
+            .timeout_count
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn shared_texture_copy_completed_count(&self) -> u64 {
+        self.shared_texture_copy_telemetry
+            .completed_count
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn last_shared_texture_copy_duration_ms(&self) -> f64 {
+        self.shared_texture_copy_telemetry
+            .last_duration_micros
+            .load(Ordering::Relaxed) as f64
+            / 1_000.0
+    }
+
+    pub fn last_shared_texture_copy_dispatch_delay_ms(&self) -> f64 {
+        self.shared_texture_copy_telemetry
+            .last_dispatch_delay_micros
+            .load(Ordering::Relaxed) as f64
+            / 1_000.0
+    }
+
+    pub fn max_shared_texture_copy_dispatch_delay_ms(&self) -> f64 {
+        self.shared_texture_copy_telemetry
+            .max_dispatch_delay_micros
+            .load(Ordering::Relaxed) as f64
+            / 1_000.0
+    }
+
+    pub fn max_shared_texture_copy_duration_ms(&self) -> f64 {
+        self.shared_texture_copy_telemetry
+            .max_duration_micros
+            .load(Ordering::Relaxed) as f64
+            / 1_000.0
+    }
+
+    pub fn shared_texture_copy_completion_mode(&self) -> &'static str {
+        if self.shared_texture_copy_fence.is_some() {
+            "d3d11-fence-async"
+        } else {
+            "d3d11-query-legacy-only"
+        }
+    }
+
+    pub fn shared_texture_copies_in_flight(&self) -> u64 {
+        self.shared_texture_copy_slots
+            .iter()
+            .filter(|slot| slot.in_flight.load(Ordering::Acquire))
+            .count() as u64
+    }
+
+    pub fn max_shared_texture_copies_in_flight(&self) -> u64 {
+        self.max_shared_texture_copies_in_flight
+    }
+
+    pub fn shared_texture_copy_saturation_drop_count(&self) -> u64 {
+        self.shared_texture_copy_saturation_drop_count
     }
 
     pub fn shared_texture_full_copy_count(&self) -> u64 {
@@ -1328,6 +1731,53 @@ impl Drop for WindowsD3d11Renderer {
             }
             self.frame_latency_waitable_object = HANDLE::default();
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_texture_copy_slot_tests {
+    use super::{
+        try_reserve_shared_texture_copy_slot, SharedTextureCopySlot, SHARED_TEXTURE_COPY_SLOT_COUNT,
+    };
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use windows::Win32::Foundation::HANDLE;
+
+    fn slots() -> Vec<Arc<SharedTextureCopySlot>> {
+        (0..SHARED_TEXTURE_COPY_SLOT_COUNT)
+            .map(|_| {
+                Arc::new(SharedTextureCopySlot {
+                    event: HANDLE::default(),
+                    in_flight: AtomicBool::new(false),
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn bounds_in_flight_copies_and_reuses_only_a_released_slot() {
+        let slots = slots();
+        let mut reservations = Vec::new();
+        for _ in 0..SHARED_TEXTURE_COPY_SLOT_COUNT {
+            reservations.push(
+                try_reserve_shared_texture_copy_slot(&slots)
+                    .expect("each free copy slot should be reservable"),
+            );
+        }
+        assert!(try_reserve_shared_texture_copy_slot(&slots).is_none());
+        assert!(slots
+            .iter()
+            .all(|slot| slot.in_flight.load(Ordering::Acquire)));
+
+        reservations.pop();
+        assert_eq!(
+            slots
+                .iter()
+                .filter(|slot| slot.in_flight.load(Ordering::Acquire))
+                .count(),
+            SHARED_TEXTURE_COPY_SLOT_COUNT - 1
+        );
+        assert!(try_reserve_shared_texture_copy_slot(&slots).is_some());
     }
 }
 

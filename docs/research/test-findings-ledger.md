@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-08-11
+Last reviewed: 2026-08-12
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -43,6 +43,20 @@ receipt-visible with the exact upstream commit and evidence path. This
 supersedes the older row's wait-for-stable repeat condition; it does not reopen
 prerelease Electron, feature flags, synthetic input, child recreation, or
 popup/companion paths.
+
+### Active Windows shared-texture qualification
+
+The 2026-08-12 asynchronous D3D11 fence change materially alters the texture
+ownership/copy boundary covered by `WIN-ELECTRON-TOPLEVEL-001` and
+`WIN-MOVEMENT-CADENCE-001`. Treat their earlier live passes as architectural
+history, not qualification of the new copy path. The fresh source-linked actual-
+game pass on the available 165 Hz display is green: settled paint, accepted and
+completed GPU copies were 165.0 FPS, native presentation was 164.5 FPS, the
+mode was `d3d11-fence-async`, the process-wide depth remained bounded at four,
+and timeout/device-loss/CPU-upload/bitmap/missing-frame counters were zero.
+Resize, maximize/restore, fullscreen/restore, movement, and clean exit passed.
+The exact player 75 Hz configuration remains the decisive external retest for
+the original report; require the same fields there and no sustained saturation.
 
 ## Windows x64
 
