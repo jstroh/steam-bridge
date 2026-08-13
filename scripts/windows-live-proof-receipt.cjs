@@ -14,8 +14,8 @@ const {
 } = require("./windows-release-candidate-fingerprint.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 4;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v4";
+const RECEIPT_SCHEMA_VERSION = 5;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v5";
 const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
 const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
 const EVIDENCE_SCHEMA_VERSION = 1;
@@ -27,6 +27,10 @@ const MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT = 3;
 const MAX_PACING_SAMPLE_INTERVAL_MS = 2000;
 const MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT = 3;
 const TARGET_DISPLAY_TOLERANCE_HZ = 1;
+const EXPECTED_SHARED_TEXTURE_COMPLETION_MODE = "d3d11-fence-async";
+const MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT = 4;
+const MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE = 8;
+const MAX_ASYNC_SHARED_TEXTURE_SLOW_RATIO = 0.001;
 const WINDOWS_RUNTIME_FILES = Object.freeze([
   "steam_bridge_native.win32-x64-msvc.node",
   "steam_api64.dll",
@@ -307,6 +311,8 @@ function inspectRuntimeLog(stdout) {
     if (match) samples.push(JSON.parse(match[1]));
   }
   assert.ok(samples.length >= 3, "Standalone proof requires at least three FPS samples.");
+  let firstSharedTextureCopyCompletedCount;
+  let previousSharedTextureCopyCompletedCount = 0;
   for (const sample of samples) {
     assert.equal(sample.nativePresenter && sample.nativePresenter.deviceLost, false);
     assert.equal(sample.nativePresenter && sample.nativePresenter.deviceLostCount, 0);
@@ -318,7 +324,54 @@ function inspectRuntimeLog(stdout) {
         waitTimeoutCount <= MAX_FRAME_LATENCY_WAIT_TIMEOUT_COUNT,
       "Standalone frame-latency wait timeout count exceeded the bounded menu-transition allowance."
     );
-    assert.equal(sample.nativePresenter && sample.nativePresenter.sharedTextureCopySlowCount, 0);
+    const presenter = sample.nativePresenter;
+    const copy = presenter && presenter.sharedTextureCopy;
+    assert.equal(copy && copy.completionMode, EXPECTED_SHARED_TEXTURE_COMPLETION_MODE);
+    for (const key of [
+      "completedCount",
+      "submissionFailureCount",
+      "timeoutCount",
+      "fatalTimeoutCount",
+      "inFlight",
+      "maxInFlight",
+      "saturationDropCount",
+      "rendererInFlight",
+      "rendererMaxInFlight",
+      "rendererSaturationDropCount"
+    ]) {
+      assert.ok(
+        Number.isSafeInteger(copy && copy[key]) && copy[key] >= 0,
+        "Standalone asynchronous shared-texture copy telemetry is missing or invalid: " + key
+      );
+    }
+    assert.equal(copy.submissionFailureCount, 0);
+    assert.equal(copy.timeoutCount, 0);
+    assert.equal(copy.fatalTimeoutCount, 0);
+    assert.equal(copy.saturationDropCount, 0);
+    assert.equal(copy.rendererSaturationDropCount, 0);
+    assert.ok(copy.inFlight <= copy.maxInFlight);
+    assert.ok(copy.rendererInFlight <= copy.rendererMaxInFlight);
+    assert.ok(copy.maxInFlight <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT);
+    assert.ok(copy.rendererMaxInFlight <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT);
+    assert.ok(
+      copy.completedCount >= previousSharedTextureCopyCompletedCount,
+      "Standalone asynchronous shared-texture completed count regressed."
+    );
+    if (firstSharedTextureCopyCompletedCount === undefined) {
+      firstSharedTextureCopyCompletedCount = copy.completedCount;
+    }
+    previousSharedTextureCopyCompletedCount = copy.completedCount;
+    const slowCount = presenter.sharedTextureCopySlowCount;
+    assert.ok(Number.isSafeInteger(slowCount) && slowCount >= 0);
+    assert.ok(slowCount <= copy.completedCount);
+    const slowAllowance = Math.max(
+      MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE,
+      Math.ceil(copy.completedCount * MAX_ASYNC_SHARED_TEXTURE_SLOW_RATIO)
+    );
+    assert.ok(
+      slowCount <= slowAllowance,
+      "Standalone asynchronous shared-texture slow completions exceeded the bounded transition allowance."
+    );
     assert.equal(sample.nativeHost && sample.nativeHost.backend, EXPECTED_BACKEND);
     assert.equal(sample.nativeHost && sample.nativeHost.rendererBackend, EXPECTED_BACKEND);
     assert.equal(sample.nativeHost && sample.nativeHost.hostStyle, EXPECTED_HOST_STYLE);
@@ -366,6 +419,20 @@ function inspectRuntimeLog(stdout) {
   const frameLatencyWaitTimeoutCount = Math.max(
     ...samples.map((sample) => sample.nativePresenter.frameLatencyWaitTimeoutCount)
   );
+  const finalSharedTextureCopy = finalSample.nativePresenter.sharedTextureCopy;
+  assert.ok(
+    finalSharedTextureCopy.completedCount > firstSharedTextureCopyCompletedCount,
+    "Standalone asynchronous shared-texture copies did not advance during proof."
+  );
+  const sharedTextureCopySlowCount = Math.max(
+    ...samples.map((sample) => sample.nativePresenter.sharedTextureCopySlowCount)
+  );
+  const sharedTextureCopyMaxInFlight = Math.max(
+    ...samples.map((sample) => sample.nativePresenter.sharedTextureCopy.maxInFlight)
+  );
+  const sharedTextureCopyRendererMaxInFlight = Math.max(
+    ...samples.map((sample) => sample.nativePresenter.sharedTextureCopy.rendererMaxInFlight)
+  );
   const targetFps = finalSample.targetFps;
   const displayHz = finalSample.display.hz;
   const host = finalSample.nativeHost;
@@ -388,7 +455,7 @@ function inspectRuntimeLog(stdout) {
   assert.match(stdout, /\[steam-native-host-renderer\]\s+viewport\s+\d+x\d+\s+->\s+(?!1280x720)\d+x\d+/);
   assert.doesNotMatch(
     stdout,
-    /deviceLost":true|GPU device|ResizeBuffers failed|present failed|fatal|panic|crashed|unhandled|Error presenting Electron frame|MicroTxnAuthorization|purchase[^\r\n]*authoriz|subscription[^\r\n]*authoriz/i
+    /deviceLost":true|GPU device|ResizeBuffers failed|present failed|fatal(?!TimeoutCount)|panic|crashed|unhandled|Error presenting Electron frame|MicroTxnAuthorization|purchase[^\r\n]*authoriz|subscription[^\r\n]*authoriz/i
   );
   return {
     backend: EXPECTED_BACKEND,
@@ -409,7 +476,16 @@ function inspectRuntimeLog(stdout) {
     frameLatencyWaitTimeoutCount,
     deviceLostCount: 0,
     deviceRecoveryCount: 0,
-    sharedTextureCopySlowCount: 0,
+    sharedTextureCompletionMode: EXPECTED_SHARED_TEXTURE_COMPLETION_MODE,
+    sharedTextureCopyCompletedCount: finalSharedTextureCopy.completedCount,
+    sharedTextureCopySubmissionFailureCount: 0,
+    sharedTextureCopyTimeoutCount: 0,
+    sharedTextureCopyFatalTimeoutCount: 0,
+    sharedTextureCopySaturationDropCount: 0,
+    sharedTextureCopyRendererSaturationDropCount: 0,
+    sharedTextureCopyMaxInFlight,
+    sharedTextureCopyRendererMaxInFlight,
+    sharedTextureCopySlowCount,
     targetUnsynchronizedSampleCount
   };
 }
@@ -666,7 +742,16 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
       "overlayMedianPresentFpsTenths",
       "overlaySampleCount",
       "parentHwnd",
+      "sharedTextureCompletionMode",
+      "sharedTextureCopyCompletedCount",
+      "sharedTextureCopyFatalTimeoutCount",
+      "sharedTextureCopyMaxInFlight",
+      "sharedTextureCopyRendererMaxInFlight",
+      "sharedTextureCopyRendererSaturationDropCount",
+      "sharedTextureCopySaturationDropCount",
       "sharedTextureCopySlowCount",
+      "sharedTextureCopySubmissionFailureCount",
+      "sharedTextureCopyTimeoutCount",
       "targetFps",
       "targetUnsynchronizedSampleCount",
       "windowDpi"
@@ -686,7 +771,35 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   );
   assert.equal(profile.runtime.deviceLostCount, 0);
   assert.equal(profile.runtime.deviceRecoveryCount, 0);
-  assert.equal(profile.runtime.sharedTextureCopySlowCount, 0);
+  assert.equal(profile.runtime.sharedTextureCompletionMode, EXPECTED_SHARED_TEXTURE_COMPLETION_MODE);
+  for (const key of [
+    "sharedTextureCopyCompletedCount",
+    "sharedTextureCopyFatalTimeoutCount",
+    "sharedTextureCopyMaxInFlight",
+    "sharedTextureCopyRendererMaxInFlight",
+    "sharedTextureCopyRendererSaturationDropCount",
+    "sharedTextureCopySaturationDropCount",
+    "sharedTextureCopySlowCount",
+    "sharedTextureCopySubmissionFailureCount",
+    "sharedTextureCopyTimeoutCount"
+  ]) {
+    assert.ok(Number.isSafeInteger(profile.runtime[key]) && profile.runtime[key] >= 0);
+  }
+  assert.equal(profile.runtime.sharedTextureCopyFatalTimeoutCount, 0);
+  assert.equal(profile.runtime.sharedTextureCopyRendererSaturationDropCount, 0);
+  assert.equal(profile.runtime.sharedTextureCopySaturationDropCount, 0);
+  assert.equal(profile.runtime.sharedTextureCopySubmissionFailureCount, 0);
+  assert.equal(profile.runtime.sharedTextureCopyTimeoutCount, 0);
+  assert.ok(profile.runtime.sharedTextureCopySlowCount <= profile.runtime.sharedTextureCopyCompletedCount);
+  assert.ok(
+    profile.runtime.sharedTextureCopySlowCount <=
+      Math.max(
+        MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE,
+        Math.ceil(
+          profile.runtime.sharedTextureCopyCompletedCount * MAX_ASYNC_SHARED_TEXTURE_SLOW_RATIO
+        )
+      )
+  );
   assert.ok(Number.isSafeInteger(profile.runtime.windowDpi) && profile.runtime.windowDpi > 0);
   assert.ok(Number.isSafeInteger(profile.runtime.displayHz) && profile.runtime.displayHz > 0);
   assert.ok(Number.isSafeInteger(profile.runtime.targetFps) && profile.runtime.targetFps > 0);
@@ -769,7 +882,16 @@ function createSelfTestProfile(candidateBinding, index = 0) {
       frameLatencyWaitTimeoutCount: 0,
       deviceLostCount: 0,
       deviceRecoveryCount: 0,
-      sharedTextureCopySlowCount: 0,
+      sharedTextureCompletionMode: EXPECTED_SHARED_TEXTURE_COMPLETION_MODE,
+      sharedTextureCopyCompletedCount: 300,
+      sharedTextureCopySubmissionFailureCount: 0,
+      sharedTextureCopyTimeoutCount: 0,
+      sharedTextureCopyFatalTimeoutCount: 0,
+      sharedTextureCopySaturationDropCount: 0,
+      sharedTextureCopyRendererSaturationDropCount: 0,
+      sharedTextureCopyMaxInFlight: 2,
+      sharedTextureCopyRendererMaxInFlight: 2,
+      sharedTextureCopySlowCount: 1,
       targetUnsynchronizedSampleCount: 0
     },
     artifacts: {
@@ -841,6 +963,32 @@ function selfTest() {
   assert.throws(() =>
     validateLiveProofReceipt(
       assembleLiveProofReceipt(candidateBinding, [failedProfile], "2026-07-21T00:00:00.000Z", true),
+      candidateBinding
+    )
+  );
+  const saturatedProfile = JSON.parse(JSON.stringify(profile));
+  saturatedProfile.runtime.sharedTextureCopySaturationDropCount = 1;
+  assert.throws(() =>
+    validateLiveProofReceipt(
+      assembleLiveProofReceipt(
+        candidateBinding,
+        [saturatedProfile],
+        "2026-07-21T00:00:00.000Z",
+        true
+      ),
+      candidateBinding
+    )
+  );
+  const excessiveSlowCopyProfile = JSON.parse(JSON.stringify(profile));
+  excessiveSlowCopyProfile.runtime.sharedTextureCopySlowCount = 9;
+  assert.throws(() =>
+    validateLiveProofReceipt(
+      assembleLiveProofReceipt(
+        candidateBinding,
+        [excessiveSlowCopyProfile],
+        "2026-07-21T00:00:00.000Z",
+        true
+      ),
       candidateBinding
     )
   );
@@ -923,7 +1071,20 @@ function runGeneratorSelfTest() {
         deviceLost: false,
         deviceLostCount: 0,
         deviceRecoveryCount: 0,
-        sharedTextureCopySlowCount: 0
+        sharedTextureCopySlowCount: 1,
+        sharedTextureCopy: {
+          completionMode: EXPECTED_SHARED_TEXTURE_COMPLETION_MODE,
+          completedCount: 300,
+          submissionFailureCount: 0,
+          timeoutCount: 0,
+          fatalTimeoutCount: 0,
+          inFlight: 1,
+          maxInFlight: 2,
+          saturationDropCount: 0,
+          rendererInFlight: 1,
+          rendererMaxInFlight: 2,
+          rendererSaturationDropCount: 0
+        }
       },
       nativeHost: {
         backend: EXPECTED_BACKEND,
@@ -940,8 +1101,38 @@ function runGeneratorSelfTest() {
       ...sample,
       targetFps: 1,
       gameSurface: { paintFps: 1 },
-      nativePresenter: { ...sample.nativePresenter, presentFps: 1 }
+      nativePresenter: {
+        ...sample.nativePresenter,
+        presentFps: 1,
+        sharedTextureCopy: { ...sample.nativePresenter.sharedTextureCopy, completedCount: 299 }
+      }
     };
+    const withCompletedCount = (value, completedCount) => ({
+      ...value,
+      nativePresenter: {
+        ...value.nativePresenter,
+        sharedTextureCopy: { ...value.nativePresenter.sharedTextureCopy, completedCount }
+      }
+    });
+    const gameSampleLines = Array.from(
+      { length: 3 },
+      (_, index) =>
+        "[steam-native-host-fps] " + JSON.stringify(withCompletedCount(sample, 300 + index))
+    );
+    const overlaySamples = Array.from({ length: 3 }, (_, index) =>
+      withCompletedCount(
+        {
+          ...sample,
+          phase: "overlay",
+          overlayActive: true,
+          gameSurface: { ...sample.gameSurface, paintFps: 0 }
+        },
+        303 + index
+      )
+    );
+    const overlaySampleLines = overlaySamples.map(
+      (overlaySample) => "[steam-native-host-fps] " + JSON.stringify(overlaySample)
+    );
     const stdout = [
       "[steam-native-host] first Electron shared texture",
       "[steam-native-host] fullscreen on",
@@ -953,15 +1144,8 @@ function runGeneratorSelfTest() {
       "[steam-native-host-overlay-open] {\"dialog\":\"Friends\",\"source\":\"qa-menu\"}",
       "[steam-native-host-renderer] viewport 1280x720 -> 1100x620 {}",
       "[steam-native-host-fps] " + JSON.stringify(targetTransitionSample),
-      ...Array.from({ length: 3 }, () => "[steam-native-host-fps] " + JSON.stringify(sample)),
-      ...Array.from({ length: 3 }, () =>
-        "[steam-native-host-fps] " + JSON.stringify({
-          ...sample,
-          phase: "overlay",
-          overlayActive: true,
-          gameSurface: { ...sample.gameSurface, paintFps: 0 }
-        })
-      )
+      ...gameSampleLines,
+      ...overlaySampleLines
     ].join("\n");
     fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout);
     fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), "");
@@ -1005,17 +1189,19 @@ function runGeneratorSelfTest() {
       nativePresenter: { ...sample.nativePresenter, presentFps: 20 }
     };
     const slowOverlayStdout = stdout.replace(
-      Array.from({ length: 3 }, () =>
-        "[steam-native-host-fps] " + JSON.stringify({
-          ...sample,
-          phase: "overlay",
-          overlayActive: true,
-          gameSurface: { ...sample.gameSurface, paintFps: 0 }
-        })
-      ).join("\n"),
-      Array.from({ length: 3 }, () =>
-        "[steam-native-host-fps] " + JSON.stringify(slowOverlaySample)
-      ).join("\n")
+      overlaySampleLines.join("\n"),
+      overlaySamples
+        .map((overlaySample) =>
+          "[steam-native-host-fps] " +
+          JSON.stringify({
+            ...slowOverlaySample,
+            nativePresenter: {
+              ...slowOverlaySample.nativePresenter,
+              sharedTextureCopy: overlaySample.nativePresenter.sharedTextureCopy
+            }
+          })
+        )
+        .join("\n")
     );
     fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), slowOverlayStdout);
     assert.throws(() => generateLiveProofReceipt(options), /Steam overlay median/);
@@ -1041,6 +1227,32 @@ function runGeneratorSelfTest() {
     assert.throws(
       () => generateLiveProofReceipt(options),
       /bounded menu-transition allowance/
+    );
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replaceAll(
+        `"completionMode":"${EXPECTED_SHARED_TEXTURE_COMPLETION_MODE}"`,
+        '"completionMode":"d3d11-query-legacy-only"'
+      )
+    );
+    assert.throws(() => generateLiveProofReceipt(options));
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replaceAll('"timeoutCount":0', '"timeoutCount":1')
+    );
+    assert.throws(() => generateLiveProofReceipt(options));
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replaceAll('"saturationDropCount":0', '"saturationDropCount":1')
+    );
+    assert.throws(() => generateLiveProofReceipt(options));
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "stdout.log"),
+      stdout.replaceAll('"sharedTextureCopySlowCount":1', '"sharedTextureCopySlowCount":9')
+    );
+    assert.throws(
+      () => generateLiveProofReceipt(options),
+      /slow completions exceeded/
     );
     fs.writeFileSync(
       path.join(evidenceDirectory, "stdout.log"),
