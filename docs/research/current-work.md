@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-12
+Last reviewed: 2026-08-13
 
 Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
@@ -25,6 +25,34 @@ Only the release status and checkpoints above `Historical Release Ledger` are
 authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
+
+### 2026-08-13 Windows presenter hardening checkpoint (`0.3.33` candidate)
+
+The next source repair hardens two rare diagnostics/lifetime edges without
+changing the successful asynchronous-copy architecture. DXGI frame-statistics
+deltas now reject ordinary counter resets and implausible jumps while retaining
+small genuine unsigned wraps, so display transitions cannot add billions of
+false repeated refreshes. The D3D11 fence value, destination texture, fence, and
+context are now prepared before `CopySubresourceRegion`. If `Signal` then fails
+after submission, the native method returns an accepted wait handle whose
+completion rejects asynchronously; this preserves the JavaScript producer
+texture until the configured consumer retains it and restarts the graphics
+device. Diagnostics expose a bounded cumulative submission-failure count, and
+later asynchronous submissions fail before importing or copying another
+producer texture once either a fatal wait or post-submit signal failure is
+observed. The submission failure is recorded before returning the completion
+handle, closing the interval in which another producer could otherwise enter
+the failed device. The configured consumer also downgrades the exact
+pre-copy, fence-unavailable rejection to the existing synchronous compatibility
+entrypoint, including after a dual-GPU adapter switch changes device
+capabilities; all other asynchronous errors retain fail-closed restart
+handling.
+
+The complete normal gates pass: platform and Electron-version checks, TypeScript
+build, 428 JavaScript tests with two intentional skips, 57 native Rust tests,
+Rust formatting and compile checks, release/package self-tests, Steam Input and
+shortcut self-tests, API coverage, and `git diff --check`. No package was
+published and no Steam build was created or promoted.
 
 ### 2026-08-12 Windows asynchronous shared-texture copy checkpoint
 

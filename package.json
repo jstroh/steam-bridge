@@ -1,7 +1,7 @@
 {
   "name": "steam-bridge-monorepo",
   "private": true,
-  "version": "0.3.32",
+  "version": "0.3.33",
   "workspaces": [
     "packages/*",
     "examples/*"

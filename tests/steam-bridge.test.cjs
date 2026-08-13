@@ -1097,6 +1097,14 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /\.GetData\(/);
   assert.match(d3dSource, /CreateFence\(0, D3D11_FENCE_FLAG_NONE/);
   assert.match(d3dSource, /ID3D11DeviceContext4::Signal/);
+  assert.match(d3dSource, /submission_error: Option<String>/);
+  assert.match(d3dSource, /submission_failure_count[\s\S]*?D3D11 shared-texture copy completion previously stalled/);
+  assert.match(d3dSource, /Signal\(&fence, fence_value\)\.err\(\)/);
+  assert.match(d3dSource, /submission_error\.is_some\(\)[\s\S]*?submission_failure_count[\s\S]*?fetch_add\(1, Ordering::Release\)/);
+  assert.match(d3dSource, /failed after submission:[\s\S]*native graphics device must be restarted/);
+  assert.match(source, /"submissionFailureCount"/);
+  assert.match(d3dSource, /frame_statistics_counter_delta/);
+  assert.doesNotMatch(d3dSource, /PresentCount\.wrapping_sub|PresentRefreshCount\s*\.wrapping_sub/);
   assert.match(d3dSource, /SetEventOnCompletion/);
   assert.match(d3dSource, /SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 4/);
   assert.match(d3dSource, /SharedTextureImportSubmission::Dropped/);

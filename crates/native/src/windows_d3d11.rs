@@ -104,6 +104,7 @@ struct SharedTextureCopyTelemetry {
     timeout_count: AtomicU64,
     fatal_timeout_count: AtomicU64,
     completed_count: AtomicU64,
+    submission_failure_count: AtomicU64,
     last_dispatch_delay_micros: AtomicU64,
     max_dispatch_delay_micros: AtomicU64,
     last_duration_micros: AtomicU64,
@@ -117,6 +118,7 @@ pub struct SharedTextureCopyWaitHandle {
     slot: Arc<SharedTextureCopySlot>,
     submitted_at: Instant,
     telemetry: Arc<SharedTextureCopyTelemetry>,
+    submission_error: Option<String>,
 }
 
 unsafe impl Send for SharedTextureCopyWaitHandle {}
@@ -134,6 +136,9 @@ impl SharedTextureCopyWaitHandle {
         self.telemetry
             .max_dispatch_delay_micros
             .fetch_max(dispatch_delay_micros, Ordering::Relaxed);
+        if let Some(error) = self.submission_error.as_ref() {
+            return Err(error.clone());
+        }
         let started = self.submitted_at;
         let mut recorded_slow_copy = false;
         let mut recorded_timeout = false;
@@ -299,6 +304,23 @@ pub fn present_sync_interval_for_frame_rate(
         }
     }
     1
+}
+
+const FRAME_STATISTICS_MAX_DELTA_PER_PRESENT: u32 = 10_000;
+const FRAME_STATISTICS_WRAP_HIGH_WATERMARK: u32 = 0xF000_0000;
+const FRAME_STATISTICS_WRAP_LOW_WATERMARK: u32 = 0x0FFF_FFFF;
+
+fn frame_statistics_counter_delta(current: u32, previous: u32) -> Option<u32> {
+    let delta = if current >= previous {
+        current - previous
+    } else if previous >= FRAME_STATISTICS_WRAP_HIGH_WATERMARK
+        && current <= FRAME_STATISTICS_WRAP_LOW_WATERMARK
+    {
+        current.wrapping_sub(previous)
+    } else {
+        return None;
+    };
+    (delta <= FRAME_STATISTICS_MAX_DELTA_PER_PRESENT).then_some(delta)
 }
 
 const VERTEX_SHADER: &[u8] = br#"
@@ -921,11 +943,16 @@ impl WindowsD3d11Renderer {
         asynchronous_completion: bool,
     ) -> Result<SharedTextureImportSubmission, String> {
         if asynchronous_completion
-            && self
+            && (self
                 .shared_texture_copy_telemetry
                 .fatal_timeout_count
                 .load(Ordering::Acquire)
                 > 0
+                || self
+                    .shared_texture_copy_telemetry
+                    .submission_failure_count
+                    .load(Ordering::Acquire)
+                    > 0)
         {
             return Err(
                 "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted"
@@ -1093,10 +1120,33 @@ impl WindowsD3d11Renderer {
                 bottom: copy_y + copy_height,
                 back: 1,
             };
-            self.context.CopySubresourceRegion(
-                self.source_texture
+            let destination_texture = self
+                .source_texture
+                .as_ref()
+                .ok_or_else(|| "Shared-copy texture was not created".to_owned())?
+                .clone();
+            let asynchronous_fence = if let Some(reservation) = copy_slot_reservation {
+                let fence_value = self
+                    .next_shared_texture_copy_fence_value
+                    .checked_add(1)
+                    .ok_or_else(|| "D3D11 shared-texture fence value overflowed".to_owned())?;
+                let fence = self
+                    .shared_texture_copy_fence
                     .as_ref()
-                    .ok_or_else(|| "Shared-copy texture was not created".to_owned())?,
+                    .expect("shared-texture fence disappeared after slot reservation")
+                    .clone();
+                let context4 = self
+                    .shared_texture_copy_context4
+                    .as_ref()
+                    .expect("shared-texture fence context disappeared after slot reservation")
+                    .clone();
+                self.next_shared_texture_copy_fence_value = fence_value;
+                Some((reservation, fence, context4, fence_value))
+            } else {
+                None
+            };
+            self.context.CopySubresourceRegion(
+                &destination_texture,
                 0,
                 copy_x - presentation_x,
                 copy_y - presentation_y,
@@ -1105,26 +1155,22 @@ impl WindowsD3d11Renderer {
                 0,
                 Some(&source_box),
             );
-            if let Some(reservation) = copy_slot_reservation {
-                self.next_shared_texture_copy_fence_value = self
-                    .next_shared_texture_copy_fence_value
-                    .checked_add(1)
-                    .ok_or_else(|| "D3D11 shared-texture fence value overflowed".to_owned())?;
-                let fence_value = self.next_shared_texture_copy_fence_value;
-                let fence = self
-                    .shared_texture_copy_fence
-                    .as_ref()
-                    .expect("shared-texture fence disappeared after slot reservation")
-                    .clone();
-                self.shared_texture_copy_context4
-                    .as_ref()
-                    .expect("shared-texture fence context disappeared after slot reservation")
-                    .Signal(&fence, fence_value)
-                    .map_err(|error| {
-                        format!(
-                            "ID3D11DeviceContext4::Signal for shared texture copy failed: {error}"
-                        )
-                    })?;
+            if let Some((reservation, fence, context4, fence_value)) = asynchronous_fence {
+                // The copy already references Electron's producer texture. A
+                // post-submit Signal failure must therefore settle through the
+                // async callback so JavaScript retains that producer until the
+                // graphics device is restarted; it cannot be returned as a
+                // synchronous error from this point onward.
+                let submission_error = context4.Signal(&fence, fence_value).err().map(|error| {
+                    format!(
+                        "ID3D11DeviceContext4::Signal for shared texture copy failed after submission: {error}; the native graphics device must be restarted"
+                    )
+                });
+                if submission_error.is_some() {
+                    self.shared_texture_copy_telemetry
+                        .submission_failure_count
+                        .fetch_add(1, Ordering::Release);
+                }
                 self.context.Flush();
                 copy_wait = Some(SharedTextureCopyWaitHandle {
                     device: self.device.clone(),
@@ -1133,6 +1179,7 @@ impl WindowsD3d11Renderer {
                     slot: reservation.into_slot(),
                     submitted_at: copy_submitted_at,
                     telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
+                    submission_error,
                 });
             } else {
                 self.wait_for_shared_texture_copy()?;
@@ -1414,22 +1461,37 @@ impl WindowsD3d11Renderer {
                     self.last_frame_statistics_present_count,
                     self.last_frame_statistics_refresh_count,
                 ) {
-                    let present_delta =
-                        statistics.PresentCount.wrapping_sub(previous_present_count);
-                    if previous_present_count > 0 && previous_refresh_count > 0 && present_delta > 0
+                    let present_delta = frame_statistics_counter_delta(
+                        statistics.PresentCount,
+                        previous_present_count,
+                    );
+                    let refresh_delta = frame_statistics_counter_delta(
+                        statistics.PresentRefreshCount,
+                        previous_refresh_count,
+                    );
+                    if let (Some(present_delta), Some(refresh_delta)) =
+                        (present_delta, refresh_delta)
                     {
-                        let refresh_delta = statistics
-                            .PresentRefreshCount
-                            .wrapping_sub(previous_refresh_count);
-                        let repeated_refreshes = refresh_delta.saturating_sub(present_delta);
-                        self.last_frame_statistics_present_delta = present_delta;
-                        self.last_frame_statistics_refresh_delta = refresh_delta;
-                        self.repeated_refresh_count = self
-                            .repeated_refresh_count
-                            .saturating_add(u64::from(repeated_refreshes));
-                        self.max_repeated_refreshes_per_sample = self
-                            .max_repeated_refreshes_per_sample
-                            .max(repeated_refreshes);
+                        if previous_present_count == 0
+                            || previous_refresh_count == 0
+                            || present_delta == 0
+                        {
+                            self.last_frame_statistics_present_delta = 0;
+                            self.last_frame_statistics_refresh_delta = 0;
+                        } else {
+                            let repeated_refreshes = refresh_delta.saturating_sub(present_delta);
+                            self.last_frame_statistics_present_delta = present_delta;
+                            self.last_frame_statistics_refresh_delta = refresh_delta;
+                            self.repeated_refresh_count = self
+                                .repeated_refresh_count
+                                .saturating_add(u64::from(repeated_refreshes));
+                            self.max_repeated_refreshes_per_sample = self
+                                .max_repeated_refreshes_per_sample
+                                .max(repeated_refreshes);
+                        }
+                    } else {
+                        self.last_frame_statistics_present_delta = 0;
+                        self.last_frame_statistics_refresh_delta = 0;
                     }
                 }
                 self.last_frame_statistics_present_count = Some(statistics.PresentCount);
@@ -1674,6 +1736,12 @@ impl WindowsD3d11Renderer {
     pub fn shared_texture_copy_completed_count(&self) -> u64 {
         self.shared_texture_copy_telemetry
             .completed_count
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn shared_texture_copy_submission_failure_count(&self) -> u64 {
+        self.shared_texture_copy_telemetry
+            .submission_failure_count
             .load(Ordering::Relaxed)
     }
 
@@ -2000,7 +2068,7 @@ fn intersect_rect(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_device_lost_error, is_shared_texture_adapter_open_error,
+        frame_statistics_counter_delta, is_device_lost_error, is_shared_texture_adapter_open_error,
         present_sync_interval_for_frame_rate,
     };
 
@@ -2073,5 +2141,17 @@ mod tests {
             present_sync_interval_for_frame_rate(Some(200), Some(f64::NAN)),
             1
         );
+    }
+
+    #[test]
+    fn frame_statistics_deltas_reject_resets_and_implausible_jumps() {
+        assert_eq!(frame_statistics_counter_delta(1_075, 1_000), Some(75));
+        assert_eq!(frame_statistics_counter_delta(10, 1_000), None);
+        assert_eq!(frame_statistics_counter_delta(20_001, 10_000), None);
+    }
+
+    #[test]
+    fn frame_statistics_deltas_allow_a_small_unsigned_wrap() {
+        assert_eq!(frame_statistics_counter_delta(3, u32::MAX - 2), Some(6));
     }
 }
