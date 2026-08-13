@@ -140,6 +140,18 @@ device loss, or recovery. This closes the available source-linked 165 Hz repair
 gate; exact 144/180/200 Hz reporter hardware still needs production
 confirmation.
 
+The first immutable `0.3.31` package proof at 165 Hz then exposed a narrower
+retained-frame failure that the source gameplay pass had not held open long
+enough to measure. A single earlier DXGI wait timeout correctly selected the
+nonblocking fallback, but Windows coalesced its 5 ms JavaScript timer to about
+15.6 ms while the ordinary Steam Friends overlay was active. Game presentation
+therefore fell to a 65 FPS median even though normal gameplay returned to
+164-165 FPS. The release receipt failed closed at its 95% overlay gate and
+`0.3.31` was not published. The fallback now brackets its lifetime with
+`timeBeginPeriod(1)` / `timeEndPeriod(1)` and reports whether the 1 ms timer
+period was requested and accepted. The exact `0.3.32` package must repeat the
+same 165 Hz actual-game and ordinary-overlay proof before publication.
+
 The maintainer first authorized an emergency Windows production release without
 an npm publication. The configured consumer embedded the exact reviewed source
 and optimized Windows addon under `steam-bridge` `0.3.24` dependency metadata;

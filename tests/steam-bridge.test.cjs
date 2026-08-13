@@ -1059,6 +1059,10 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /DXGI_PRESENT_DO_NOT_WAIT/);
   assert.match(d3dSource, /result == DXGI_ERROR_WAS_STILL_DRAWING/);
   assert.match(source, /"frameLatencyWaitBypassed"/);
+  assert.match(source, /"frameLatencyFallbackTimerResolutionRequested"/);
+  assert.match(source, /"frameLatencyFallbackTimerResolutionActive"/);
+  assert.match(d3dSource, /timeBeginPeriod\(1\)/);
+  assert.match(d3dSource, /timeEndPeriod\(1\)/);
   assert.match(nativeSource, /isNativeOverlayHostFrameLatencyWaitBypassed/);
   assert.match(bridgeSource, /isNativeOverlayHostFrameLatencyWaitBypassed/);
   assert.match(bridgeSource, /nativeFrameWaitUnavailable = true;/);

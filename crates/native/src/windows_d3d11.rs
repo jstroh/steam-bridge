@@ -36,6 +36,7 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
     DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
+use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOERROR};
 use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess, WaitForSingleObjectEx};
 
 const FRAME_LATENCY_WAIT_POLL_MS: u32 = 0;
@@ -358,6 +359,8 @@ pub struct WindowsD3d11Renderer {
     frame_latency_wait_generation: u64,
     frame_latency_ready_permits: u32,
     frame_latency_wait_bypassed: bool,
+    fallback_timer_resolution_requested: bool,
+    fallback_timer_resolution_active: bool,
     async_frame_latency_ready_count: u64,
     frame_latency_wait_timeout_count: u64,
     frame_latency_not_ready_count: u64,
@@ -645,6 +648,8 @@ impl WindowsD3d11Renderer {
             frame_latency_wait_generation: 0,
             frame_latency_ready_permits: 0,
             frame_latency_wait_bypassed: false,
+            fallback_timer_resolution_requested: false,
+            fallback_timer_resolution_active: false,
             async_frame_latency_ready_count: 0,
             frame_latency_wait_timeout_count: 0,
             frame_latency_not_ready_count: 0,
@@ -1514,11 +1519,23 @@ impl WindowsD3d11Renderer {
         }
         self.frame_latency_wait_bypassed = true;
         self.frame_latency_ready_permits = 0;
+        if !self.fallback_timer_resolution_requested {
+            self.fallback_timer_resolution_requested = true;
+            self.fallback_timer_resolution_active = unsafe { timeBeginPeriod(1) == TIMERR_NOERROR };
+        }
         true
     }
 
     pub fn frame_latency_wait_bypassed(&self) -> bool {
         self.frame_latency_wait_bypassed
+    }
+
+    pub fn fallback_timer_resolution_requested(&self) -> bool {
+        self.fallback_timer_resolution_requested
+    }
+
+    pub fn fallback_timer_resolution_active(&self) -> bool {
+        self.fallback_timer_resolution_active
     }
 
     pub fn async_frame_latency_ready_count(&self) -> u64 {
@@ -1725,6 +1742,12 @@ impl WindowsD3d11Renderer {
 
 impl Drop for WindowsD3d11Renderer {
     fn drop(&mut self) {
+        if self.fallback_timer_resolution_active {
+            unsafe {
+                let _ = timeEndPeriod(1);
+            }
+            self.fallback_timer_resolution_active = false;
+        }
         if !self.frame_latency_waitable_object.is_invalid() {
             unsafe {
                 let _ = CloseHandle(self.frame_latency_waitable_object);

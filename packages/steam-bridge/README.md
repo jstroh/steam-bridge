@@ -620,7 +620,15 @@ one expired wait, the session rejects that wait handle and uses a 1-4 ms
 nonblocking readiness poll for the remainder of the session. This prevents a
 driver-specific unsignaled handle from chaining 100 ms waits and collapsing
 presentation to single-digit FPS. Snapshots expose
-`nativeFrameWaitTimeoutCount` and `nativeFrameWaitFallback`.
+`nativeFrameWaitTimeoutCount` and `nativeFrameWaitFallback`. Windows' ordinary
+timer quantum can otherwise stretch that 1-4 ms poll to roughly 15.6 ms while
+the Steam overlay owns the foreground surface. The native fallback therefore
+requests a 1 ms multimedia timer period only after the DXGI wait is bypassed,
+and releases it when the D3D11 renderer closes. Native diagnostics expose
+`frameLatencyFallbackTimerResolutionRequested`,
+`frameLatencyFallbackTimerResolutionActive`, and
+`frameLatencyFallbackTimerResolutionMs` so high-refresh reports can prove
+whether that fallback clock was actually active.
 
 Steam can hook both the hidden Electron offscreen surface and the visible
 native host when they live in the same Windows process. If the offscreen paint
