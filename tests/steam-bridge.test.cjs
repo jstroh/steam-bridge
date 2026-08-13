@@ -1092,6 +1092,8 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /CopySubresourceRegion\(/);
   assert.match(d3dSource, /wait_for_shared_texture_copy\(\)/);
   assert.match(d3dSource, /SHARED_TEXTURE_COPY_TIMEOUT_MS/);
+  assert.match(d3dSource, /SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS/);
+  assert.match(d3dSource, /fatal_timeout_count/);
   assert.match(d3dSource, /\.GetData\(/);
   assert.match(d3dSource, /CreateFence\(0, D3D11_FENCE_FLAG_NONE/);
   assert.match(d3dSource, /ID3D11DeviceContext4::Signal/);
@@ -1108,6 +1110,16 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
     nativeSource.indexOf("if !request.is_accepted()")
       < nativeSource.indexOf("dispatcher.send(job)"),
     "saturated frames must be rejected before the dedicated completion dispatcher"
+  );
+  assert.ok(
+    nativeSource.indexOf("job.request.wait()")
+      < nativeSource.indexOf("job.completion"),
+    "producer release must be acknowledged only after the copy fence settles"
+  );
+  assert.match(
+    nativeSource,
+    /struct NativeOverlaySharedTextureCopyJob \{[^}]*completion:/,
+    "the fence completion job must retain the JavaScript producer callback"
   );
   assert.match(bridgeSource, /updateSharedTextureAsync/);
   assert.match(source, /renderer\.upload_cpu_frame/);
@@ -25634,7 +25646,7 @@ test("Windows frame-driven pump coalesces to the newest retained source", async 
   assert.deepEqual(pumpedSources, [2]);
 });
 
-test("Windows asynchronous shared-texture submission waits for GPU ownership completion", async (t) => {
+test("Windows asynchronous shared-texture submission pumps at acceptance but retains the producer until completion", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   let completeCopy;
@@ -25657,8 +25669,14 @@ test("Windows asynchronous shared-texture submission waits for GPU ownership com
     width: 1280,
     height: 720,
   });
+  let completionSettled = false;
+  void completion.finally(() => {
+    completionSettled = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
   const submittedSnapshot = session.snapshot();
-  assert.equal(submittedSnapshot.pumpCount, initialPumpCount);
+  assert.equal(submittedSnapshot.pumpCount, initialPumpCount + 1);
+  assert.equal(completionSettled, false);
   assert.equal(submittedSnapshot.sharedTextureUpdateCount, 1);
   assert.equal(typeof submittedSnapshot.lastSharedTextureUpdateDurationMs, "number");
   assert.equal(

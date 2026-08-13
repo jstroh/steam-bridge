@@ -131,6 +131,9 @@ struct NativeOverlaySharedTextureCopyJob {
 
 #[cfg(target_os = "windows")]
 fn complete_native_overlay_shared_texture_copy(job: NativeOverlaySharedTextureCopyJob) {
+    // The JavaScript callback releases Electron's finite producer texture. D3D
+    // submission and Flush are asynchronous, so acknowledge only after the
+    // fence proves that the bridge-owned copy no longer reads that producer.
     let result = match job.request.wait() {
         Ok(true) => serde_json::json!({ "accepted": true }),
         Ok(false) => serde_json::json!({ "accepted": false }),
@@ -1664,10 +1667,8 @@ pub fn begin_native_overlay_host_shared_texture_copy(
         };
         if let Err(error) = dispatcher.send(job) {
             // The process-wide dispatcher has no ordinary shutdown path. If it
-            // becomes unavailable unexpectedly, preserve producer ownership by
-            // completing this one copy before returning rather than dropping
-            // its fence wait. This branch is unreachable unless the immortal
-            // dispatcher thread itself has terminated.
+            // dies unexpectedly, preserve the producer lifetime contract by
+            // completing this one fence wait before returning its callback.
             complete_native_overlay_shared_texture_copy(error.0);
         }
         Ok(true)

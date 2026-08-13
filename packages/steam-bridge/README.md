@@ -524,6 +524,7 @@ that region before fitting it to the native client. If omitted, the full coded
 texture is presented for backward compatibility.
 
 ```ts
+let producerReusable = false;
 try {
   const frame = {
     handle: textureInfo.handle.ntHandle,
@@ -548,20 +549,26 @@ try {
   } else {
     session.updateSharedTexture(frame);
   }
+  producerReusable = true;
 } finally {
-  texture.release();
+  if (producerReusable) {
+    texture.release();
+  }
 }
 ```
 
 Electron only guarantees that the update region was populated, so Steam Bridge
 copies it into a retained bridge-owned texture without erasing unchanged pixels.
-On Windows 10/11, the asynchronous method signals a D3D11 fence and resolves
-only after the GPU no longer reads Electron's pooled producer texture. Keep the
-texture alive until that Promise settles, then release it in `finally`. A
-`false` result means the fixed completion queue was full and the prior native
-frame was deliberately retained. Accepted waits run in one dedicated native
-FIFO completion dispatcher, never Node's shared worker pool. Drivers without
-D3D11 fence support reject the asynchronous method before copying; the original
+On Windows 10/11, the asynchronous method queues and flushes the copy, then
+queues native presentation immediately on the same ordered D3D11 context. Its
+Promise resolves only after the copy fence proves Electron's pooled producer
+texture can be safely released. Fence waits run on a dedicated native FIFO and
+never block the JavaScript thread. If the Promise rejects, safe producer reuse
+was not established; retain that texture until the native session or process is
+torn down. A `false` result still resolves safely because no copy was submitted:
+the fixed completion queue was full and the prior native frame was deliberately
+retained. Drivers without D3D11 fence support reject the
+asynchronous method before copying; the original
 `updateSharedTexture()` method remains available for older synchronous
 consumers. Steam Bridge then uses the matching high-performance DXGI adapter,
 crops the explicit presentation region, preserves that region's aspect ratio,
@@ -571,8 +578,8 @@ pixels. Session snapshots report `sharedTextureUpdateCount`,
 `lastSharedTextureUpdateDurationMs`, and
 `maxSharedTextureUpdateDurationMs` for the synchronous submission boundary;
 `nativeHostDiagnostics.sharedTextureCopy` reports asynchronous completion mode,
-end-to-end latency, dispatcher delay, process-wide in-flight depth, timeouts,
-and saturation drops.
+end-to-end GPU latency, dispatcher delay, process-wide in-flight depth, slow and
+fatal timeouts, and saturation drops.
 
 Set `frameRate` to the active display's refresh rate and update it with
 `session.setFrameRate(...)` when the native host moves to another monitor. On

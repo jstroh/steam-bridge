@@ -42,6 +42,7 @@ use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess, WaitFor
 const FRAME_LATENCY_WAIT_POLL_MS: u32 = 0;
 const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
 const SHARED_TEXTURE_COPY_TIMEOUT_MS: u128 = 500;
+const SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS: u128 = 2_000;
 const SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 4;
 static NEXT_FRAME_LATENCY_WAIT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
@@ -101,6 +102,7 @@ fn try_reserve_shared_texture_copy_slot(
 struct SharedTextureCopyTelemetry {
     slow_count: AtomicU64,
     timeout_count: AtomicU64,
+    fatal_timeout_count: AtomicU64,
     completed_count: AtomicU64,
     last_dispatch_delay_micros: AtomicU64,
     max_dispatch_delay_micros: AtomicU64,
@@ -180,11 +182,16 @@ impl SharedTextureCopyWaitHandle {
                 recorded_slow_copy = true;
             }
             if !recorded_timeout && elapsed_ms >= SHARED_TEXTURE_COPY_TIMEOUT_MS {
-                // A timeout is diagnostic, not permission to release Electron's
-                // pooled producer texture. Keep ownership until the fence signals
-                // or Windows reports that the device was removed.
                 self.telemetry.timeout_count.fetch_add(1, Ordering::Relaxed);
                 recorded_timeout = true;
+            }
+            if elapsed_ms >= SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS {
+                self.telemetry
+                    .fatal_timeout_count
+                    .fetch_add(1, Ordering::Relaxed);
+                return Err(format!(
+                    "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
+                ));
             }
             if let Err(error) = unsafe { self.device.GetDeviceRemovedReason() } {
                 return Err(format!(
@@ -913,6 +920,18 @@ impl WindowsD3d11Renderer {
         presentation_rect: (u32, u32, u32, u32),
         asynchronous_completion: bool,
     ) -> Result<SharedTextureImportSubmission, String> {
+        if asynchronous_completion
+            && self
+                .shared_texture_copy_telemetry
+                .fatal_timeout_count
+                .load(Ordering::Acquire)
+                > 0
+        {
+            return Err(
+                "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted"
+                    .to_owned(),
+            );
+        }
         if handle == 0 {
             return Err("Electron shared texture handle is null".to_owned());
         }
@@ -1643,6 +1662,12 @@ impl WindowsD3d11Renderer {
     pub fn shared_texture_copy_timeout_count(&self) -> u64 {
         self.shared_texture_copy_telemetry
             .timeout_count
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn shared_texture_copy_fatal_timeout_count(&self) -> u64 {
+        self.shared_texture_copy_telemetry
+            .fatal_timeout_count
             .load(Ordering::Relaxed)
     }
 

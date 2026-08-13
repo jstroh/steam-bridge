@@ -1922,8 +1922,9 @@ export interface NativeOverlaySession extends CallbackHandle {
   updateSharedTexture(texture: NativeOverlaySharedTexture): void;
   /**
    * Submit a Windows Electron shared texture without blocking the JavaScript
-   * thread. Resolves only after the GPU no longer reads the producer texture;
-   * callers must retain and release Electron's texture around this Promise.
+   * thread. Native presentation is queued immediately after accepted D3D
+   * submission, while this Promise resolves only after the copy fence proves
+   * that callers may safely release Electron's pooled producer texture.
    * `false` means bounded backpressure intentionally retained the prior frame.
    */
   updateSharedTextureAsync?(texture: NativeOverlaySharedTexture): Promise<boolean>;
@@ -10757,6 +10758,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     const updateStartedAt = performance.now();
     let completion: Promise<boolean>;
+    let acceptedSubmission = false;
     try {
       completion = new Promise<boolean>((resolve, reject) => {
         const accepted = beginCopy.call(
@@ -10782,6 +10784,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         );
         if (!accepted) {
           resolve(false);
+        } else {
+          acceptedSubmission = true;
         }
       });
       // This legacy diagnostic measures time spent synchronously inside the
@@ -10793,10 +10797,16 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       recordSharedTextureUpdateDuration(updateStartedAt);
       throw error;
     }
+    if (acceptedSubmission) {
+      // Copy and draw share the same immediate context, so the draw is ordered
+      // behind the submitted copy without waiting for a JavaScript fence
+      // callback. The returned Promise still retains the Electron producer
+      // until native completion is authoritative.
+      presentFrameDrivenUpload();
+    }
     return Promise.resolve(completion)
       .then((accepted) => {
         if (accepted) {
-          presentFrameDrivenUpload();
           return true;
         }
         sharedTextureDropCount += 1;
