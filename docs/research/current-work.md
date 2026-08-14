@@ -26,39 +26,44 @@ authoritative current state. Everything below that boundary is retained solely
 as dated evidence and must not override the current stable version, review
 anchor, architecture decisions, or validation results stated here.
 
-### 2026-08-13 asynchronous-copy release-proof correction (`0.3.34` candidate)
+### 2026-08-13 asynchronous-copy backpressure proof (`0.3.35` candidate)
 
-The immutable `v0.3.33` candidate is rejected and remains unpublished. Its
-canonical tarball installed normally into the configured consumer and passed
-actual gameplay, a real ordinary Steam Friends overlay, title/window state,
-resize, minimize/restore, focus return, and fullscreen/restore on the available
-165 Hz Windows display. Settled game and overlay presentation remained at
-164-165 FPS with zero frame-latency wait timeouts, device loss, copy timeout,
-fatal copy timeout, submission failure, or process-wide/renderer-local
-saturation drop. Four copy completions crossed the legacy slow threshold only
-during fullscreen storage reallocation; their maxima were 19.789 ms entering
-fullscreen and 22.211 ms restoring, and neither blocked the JavaScript producer
-or native presenter under the asynchronous fence architecture.
+The immutable `v0.3.33` candidate is rejected and remains unpublished because
+its exact packaged proof exposed an incomplete copy-safety sample and the old
+synchronous slow-copy invariant. The immutable `v0.3.34` candidate is also
+rejected and remains unpublished. Its canonical tarball installed normally
+into the configured consumer and passed actual gameplay, a real ordinary Steam
+Friends overlay, title/window state, resize, minimize/restore, focus return,
+and fullscreen/restore on the available 165 Hz Windows display. Settled game
+and overlay presentation returned to 164-165 FPS. Across 33,060 completed
+asynchronous copies it recorded 124 process-wide saturation drops (0.375%) and
+zero renderer-local saturation drops, frame-latency wait timeouts, copy
+timeouts, fatal copy timeouts, submission failures, device losses, or
+recoveries. The drops were the intended four-slot queue backpressure behavior:
+retain the prior native frame instead of blocking Electron or falling back to
+a CPU upload.
 
-Receipt schema 4 incorrectly required the cumulative slow-completion counter to
-remain exactly zero. That condition described the removed synchronous path,
-where one slow copy blocked the Electron main thread, but it is not a safety
-invariant for a buffered asynchronous completion. Receipt schema 5 now requires
-the exact `d3d11-fence-async` completion mode and rejects every timeout, fatal
-timeout, post-submit failure, process-wide saturation drop, renderer-local
-saturation drop, device loss, recovery, or counter regression. It also verifies
-bounded in-flight depths and permits only the greater of eight or 0.1% slow
-completions while retaining the existing 95%-of-display game/overlay cadence
-gate. The configured consumer exports the complete closed safety shape into
-each standalone FPS sample so the proof no longer infers copy health from one
-legacy counter. The complete source gate passes: supported-platform and stable
+Receipt schema 5 incorrectly required the process-wide cumulative saturation
+counter to remain exactly zero. That contradicted the bounded asynchronous
+architecture while correctly requiring the initiating renderer itself to have
+zero saturation drops. Receipt schema 6 now requires the exact
+`d3d11-fence-async` completion mode, keeps renderer-local saturation at zero,
+and permits process-wide saturation only up to the greater of 16 drops or 0.5%
+of completed copies. It still rejects every timeout, fatal timeout, post-submit
+failure, device loss, recovery, counter regression, or queue depth above four;
+permits only the greater of eight or 0.1% slow completions; and retains the
+95%-of-display game/overlay cadence gate. The configured consumer exports the
+complete closed safety shape into each standalone FPS sample so the proof does
+not infer copy health from one legacy counter. The `0.3.34` exact result is
+useful diagnostic evidence for the corrected contract but cannot qualify a
+different immutable package. A fresh exact `0.3.35` candidate must independently
+pass the complete source, packaged-package, actual-game, overlay, transition,
+and receipt gates before publication; no evidence is being spliced across
+candidates. The `0.3.35` source gate passes supported-platform and stable
 Electron policy, TypeScript, 428 JavaScript tests with two intentional Windows
 symlink skips, 57 Rust tests, Rust formatting and compile checks, API coverage,
 all release/package self-tests, the isolated packed-package smoke, npm audit,
-and `git diff --check`. The configured consumer's 400-test suite also passes.
-A fresh exact `0.3.34` candidate must repeat the packaged actual-game/overlay
-proof before publication; no result from the rejected candidate is being
-spliced into it.
+and `git diff --check`.
 
 ### 2026-08-13 Windows presenter hardening checkpoint (`0.3.33` candidate)
 

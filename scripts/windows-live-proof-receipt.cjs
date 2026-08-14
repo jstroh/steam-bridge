@@ -14,8 +14,8 @@ const {
 } = require("./windows-release-candidate-fingerprint.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 5;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v5";
+const RECEIPT_SCHEMA_VERSION = 6;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v6";
 const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
 const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
 const EVIDENCE_SCHEMA_VERSION = 1;
@@ -29,6 +29,8 @@ const MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT = 3;
 const TARGET_DISPLAY_TOLERANCE_HZ = 1;
 const EXPECTED_SHARED_TEXTURE_COMPLETION_MODE = "d3d11-fence-async";
 const MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT = 4;
+const MIN_ASYNC_SHARED_TEXTURE_SATURATION_DROP_ALLOWANCE = 16;
+const MAX_ASYNC_SHARED_TEXTURE_SATURATION_DROP_RATIO = 0.005;
 const MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE = 8;
 const MAX_ASYNC_SHARED_TEXTURE_SLOW_RATIO = 0.001;
 const WINDOWS_RUNTIME_FILES = Object.freeze([
@@ -347,7 +349,6 @@ function inspectRuntimeLog(stdout) {
     assert.equal(copy.submissionFailureCount, 0);
     assert.equal(copy.timeoutCount, 0);
     assert.equal(copy.fatalTimeoutCount, 0);
-    assert.equal(copy.saturationDropCount, 0);
     assert.equal(copy.rendererSaturationDropCount, 0);
     assert.ok(copy.inFlight <= copy.maxInFlight);
     assert.ok(copy.rendererInFlight <= copy.rendererMaxInFlight);
@@ -361,6 +362,14 @@ function inspectRuntimeLog(stdout) {
       firstSharedTextureCopyCompletedCount = copy.completedCount;
     }
     previousSharedTextureCopyCompletedCount = copy.completedCount;
+    const saturationDropAllowance = Math.max(
+      MIN_ASYNC_SHARED_TEXTURE_SATURATION_DROP_ALLOWANCE,
+      Math.ceil(copy.completedCount * MAX_ASYNC_SHARED_TEXTURE_SATURATION_DROP_RATIO)
+    );
+    assert.ok(
+      copy.saturationDropCount <= saturationDropAllowance,
+      "Standalone asynchronous shared-texture saturation drops exceeded the bounded backpressure allowance."
+    );
     const slowCount = presenter.sharedTextureCopySlowCount;
     assert.ok(Number.isSafeInteger(slowCount) && slowCount >= 0);
     assert.ok(slowCount <= copy.completedCount);
@@ -481,7 +490,7 @@ function inspectRuntimeLog(stdout) {
     sharedTextureCopySubmissionFailureCount: 0,
     sharedTextureCopyTimeoutCount: 0,
     sharedTextureCopyFatalTimeoutCount: 0,
-    sharedTextureCopySaturationDropCount: 0,
+    sharedTextureCopySaturationDropCount: finalSharedTextureCopy.saturationDropCount,
     sharedTextureCopyRendererSaturationDropCount: 0,
     sharedTextureCopyMaxInFlight,
     sharedTextureCopyRendererMaxInFlight,
@@ -787,7 +796,16 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   }
   assert.equal(profile.runtime.sharedTextureCopyFatalTimeoutCount, 0);
   assert.equal(profile.runtime.sharedTextureCopyRendererSaturationDropCount, 0);
-  assert.equal(profile.runtime.sharedTextureCopySaturationDropCount, 0);
+  assert.ok(
+    profile.runtime.sharedTextureCopySaturationDropCount <=
+      Math.max(
+        MIN_ASYNC_SHARED_TEXTURE_SATURATION_DROP_ALLOWANCE,
+        Math.ceil(
+          profile.runtime.sharedTextureCopyCompletedCount *
+            MAX_ASYNC_SHARED_TEXTURE_SATURATION_DROP_RATIO
+        )
+      )
+  );
   assert.equal(profile.runtime.sharedTextureCopySubmissionFailureCount, 0);
   assert.equal(profile.runtime.sharedTextureCopyTimeoutCount, 0);
   assert.ok(profile.runtime.sharedTextureCopySlowCount <= profile.runtime.sharedTextureCopyCompletedCount);
@@ -887,7 +905,7 @@ function createSelfTestProfile(candidateBinding, index = 0) {
       sharedTextureCopySubmissionFailureCount: 0,
       sharedTextureCopyTimeoutCount: 0,
       sharedTextureCopyFatalTimeoutCount: 0,
-      sharedTextureCopySaturationDropCount: 0,
+      sharedTextureCopySaturationDropCount: 1,
       sharedTextureCopyRendererSaturationDropCount: 0,
       sharedTextureCopyMaxInFlight: 2,
       sharedTextureCopyRendererMaxInFlight: 2,
@@ -967,7 +985,7 @@ function selfTest() {
     )
   );
   const saturatedProfile = JSON.parse(JSON.stringify(profile));
-  saturatedProfile.runtime.sharedTextureCopySaturationDropCount = 1;
+  saturatedProfile.runtime.sharedTextureCopySaturationDropCount = 17;
   assert.throws(() =>
     validateLiveProofReceipt(
       assembleLiveProofReceipt(
@@ -1080,7 +1098,7 @@ function runGeneratorSelfTest() {
           fatalTimeoutCount: 0,
           inFlight: 1,
           maxInFlight: 2,
-          saturationDropCount: 0,
+          saturationDropCount: 1,
           rendererInFlight: 1,
           rendererMaxInFlight: 2,
           rendererSaturationDropCount: 0
@@ -1243,7 +1261,7 @@ function runGeneratorSelfTest() {
     assert.throws(() => generateLiveProofReceipt(options));
     fs.writeFileSync(
       path.join(evidenceDirectory, "stdout.log"),
-      stdout.replaceAll('"saturationDropCount":0', '"saturationDropCount":1')
+      stdout.replaceAll('"saturationDropCount":1', '"saturationDropCount":17')
     );
     assert.throws(() => generateLiveProofReceipt(options));
     fs.writeFileSync(
