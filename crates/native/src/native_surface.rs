@@ -5560,7 +5560,7 @@ mod linux {
     use std::ffi::{c_void, CString};
     use std::mem;
     use std::os::fd::{BorrowedFd, IntoRawFd};
-    use std::os::raw::{c_int, c_long, c_uchar, c_uint, c_ulong};
+    use std::os::raw::{c_char, c_int, c_long, c_uchar, c_uint, c_ulong};
     use std::ptr;
     use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
     use std::sync::Mutex;
@@ -5840,6 +5840,7 @@ mod linux {
         input_passthrough: bool,
         opaque: bool,
         cursor_hidden: bool,
+        application_hidden_cursor: Option<xlib::Cursor>,
         full_screen: bool,
         configure_count: u64,
         viewport_width: c_uint,
@@ -6331,23 +6332,68 @@ mod linux {
         if surface.cursor_hidden == hidden {
             return Ok(());
         }
-        let Some(xfixes) = surface.xfixes.as_ref() else {
-            return if hidden {
-                Err(Error::from_reason(
-                    "The Linux native host cannot hide the game cursor because XFixes is unavailable",
-                ))
-            } else {
-                surface.cursor_hidden = false;
-                Ok(())
-            };
-        };
         unsafe {
-            if hidden {
-                (xfixes.XFixesHideCursor)(surface.display, surface.window);
+            if surface.application_host {
+                if hidden {
+                    let cursor = if let Some(cursor) = surface.application_hidden_cursor {
+                        cursor
+                    } else {
+                        let bits: [c_char; 1] = [0];
+                        let bitmap = (surface.xlib.XCreateBitmapFromData)(
+                            surface.display,
+                            surface.window,
+                            bits.as_ptr(),
+                            1,
+                            1,
+                        );
+                        if bitmap == 0 {
+                            return Err(Error::from_reason(
+                                "Failed to create the Linux application host hidden cursor bitmap",
+                            ));
+                        }
+                        let mut foreground: xlib::XColor = mem::zeroed();
+                        let mut background: xlib::XColor = mem::zeroed();
+                        let cursor = (surface.xlib.XCreatePixmapCursor)(
+                            surface.display,
+                            bitmap,
+                            bitmap,
+                            &mut foreground,
+                            &mut background,
+                            0,
+                            0,
+                        );
+                        (surface.xlib.XFreePixmap)(surface.display, bitmap);
+                        if cursor == 0 {
+                            return Err(Error::from_reason(
+                                "Failed to create the Linux application host hidden cursor",
+                            ));
+                        }
+                        surface.application_hidden_cursor = Some(cursor);
+                        cursor
+                    };
+                    (surface.xlib.XDefineCursor)(surface.display, surface.window, cursor);
+                } else {
+                    (surface.xlib.XUndefineCursor)(surface.display, surface.window);
+                }
+                (surface.xlib.XSync)(surface.display, xlib::False);
             } else {
-                (xfixes.XFixesShowCursor)(surface.display, surface.window);
+                let Some(xfixes) = surface.xfixes.as_ref() else {
+                    return if hidden {
+                        Err(Error::from_reason(
+                            "The Linux native host cannot hide the game cursor because XFixes is unavailable",
+                        ))
+                    } else {
+                        surface.cursor_hidden = false;
+                        Ok(())
+                    };
+                };
+                if hidden {
+                    (xfixes.XFixesHideCursor)(surface.display, surface.window);
+                } else {
+                    (xfixes.XFixesShowCursor)(surface.display, surface.window);
+                }
+                (surface.xlib.XFlush)(surface.display);
             }
-            (surface.xlib.XFlush)(surface.display);
         }
         surface.cursor_hidden = hidden;
         Ok(())
@@ -7283,6 +7329,7 @@ mod linux {
             input_passthrough,
             opaque,
             cursor_hidden: false,
+            application_hidden_cursor: None,
             full_screen,
             configure_count: 0,
             viewport_width: width,
