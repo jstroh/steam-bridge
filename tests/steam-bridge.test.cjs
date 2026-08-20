@@ -25157,6 +25157,19 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent").map((call) => call.args[0]),
     [false, true, false]
   );
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  fake.callbacks.get(331)({ active: false, app_id: 480 });
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  assert.equal(session.snapshot().windowsOverlayHandoffPending, true);
+  assert.equal(session.snapshot().windowsOverlayHandoffFallbackCount, 0);
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  session.updateSharedTexture({ handle: sharedHandle, width: 1024, height: 768 });
+  assert.equal(
+    session.snapshot().windowsOverlayHandoffPending,
+    false,
+    "a missing Windows focus/capture edge must not discard game frames forever"
+  );
+  assert.equal(session.snapshot().windowsOverlayHandoffFallbackCount, 1);
   const pumpsBeforeFrame = fake.calls.filter((call) => call.method === "pumpNativeOverlayProbeWindow").length;
   queuedInputEvents.push({
     kind: "leftMouseDown",
@@ -25265,10 +25278,11 @@ test("native overlay session uploads Windows frames synchronously and coalesces 
     pumpsBeforeFrame
   );
   const uploadSnapshot = session.snapshot();
-  assert.equal(uploadSnapshot.sharedTextureUpdateCount, 3);
-  assert.equal(uploadSnapshot.sharedTextureDropCount, 3);
-  assert.equal(uploadSnapshot.postOverlaySharedTextureDropCount, 2);
+  assert.equal(uploadSnapshot.sharedTextureUpdateCount, 4);
+  assert.equal(uploadSnapshot.sharedTextureDropCount, 4);
+  assert.equal(uploadSnapshot.postOverlaySharedTextureDropCount, 3);
   assert.equal(uploadSnapshot.windowsOverlayHandoffPending, false);
+  assert.equal(uploadSnapshot.windowsOverlayHandoffFallbackCount, 1);
   assert.equal(typeof uploadSnapshot.lastSharedTextureUpdateDurationMs, "number");
   assert.equal(uploadSnapshot.lastSharedTextureUpdateDurationMs >= 0, true);
   assert.equal(

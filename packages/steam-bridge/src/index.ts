@@ -1852,6 +1852,8 @@ export interface NativeOverlaySessionSnapshot {
   postOverlaySharedTextureDropCount: number;
   /** Windows is waiting for native focus or capture release after Steam closes. */
   windowsOverlayHandoffPending?: boolean;
+  /** Missing Windows focus/capture boundaries recovered after the full quarantine. */
+  windowsOverlayHandoffFallbackCount?: number;
   /** Configured Windows post-overlay GPU-texture quarantine in milliseconds. */
   windowsSharedTextureResumeDelayMs?: number;
   /** Duration of the latest synchronous native shared-texture update attempt. */
@@ -10268,8 +10270,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const lastFrameRateChange: NativeOverlayFrameRateChange | undefined = undefined;
   let overlayActive = false;
   let windowsSharedTextureResumeAt = 0;
+  let windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;
   let windowsOverlayReturnBoundaryObserved = true;
   let windowsOverlayHandoffPending = false;
+  let windowsOverlayHandoffFallbackCount = 0;
   let overlayWasActive = false;
   let overlayActiveApplied: boolean | undefined;
   let cursorHiddenRequested = false;
@@ -10430,9 +10434,39 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
   };
 
+  const reconcileWindowsOverlayHandoff = (now = Date.now()): void => {
+    if (
+      !usesWindowsStandaloneHost
+      || overlayActive
+      || !windowsOverlayHandoffPending
+      || now < windowsOverlayHandoffFallbackAt
+    ) {
+      return;
+    }
+    // The inactive Steam callback plus the complete configured quarantine is
+    // the bounded fallback when Windows never reports a focus/capture edge.
+    // Without it, a missed Win32 edge leaves every future game frame discarded
+    // forever even though Steam has already closed its overlay.
+    windowsOverlayHandoffPending = false;
+    windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;
+    windowsSharedTextureResumeAt = 0;
+    windowsOverlayHandoffFallbackCount += 1;
+  };
+
+  const shouldHoldWindowsSharedTexture = (): boolean => {
+    const now = Date.now();
+    reconcileWindowsOverlayHandoff(now);
+    return usesWindowsStandaloneHost && (
+      overlayActive
+      || windowsOverlayHandoffPending
+      || now < windowsSharedTextureResumeAt
+    );
+  };
+
   const snapshot = (): NativeOverlaySessionSnapshot => {
     if (!closed) {
       updateNativeOverlayHostAvailability();
+      reconcileWindowsOverlayHandoff();
     }
     const bounds = closed
       ? undefined
@@ -10463,7 +10497,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       sharedTextureDropCount,
       postOverlaySharedTextureDropCount,
       ...(usesWindowsStandaloneHost
-        ? { windowsOverlayHandoffPending, windowsSharedTextureResumeDelayMs }
+        ? {
+            windowsOverlayHandoffPending,
+            windowsOverlayHandoffFallbackCount,
+            windowsSharedTextureResumeDelayMs
+          }
         : {}),
       lastSharedTextureUpdateDurationMs,
       maxSharedTextureUpdateDurationMs,
@@ -10618,14 +10656,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       height,
       "presentationRect"
     );
-    if (
-      usesWindowsStandaloneHost
-      && (
-        overlayActive
-        || windowsOverlayHandoffPending
-        || Date.now() < windowsSharedTextureResumeAt
-      )
-    ) {
+    if (shouldHoldWindowsSharedTexture()) {
       // Steam can keep its Present hook in the HWND briefly after the inactive
       // callback. Do not submit or adapter-switch on a texture produced during
       // that focus handoff; retain the last clean game frame and let the next
@@ -10736,14 +10767,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       height,
       "presentationRect"
     );
-    if (
-      usesWindowsStandaloneHost
-      && (
-        overlayActive
-        || windowsOverlayHandoffPending
-        || Date.now() < windowsSharedTextureResumeAt
-      )
-    ) {
+    if (shouldHoldWindowsSharedTexture()) {
       sharedTextureDropCount += 1;
       if (!overlayActive) {
         postOverlaySharedTextureDropCount += 1;
@@ -10911,12 +10935,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           if (event.active) {
             windowsOverlayReturnBoundaryObserved = false;
             windowsOverlayHandoffPending = true;
+            windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;
             windowsSharedTextureResumeAt = Number.POSITIVE_INFINITY;
           } else if (windowsOverlayReturnBoundaryObserved) {
             windowsOverlayHandoffPending = false;
+            windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;
             windowsSharedTextureResumeAt = Date.now() + windowsSharedTextureResumeDelayMs;
           } else {
             windowsOverlayHandoffPending = true;
+            windowsOverlayHandoffFallbackAt = Date.now() + windowsSharedTextureResumeDelayMs;
             windowsSharedTextureResumeAt = Number.POSITIVE_INFINITY;
           }
         }
@@ -13063,6 +13090,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         windowsOverlayReturnBoundaryObserved = true;
         if (!overlayActive) {
           windowsOverlayHandoffPending = false;
+          windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;
           windowsSharedTextureResumeAt = Date.now() + windowsSharedTextureResumeDelayMs;
         }
       }

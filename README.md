@@ -198,7 +198,9 @@ The important rules are simple:
   post-overlay texture quarantine retains the last clean frame for five seconds
   by default. This covers the measured interval in which Steam can keep its HWND
   Present hook after the visible overlay closes; the next normal paint then
-  replaces the retained frame.
+  replaces the retained frame. If Windows omits the expected focus/capture
+  edge, the inactive callback plus that full quarantine is the bounded fallback
+  so a missed window message cannot freeze the retained frame forever.
 
 ### Managed routes on Linux and macOS
 

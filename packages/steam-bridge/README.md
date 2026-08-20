@@ -663,6 +663,9 @@ reported as a copy failure and preserves the existing device and swap chain. It
 does not trigger a destructive adapter switch. During diagnosis,
 `windowsOverlayHandoffPending` tells whether the session is deliberately
 retaining the old frame while it waits for the native return boundary.
+`windowsOverlayHandoffFallbackCount` records the exceptional case where
+Windows omitted that boundary and the inactive callback plus the complete
+configured quarantine safely released the gate instead.
 
 ```ts
 const session = steamworks.overlay.startNativeOverlaySession({
