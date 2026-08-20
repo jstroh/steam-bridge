@@ -24,7 +24,7 @@ Requirements:
 - Electron 24 or newer when used with Electron
 - A running Steam client and a Steam app ID
 
-The repository smoke application tracks Electron `43.4.0`. Windows
+The repository smoke application tracks Electron `43.4.1`. Windows
 shared-texture hosting is tested against that runtime; applications using the
 lower-level host should feature-detect Electron's offscreen texture event.
 

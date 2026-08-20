@@ -1,6 +1,21 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-13
+Last reviewed: 2026-08-19
+
+The current npm stable is `0.3.35`. Immutable `v0.3.36` is unpublished and
+superseded: its Windows post-overlay texture handoff could wait forever when
+Steam closed without delivering the expected native focus or capture-release
+edge. Candidate `0.3.37` bounds that exceptional path with the existing full
+five-second quarantine, resumes normal shared-texture delivery only after the
+overlay is inactive, and reports
+`windowsOverlayHandoffFallbackCount` for production diagnosis. The normal
+focus/capture path, overlay-active texture suppression, D3D11 presenter, native
+surface ownership, and other platforms are unchanged. Focused tests cover both
+the ordinary boundary and missing-boundary fallback. The source gate passes
+stable Electron 43.4.1 policy, the complete JavaScript/Rust suite, native format
+and compile checks, API coverage, package smoke, dependency audit, and diff
+checks. Publication still requires the exact tag-built candidate, matching live
+Windows proof, protected GitHub publication workflow, and registry verification.
 
 Steam Input is now available as a game-development surface without removing the
 raw compatibility API. The decided architecture, closed paths, implementation,
