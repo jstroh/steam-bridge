@@ -1764,6 +1764,10 @@ export type NativeOverlayInputEventKind =
   | "rightMouseUp"
   | "middleMouseDown"
   | "middleMouseUp"
+  | "backMouseDown"
+  | "backMouseUp"
+  | "forwardMouseDown"
+  | "forwardMouseUp"
   | "mouseWheel"
   | "keyDown"
   | "keyUp"
@@ -1792,6 +1796,7 @@ export interface NativeOverlayInputEvent {
   numLock?: boolean;
   x?: number;
   y?: number;
+  deltaX?: number;
   deltaY?: number;
   commandId?: number;
   clientWidth: number;
@@ -13604,6 +13609,10 @@ function isNativeOverlayInputEventKind(value: unknown): value is NativeOverlayIn
     value === "rightMouseUp" ||
     value === "middleMouseDown" ||
     value === "middleMouseUp" ||
+    value === "backMouseDown" ||
+    value === "backMouseUp" ||
+    value === "forwardMouseDown" ||
+    value === "forwardMouseUp" ||
     value === "mouseWheel" ||
     value === "keyDown" ||
     value === "keyUp" ||

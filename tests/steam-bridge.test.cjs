@@ -26,6 +26,7 @@ function readSourceFile(...pathSegments) {
 function clearSteamBridgeCache() {
   for (const fileName of [
     "index.js",
+    "input.js",
     "native.js",
     "electron.js",
     "electron-builder.js",
@@ -4080,6 +4081,9 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.equal(packageJson.bin?.["steam-bridge-input"], "bin/steam-input.cjs");
   assert.equal(packageJson.exports?.["./server"]?.default, "./dist/server.js");
   assert.equal(packageJson.exports?.["./server"]?.types, "./dist/server.d.ts");
+  assert.equal(packageJson.exports?.["./input"]?.default, "./dist/input.js");
+  assert.equal(packageJson.exports?.["./input"]?.types, "./dist/input.d.ts");
+  assert.ok(packageJson.files.includes("templates"));
   assert.match(initClientTxnScript, /dist["', ]+,?[\s\S]*server\.js/);
   assert.match(initClientTxnScript, /createPublisherWebApiClient/);
   assert.match(rootPackageJson.scripts["native:build"], /scripts\/build-native\.cjs/);
@@ -30545,6 +30549,468 @@ test("defineSteamInput rejects ambiguous or over-limit definitions", (t) => {
     }),
     /cannot be both a set .* and a layer/
   );
+});
+
+test("universal input helper accepts only the complete versioned preload boundary", (t) => {
+  clearSteamBridgeCache();
+  const input = require(distFile("input.js"));
+  t.after(clearSteamBridgeCache);
+  const api = {
+    start() {},
+    stop() {},
+    readSnapshot() {},
+    readGamepads() {}
+  };
+  assert.equal(input.getSteamBridgeInput({ steamBridgeInput: api }), api);
+  assert.equal(input.getSteamBridgeInput({ steamBridgeInput: { ...api, readGamepads: undefined } }), null);
+  assert.equal(input.getSteamBridgeInput({}), null);
+});
+
+test("Electron Steam Input preload registration is packaged, absolute, and reversible", (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  let registration;
+  let removed;
+  const electronSession = {
+    registerPreloadScript(value) {
+      registration = value;
+      return value.id;
+    },
+    unregisterPreloadScript(id) {
+      removed = id;
+    }
+  };
+  const result = electronInput.registerElectronSteamInputPreload(electronSession);
+  assert.deepEqual(registration, {
+    type: "frame",
+    filePath: path.join(repoRoot, "packages", "steam-bridge", "templates", "electron-input-preload.cjs"),
+    id: "steam-bridge:universal-input"
+  });
+  assert.equal(path.isAbsolute(result.filePath), true);
+  assert.equal(fs.existsSync(result.filePath), true);
+  assert.equal(result.unregistered, false);
+  result.unregister();
+  result.unregister();
+  assert.equal(removed, result.id);
+  assert.equal(result.unregistered, true);
+  assert.throws(
+    () => electronInput.registerElectronSteamInputPreload(electronSession, { filePath: "relative.cjs" }),
+    /must be absolute/
+  );
+
+  const appPreload = path.join(repoRoot, "fixtures", "app-preload.cjs");
+  let legacyPreloads = [appPreload];
+  const legacySession = {
+    getPreloads: () => legacyPreloads.slice(),
+    setPreloads: (next) => { legacyPreloads = next.slice(); }
+  };
+  const legacyRegistration = electronInput.registerElectronSteamInputPreload(legacySession);
+  assert.deepEqual(legacyPreloads, [appPreload, legacyRegistration.filePath]);
+  legacyRegistration.unregister();
+  assert.deepEqual(legacyPreloads, [appPreload], "Electron 24-34 fallback preserves unrelated app preloads");
+
+  legacyPreloads = [appPreload, legacyRegistration.filePath];
+  const preexistingRegistration = electronInput.registerElectronSteamInputPreload(legacySession);
+  preexistingRegistration.unregister();
+  assert.deepEqual(legacyPreloads, [appPreload, legacyRegistration.filePath],
+    "fallback never removes a preload it did not add");
+});
+
+test("Electron Steam Input service owns polling, lifecycle, trust, and bounded completion", (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  const ipcListeners = new Map();
+  const ipcMain = {
+    on(channel, listener) { ipcListeners.set(channel, listener); },
+    off(channel, listener) {
+      if (ipcListeners.get(channel) === listener) ipcListeners.delete(channel);
+    }
+  };
+  const webListeners = new Map();
+  const completion = [];
+  const mainPortListeners = new Map([["message", new Set()], ["close", new Set()]]);
+  const mainPort = {
+    postMessage() {}, start() {}, close() {},
+    on(event, listener) { mainPortListeners.get(event).add(listener); },
+    off(event, listener) { mainPortListeners.get(event).delete(listener); }
+  };
+  const webContents = {
+    destroyed: false,
+    postMessage() {},
+    send(channel, published) { completion.push([channel, published]); },
+    isDestroyed() { return this.destroyed; },
+    getURL() { return "app://-/"; },
+    on(event, listener) { webListeners.set(event, listener); },
+    off(event, listener) {
+      if (webListeners.get(event) === listener) webListeners.delete(event);
+    }
+  };
+  let active = true;
+  let trusted = true;
+  let sequence = 0n;
+  let disposed = 0;
+  const session = {
+    update() {
+      sequence += 1n;
+      return { sequence, controllers: [], mergedController: null, primaryController: null };
+    },
+    dispose() { disposed += 1; }
+  };
+  assert.throws(
+    () => electronInput.createElectronSteamInputService(session, ipcMain, { ...webContents, send: undefined }),
+    /requires webContents/
+  );
+  const service = electronInput.createElectronSteamInputService(session, ipcMain, webContents, {
+    isActive: () => active,
+    isTrusted: () => trusted,
+    disposeSession: true,
+    createMessageChannel: () => ({ port1: { close() {} }, port2: mainPort })
+  });
+  assert.equal(service.getDiagnostics().attached, false);
+  webListeners.get("did-finish-load")();
+  assert.equal(service.getDiagnostics().attached, true);
+  const request = ipcListeners.get("steam-bridge:steam-input-request");
+  request({ sender: {} });
+  assert.equal(sequence, 0n, "another renderer cannot drive polling");
+  request({ sender: webContents });
+  assert.equal(sequence, 1n);
+  assert.equal(completion.length, 0, "published frames complete through the existing MessagePort without redundant IPC");
+  active = false;
+  request({ sender: webContents });
+  assert.equal(sequence, 1n);
+  assert.deepEqual(completion.at(-1), ["steam-bridge:steam-input-complete", false]);
+  active = true;
+  trusted = false;
+  request({ sender: webContents });
+  assert.equal(sequence, 1n);
+  const diagnostics = service.getDiagnostics();
+  assert.equal(diagnostics.requestCount, 3);
+  assert.equal(diagnostics.skippedRequestCount, 2);
+  service.close();
+  service.close();
+  assert.equal(disposed, 1);
+  assert.equal(ipcListeners.has("steam-bridge:steam-input-request"), false);
+  assert.equal(service.closed, true);
+});
+
+test("native input forwarder covers keys, pointer scaling, capture, focus, and lifecycle release", (t) => {
+  clearSteamBridgeCache();
+  const electronInput = require(distFile("electron.js"));
+  t.after(clearSteamBridgeCache);
+  const sent = [];
+  const rendererMessages = [];
+  let webFocusCount = 0;
+  const focus = [];
+  const windows = [];
+  const commands = [];
+  const webContents = {
+    focus() { webFocusCount += 1; },
+    sendInputEvent(event) { sent.push(event); },
+    send(channel, value) { rendererMessages.push({ channel, value }); },
+    isDestroyed() { return false; }
+  };
+  const base = {
+    capturedAtMs: 1,
+    message: 0,
+    wparam: 0,
+    lparam: 0,
+    shift: false,
+    control: false,
+    alt: false,
+    clientWidth: 1600,
+    clientHeight: 900
+  };
+  const input = electronInput.createElectronNativeInputForwarder(webContents, {
+    getContentSize: () => ({ width: 800, height: 600 }),
+    onFocusChanged: (value) => focus.push(value),
+    onWindowChanged: (event) => windows.push(event),
+    onMenuCommand: (command) => commands.push(command),
+    onBeforeDispatch: (event) => event.wparam === 0x7a
+  });
+  input.forward({ ...base, kind: "keyDown", wparam: 0x57 });
+  assert.deepEqual(sent.at(-1), {
+    type: "keyDown", keyCode: "W", modifiers: [], isAutoRepeat: false
+  });
+  assert.equal(webFocusCount, 1, "the first active edge focuses Electron once");
+  input.forward({ ...base, kind: "leftMouseDown", x: 400, y: 150, wparam: 1 });
+  assert.deepEqual(sent.at(-1), {
+    type: "mouseDown", button: "left", x: 133, y: 100, clickCount: 1, modifiers: []
+  }, "native aspect-fit coordinates map to renderer content");
+  input.forward({ ...base, kind: "mouseMove", x: 1500, y: 750, wparam: 1 });
+  assert.equal(sent.at(-1).type, "mouseMove", "captured drags continue outside content bounds");
+  assert.equal(webFocusCount, 1, "steady pointer traffic does not repeat expensive focus work");
+  input.forward({ ...base, kind: "captureLost" });
+  assert.equal(sent.at(-1).type, "mouseUp");
+  input.forward({ ...base, kind: "keyDown", wparam: 0x7a });
+  assert.equal(sent.filter((event) => event.keyCode === "F11").length, 0, "app shortcuts may intercept before dispatch");
+  input.forward({ ...base, kind: "blur" });
+  assert.equal(sent.at(-1).type, "keyUp");
+  assert.equal(sent.at(-1).keyCode, "W");
+  assert.equal(focus.at(-1), false);
+  assert.deepEqual(input.getDiagnostics().modifiers, []);
+  input.forward({ ...base, kind: "focus" });
+  input.forward({ ...base, kind: "mouseWheel", x: 800, y: 450, deltaX: 120, deltaY: 0 });
+  assert.equal(sent.at(-1).deltaX, 120, "horizontal native wheel motion reaches Chromium");
+  input.forward({ ...base, kind: "backMouseDown", x: 800, y: 450 });
+  assert.deepEqual(rendererMessages.at(-1), {
+    channel: "steam-bridge:native-input",
+    value: { version: 1, type: "pointer-down", button: 3, x: 400, y: 300, modifiers: [] }
+  });
+  input.forward({ ...base, kind: "backMouseUp", x: -20, y: -20 });
+  assert.deepEqual(rendererMessages.at(-1), {
+    channel: "steam-bridge:native-input",
+    value: { version: 1, type: "pointer-up", button: 3, x: 0, y: 0, modifiers: [] }
+  }, "captured auxiliary-button releases survive leaving the content rectangle");
+  input.forward({ ...base, kind: "menuCommand", commandId: 9 });
+  assert.deepEqual(commands, [9]);
+  input.forward({ ...base, kind: "windowChanged", minimized: true });
+  assert.equal(windows.length, 1);
+  input.setActive(false);
+  assert.equal(input.getDiagnostics().heldKeyCount, 0);
+  assert.equal(input.getDiagnostics().heldMouseButtonCount, 0);
+});
+
+test("legacy layout generator owns device-correct controller source profiles", (t) => {
+  clearSteamBridgeCache();
+  const layouts = require(distFile("steam-input-layouts.js"));
+  t.after(clearSteamBridgeCache);
+  const spec = {
+    version: 1,
+    title: "Test Game",
+    description: "Test bindings",
+    bindings: {
+      primary: "key_press SPACE", cancel: "key_press ESCAPE", secondary: "key_press E",
+      inventory: "key_press I", movementUp: "key_press W", movementDown: "key_press S",
+      movementLeft: "key_press A", movementRight: "key_press D", movementClick: "key_press LEFT_SHIFT",
+      dpadUp: "key_press 1", dpadDown: "key_press 3", dpadLeft: "key_press 4", dpadRight: "key_press 2",
+      leftTrigger: "mouse_button RIGHT", rightTrigger: "mouse_button LEFT", menu: "key_press TAB",
+      view: "key_press ESCAPE", leftBumper: "key_press Q", rightBumper: "key_press E",
+      pointerClick: "mouse_button LEFT"
+    }
+  };
+  const first = layouts.generateSteamLegacyLayoutAssets(spec);
+  const second = layouts.generateSteamLegacyLayoutAssets(structuredClone(spec));
+  assert.deepEqual(first, second, "generation is deterministic");
+  assert.equal(Object.keys(first.files).length, 17);
+  assert.match(first.files["controller_neptune.vdf"], /"22" "right_trackpad active"/);
+  assert.match(first.files["controller_ps5.vdf"], /"22" "center_trackpad active"/);
+  assert.doesNotMatch(first.files["controller_generic.vdf"], /trackpad active/);
+  assert.match(first.files["controller_switch_joycon_left.vdf"], /"23" "joystick active"/);
+  assert.doesNotMatch(first.files["controller_switch_joycon_left.vdf"], /(?:dpad|trigger|right_joystick|trackpad) active/);
+  assert.throws(() => layouts.generateSteamLegacyLayoutAssets({ ...spec, bindings: {
+    ...spec.bindings, primary: 'key_press SPACE" } malicious'
+  } }), /binding primary is invalid/);
+});
+
+test("packaged universal input preload captures and bounds complete device state", () => {
+  const source = readSourceFile("packages", "steam-bridge", "templates", "electron-input-preload.cjs");
+  const windowListeners = new Map();
+  const documentListeners = new Map();
+  const ipcListeners = new Map();
+  const sent = [];
+  const rafCallbacks = new Map();
+  let nextRaf = 1;
+  let clock = 100;
+  let focused = true;
+  let visibilityState = "visible";
+  let exposed;
+  let gamepads = [];
+  let browserGamepadReadCount = 0;
+  const addListener = (map) => (type, listener) => {
+    const list = map.get(type) ?? [];
+    list.push(listener);
+    map.set(type, list);
+  };
+  const dispatch = (map, type, event = {}) => {
+    for (const listener of map.get(type) ?? []) listener(event);
+  };
+  const document = {
+    get visibilityState() { return visibilityState; },
+    hasFocus: () => focused,
+    addEventListener: addListener(documentListeners)
+  };
+  const window = { addEventListener: addListener(windowListeners) };
+  const ipcRenderer = {
+    on(channel, listener) { ipcListeners.set(channel, listener); },
+    send(channel) { sent.push(channel); }
+  };
+  const contextBridge = {
+    exposeInMainWorld(name, api) {
+      assert.equal(name, "steamBridgeInput");
+      exposed = api;
+    }
+  };
+  vm.runInNewContext(source, {
+    require(identifier) {
+      assert.equal(identifier, "electron");
+      return { contextBridge, ipcRenderer };
+    },
+    process: { isMainFrame: true },
+    performance: { now: () => clock },
+    document,
+    window,
+    navigator: { getGamepads: () => {
+      browserGamepadReadCount += 1;
+      return gamepads;
+    } },
+    requestAnimationFrame(callback) {
+      const id = nextRaf++;
+      rafCallbacks.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) { rafCallbacks.delete(id); },
+    Map,
+    Set,
+    Object,
+    Array,
+    Number,
+    String,
+    Boolean,
+    Math,
+    JSON,
+    RegExp
+  });
+  assert.ok(exposed);
+  dispatch(windowListeners, "keydown", {
+    code: "KeyI", key: "i", location: 0, repeat: false, isComposing: false,
+    altKey: false, ctrlKey: false, metaKey: false, shiftKey: false
+  });
+  assert.deepEqual([...windowListeners.keys()].sort(), ["gamepadconnected", "gamepaddisconnected"],
+    "only event-driven controller hot-plug discovery is installed eagerly");
+  assert.equal(windowListeners.has("keydown"), false);
+  assert.equal(exposed.readGamepads().gamepads.length, 0);
+  assert.equal(windowListeners.has("pointermove"), false,
+    "controller-only reads do not install pointer/keyboard listeners");
+  assert.deepEqual(sent, [], "controller reads do not emit IPC when an app did not create a Steam action service");
+  const acknowledgements = [];
+  const port = {
+    onmessage: null,
+    start() {}, close() {},
+    postMessage(value) { acknowledgements.push(value); }
+  };
+  ipcListeners.get("steam-bridge:steam-input")({ ports: [port] });
+  exposed.readGamepads();
+  assert.deepEqual(sent, ["steam-bridge:steam-input-request"]);
+  assert.equal(browserGamepadReadCount, 1,
+    "empty controller discovery is bounded instead of enumerating once per rendered frame");
+  assert.equal(rafCallbacks.size, 0, "game-loop reads do not create a second animation-frame scheduler");
+  exposed.readGamepads();
+  assert.equal(sent.length, 1, "repeated game-loop reads retain one-request backpressure");
+  ipcListeners.get("steam-bridge:steam-input-complete")();
+  assert.equal(exposed.readSnapshot().events.length, 0, "controller-only mode does not accumulate DOM work");
+  assert.ok(windowListeners.has("pointermove"));
+  ipcListeners.get("steam-bridge:steam-input-complete")();
+  const keyboard = {
+    code: "KeyW", key: "w", location: 0, repeat: false, isComposing: false,
+    altKey: false, ctrlKey: false, metaKey: false, shiftKey: false
+  };
+  dispatch(windowListeners, "keydown", keyboard);
+  dispatch(windowListeners, "pointerdown", {
+    pointerId: 7, pointerType: "pen", isPrimary: true, clientX: 12, clientY: 13,
+    buttons: 1, button: 0, pressure: 0.5, tiltX: 2, tiltY: 3, twist: 4
+  });
+  dispatch(windowListeners, "wheel", {
+    clientX: 12, clientY: 13, deltaX: 1, deltaY: -2, deltaZ: 0, deltaMode: 0
+  });
+  gamepads = [{
+    connected: true,
+    index: 3,
+    id: "Generic Controller",
+    mapping: "standard",
+    timestamp: 22,
+    axes: [0.25, -0.75, 0, 0],
+    buttons: [{ pressed: true, touched: true, value: 1 }]
+    ,touches: [{ touchId: 4, surfaceId: 2, position: [0.25, -0.5], surfaceDimensions: [100, 50] }]
+  }];
+  dispatch(windowListeners, "gamepadconnected", { gamepad: gamepads[0] });
+  const first = exposed.readSnapshot();
+  ipcListeners.get("steam-bridge:steam-input-complete")();
+  assert.equal(first.version, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.keys)), [{ code: "KeyW", key: "w", location: 0 }]);
+  assert.equal(first.pointers[0].pointerType, "pen");
+  assert.deepEqual(JSON.parse(JSON.stringify(first.wheel)), { deltaX: 1, deltaY: -2, deltaZ: 0 });
+  assert.equal(first.gamepads[0].index, 3);
+  assert.equal(first.gamepads[0].buttons[0].pressed, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gamepads[0].controls.leftStick)), {
+    x: 0.25, y: -0.75, source: "standard"
+  });
+  assert.equal(first.gamepads[0].controls.faceSouth.pressed, true);
+  assert.equal(first.gamepads[0].controls.faceEast, null);
+  assert.equal(first.primaryGamepadIndex, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(first.gamepads[0].touches)), [{
+    touchId: 4, surfaceId: 2, position: [0.25, -0.5], surfaceDimensions: [100, 50]
+  }]);
+  ipcListeners.get("steam-bridge:native-input")({}, {
+    version: 1, type: "pointer-down", button: 4, x: 8, y: 9, modifiers: ["control"]
+  });
+  const auxiliary = exposed.readSnapshot();
+  const auxiliaryEvent = auxiliary.events.find((event) => event.button === 4);
+  assert.equal(auxiliaryEvent.type, "pointer-down");
+  assert.equal(auxiliaryEvent.pointer.buttons, 16);
+  assert.equal(auxiliaryEvent.modifiers.control, true);
+  const unchangedControllers = exposed.readGamepads();
+  assert.equal(unchangedControllers.gamepads[0].axes, first.gamepads[0].axes,
+    "unchanged axes reuse internal normalized storage before contextBridge copies the return value");
+  assert.equal(unchangedControllers.gamepads[0].buttons, first.gamepads[0].buttons,
+    "unchanged buttons avoid another internal normalized object graph before contextBridge copying");
+  gamepads[0].timestamp = 23;
+  const timestampOnlyUpdate = exposed.readGamepads();
+  assert.equal(timestampOnlyUpdate.gamepads[0].timestamp, 23);
+  assert.equal(timestampOnlyUpdate.gamepads[0].axes, first.gamepads[0].axes,
+    "timestamp-only hardware updates preserve normalized axis storage");
+  gamepads.push({
+    connected: true, index: 1, id: "Second Controller", mapping: "standard", timestamp: 1,
+    axes: [0.9, 0], buttons: [], touches: []
+  });
+  dispatch(windowListeners, "gamepadconnected", { gamepad: gamepads[1] });
+  assert.equal(exposed.readGamepads().primaryGamepadIndex, 1,
+    "meaningful activity on a newly connected pad owns primary control");
+  gamepads[1].axes[0] = 0;
+  gamepads[1].timestamp += 1;
+  gamepads[0].axes[0] = -0.9;
+  gamepads[0].timestamp += 1;
+  assert.equal(exposed.readGamepads().primaryGamepadIndex, 3,
+    "recent meaningful activity transfers primary control without app-side model logic");
+  gamepads.splice(1, 1);
+  dispatch(windowListeners, "gamepaddisconnected", { gamepad: { index: 1, id: "Second Controller", mapping: "standard" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(exposed.readSnapshot().wheel)), { deltaX: 0, deltaY: 0, deltaZ: 0 });
+
+  exposed.start();
+  const firstRaf = [...rafCallbacks.values()][0];
+  firstRaf();
+  assert.equal(sent.at(-1), "steam-bridge:steam-input-request");
+  port.onmessage({ data: {
+    type: "frame",
+    version: 1,
+    frame: { sequence: "1", controllers: [], mergedController: null, primaryController: null }
+  } });
+  assert.equal(exposed.readSnapshot().steamInput.sequence, "1");
+  assert.deepEqual(JSON.parse(JSON.stringify(acknowledgements)), [{ type: "ack", sequence: "1" }]);
+
+  ipcListeners.get("steam-bridge:steam-input")({ ports: [port] });
+  exposed.readGamepads();
+  port.onmessage({ data: { type: "frame", version: 1, frame: { sequence: "invalid" } } });
+  assert.doesNotThrow(() => exposed.readGamepads(), "a malformed trusted frame closes its port instead of wedging input");
+
+  for (let i = 0; i < 300; i += 1) {
+    clock += 1;
+    dispatch(windowListeners, "keydown", {
+      code: `Key${i}`, key: "x", location: 0, repeat: true, isComposing: false,
+      altKey: false, ctrlKey: false, metaKey: false, shiftKey: false
+    });
+  }
+  const bounded = exposed.readSnapshot();
+  assert.equal(bounded.events.length, 256);
+  assert.ok(bounded.droppedEventCount >= 44);
+  focused = false;
+  dispatch(windowListeners, "blur");
+  const blurred = exposed.readSnapshot();
+  assert.equal(blurred.active, false);
+  assert.equal(blurred.keys.length, 0);
+  assert.equal(blurred.pointers.length, 0);
+  exposed.stop();
 });
 
 test("Electron Steam Input transport is acknowledged, coalesced, and renderer-scoped", (t) => {

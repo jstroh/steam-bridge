@@ -154,6 +154,38 @@ the same time, and use Valve's returned glyphs instead of assuming Xbox labels.
 The default primary-controller threshold ignores ordinary stick drift without
 changing the analog values delivered to the game.
 
+Electron apps that want one generic device boundary can register Steam
+Bridge's packaged preload and read semantic controller state without owning
+renderer IPC, raw axis indexes, or controller-family tables:
+
+```ts
+// Electron main process, before creating the game BrowserWindow:
+import { ipcMain, session } from "electron";
+import {
+  createElectronSteamInputService,
+  registerElectronSteamInputPreload
+} from "steam-bridge/electron";
+
+registerElectronSteamInputPreload(session.defaultSession);
+createElectronSteamInputService(input, ipcMain, gameWindow.webContents);
+```
+
+```ts
+// Context-isolated renderer:
+import { getSteamBridgeInput } from "steam-bridge/input";
+
+const frame = getSteamBridgeInput()?.readGamepads();
+const primary = frame?.gamepads.find(
+  (gamepad) => gamepad.index === frame.primaryGamepadIndex
+);
+const move = primary?.controls.leftStick;
+```
+
+Use `readSnapshot()` when the app also needs normalized keyboard, mouse,
+wheel, touch, pen, text/composition, focus, and ordered input edges. Generate
+device-correct legacy Steam layouts from one app-owned semantic binding file
+with `steam-bridge-generate-legacy-layouts <spec> --out <directory>`.
+
 Omit `manifestPath` in a deployed Steam build so Steam uses the depot
 configuration. Use an absolute override only during development. Electron
 games keep this session in main and use the bounded transport from

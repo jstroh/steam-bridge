@@ -1,6 +1,6 @@
 {
   "name": "steam-bridge",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "description": "Native-backed Steamworks bridge for Electron and Node.",
   "license": "MIT",
   "homepage": "https://github.com/jstroh/steam-bridge#readme",
@@ -28,6 +28,7 @@
   "types": "dist/index.d.ts",
   "bin": {
     "steam-bridge-init-client-txn": "bin/init-client-txn.cjs",
+    "steam-bridge-generate-legacy-layouts": "bin/generate-steam-legacy-layouts.cjs",
     "steam-bridge-input": "bin/steam-input.cjs",
     "steam-bridge-prepare-macos-app": "bin/prepare-macos-app.cjs",
     "steam-bridge-validate-checkout-target": "bin/validate-checkout-target.cjs",
@@ -41,6 +42,14 @@
     "./electron": {
       "types": "./dist/electron.d.ts",
       "default": "./dist/electron.js"
+    },
+    "./input": {
+      "types": "./dist/input.d.ts",
+      "default": "./dist/input.js"
+    },
+    "./steam-input-layouts": {
+      "types": "./dist/steam-input-layouts.d.ts",
+      "default": "./dist/steam-input-layouts.js"
     },
     "./electron-builder": {
       "types": "./dist/electron-builder.d.ts",

@@ -132,6 +132,46 @@ bounded `steam-bridge/electron` MessagePort transport. Do not initialize
 Steamworks in a renderer. See the [full guide](https://github.com/jstroh/steam-bridge/blob/main/docs/steam-input.md)
 and [runnable example](https://github.com/jstroh/steam-bridge/tree/main/examples/steam-input).
 
+For the smallest complete app boundary, use
+`registerElectronSteamInputPreload(...)` plus
+`createElectronSteamInputService(...)`. The secure preload exposes
+`window.steamBridgeInput.readGamepads()` for the allocation-minimal per-frame
+controller path and `readSnapshot()` for normalized keyboard, pointer,
+touch/pen, wheel, text/composition, focus, all gamepad axes/buttons, and Steam
+action state:
+
+```ts
+import { getSteamBridgeInput } from "steam-bridge/input";
+
+const input = getSteamBridgeInput();
+const frame = input?.readGamepads();
+const primary = frame?.gamepads.find(
+  (gamepad) => gamepad.index === frame.primaryGamepadIndex
+);
+const move = primary?.controls.leftStick;
+if (move) player.move(move.x, move.y);
+```
+
+Gamepad snapshots include semantic `controls.leftStick`, position-named
+buttons, touch surfaces, and Bridge-selected `primaryGamepadIndex`, so apps
+never carry raw-axis or controller-model tables. The service stays dormant
+until used, coalesces pointer motion, permits only one pending Steam poll,
+reuses unchanged controller arrays internally before Electron copies the
+return value across `contextBridge`, uses fixed-size edge storage, and does not
+add a second animation-frame scheduler to game-loop reads. Controller-free
+discovery is bounded to once per second and becomes per-frame only after a pad
+connects. If the app did not create a typed Steam action service, reads issue
+no IPC. Native standalone-host applications can use
+`createElectronNativeInputForwarder(...)`
+for key/modifier mapping, aspect-fit pointer forwarding, and deterministic
+release on every focus/capture lifecycle edge.
+
+Generate device-correct bundled legacy layouts from one app-level JSON binding
+spec with `steam-bridge-generate-legacy-layouts <spec> --out <directory>`.
+Steam Bridge owns the Xbox, PlayStation, Switch/Joy-Con, Steam Controller,
+Steam Deck, generic, and Remote Play source profiles; `--check` makes generated
+assets a deterministic release gate.
+
 ## Platform Targets
 
 | Platform | Target |

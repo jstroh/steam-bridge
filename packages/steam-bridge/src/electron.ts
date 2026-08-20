@@ -1,5 +1,6 @@
 import { ensureKWinWaylandOverlayHostSync } from "./kwin";
-import type { SteamInputDefinition, SteamInputFrame, SteamInputSession } from "./index";
+import type { NativeOverlayInputEvent, SteamInputDefinition, SteamInputFrame, SteamInputSession } from "./index";
+import { isAbsolute, resolve } from "node:path";
 export {
   getKWinWaylandOverlayHostSyncStatus,
   onKWinWaylandOverlaySourceInteractiveResize
@@ -79,6 +80,127 @@ export interface ElectronSteamInputWebContents {
   off?(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
+export interface ElectronSteamInputPreloadSession {
+  registerPreloadScript?(script: { type: "frame"; filePath: string; id?: string }): string;
+  unregisterPreloadScript?(id: string): void;
+  /** Electron 24-34 compatibility; deprecated by Electron 35. */
+  getPreloads?(): string[];
+  /** Electron 24-34 compatibility; deprecated by Electron 35. */
+  setPreloads?(preloads: string[]): void;
+}
+
+export interface ElectronSteamInputPreloadRegistration {
+  readonly id: string;
+  readonly filePath: string;
+  unregister(): void;
+  readonly unregistered: boolean;
+}
+
+export interface ElectronSteamInputPreloadOptions {
+  /** Stable registration ID. Defaults to `steam-bridge:universal-input`. */
+  id?: string;
+  /** Test/embedding override. Normal applications use the packaged standalone preload. */
+  filePath?: string;
+}
+
+export interface ElectronSteamInputIpcMain {
+  on(channel: string, listener: (event: ElectronSteamInputRequestEvent) => void): unknown;
+  off?(channel: string, listener: (event: ElectronSteamInputRequestEvent) => void): unknown;
+  removeListener?(channel: string, listener: (event: ElectronSteamInputRequestEvent) => void): unknown;
+}
+
+export interface ElectronSteamInputRequestEvent {
+  sender: ElectronSteamInputServiceWebContents;
+}
+
+export interface ElectronSteamInputServiceWebContents extends ElectronSteamInputWebContents {
+  send(channel: string, ...args: unknown[]): void;
+  getURL?(): string;
+}
+
+export interface ElectronSteamInputServiceOptions extends ElectronSteamInputTransportOptions {
+  /** Renderer-to-main poll request channel used by Steam Bridge's packaged preload. */
+  requestChannel?: string;
+  /** Main-to-renderer completion channel used to release a failed/skipped request. */
+  completionChannel?: string;
+  /** Refuse requests when the app's visible native surface is inactive. */
+  isActive?: () => boolean;
+  /** Additional renderer identity/origin policy. Sender identity is always required. */
+  isTrusted?: (webContents: ElectronSteamInputServiceWebContents) => boolean;
+  /** Dispose the supplied Steam Input session when the service closes. */
+  disposeSession?: boolean;
+}
+
+export interface ElectronSteamInputServiceDiagnostics {
+  closed: boolean;
+  attached: boolean;
+  requestInProgress: boolean;
+  requestCount: number;
+  skippedRequestCount: number;
+  failedRequestCount: number;
+  transport: ElectronSteamInputTransportDiagnostics | null;
+}
+
+export interface ElectronSteamInputService<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
+  /** Attach/re-attach transport after the renderer's main-frame preload has loaded. */
+  attach(): void;
+  /** Poll once without renderer IPC, for applications that own their own frame scheduler. */
+  update(): SteamInputFrame<TDefinition> | null;
+  getDiagnostics(): ElectronSteamInputServiceDiagnostics;
+  close(): void;
+  readonly closed: boolean;
+}
+
+export type ElectronNativeInputModifier =
+  | "shift"
+  | "control"
+  | "alt"
+  | "meta"
+  | "capslock"
+  | "numlock"
+  | "iskeypad";
+
+export interface ElectronNativeInputWebContents {
+  focus(): void;
+  sendInputEvent(event: Record<string, unknown>): void;
+  /** Used only for browser-unsupported native edges such as mouse buttons 4/5. */
+  send?(channel: string, ...args: unknown[]): void;
+  isDestroyed?(): boolean;
+}
+
+export interface ElectronNativeInputForwarderOptions {
+  /** Current renderer content size in DIPs. */
+  getContentSize(): { width: number; height: number } | readonly [number, number];
+  /** Called before an ordinary input edge is dispatched. Return true when handled. */
+  onBeforeDispatch?: (
+    event: NativeOverlayInputEvent,
+    modifiers: readonly ElectronNativeInputModifier[]
+  ) => boolean;
+  onFocusChanged?: (focused: boolean) => void;
+  onWindowChanged?: (event: NativeOverlayInputEvent) => void;
+  onClose?: () => void;
+  onMenuCommand?: (commandId: number | undefined) => void;
+  onOverlayShortcut?: (event: NativeOverlayInputEvent) => void;
+  onPointerMove?: (event: NativeOverlayInputEvent) => void;
+}
+
+export interface ElectronNativeInputForwarderDiagnostics {
+  active: boolean;
+  heldKeyCount: number;
+  heldMouseButtonCount: number;
+  modifiers: readonly ElectronNativeInputModifier[];
+  forwardedEventCount: number;
+  rejectedEventCount: number;
+}
+
+export interface ElectronNativeInputForwarder {
+  forward(event: NativeOverlayInputEvent): boolean;
+  /** External overlay/minimize lifecycle may release input without fabricating a blur event. */
+  setActive(active: boolean): void;
+  release(): void;
+  getDiagnostics(): ElectronNativeInputForwarderDiagnostics;
+}
+
 export interface ElectronSteamInputRendererPort {
   postMessage(value: unknown): void;
   start?(): void;
@@ -93,6 +215,463 @@ export interface ElectronSteamInputIpcRenderer {
 }
 
 const DEFAULT_ELECTRON_STEAM_INPUT_CHANNEL = "steam-bridge:steam-input";
+const DEFAULT_ELECTRON_STEAM_INPUT_REQUEST_CHANNEL = "steam-bridge:steam-input-request";
+const DEFAULT_ELECTRON_STEAM_INPUT_COMPLETION_CHANNEL = "steam-bridge:steam-input-complete";
+const ELECTRON_NATIVE_INPUT_CHANNEL = "steam-bridge:native-input";
+
+/**
+ * Install Steam Bridge's standalone, sandbox-compatible input preload before
+ * creating application BrowserWindows for this Electron session.
+ */
+export function registerElectronSteamInputPreload(
+  electronSession: ElectronSteamInputPreloadSession,
+  options: ElectronSteamInputPreloadOptions = {}
+): ElectronSteamInputPreloadRegistration {
+  const modern = typeof electronSession?.registerPreloadScript === "function" &&
+    typeof electronSession?.unregisterPreloadScript === "function";
+  const legacy = typeof electronSession?.getPreloads === "function" &&
+    typeof electronSession?.setPreloads === "function";
+  if (!modern && !legacy) {
+    throw new TypeError("Electron Steam Input preload registration requires an Electron Session");
+  }
+  const filePath = options.filePath ?? resolve(__dirname, "..", "templates", "electron-input-preload.cjs");
+  if (!isAbsolute(filePath)) throw new Error("Electron Steam Input preload path must be absolute");
+  const requestedId = options.id ?? "steam-bridge:universal-input";
+  const legacyPreloads = legacy && !modern ? electronSession.getPreloads!() : null;
+  const legacyAdded = legacyPreloads != null && !legacyPreloads.includes(filePath);
+  const id = modern
+    ? electronSession.registerPreloadScript!({ type: "frame", filePath, id: requestedId })
+    : requestedId;
+  if (legacyAdded) electronSession.setPreloads!([...legacyPreloads!, filePath]);
+  let isUnregistered = false;
+  return {
+    id,
+    filePath,
+    unregister(): void {
+      if (isUnregistered) return;
+      isUnregistered = true;
+      if (modern) {
+        electronSession.unregisterPreloadScript!(id);
+      } else if (legacyAdded) {
+        const current = electronSession.getPreloads!();
+        const addedIndex = current.lastIndexOf(filePath);
+        if (addedIndex >= 0) {
+          const next = current.slice();
+          next.splice(addedIndex, 1);
+          electronSession.setPreloads!(next);
+        }
+      }
+    },
+    get unregistered(): boolean {
+      return isUnregistered;
+    }
+  };
+}
+
+/**
+ * Own Steam Input polling, renderer lifecycle, bounded MessagePort delivery,
+ * and IPC identity checks for one Electron renderer.
+ */
+export function createElectronSteamInputService<TDefinition extends SteamInputDefinition>(
+  session: SteamInputSession<TDefinition>,
+  ipcMain: ElectronSteamInputIpcMain,
+  webContents: ElectronSteamInputServiceWebContents,
+  options: ElectronSteamInputServiceOptions = {}
+): ElectronSteamInputService<TDefinition> {
+  if (!session || typeof session.update !== "function") {
+    throw new TypeError("Electron Steam Input service requires a started SteamInputSession");
+  }
+  if (!ipcMain || typeof ipcMain.on !== "function") {
+    throw new TypeError("Electron Steam Input service requires ipcMain");
+  }
+  if (!webContents || typeof webContents.postMessage !== "function" || typeof webContents.send !== "function") {
+    throw new TypeError("Electron Steam Input service requires webContents");
+  }
+  const requestChannel = electronSteamInputChannelValue(
+    options.requestChannel,
+    DEFAULT_ELECTRON_STEAM_INPUT_REQUEST_CHANNEL,
+    "request"
+  );
+  const completionChannel = electronSteamInputChannelValue(
+    options.completionChannel,
+    DEFAULT_ELECTRON_STEAM_INPUT_COMPLETION_CHANNEL,
+    "completion"
+  );
+  let transport: ElectronSteamInputTransport<TDefinition> | null = null;
+  let isClosed = false;
+  let requestInProgress = false;
+  let requestCount = 0;
+  let skippedRequestCount = 0;
+  let failedRequestCount = 0;
+
+  const trusted = (): boolean => !webContents.isDestroyed?.() && (options.isTrusted?.(webContents) ?? true);
+  const active = (): boolean => options.isActive?.() ?? true;
+  const complete = (published: boolean): void => {
+    if (webContents.isDestroyed?.()) return;
+    try {
+      webContents.send(completionChannel, published);
+    } catch (error) {
+      failedRequestCount += 1;
+      emitElectronSteamInputWarning(
+        "STEAM_INPUT_SERVICE_COMPLETION_FAILED",
+        "Electron Steam Input completion notification failed",
+        error
+      );
+    }
+  };
+  const closeTransport = (): void => {
+    try {
+      transport?.close();
+    } finally {
+      transport = null;
+      requestInProgress = false;
+    }
+  };
+  const attach = (): void => {
+    if (isClosed) throw new Error("Electron Steam Input service is closed");
+    closeTransport();
+    if (!trusted()) return;
+    transport = createElectronSteamInputTransport(session, webContents, {
+      channel: options.channel,
+      createMessageChannel: options.createMessageChannel
+    });
+  };
+  const update = (): SteamInputFrame<TDefinition> | null => {
+    if (isClosed || requestInProgress || !trusted() || !active() || !transport || transport.closed) return null;
+    requestInProgress = true;
+    try {
+      return transport.update();
+    } finally {
+      requestInProgress = false;
+    }
+  };
+  const onRequest = (event: ElectronSteamInputRequestEvent): void => {
+    if (event.sender !== webContents) return;
+    requestCount += 1;
+    let published = false;
+    try {
+      published = update() != null;
+      if (!published) skippedRequestCount += 1;
+    } catch (error) {
+      failedRequestCount += 1;
+      emitElectronSteamInputWarning("STEAM_INPUT_SERVICE_UPDATE_FAILED", "Electron Steam Input poll failed", error);
+    } finally {
+      // A published MessagePort frame clears renderer backpressure directly.
+      // The fallback IPC is needed only when no frame was delivered.
+      if (!published) complete(false);
+    }
+  };
+  const onFinishedLoad = (): void => {
+    try {
+      attach();
+    } catch (error) {
+      failedRequestCount += 1;
+      emitElectronSteamInputWarning("STEAM_INPUT_SERVICE_ATTACH_FAILED", "Electron Steam Input attach failed", error);
+    }
+  };
+  const close = (): void => {
+    if (isClosed) return;
+    isClosed = true;
+    closeTransport();
+    if (ipcMain.off) ipcMain.off(requestChannel, onRequest);
+    else ipcMain.removeListener?.(requestChannel, onRequest);
+    webContents.off?.("did-finish-load", onFinishedLoad);
+    webContents.off?.("destroyed", close);
+    webContents.off?.("render-process-gone", closeTransport);
+    if (options.disposeSession) session.dispose();
+  };
+
+  ipcMain.on(requestChannel, onRequest);
+  webContents.on?.("did-finish-load", onFinishedLoad);
+  webContents.on?.("destroyed", close);
+  webContents.on?.("render-process-gone", closeTransport);
+
+  return {
+    attach,
+    update,
+    getDiagnostics(): ElectronSteamInputServiceDiagnostics {
+      return {
+        closed: isClosed,
+        attached: transport != null && !transport.closed,
+        requestInProgress,
+        requestCount,
+        skippedRequestCount,
+        failedRequestCount,
+        transport: transport?.getDiagnostics() ?? null
+      };
+    },
+    close,
+    get closed(): boolean {
+      return isClosed;
+    }
+  };
+}
+
+/**
+ * Translate the standalone native host's normalized input events into Electron
+ * renderer events, including aspect-fit coordinates and deterministic release
+ * on blur, minimize, capture loss, overlay activation, and shutdown.
+ */
+export function createElectronNativeInputForwarder(
+  webContents: ElectronNativeInputWebContents,
+  options: ElectronNativeInputForwarderOptions
+): ElectronNativeInputForwarder {
+  if (!webContents || typeof webContents.sendInputEvent !== "function" || typeof webContents.focus !== "function") {
+    throw new TypeError("Electron native input forwarding requires webContents");
+  }
+  if (!options || typeof options.getContentSize !== "function") {
+    throw new TypeError("Electron native input forwarding requires getContentSize");
+  }
+  const modifiers = new Set<ElectronNativeInputModifier>();
+  let modifierSnapshot: readonly ElectronNativeInputModifier[] = [];
+  const heldKeys = new Map<string, readonly ElectronNativeInputModifier[]>();
+  const heldMouseButtons = new Set<"left" | "right" | "middle">();
+  const heldAuxiliaryMouseButtons = new Set<3 | 4>();
+  const lastMousePosition = { x: 0, y: 0 };
+  let active = false;
+  let forwardedEventCount = 0;
+  let rejectedEventCount = 0;
+
+  const usable = (): boolean => !webContents.isDestroyed?.();
+  const send = (event: Record<string, unknown>): boolean => {
+    if (!usable()) {
+      rejectedEventCount += 1;
+      return false;
+    }
+    webContents.sendInputEvent(event);
+    forwardedEventCount += 1;
+    return true;
+  };
+  const releaseMouse = (): void => {
+    if (usable()) {
+      for (const button of heldMouseButtons) {
+        send({
+          type: "mouseUp",
+          button,
+          ...lastMousePosition,
+          clickCount: 1,
+          modifiers: modifierSnapshot
+        });
+      }
+    }
+    heldMouseButtons.clear();
+    if (usable() && webContents.send) {
+      for (const button of heldAuxiliaryMouseButtons) {
+        webContents.send(ELECTRON_NATIVE_INPUT_CHANNEL, {
+          version: 1,
+          type: "pointer-up",
+          button,
+          x: lastMousePosition.x,
+          y: lastMousePosition.y,
+          modifiers: modifierSnapshot
+        });
+        forwardedEventCount += 1;
+      }
+    }
+    heldAuxiliaryMouseButtons.clear();
+  };
+  const release = (): void => {
+    releaseMouse();
+    const keysToRelease = Array.from(heldKeys.keys());
+    heldKeys.clear();
+    modifiers.clear();
+    modifierSnapshot = [];
+    if (usable()) {
+      // Release ordinary keys before modifiers so blur/minimize/overlay
+      // transitions cannot leave a chord latched in Chromium.
+      for (const modifierKey of [false, true]) {
+        for (const keyCode of keysToRelease) {
+          if (electronNativeModifierKeyCode(keyCode) === modifierKey) {
+            send({ type: "keyUp", keyCode, modifiers: modifierSnapshot });
+          }
+        }
+      }
+    }
+  };
+  const setActive = (next: boolean): void => {
+    active = next === true;
+    if (!active) release();
+  };
+  const forward = (event: NativeOverlayInputEvent): boolean => {
+    if (!event || typeof event !== "object" || typeof event.kind !== "string") {
+      rejectedEventCount += 1;
+      return false;
+    }
+    if (event.kind === "close") {
+      release();
+      options.onClose?.();
+      return true;
+    }
+    if (event.kind === "windowChanged") {
+      if (event.minimized === true) {
+        setActive(false);
+        options.onFocusChanged?.(false);
+      }
+      options.onWindowChanged?.(event);
+      return true;
+    }
+    if (event.kind === "menuCommand") {
+      options.onMenuCommand?.(event.commandId);
+      return true;
+    }
+    if (event.kind === "overlayShortcut") {
+      options.onOverlayShortcut?.(event);
+      return true;
+    }
+    if (event.kind === "blur") {
+      setActive(false);
+      options.onFocusChanged?.(false);
+      return true;
+    }
+    if (event.kind === "captureLost") {
+      releaseMouse();
+      return true;
+    }
+    if (event.kind === "focus") {
+      if (!active) {
+        active = true;
+        options.onFocusChanged?.(true);
+        if (usable()) webContents.focus();
+      }
+      return true;
+    }
+
+    const mouse = electronNativeMouseEvent(event.kind);
+    const auxiliaryMouse = electronNativeAuxiliaryMouseEvent(event.kind);
+    const pointerEvent = event.kind === "mouseMove" || event.kind === "mouseWheel" || mouse != null || auxiliaryMouse != null;
+    const keyboardEvent = event.kind === "char" || event.kind === "keyDown" || event.kind === "keyUp";
+    if (!pointerEvent && !keyboardEvent) {
+      rejectedEventCount += 1;
+      return false;
+    }
+    if (!active && heldMouseButtons.size === 0 && (event.kind === "mouseMove" || event.kind === "mouseWheel")) {
+      rejectedEventCount += 1;
+      return false;
+    }
+    if (updateElectronNativeModifiers(modifiers, event)) modifierSnapshot = Array.from(modifiers);
+    const eventModifiers = modifierSnapshot;
+    if (!active) {
+      active = true;
+      options.onFocusChanged?.(true);
+      if (usable()) webContents.focus();
+    }
+    if (options.onBeforeDispatch?.(event, eventModifiers) === true) return true;
+
+    if (event.kind === "char") {
+      if (!Number.isSafeInteger(event.wparam) || event.wparam < 0 || event.wparam > 0x10ffff) {
+        rejectedEventCount += 1;
+        return false;
+      }
+      return send({ type: "char", keyCode: String.fromCodePoint(event.wparam), modifiers: eventModifiers });
+    }
+    if (event.kind === "keyDown" || event.kind === "keyUp") {
+      const keyCode = electronNativeKeyCode(event.wparam);
+      if (!keyCode) {
+        rejectedEventCount += 1;
+        return false;
+      }
+      const keyModifiers = electronNativeNumpadKey(keyCode)
+        ? [...new Set<ElectronNativeInputModifier>([...eventModifiers, "iskeypad"])]
+        : eventModifiers;
+      if (event.kind === "keyDown") heldKeys.set(keyCode, keyModifiers);
+      else heldKeys.delete(keyCode);
+      return send({
+        type: event.kind,
+        keyCode,
+        modifiers: keyModifiers,
+        isAutoRepeat: event.kind === "keyDown" && Boolean(event.lparam & 0x40000000)
+      });
+    }
+
+    const size = options.getContentSize();
+    const contentWidth = "width" in size ? size.width : size[0];
+    const contentHeight = "height" in size ? size.height : size[1];
+    if (
+      !Number.isFinite(contentWidth) || !Number.isFinite(contentHeight) || contentWidth <= 0 || contentHeight <= 0 ||
+      !Number.isFinite(event.clientWidth) || !Number.isFinite(event.clientHeight) ||
+      event.clientWidth <= 0 || event.clientHeight <= 0 ||
+      !Number.isFinite(event.x) || !Number.isFinite(event.y)
+    ) {
+      rejectedEventCount += 1;
+      return false;
+    }
+    const hostX = event.x as number;
+    const hostY = event.y as number;
+    const scale = Math.min(event.clientWidth / contentWidth, event.clientHeight / contentHeight);
+    const drawWidth = contentWidth * scale;
+    const drawHeight = contentHeight * scale;
+    const offsetX = (event.clientWidth - drawWidth) / 2;
+    const offsetY = (event.clientHeight - drawHeight) / 2;
+    const capturedPointer = (heldMouseButtons.size > 0 || heldAuxiliaryMouseButtons.size > 0) &&
+      (event.kind === "mouseMove" || event.kind.endsWith("MouseUp"));
+    const outside = hostX < offsetX || hostY < offsetY ||
+      hostX >= offsetX + drawWidth || hostY >= offsetY + drawHeight;
+    if (outside && !capturedPointer) {
+      rejectedEventCount += 1;
+      return false;
+    }
+    const x = Math.max(0, Math.min(contentWidth - 1, Math.round((hostX - offsetX) / scale)));
+    const y = Math.max(0, Math.min(contentHeight - 1, Math.round((hostY - offsetY) / scale)));
+    if (event.kind === "mouseMove") {
+      lastMousePosition.x = x;
+      lastMousePosition.y = y;
+      options.onPointerMove?.(event);
+      return send({ type: "mouseMove", x, y, modifiers: eventModifiers });
+    }
+    if (event.kind === "mouseWheel") {
+      if (!Number.isFinite(event.deltaX ?? 0) || !Number.isFinite(event.deltaY ?? 0)) {
+        rejectedEventCount += 1;
+        return false;
+      }
+      return send({
+        type: "mouseWheel", x, y, deltaX: event.deltaX ?? 0, deltaY: event.deltaY ?? 0, canScroll: true,
+        modifiers: eventModifiers
+      });
+    }
+    if (auxiliaryMouse) {
+      if (!webContents.send) {
+        rejectedEventCount += 1;
+        return false;
+      }
+      lastMousePosition.x = x;
+      lastMousePosition.y = y;
+      if (auxiliaryMouse.type === "pointer-down") heldAuxiliaryMouseButtons.add(auxiliaryMouse.button);
+      else heldAuxiliaryMouseButtons.delete(auxiliaryMouse.button);
+      webContents.send(ELECTRON_NATIVE_INPUT_CHANNEL, {
+        version: 1,
+        type: auxiliaryMouse.type,
+        button: auxiliaryMouse.button,
+        x,
+        y,
+        modifiers: eventModifiers
+      });
+      forwardedEventCount += 1;
+      return true;
+    }
+    if (!mouse) return false;
+    lastMousePosition.x = x;
+    lastMousePosition.y = y;
+    if (mouse.type === "mouseDown") heldMouseButtons.add(mouse.button);
+    else heldMouseButtons.delete(mouse.button);
+    return send({ ...mouse, x, y, clickCount: 1, modifiers: eventModifiers });
+  };
+
+  return {
+    forward,
+    setActive,
+    release,
+    getDiagnostics(): ElectronNativeInputForwarderDiagnostics {
+      return {
+        active,
+        heldKeyCount: heldKeys.size,
+        heldMouseButtonCount: heldMouseButtons.size + heldAuxiliaryMouseButtons.size,
+        modifiers: Array.from(modifiers),
+        forwardedEventCount,
+        rejectedEventCount
+      };
+    }
+  };
+}
 
 /**
  * Create the main-process half of Steam Bridge's bounded Steam Input transport.
@@ -375,8 +954,12 @@ export function serializeElectronSteamInputFrame<TDefinition extends SteamInputD
 }
 
 function electronSteamInputChannel(channel: string | undefined): string {
-  const value = channel ?? DEFAULT_ELECTRON_STEAM_INPUT_CHANNEL;
-  if (!value.trim()) throw new Error("Electron Steam Input channel must not be empty");
+  return electronSteamInputChannelValue(channel, DEFAULT_ELECTRON_STEAM_INPUT_CHANNEL, "transport");
+}
+
+function electronSteamInputChannelValue(channel: string | undefined, fallback: string, label: string): string {
+  const value = channel ?? fallback;
+  if (!value.trim()) throw new Error(`Electron Steam Input ${label} channel must not be empty`);
   return value;
 }
 
@@ -408,6 +991,111 @@ function isElectronSteamInputFrame(value: unknown): value is ElectronSteamInputF
 function emitElectronSteamInputWarning(code: string, message: string, error: unknown): void {
   const cause = error instanceof Error ? error : new Error(String(error));
   process.emitWarning(`${message}: ${cause.message}`, { code, detail: cause.stack });
+}
+
+const ELECTRON_NATIVE_NAMED_KEYS: Readonly<Record<number, string>> = Object.freeze({
+  0x08: "Backspace", 0x09: "Tab", 0x0c: "Clear", 0x0d: "Enter", 0x10: "Shift", 0x11: "Control", 0x12: "Alt",
+  0x13: "Pause", 0x14: "Capslock", 0x1b: "Escape", 0x20: "Space", 0x21: "PageUp", 0x22: "PageDown",
+  0x23: "End", 0x24: "Home", 0x25: "Left", 0x26: "Up", 0x27: "Right", 0x28: "Down",
+  0x2c: "PrintScreen", 0x2d: "Insert", 0x2e: "Delete", 0x5b: "Super", 0x5c: "Super", 0x5d: "Menu",
+  0x6a: "nummult", 0x6b: "numadd", 0x6c: "numdec", 0x6d: "numsub", 0x6e: "numdec",
+  0x6f: "numdiv", 0x90: "Numlock", 0x91: "Scrolllock", 0xa0: "Shift", 0xa1: "Shift",
+  0xa2: "Control", 0xa3: "Control", 0xa4: "Alt", 0xa5: "Alt",
+  0xa6: "BrowserBack", 0xa7: "BrowserForward", 0xa8: "BrowserRefresh", 0xa9: "BrowserStop",
+  0xaa: "BrowserSearch", 0xab: "BrowserFavorites", 0xac: "BrowserHome", 0xad: "VolumeMute",
+  0xae: "VolumeDown", 0xaf: "VolumeUp", 0xb0: "MediaNextTrack", 0xb1: "MediaPreviousTrack",
+  0xb2: "MediaStop", 0xb3: "MediaPlayPause", 0xb4: "MediaLaunchMail", 0xb5: "MediaSelect"
+});
+
+const ELECTRON_NATIVE_OEM_KEYS: Readonly<Record<number, string>> = Object.freeze({
+  0xba: ";", 0xbb: "=", 0xbc: ",", 0xbd: "-", 0xbe: ".", 0xbf: "/", 0xc0: "`",
+  0xdb: "[", 0xdc: "\\", 0xdd: "]", 0xde: "'", 0xe2: "\\"
+});
+
+function electronNativeKeyCode(virtualKey: number): string | null {
+  if (ELECTRON_NATIVE_NAMED_KEYS[virtualKey]) return ELECTRON_NATIVE_NAMED_KEYS[virtualKey];
+  if (ELECTRON_NATIVE_OEM_KEYS[virtualKey]) return ELECTRON_NATIVE_OEM_KEYS[virtualKey];
+  if ((virtualKey >= 0x30 && virtualKey <= 0x39) || (virtualKey >= 0x41 && virtualKey <= 0x5a)) {
+    return String.fromCharCode(virtualKey);
+  }
+  if (virtualKey >= 0x60 && virtualKey <= 0x69) return `num${virtualKey - 0x60}`;
+  if (virtualKey >= 0x70 && virtualKey <= 0x87) return `F${virtualKey - 0x6f}`;
+  return null;
+}
+
+function electronNativeNumpadKey(keyCode: string): boolean {
+  return /^num(?:[0-9]|dec|add|sub|mult|div)$/.test(keyCode);
+}
+
+function electronNativeModifierKeyCode(keyCode: string): boolean {
+  return keyCode === "Shift" || keyCode === "Control" || keyCode === "Alt" || keyCode === "Super";
+}
+
+function electronNativeMouseEvent(kind: NativeOverlayInputEvent["kind"]):
+  { type: "mouseDown" | "mouseUp"; button: "left" | "right" | "middle" } | null {
+  switch (kind) {
+    case "leftMouseDown": return { type: "mouseDown", button: "left" };
+    case "leftMouseUp": return { type: "mouseUp", button: "left" };
+    case "rightMouseDown": return { type: "mouseDown", button: "right" };
+    case "rightMouseUp": return { type: "mouseUp", button: "right" };
+    case "middleMouseDown": return { type: "mouseDown", button: "middle" };
+    case "middleMouseUp": return { type: "mouseUp", button: "middle" };
+    default: return null;
+  }
+}
+
+function electronNativeAuxiliaryMouseEvent(kind: NativeOverlayInputEvent["kind"]):
+  { type: "pointer-down" | "pointer-up"; button: 3 | 4 } | null {
+  switch (kind) {
+    case "backMouseDown": return { type: "pointer-down", button: 3 };
+    case "backMouseUp": return { type: "pointer-up", button: 3 };
+    case "forwardMouseDown": return { type: "pointer-down", button: 4 };
+    case "forwardMouseUp": return { type: "pointer-up", button: 4 };
+    default: return null;
+  }
+}
+
+function updateElectronNativeModifiers(
+  modifiers: Set<ElectronNativeInputModifier>,
+  event: NativeOverlayInputEvent
+): boolean {
+  let changed = false;
+  const update = (name: ElectronNativeInputModifier, captured: boolean): void => {
+    if (captured) {
+      if (!modifiers.has(name)) {
+        modifiers.add(name);
+        changed = true;
+      }
+    } else if (modifiers.delete(name)) {
+      changed = true;
+    }
+  };
+  if (event.kind === "keyDown" || event.kind === "keyUp") {
+    for (const [name, captured] of [
+      ["shift", event.shift], ["control", event.control], ["alt", event.alt]
+    ] as const) {
+      update(name, captured);
+    }
+  }
+  for (const [name, captured] of [["capslock", event.capsLock], ["numlock", event.numLock]] as const) {
+    if (captured !== undefined) update(name, captured);
+  }
+  const modifier: ElectronNativeInputModifier | undefined = [0x10, 0xa0, 0xa1].includes(event.wparam)
+    ? "shift"
+    : [0x11, 0xa2, 0xa3].includes(event.wparam)
+      ? "control"
+      : [0x12, 0xa4, 0xa5].includes(event.wparam)
+        ? "alt"
+        : [0x5b, 0x5c].includes(event.wparam)
+          ? "meta"
+          : undefined;
+  if (modifier && event.kind === "keyDown") update(modifier, true);
+  else if (modifier && event.kind === "keyUp") update(modifier, false);
+  if (event.kind.includes("Mouse") || event.kind === "mouseMove" || event.kind === "mouseWheel") {
+    update("shift", Boolean(event.wparam & 0x0004));
+    update("control", Boolean(event.wparam & 0x0008));
+  }
+  return changed;
 }
 
 export interface ElectronOverlayOptions {

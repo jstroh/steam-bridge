@@ -330,6 +330,96 @@ Subframe and same-document navigations retain the live port because they do not
 replace the renderer document; a new main-frame document, renderer failure, or
 `webContents` destruction closes it.
 
+### Universal Electron input service (recommended)
+
+Applications that do not need to own renderer IPC should register Steam
+Bridge's standalone sandbox-compatible preload once, then create one service
+per game renderer. The service owns polling, trust checks, document reattach,
+bounded MessagePort delivery, and shutdown:
+
+```ts
+import { ipcMain, session } from "electron";
+import {
+  createElectronSteamInputService,
+  registerElectronSteamInputPreload
+} from "steam-bridge/electron";
+
+const preload = registerElectronSteamInputPreload(session.defaultSession);
+const inputService = createElectronSteamInputService(
+  steamInput,
+  ipcMain,
+  gameWindow.webContents,
+  { isActive: () => gameWindow.isFocused() }
+);
+```
+
+Electron 35+ uses `Session.registerPreloadScript`; Steam Bridge transparently
+uses the older session preload list on supported Electron 24-34 releases and
+restores that list without removing application-owned preloads.
+
+The preload exposes only `window.steamBridgeInput`, never `ipcRenderer`:
+
+```ts
+import { getSteamBridgeInput } from "steam-bridge/input";
+
+const input = getSteamBridgeInput();
+const controllers = input?.readGamepads(); // frame-critical, controller-only
+const everything = input?.readSnapshot();  // keys/pointer/wheel/text/events too
+```
+
+`readGamepads()` is the low-allocation game-loop path. It captures every
+connected browser gamepad's complete axes/buttons/touch surfaces, semantic
+`controls` (including `leftStick` and position-named buttons), Bridge-selected
+`primaryGamepadIndex`, and the newest Steam action
+frame, but does not accumulate or copy DOM input events. `readSnapshot()` opts
+into complete keyboard, pointer, touch/pen, wheel, text/composition,
+focus/visibility, connection, gamepad, and Steam action state. Pointer motion is
+coalesced, ordered edge storage is a fixed 256-entry ring, only one Steam frame
+request may be pending, and the preload does no polling or event accumulation
+until a consumer reads it. A read made by an application's own game loop
+requests the next Steam frame directly and does not create a second animation-
+frame scheduler. Unchanged normalized controller arrays are reused internally;
+Electron's `contextBridge` still copies and freezes each returned graph. Call
+`start()` only when an application has no frame/input scheduler and explicitly
+wants the preload's autonomous once-per-animation-frame polling. Without a
+Steam action service, controller reads issue no IPC at all. Old clients
+therefore pay only two event-driven hot-plug listeners while dormant. Empty-pad
+enumeration is capped at once per second; after connection, the consumer gets
+one sample per requested game frame. Old shells remain compatible through
+ordinary DOM/Gamepad APIs.
+
+Standalone native hosts can also delegate raw host-to-renderer translation to
+`createElectronNativeInputForwarder(...)`. It owns virtual-key translation,
+modifiers, numpad identity, aspect-fit pointer coordinates, capture continuity,
+and deterministic key/button release across blur, minimize, overlay, and
+shutdown. Application menu commands and fullscreen/overlay shortcuts remain
+explicit callbacks because they are application policy, not device input.
+
+The semantic stick source is `standard` when Chromium supplies the W3C standard
+mapping and `heuristic` for raw non-standard ordering. Applications consume
+the semantic field either way; they do not carry controller model tables or
+raw-axis indexes. Steam-hosted builds should also ship Bridge-generated legacy
+layouts, which normalize Steam-recognized devices before Chromium sees them.
+
+### Device-correct legacy layout generation
+
+Keep only game meaning in the application repository and let Steam Bridge own
+controller families, VDF groups, source names, and filenames:
+
+```sh
+steam-bridge-generate-legacy-layouts resources/steam-input-layout.json \
+  --out resources/steam-input
+steam-bridge-generate-legacy-layouts resources/steam-input-layout.json \
+  --out resources/steam-input --check
+```
+
+The versioned JSON spec says that primary means Space, movement means WASD,
+and so on. The generator emits deterministic layouts for generic controllers,
+Xbox, PlayStation, Switch/Joy-Con, Steam Controller, Steam Deck, and Remote
+Play touch. A single Joy-Con therefore never references a nonexistent d-pad,
+trigger, second stick, or trackpad; Deck and PlayStation layouts use their real
+trackpad sources. `--check` is intended as a package/release gate.
+
 Main process:
 
 ```ts

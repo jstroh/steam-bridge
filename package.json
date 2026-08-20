@@ -1,7 +1,7 @@
 {
   "name": "steam-bridge-monorepo",
   "private": true,
-  "version": "0.3.37",
+  "version": "0.3.38",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -41,6 +41,7 @@
     "steam-input:check": "node packages/steam-bridge/bin/steam-input.cjs --self-test",
     "steam-input:example:electron": "electron examples/steam-input/electron-main.cjs",
     "steam-input:example:node": "node examples/steam-input/diagnostic.cjs",
+    "steam-input:benchmark:electron": "electron scripts/benchmark-electron-input.cjs",
     "steam-shortcut:upsert": "node scripts/upsert-steam-shortcut.cjs",
     "steamworks-enums:generate": "node scripts/generate-steamworks-enums.cjs",
     "typecheck": "npm run typecheck -w steam-bridge",

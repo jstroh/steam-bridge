@@ -2,10 +2,44 @@
 
 Last reviewed: 2026-08-19
 
-The current npm stable is `0.3.35`. Immutable `v0.3.36` is unpublished and
-superseded: its Windows post-overlay texture handoff could wait forever when
-Steam closed without delivering the expected native focus or capture-release
-edge. Candidate `0.3.37` bounds that exceptional path with the existing full
+### 2026-08-20 universal application-input integration
+
+The active task is a complete generic application-input boundary, not a
+movement-only helper. Steam Bridge must own Electron preload registration,
+bounded Steam Input polling and transport, keyboard state and edges, pointer,
+wheel, text/composition, focus/visibility, touch/pen pointer metadata, complete
+browser gamepad axes/buttons, Steam action frames, hot-plug/disconnect release,
+multi-controller identity, stale-frame recovery, and mixed-input coexistence.
+Applications consume one small normalized snapshot API and retain only their
+game-specific binding/semantic decisions. They must not own controller model
+tables, frame sequencing, MessagePort backpressure, or renderer IPC plumbing.
+Steam's action manifest and exported recommended configurations remain the
+authoritative layer for application-specific Steam actions and glyph/rebinding
+UX; the normalized device layer does not pretend it can infer a game's action
+semantics. The configured consumer must preserve WASD and left-stick movement,
+all existing keyboard/mouse/controller inputs, old-shell/new-client and
+new-shell/old-client compatibility, focus/overlay neutralization, Remote Play,
+multiple controllers, and browser fallback. Physical-controller claims remain
+gated on real hardware; software and package tests must not be represented as
+that evidence.
+
+The current npm stable is `0.3.37`. Candidate `0.3.38` adds the generic
+application-input boundary described above, device-correct legacy layout
+generation, Windows/Linux auxiliary mouse buttons and horizontal wheel input,
+and the configured consumer integration. Windows auxiliary buttons are
+consumed by the native host instead of falling through to default browser
+navigation, and captured releases remain deliverable outside the content
+rectangle. The candidate remains unpublished until its exact cross-platform
+artifact, protected Windows actual-game, GitHub Release, and trusted npm gates
+pass. The source gate is green: supported-platform and Electron policy, 434
+JavaScript/TypeScript tests with two expected Windows symlink skips, 57 Rust
+tests, native formatting and compile checks, API coverage, packed-package
+smoke, and the real Electron benchmark all pass. The benchmark completed
+20,000 connected-controller `contextBridge` reads at 0.0391 ms average on the
+available Windows host, below the 0.20 ms guardrail. Immutable `v0.3.36` was superseded: its
+Windows post-overlay texture handoff could wait forever when Steam closed
+without delivering the expected native focus or capture-release
+edge. Stable `0.3.37` bounds that exceptional path with the existing full
 five-second quarantine, resumes normal shared-texture delivery only after the
 overlay is inactive, and reports
 `windowsOverlayHandoffFallbackCount` for production diagnosis. The normal

@@ -1640,11 +1640,12 @@ mod windows {
         WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE,
         WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
         WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM,
-        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCHITTEST, WM_NCLBUTTONDOWN,
-        WM_NCLBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
-        WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WNDCLASSW,
-        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
+        WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCHITTEST,
+        WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR,
+        WM_SETFOCUS, WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WM_TIMER, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+        WS_OVERLAPPEDWINDOW,
     };
 
     type Hglrc = isize;
@@ -1653,6 +1654,8 @@ mod windows {
     const MK_LBUTTON: u32 = 0x0001;
     const MK_RBUTTON: u32 = 0x0002;
     const MK_MBUTTON: u32 = 0x0010;
+    const MK_XBUTTON1: u32 = 0x0020;
+    const MK_XBUTTON2: u32 = 0x0040;
     const RETAINED_FRAME_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
     const STEAM_DIALOG_SCAN_INTERVAL: Duration = Duration::from_millis(100);
     const MAX_STEAM_DIALOG_WINDOWS: usize = 16;
@@ -1968,6 +1971,7 @@ mod windows {
         num_lock: bool,
         x: Option<i32>,
         y: Option<i32>,
+        delta_x: Option<i32>,
         delta_y: Option<i32>,
         command_id: Option<u32>,
         client_width: i32,
@@ -4342,17 +4346,28 @@ mod windows {
                 return 1;
             }
         }
-        if matches!(message, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN) {
+        if matches!(
+            message,
+            WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN
+        ) {
             SetCapture(hwnd);
         }
-        if matches!(message, WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP)
-            && (wparam as u32 & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON)) == 0
+        if matches!(
+            message,
+            WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP
+        ) && (wparam as u32 & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON | MK_XBUTTON1 | MK_XBUTTON2))
+            == 0
             && GetCapture() == hwnd
         {
             ReleaseCapture();
         }
         if message == WM_CANCELMODE && GetCapture() == hwnd {
             ReleaseCapture();
+        }
+        if matches!(message, WM_XBUTTONDOWN | WM_XBUTTONUP) {
+            // The application consumed buttons 4/5. Returning TRUE prevents
+            // DefWindowProc from converting them into browser navigation.
+            return 1;
         }
         if message == WM_GETMINMAXINFO && lparam != 0 {
             if let Some((width, height)) = minimum_window_track_size(hwnd) {
@@ -4611,6 +4626,7 @@ mod windows {
             num_lock: unsafe { lock_key_toggled(VK_NUM_LOCK_CODE) },
             x: None,
             y: None,
+            delta_x: None,
             delta_y: None,
             command_id: None,
             client_width: (client.right - client.left).max(1),
@@ -4635,7 +4651,11 @@ mod windows {
             WM_RBUTTONUP => "rightMouseUp",
             WM_MBUTTONDOWN => "middleMouseDown",
             WM_MBUTTONUP => "middleMouseUp",
-            WM_MOUSEWHEEL => "mouseWheel",
+            WM_XBUTTONDOWN if ((wparam as u32 >> 16) & u16::MAX as u32) == 1 => "backMouseDown",
+            WM_XBUTTONUP if ((wparam as u32 >> 16) & u16::MAX as u32) == 1 => "backMouseUp",
+            WM_XBUTTONDOWN => "forwardMouseDown",
+            WM_XBUTTONUP => "forwardMouseUp",
+            WM_MOUSEWHEEL | WM_MOUSEHWHEEL => "mouseWheel",
             WM_KEYDOWN | WM_SYSKEYDOWN => "keyDown",
             WM_KEYUP | WM_SYSKEYUP => "keyUp",
             WM_CHAR => "char",
@@ -4647,7 +4667,7 @@ mod windows {
             WM_MOVE | WM_SIZE => "windowChanged",
             _ => return,
         };
-        let (x, y) = if message == WM_MOUSEWHEEL {
+        let (x, y) = if matches!(message, WM_MOUSEWHEEL | WM_MOUSEHWHEEL) {
             let packed = lparam as u32;
             let mut point = POINT {
                 x: (packed as u16 as i16) as i32,
@@ -4667,6 +4687,8 @@ mod windows {
                 | WM_RBUTTONUP
                 | WM_MBUTTONDOWN
                 | WM_MBUTTONUP
+                | WM_XBUTTONDOWN
+                | WM_XBUTTONUP
         ) {
             let packed = lparam as u32;
             (
@@ -4699,6 +4721,8 @@ mod windows {
             num_lock: unsafe { lock_key_toggled(VK_NUM_LOCK_CODE) },
             x,
             y,
+            delta_x: (message == WM_MOUSEHWHEEL)
+                .then_some(((wparam as u32 >> 16) as u16 as i16) as i32),
             delta_y: (message == WM_MOUSEWHEEL)
                 .then_some(((wparam as u32 >> 16) as u16 as i16) as i32),
             command_id: (message == WM_COMMAND).then_some(wparam as u32 & u16::MAX as u32),
@@ -5879,6 +5903,7 @@ mod linux {
         alt: bool,
         x: Option<i32>,
         y: Option<i32>,
+        delta_x: Option<i32>,
         delta_y: Option<i32>,
         command_id: Option<u32>,
         client_width: i32,
@@ -7531,6 +7556,7 @@ mod linux {
                         motion.x,
                         motion.y,
                         None,
+                        None,
                     ));
                 }
             }
@@ -7547,13 +7573,22 @@ mod linux {
                     (3, xlib::ButtonPress) => Some("rightMouseDown"),
                     (3, xlib::ButtonRelease) => Some("rightMouseUp"),
                     (4 | 5 | 6 | 7, xlib::ButtonPress) => Some("mouseWheel"),
+                    (8, xlib::ButtonPress) => Some("backMouseDown"),
+                    (8, xlib::ButtonRelease) => Some("backMouseUp"),
+                    (9, xlib::ButtonPress) => Some("forwardMouseDown"),
+                    (9, xlib::ButtonRelease) => Some("forwardMouseUp"),
                     _ => None,
                 };
                 if let Some(kind) = kind {
+                    let delta_x = match button.button {
+                        6 => Some(-120),
+                        7 => Some(120),
+                        _ => None,
+                    };
                     let delta_y = match button.button {
                         4 => Some(120),
                         5 => Some(-120),
-                        _ => Some(0),
+                        _ => None,
                     };
                     push_linux_input_event(linux_pointer_event(
                         surface,
@@ -7562,6 +7597,7 @@ mod linux {
                         button.state,
                         button.x,
                         button.y,
+                        (kind == "mouseWheel").then_some(delta_x.unwrap_or(0)),
                         (kind == "mouseWheel").then_some(delta_y.unwrap_or(0)),
                     ));
                 }
@@ -7593,6 +7629,7 @@ mod linux {
                     alt,
                     x: None,
                     y: None,
+                    delta_x: None,
                     delta_y: None,
                     command_id: None,
                     client_width,
@@ -7615,6 +7652,7 @@ mod linux {
                             alt,
                             x: None,
                             y: None,
+                            delta_x: None,
                             delta_y: None,
                             command_id: None,
                             client_width,
@@ -7643,6 +7681,7 @@ mod linux {
                         alt: false,
                         x: None,
                         y: None,
+                        delta_x: None,
                         delta_y: None,
                         command_id: None,
                         client_width,
@@ -7681,6 +7720,7 @@ mod linux {
                         alt: false,
                         x: None,
                         y: None,
+                        delta_x: None,
                         delta_y: None,
                         command_id: None,
                         client_width,
@@ -7700,6 +7740,7 @@ mod linux {
         state: c_uint,
         x: c_int,
         y: c_int,
+        delta_x: Option<i32>,
         delta_y: Option<i32>,
     ) -> LinuxInputEvent {
         let (client_width, client_height, minimized) = linux_client_state(surface);
@@ -7714,6 +7755,7 @@ mod linux {
             alt: state & xlib::Mod1Mask != 0,
             x: Some(x),
             y: Some(y),
+            delta_x,
             delta_y,
             command_id: None,
             client_width,
@@ -7757,6 +7799,7 @@ mod linux {
             alt: false,
             x: None,
             y: None,
+            delta_x: None,
             delta_y: None,
             command_id: None,
             client_width: client_width.max(1),
