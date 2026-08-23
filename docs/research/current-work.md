@@ -1,6 +1,32 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-23
+
+### 2026-08-23 Windows 10 native-loader compatibility checkpoint
+
+Three independent production reports now say the Windows 10 game does not
+open, but those exits occur before the configured consumer can create a window
+or accept a Bugdesk report. The published `0.3.38` Windows addon provided one
+concrete loader-level cause: its PE import table directly required eight
+per-monitor-DPI exports that Microsoft added in Windows 10 version 1607. On
+Windows 10 1507/1511, the OS loader therefore rejects the complete native addon
+before JavaScript can recover. The active source resolves those exports from
+`user32.dll` at runtime and falls back to long-supported system-DPI, metric,
+window-sizing, and non-client-parameter APIs when they are absent. The optimized
+Windows addon compiles and loads on the current host, and its inspected PE import
+table no longer contains any of the eight 1607-only functions. Focused Rust and
+source regression tests pass. A packaged configured-consumer QA run using that
+rebuilt addon reached the authenticated character selector, recorded Steam
+BuildID readiness and a native-host start, then shut down cleanly. A separate
+deliberate missing-addon run proved that consumer now displays a recovery dialog
+and records bounded startup evidence. The configured consumer separately moves the
+native package import behind its diagnostics boundary and reports later native/
+Steam startup failures visibly; that consumer work does not belong in this
+repository. Actual affected-player or pre-1607 Windows 10 proof remains open;
+the available Windows 10 22H2 host cannot simulate absent system exports.
+This compatibility policy is capability-based: do not deny startup from an OS
+version string. Missing optional APIs must use tested fallbacks, while an actual
+missing required capability must produce a visible, diagnostic failure.
 
 ### 2026-08-20 universal application-input integration
 

@@ -25,6 +25,8 @@ mod resource;
 mod state;
 #[cfg(target_os = "windows")]
 mod windows_d3d11;
+#[cfg(target_os = "windows")]
+mod windows_dpi;
 
 extern "C" {
     fn SteamAPI_InitAnonymousUser() -> bool;

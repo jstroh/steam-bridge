@@ -23,6 +23,38 @@ function readSourceFile(...pathSegments) {
     .replace(/\r\n?/g, "\n");
 }
 
+test("Windows native surface resolves optional DPI APIs without blacklisting OS versions", () => {
+  const surfaceSource = readSourceFile("crates", "native", "src", "native_surface.rs");
+  const dpiSource = readSourceFile("crates", "native", "src", "windows_dpi.rs");
+  const post1607Functions = [
+    "AdjustWindowRectExForDpi",
+    "AreDpiAwarenessContextsEqual",
+    "GetDpiForSystem",
+    "GetDpiForWindow",
+    "GetSystemMetricsForDpi",
+    "GetWindowDpiAwarenessContext",
+    "SetThreadDpiAwarenessContext",
+    "SystemParametersInfoForDpi"
+  ];
+
+  assert.doesNotMatch(
+    surfaceSource,
+    /Win32::UI::HiDpi::[\s\S]*?(?:GetDpiForWindow|SetThreadDpiAwarenessContext)/u
+  );
+  assert.match(dpiSource, /GetModuleHandleW/u);
+  assert.match(dpiSource, /GetProcAddress/u);
+  for (const functionName of post1607Functions) {
+    assert.match(dpiSource, new RegExp(`b"${functionName}\\\\0"`, "u"));
+  }
+  assert.match(dpiSource, /AdjustWindowRectEx\(rect, style, has_menu, ex_style\)/u);
+  assert.match(dpiSource, /SystemParametersInfoW\(action, parameter, value, flags\)/u);
+  assert.match(dpiSource, /GetSystemMetrics\(index\)/u);
+  assert.doesNotMatch(
+    `${surfaceSource}\n${dpiSource}`,
+    /(?:GetVersionEx|RtlGetVersion|VerifyVersionInfo|IsWindows(?:10|11)|VersionHelpers|windows[_-]?version)/iu
+  );
+});
+
 function clearSteamBridgeCache() {
   for (const fileName of [
     "index.js",
@@ -979,7 +1011,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   );
 
   assert.match(source, /WS_OVERLAPPEDWINDOW \| WS_CLIPSIBLINGS \| WS_CLIPCHILDREN/);
-  assert.match(source, /AdjustWindowRectExForDpi\(&mut adjusted, style, 0, ex_style, dpi\)/);
+  assert.match(source, /adjust_window_rect_ex_for_dpi\(&mut adjusted, style, 0, ex_style, dpi\)/);
   assert.match(source, /logical_pixels_to_physical\(client_width, dpi\)/);
   assert.match(source, /centered_window_rect\(width, height, &primary_work_area\(\)\)/);
   assert.doesNotMatch(source, /create_native_host_test_menu/);
@@ -1004,7 +1036,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /SetMenu\(surface\.hwnd, attached_menu_handle\)/);
   assert.match(source, /WM_COMMAND => "menuCommand"/);
   assert.match(source, /i32::from\(!GetMenu\(hwnd\)\.is_null\(\)\)/);
-  assert.match(source, /SetThreadDpiAwarenessContext\(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2\)/);
+  assert.match(source, /set_thread_per_monitor_v2\(\)/);
   assert.match(source, /unsafe fn inherit_foreground_keyboard_layout\(\)/);
   assert.match(source, /GetWindowThreadProcessId\(foreground, ptr::null_mut\(\)\)/);
   assert.match(source, /ActivateKeyboardLayout\(foreground_layout, 0\)/);
@@ -1021,7 +1053,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /EnumDisplaySettingsW\([\s\S]*?ENUM_CURRENT_SETTINGS/);
   assert.match(source, /object\.insert\([\s\S]*?"displayDeviceName"\.to_owned\(\)/);
   assert.match(source, /object\.insert\([\s\S]*?"displayRefreshRate"\.to_owned\(\)/);
-  assert.match(source, /AreDpiAwarenessContextsEqual\(/);
+  assert.match(source, /window_is_per_monitor_v2\(surface\.hwnd\)/);
   assert.match(source, /message == WM_DPICHANGED/);
   assert.match(source, /matches!\(message, WM_DISPLAYCHANGE \| WM_SETTINGCHANGE\)/);
   assert.match(source, /reconcile_standalone_window_with_work_area\(hwnd\)/);
@@ -1030,7 +1062,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /standalone_logical_client_size\(\)/);
   assert.match(source, /set_standalone_logical_client_size\(client_size\)/);
   assert.match(source, /surface\.source_frame = None;[\s\S]*surface\.source_frame_dirty = true;/);
-  assert.match(source, /SystemParametersInfoForDpi\(/);
+  assert.match(source, /system_parameters_info_for_dpi\(/);
   assert.match(source, /MFT_OWNERDRAW/);
   assert.match(source, /MSAAMENUINFO/);
   assert.match(source, /MSAA_MENU_SIG/);

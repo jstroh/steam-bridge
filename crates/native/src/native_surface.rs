@@ -1565,6 +1565,11 @@ mod windows {
         self, FrameLatencyWaitHandle, SharedTextureCopyWaitHandle, SharedTextureImportSubmission,
         WindowsD3d11Renderer,
     };
+    use crate::windows_dpi::{
+        adjust_window_rect_ex_for_dpi, dpi_for_system, dpi_for_window,
+        restore_thread_dpi_awareness, set_thread_per_monitor_v2, system_metrics_for_dpi,
+        system_parameters_info_for_dpi, window_is_per_monitor_v2, DPI_AWARENESS_CONTEXT,
+    };
     use once_cell::sync::Lazy;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -1608,12 +1613,6 @@ mod windows {
     use windows_sys::Win32::UI::Controls::{
         DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODS_DISABLED, ODS_GRAYED, ODS_NOACCEL, ODS_SELECTED,
         ODT_MENU,
-    };
-    use windows_sys::Win32::UI::HiDpi::{
-        AdjustWindowRectExForDpi, AreDpiAwarenessContextsEqual, GetDpiForSystem, GetDpiForWindow,
-        GetSystemMetricsForDpi, GetWindowDpiAwarenessContext, SetThreadDpiAwarenessContext,
-        SystemParametersInfoForDpi, DPI_AWARENESS_CONTEXT,
-        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         ActivateKeyboardLayout, GetAsyncKeyState, GetCapture, GetKeyState, GetKeyboardLayout,
@@ -2037,7 +2036,7 @@ mod windows {
     impl ThreadDpiAwarenessGuard {
         unsafe fn per_monitor_v2() -> Self {
             Self {
-                previous: SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2),
+                previous: set_thread_per_monitor_v2(),
             }
         }
     }
@@ -2046,7 +2045,7 @@ mod windows {
         fn drop(&mut self) {
             if !self.previous.is_null() {
                 unsafe {
-                    SetThreadDpiAwarenessContext(self.previous);
+                    restore_thread_dpi_awareness(self.previous);
                 }
             }
         }
@@ -2946,11 +2945,8 @@ mod windows {
                     "hitTest": null,
                 })
             };
-            let window_dpi = GetDpiForWindow(surface.hwnd).max(96);
-            let window_per_monitor_v2 = AreDpiAwarenessContextsEqual(
-                GetWindowDpiAwarenessContext(surface.hwnd),
-                DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-            ) != 0;
+            let window_dpi = dpi_for_window(surface.hwnd).max(96);
+            let window_per_monitor_v2 = window_is_per_monitor_v2(surface.hwnd);
             let effective_menu_dpi = surface
                 .menu_minimum_dpi
                 .map(|minimum_dpi| minimum_dpi.max(window_dpi));
@@ -3062,7 +3058,7 @@ mod windows {
                 object.insert(
                     "dpiAwareness".to_owned(),
                     json!({
-                        "systemDpi": GetDpiForSystem().max(96),
+                        "systemDpi": dpi_for_system().max(96),
                         "windowPerMonitorV2": window_per_monitor_v2,
                     }),
                 );
@@ -3072,7 +3068,7 @@ mod windows {
                         "ownerDrawn": !surface.menu_draw_tokens.is_empty(),
                         "minimumScale": surface.menu_minimum_dpi.map(|dpi| f64::from(dpi) / 96.0),
                         "effectiveDpi": effective_menu_dpi,
-                        "metricHeight": effective_menu_dpi.map(|dpi| GetSystemMetricsForDpi(SM_CYMENU, dpi)),
+                        "metricHeight": effective_menu_dpi.map(|dpi| system_metrics_for_dpi(SM_CYMENU, dpi)),
                         "barRect": menu_bar_rect,
                     }),
                 );
@@ -3117,14 +3113,14 @@ mod windows {
         let style = WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
         let (x, y, width, height) =
             if let Some((client_width, client_height)) = standalone_client_size {
-                let dpi = GetDpiForSystem().max(96);
+                let dpi = dpi_for_system().max(96);
                 let mut adjusted = RECT {
                     left: 0,
                     top: 0,
                     right: logical_pixels_to_physical(client_width, dpi),
                     bottom: logical_pixels_to_physical(client_height, dpi),
                 };
-                if AdjustWindowRectExForDpi(&mut adjusted, style, 0, ex_style, dpi) == 0 {
+                if adjust_window_rect_ex_for_dpi(&mut adjusted, style, 0, ex_style, dpi) == 0 {
                     return Err(Error::from_reason(
                         "Failed to size the Windows native overlay client area",
                     ));
@@ -3154,7 +3150,7 @@ mod windows {
                 "Failed to create Windows native overlay host window",
             ));
         }
-        STANDALONE_WINDOW_DPI.store(GetDpiForWindow(hwnd).max(96), Ordering::Relaxed);
+        STANDALONE_WINDOW_DPI.store(dpi_for_window(hwnd).max(96), Ordering::Relaxed);
         let transitions_disabled = 1i32;
         DwmSetWindowAttribute(
             hwnd,
@@ -4125,7 +4121,7 @@ mod windows {
     unsafe fn with_menu_font<T>(dpi: u32, run: impl FnOnce(isize) -> T) -> T {
         let mut metrics: NONCLIENTMETRICSW = mem::zeroed();
         metrics.cbSize = mem::size_of::<NONCLIENTMETRICSW>() as u32;
-        let font = if SystemParametersInfoForDpi(
+        let font = if system_parameters_info_for_dpi(
             SPI_GETNONCLIENTMETRICS,
             metrics.cbSize,
             &mut metrics as *mut NONCLIENTMETRICSW as *mut std::ffi::c_void,
@@ -4172,7 +4168,7 @@ mod windows {
         let Some(item) = read_menu_draw_item(measure.itemData) else {
             return false;
         };
-        let dpi = GetDpiForWindow(hwnd).max(96).max(item.minimum_dpi);
+        let dpi = dpi_for_window(hwnd).max(96).max(item.minimum_dpi);
         if item.separator {
             measure.itemWidth = dpi_scaled(8, dpi) as u32;
             measure.itemHeight = dpi_scaled(7, dpi) as u32;
@@ -4201,12 +4197,12 @@ mod windows {
         let vertical_padding = dpi_scaled(3, dpi);
         let text_height = left_size.cy.max(accelerator_size.cy).max(1);
         let item_height =
-            GetSystemMetricsForDpi(SM_CYMENU, dpi).max(text_height + vertical_padding * 2);
+            system_metrics_for_dpi(SM_CYMENU, dpi).max(text_height + vertical_padding * 2);
         let item_width = if item.top_level {
             left_size.cx + horizontal_padding * 2
         } else {
-            let check_width = GetSystemMetricsForDpi(SM_CXMENUCHECK, dpi).max(dpi_scaled(12, dpi));
-            let arrow_width = GetSystemMetricsForDpi(SM_CXMENUSIZE, dpi).max(dpi_scaled(12, dpi));
+            let check_width = system_metrics_for_dpi(SM_CXMENUCHECK, dpi).max(dpi_scaled(12, dpi));
+            let arrow_width = system_metrics_for_dpi(SM_CXMENUSIZE, dpi).max(dpi_scaled(12, dpi));
             check_width
                 + left_size.cx
                 + if accelerator_text.is_empty() {
@@ -4229,7 +4225,7 @@ mod windows {
         let Some(item) = read_menu_draw_item(draw.itemData) else {
             return false;
         };
-        let dpi = GetDpiForWindow(hwnd).max(96).max(item.minimum_dpi);
+        let dpi = dpi_for_window(hwnd).max(96).max(item.minimum_dpi);
         let selected = draw.itemState & ODS_SELECTED != 0;
         let disabled = draw.itemState & (ODS_DISABLED | ODS_GRAYED) != 0;
         let background_color = if selected {
@@ -4265,12 +4261,12 @@ mod windows {
         let check_width = if item.top_level {
             0
         } else {
-            GetSystemMetricsForDpi(SM_CXMENUCHECK, dpi).max(dpi_scaled(12, dpi))
+            system_metrics_for_dpi(SM_CXMENUCHECK, dpi).max(dpi_scaled(12, dpi))
         };
         let arrow_width = if item.top_level {
             0
         } else {
-            GetSystemMetricsForDpi(SM_CXMENUSIZE, dpi).max(dpi_scaled(12, dpi))
+            system_metrics_for_dpi(SM_CXMENUSIZE, dpi).max(dpi_scaled(12, dpi))
         };
         let (left_text, accelerator_text) = split_menu_text(&item.label);
         let mut format = DT_SINGLELINE | DT_VCENTER;
@@ -4310,7 +4306,7 @@ mod windows {
             let mut arrow_rect = draw.rcItem;
             arrow_rect.left = arrow_rect.right - arrow_width - horizontal_padding;
             arrow_rect.right -= horizontal_padding;
-            let arrow_size = GetSystemMetricsForDpi(SM_CYMENUSIZE, dpi)
+            let arrow_size = system_metrics_for_dpi(SM_CYMENUSIZE, dpi)
                 .max(dpi_scaled(12, dpi))
                 .min((arrow_rect.bottom - arrow_rect.top).max(1));
             let center = arrow_rect.top + (arrow_rect.bottom - arrow_rect.top) / 2;
@@ -5179,9 +5175,9 @@ mod windows {
         client_width: i32,
         client_height: i32,
     ) -> Result<(), Error> {
-        let window_dpi = GetDpiForWindow(hwnd);
+        let window_dpi = dpi_for_window(hwnd);
         let dpi = if window_dpi == 0 {
-            GetDpiForSystem().max(96)
+            dpi_for_system().max(96)
         } else {
             window_dpi.max(96)
         };
@@ -5194,7 +5190,7 @@ mod windows {
         let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         let has_menu = i32::from(!GetMenu(hwnd).is_null());
-        if AdjustWindowRectExForDpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
+        if adjust_window_rect_ex_for_dpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
             return Err(Error::from_reason(
                 "Failed to preserve the native overlay host client size after changing its menu",
             ));
@@ -5301,7 +5297,7 @@ mod windows {
         if style & WS_OVERLAPPEDWINDOW == 0 || IsIconic(hwnd) != 0 || IsZoomed(hwnd) != 0 {
             return;
         }
-        let dpi = GetDpiForWindow(hwnd).max(96);
+        let dpi = dpi_for_window(hwnd).max(96);
         if let Some(client) = read_client_rect(hwnd) {
             set_standalone_logical_client_size(Some((
                 physical_pixels_to_logical((client.right - client.left).max(1), dpi),
@@ -5312,9 +5308,9 @@ mod windows {
 
     unsafe fn minimum_window_track_size(hwnd: HWND) -> Option<(i32, i32)> {
         let (client_width, client_height) = standalone_min_client_size()?;
-        let window_dpi = GetDpiForWindow(hwnd);
+        let window_dpi = dpi_for_window(hwnd);
         let dpi = if window_dpi == 0 {
-            GetDpiForSystem().max(96)
+            dpi_for_system().max(96)
         } else {
             window_dpi.max(96)
         };
@@ -5341,7 +5337,7 @@ mod windows {
         let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         let has_menu = i32::from(!GetMenu(hwnd).is_null());
-        if AdjustWindowRectExForDpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
+        if adjust_window_rect_ex_for_dpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
             return None;
         }
         Some((
@@ -5376,7 +5372,7 @@ mod windows {
             return;
         }
 
-        let dpi = GetDpiForWindow(hwnd).max(96);
+        let dpi = dpi_for_window(hwnd).max(96);
         let (logical_width, logical_height) =
             standalone_logical_client_size().unwrap_or_else(|| {
                 let client = read_client_rect(hwnd).unwrap_or(RECT {
@@ -5398,7 +5394,7 @@ mod windows {
         };
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         let has_menu = i32::from(!GetMenu(hwnd).is_null());
-        if AdjustWindowRectExForDpi(&mut desired, style, has_menu, ex_style, dpi) == 0 {
+        if adjust_window_rect_ex_for_dpi(&mut desired, style, has_menu, ex_style, dpi) == 0 {
             return;
         }
         let desired_width = rect_width(desired);
