@@ -1594,12 +1594,12 @@ mod windows {
     use windows_sys::Win32::Graphics::Gdi::{
         BeginPaint, ClientToScreen, CreateFontIndirectW, DeleteObject, DrawFrameControl, DrawTextW,
         EndPaint, EnumDisplaySettingsW, FillRect, GetDC, GetMonitorInfoW, GetStockObject,
-        GetSysColor, GetSysColorBrush, GetTextExtentPoint32W, MonitorFromWindow, ReleaseDC,
-        ScreenToClient, SelectObject, SetBkMode, SetTextColor, COLOR_GRAYTEXT, COLOR_HIGHLIGHT,
-        COLOR_HIGHLIGHTTEXT, COLOR_MENU, COLOR_MENUBAR, COLOR_MENUTEXT, DEFAULT_GUI_FONT, DEVMODEW,
-        DFCS_INACTIVE, DFCS_MENUARROW, DFC_MENU, DT_HIDEPREFIX, DT_LEFT, DT_RIGHT, DT_SINGLELINE,
-        DT_VCENTER, ENUM_CURRENT_SETTINGS, HDC, MONITORINFO, MONITORINFOEXW,
-        MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, TRANSPARENT,
+        GetSysColor, GetSysColorBrush, GetTextExtentPoint32W, MonitorFromRect, MonitorFromWindow,
+        ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor, COLOR_GRAYTEXT,
+        COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_MENU, COLOR_MENUBAR, COLOR_MENUTEXT,
+        DEFAULT_GUI_FONT, DEVMODEW, DFCS_INACTIVE, DFCS_MENUARROW, DFC_MENU, DT_HIDEPREFIX,
+        DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, ENUM_CURRENT_SETTINGS, HDC, MONITORINFO,
+        MONITORINFOEXW, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, TRANSPARENT,
     };
     use windows_sys::Win32::Graphics::OpenGL::{
         ChoosePixelFormat, SetPixelFormat, SwapBuffers, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
@@ -1624,27 +1624,27 @@ mod windows {
         GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu, GetMenuBarInfo,
         GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect,
         GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic, IsWindow,
-        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW, SetCursor,
-        SetForegroundWindow, SetLayeredWindowAttributes, SetMenu, SetTimer, SetWindowLongPtrW,
-        SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow, SystemParametersInfoW,
-        TranslateMessage, CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR,
-        HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO, MENUITEMINFOW, MFS_DISABLED,
-        MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
-        MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU, MINMAXINFO, MSG,
-        NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED, SM_CXMENUCHECK, SM_CXMENUSIZE,
-        SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SM_SWAPBUTTON, SPI_GETNONCLIENTMETRICS,
-        SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE,
-        SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
-        WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR,
-        WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE,
-        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS,
-        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM,
-        WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCHITTEST,
-        WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR,
-        WM_SETFOCUS, WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP,
-        WM_TIMER, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-        WS_OVERLAPPEDWINDOW,
+        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
+        SendMessageW, SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetMenu,
+        SetTimer, SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
+        SystemParametersInfoW, TranslateMessage, CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE,
+        GW_OWNER, HCURSOR, HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO, MENUITEMINFOW,
+        MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
+        MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU,
+        MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED, SM_CXMENUCHECK,
+        SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SM_SWAPBUTTON,
+        SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
+        SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE,
+        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE, WM_DPICHANGED,
+        WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
+        WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+        WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
+        WM_MOUSEWHEEL, WM_MOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
+        WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE,
+        WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_XBUTTONDOWN, WM_XBUTTONUP,
+        WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
     };
 
     type Hglrc = isize;
@@ -1910,6 +1910,8 @@ mod windows {
         Lazy::new(|| Mutex::new(WindowMessageDiagnostics::default()));
     static WINDOW_INPUT_EVENTS: Lazy<Mutex<Vec<WindowInputEvent>>> =
         Lazy::new(|| Mutex::new(Vec::new()));
+    static WINDOW_GEOMETRY_DIAGNOSTICS: Lazy<Mutex<Option<WindowGeometryDiagnostics>>> =
+        Lazy::new(|| Mutex::new(None));
     static MENU_DRAW_ITEMS: Lazy<Mutex<HashMap<usize, Box<NativeMenuOwnerDrawData>>>> =
         Lazy::new(|| Mutex::new(HashMap::new()));
 
@@ -2006,6 +2008,160 @@ mod windows {
         Options(NativeMenuOptions),
     }
 
+    #[derive(Clone, Copy, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GeometrySize {
+        width: i32,
+        height: i32,
+    }
+
+    #[derive(Clone, Copy, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GeometryResidual {
+        width: i32,
+        height: i32,
+    }
+
+    #[derive(Clone, Copy, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GeometryRect {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    impl From<RECT> for GeometryRect {
+        fn from(rect: RECT) -> Self {
+            Self {
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+            }
+        }
+    }
+
+    #[derive(Clone, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WindowGeometryDiagnostics {
+        operation: &'static str,
+        dpi: u32,
+        window_per_monitor_v2: bool,
+        style: u32,
+        ex_style: u32,
+        menu_attached: bool,
+        desired_logical_client: Option<GeometrySize>,
+        requested_physical_client: GeometrySize,
+        minimum_physical_client: Option<GeometrySize>,
+        pre_outer: GeometryRect,
+        pre_client: GeometryRect,
+        work_area: GeometryRect,
+        adjust_window_rect_estimate: GeometryRect,
+        nc_calc_size_estimate: GeometryRect,
+        candidate_outer: GeometryRect,
+        final_outer: Option<GeometryRect>,
+        final_client: Option<GeometryRect>,
+        clamp_reason: &'static str,
+        correction_count: u8,
+        final_residual: Option<GeometryResidual>,
+        draw_menu_bar_result: Option<bool>,
+        success: bool,
+        error: Option<String>,
+    }
+
+    impl WindowGeometryDiagnostics {
+        fn compact(&self) -> String {
+            let final_client = self.final_client.map_or_else(
+                || "unknown".to_owned(),
+                |rect| {
+                    format!(
+                        "{}x{}",
+                        (i64::from(rect.right) - i64::from(rect.left)).max(0),
+                        (i64::from(rect.bottom) - i64::from(rect.top)).max(0)
+                    )
+                },
+            );
+            format!(
+                "operation={} dpi={} style={:#x} exStyle={:#x} menuAttached={} requested={}x{} final={} work={}x{} clamp={} corrections={}",
+                self.operation,
+                self.dpi,
+                self.style,
+                self.ex_style,
+                self.menu_attached,
+                self.requested_physical_client.width,
+                self.requested_physical_client.height,
+                final_client,
+                (i64::from(self.work_area.right) - i64::from(self.work_area.left)).max(0),
+                (i64::from(self.work_area.bottom) - i64::from(self.work_area.top)).max(0),
+                self.clamp_reason,
+                self.correction_count
+            )
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct OuterClampPlan {
+        rect: RECT,
+        width_clamped: bool,
+        height_clamped: bool,
+        position_clamped: bool,
+    }
+
+    impl OuterClampPlan {
+        fn size_clamped(self) -> bool {
+            self.width_clamped || self.height_clamped
+        }
+
+        fn reason(self) -> &'static str {
+            match (
+                self.width_clamped,
+                self.height_clamped,
+                self.position_clamped,
+            ) {
+                (false, false, false) => "none",
+                (false, false, true) => "position",
+                (true, false, false) => "width",
+                (false, true, false) => "height",
+                (true, true, false) => "width-height",
+                (true, false, true) => "width-position",
+                (false, true, true) => "height-position",
+                (true, true, true) => "width-height-position",
+            }
+        }
+
+        fn followed_by(self, next: Self) -> Self {
+            Self {
+                rect: next.rect,
+                width_clamped: self.width_clamped || next.width_clamped,
+                height_clamped: self.height_clamped || next.height_clamped,
+                position_clamped: self.position_clamped || next.position_clamped,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct MenuRollbackResult {
+        menu_restored: bool,
+        menu_drawn: bool,
+        geometry_restored: bool,
+        candidate_detached: bool,
+        candidate_adopted_for_safety: bool,
+    }
+
+    impl MenuRollbackResult {
+        fn summary(self) -> String {
+            format!(
+                "menuRestored={} menuDrawn={} geometryRestored={} candidateDetached={} candidateAdoptedForSafety={}",
+                self.menu_restored,
+                self.menu_drawn,
+                self.geometry_restored,
+                self.candidate_detached,
+                self.candidate_adopted_for_safety
+            )
+        }
+    }
+
     #[derive(Clone)]
     struct NativeMenuDrawItem {
         label: Vec<u16>,
@@ -2082,6 +2238,9 @@ mod windows {
         set_standalone_min_client_size(min_client_size);
         set_standalone_logical_client_size(client_size);
         STANDALONE_DISPLAY_CLAMPED.store(false, Ordering::Relaxed);
+        *WINDOW_GEOMETRY_DIAGNOSTICS
+            .lock()
+            .expect("Steam overlay window geometry diagnostic lock poisoned") = None;
         let surface = match unsafe { create_surface(&title, client_size, min_client_size) } {
             Ok(surface) => surface,
             Err(error) => {
@@ -2370,12 +2529,46 @@ mod windows {
             return Ok(());
         };
         unsafe {
+            let _dpi_awareness = ThreadDpiAwarenessGuard::per_monitor_v2();
             let client = read_client_rect(surface.hwnd).ok_or_else(|| {
                 Error::from_reason("Failed to inspect the native overlay host client size")
             })?;
             let window = read_window_rect(surface.hwnd).ok_or_else(|| {
                 Error::from_reason("Failed to inspect the native overlay host window size")
             })?;
+            let client_size = positive_rect_size(client).ok_or_else(|| {
+                Error::from_reason(
+                    "Native overlay host client geometry was invalid before changing its menu",
+                )
+            })?;
+            positive_rect_size(window).ok_or_else(|| {
+                Error::from_reason(
+                    "Native overlay host outer geometry was invalid before changing its menu",
+                )
+            })?;
+            let dpi = dpi_for_window(surface.hwnd).max(96);
+            let desired_logical_client = standalone_logical_client_size().or_else(|| {
+                Some((
+                    physical_pixels_to_logical(client_size.0, dpi),
+                    physical_pixels_to_logical(client_size.1, dpi),
+                ))
+            });
+            let requested_physical_client = desired_logical_client.map_or_else(
+                || client_size,
+                |(width, height)| {
+                    (
+                        logical_pixels_to_physical(width, dpi),
+                        logical_pixels_to_physical(height, dpi),
+                    )
+                },
+            );
+            let minimum_physical_client =
+                surface.standalone_min_client_size.map(|(width, height)| {
+                    (
+                        logical_pixels_to_physical(width, dpi),
+                        logical_pixels_to_physical(height, dpi),
+                    )
+                });
             let mut menu_draw_tokens = Vec::new();
             let menu = if items.is_empty() {
                 None
@@ -2394,37 +2587,95 @@ mod windows {
             } else {
                 menu_handle
             };
+            let previous_attached_menu = GetMenu(surface.hwnd);
             if SetMenu(surface.hwnd, attached_menu_handle) == 0 {
-                if let Some(menu) = menu {
-                    DestroyMenu(menu);
-                }
-                unregister_menu_draw_items(&menu_draw_tokens);
-                return Err(Error::from_reason(
+                let geometry = record_menu_transaction_failure(
+                    surface.hwnd,
+                    dpi,
+                    desired_logical_client,
+                    requested_physical_client,
+                    minimum_physical_client,
+                    window,
+                    client,
+                    None,
                     "Failed to attach the native overlay host menu",
-                ));
+                );
+                let rollback = rollback_failed_menu_transaction(
+                    surface,
+                    previous_attached_menu,
+                    window,
+                    menu,
+                    menu_draw_tokens,
+                    minimum_dpi,
+                );
+                return Err(Error::from_reason(format!(
+                    "Failed to attach the native overlay host menu (geometry={geometry}; rollback={})",
+                    rollback.summary()
+                )));
             }
-            DrawMenuBar(surface.hwnd);
+            let draw_menu_bar_result = DrawMenuBar(surface.hwnd) != 0;
+            if !draw_menu_bar_result {
+                let geometry = record_menu_transaction_failure(
+                    surface.hwnd,
+                    dpi,
+                    desired_logical_client,
+                    requested_physical_client,
+                    minimum_physical_client,
+                    window,
+                    client,
+                    Some(false),
+                    "Failed to draw the native overlay host menu",
+                );
+                let rollback = rollback_failed_menu_transaction(
+                    surface,
+                    previous_attached_menu,
+                    window,
+                    menu,
+                    menu_draw_tokens,
+                    minimum_dpi,
+                );
+                return Err(Error::from_reason(format!(
+                    "Failed to draw the native overlay host menu (geometry={geometry}; rollback={})",
+                    rollback.summary()
+                )));
+            }
+            if !surface.full_screen {
+                if let Err(error) = resize_window_for_client_size(
+                    surface.hwnd,
+                    window.left,
+                    window.top,
+                    requested_physical_client.0,
+                    requested_physical_client.1,
+                    desired_logical_client,
+                    minimum_physical_client,
+                    None,
+                    "menu-change",
+                    Some(draw_menu_bar_result),
+                ) {
+                    let rollback = rollback_failed_menu_transaction(
+                        surface,
+                        previous_attached_menu,
+                        window,
+                        menu,
+                        menu_draw_tokens,
+                        minimum_dpi,
+                    );
+                    return Err(Error::from_reason(format!(
+                        "{error} (menu rollback={})",
+                        rollback.summary()
+                    )));
+                }
+            }
             let previous_draw_tokens =
                 mem::replace(&mut surface.menu_draw_tokens, menu_draw_tokens);
             surface.menu_minimum_dpi = minimum_dpi;
-            if let Some(previous) = surface.menu.replace(menu_handle) {
+            let previous_menu = mem::replace(&mut surface.menu, menu);
+            if let Some(previous) = previous_menu {
                 if !previous.is_null() {
                     DestroyMenu(previous);
                 }
             }
             unregister_menu_draw_items(&previous_draw_tokens);
-            if menu.is_none() {
-                surface.menu = None;
-            }
-            if !surface.full_screen {
-                resize_window_for_client_size(
-                    surface.hwnd,
-                    window.left,
-                    window.top,
-                    (client.right - client.left).max(1),
-                    (client.bottom - client.top).max(1),
-                )?;
-            }
         }
         Ok(())
     }
@@ -3071,6 +3322,13 @@ mod windows {
                         "metricHeight": effective_menu_dpi.map(|dpi| system_metrics_for_dpi(SM_CYMENU, dpi)),
                         "barRect": menu_bar_rect,
                     }),
+                );
+                object.insert(
+                    "windowGeometry".to_owned(),
+                    json!(WINDOW_GEOMETRY_DIAGNOSTICS
+                        .lock()
+                        .expect("Steam overlay window geometry diagnostic lock poisoned")
+                        .clone()),
                 );
             }
             Some(diagnostics.to_string())
@@ -3952,6 +4210,9 @@ mod windows {
         set_standalone_min_client_size(None);
         set_standalone_logical_client_size(None);
         STANDALONE_DISPLAY_CLAMPED.store(false, Ordering::Relaxed);
+        *WINDOW_GEOMETRY_DIAGNOSTICS
+            .lock()
+            .expect("Steam overlay window geometry diagnostic lock poisoned") = None;
         STANDALONE_WINDOW_DPI.store(96, Ordering::Relaxed);
     }
 
@@ -4418,29 +4679,63 @@ mod windows {
                 })
             });
             let suggested = &*(lparam as *const RECT);
-            SetWindowPos(
-                hwnd,
-                ptr::null_mut(),
-                suggested.left,
-                suggested.top,
-                (suggested.right - suggested.left).max(1),
-                (suggested.bottom - suggested.top).max(1),
-                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
-            );
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
             if IsZoomed(hwnd) == 0 && style & WS_OVERLAPPEDWINDOW != 0 {
                 if let Some((logical_width, logical_height)) = logical_client_size {
-                    let _ = resize_window_for_client_size(
+                    let minimum_physical_client =
+                        standalone_min_client_size().map(|(minimum_width, minimum_height)| {
+                            (
+                                logical_pixels_to_physical(minimum_width, new_dpi),
+                                logical_pixels_to_physical(minimum_height, new_dpi),
+                            )
+                        });
+                    let draw_menu_bar_result = DrawMenuBar(hwnd) != 0;
+                    if resize_window_for_client_size(
                         hwnd,
                         suggested.left,
                         suggested.top,
                         logical_pixels_to_physical(logical_width, new_dpi),
                         logical_pixels_to_physical(logical_height, new_dpi),
+                        Some((logical_width, logical_height)),
+                        minimum_physical_client,
+                        Some(new_dpi),
+                        "dpi-change",
+                        Some(draw_menu_bar_result),
+                    )
+                    .is_err()
+                    {
+                        SetWindowPos(
+                            hwnd,
+                            ptr::null_mut(),
+                            suggested.left,
+                            suggested.top,
+                            (suggested.right - suggested.left).max(1),
+                            (suggested.bottom - suggested.top).max(1),
+                            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+                        );
+                    }
+                } else {
+                    SetWindowPos(
+                        hwnd,
+                        ptr::null_mut(),
+                        suggested.left,
+                        suggested.top,
+                        (suggested.right - suggested.left).max(1),
+                        (suggested.bottom - suggested.top).max(1),
+                        SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
                     );
                 }
+            } else {
+                SetWindowPos(
+                    hwnd,
+                    ptr::null_mut(),
+                    suggested.left,
+                    suggested.top,
+                    (suggested.right - suggested.left).max(1),
+                    (suggested.bottom - suggested.top).max(1),
+                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+                );
             }
-            DrawMenuBar(hwnd);
-            reconcile_standalone_window_with_work_area(hwnd);
             render_retained_frame_from_window_message(hwnd, true, false);
             return 0;
         }
@@ -5168,73 +5463,591 @@ mod windows {
         SetMenu(surface.hwnd, menu) != 0 && DrawMenuBar(surface.hwnd) != 0
     }
 
+    unsafe fn restore_previous_menu_and_geometry(
+        hwnd: HWND,
+        previous_menu: HMENU,
+        previous_outer: RECT,
+        candidate_menu: HMENU,
+    ) -> MenuRollbackResult {
+        let mut menu_restored = GetMenu(hwnd) == previous_menu;
+        if !menu_restored {
+            SetMenu(hwnd, previous_menu);
+            menu_restored = GetMenu(hwnd) == previous_menu;
+        }
+        if !menu_restored && !candidate_menu.is_null() && GetMenu(hwnd) == candidate_menu {
+            // A failed operation must never destroy an HMENU that is still
+            // attached to the HWND. Detach first, then make one final bounded
+            // attempt to restore the previous menu.
+            SetMenu(hwnd, ptr::null_mut());
+            if !previous_menu.is_null() {
+                SetMenu(hwnd, previous_menu);
+            }
+            menu_restored = GetMenu(hwnd) == previous_menu;
+        }
+        let candidate_detached = candidate_menu.is_null() || GetMenu(hwnd) != candidate_menu;
+        let menu_drawn = menu_restored && DrawMenuBar(hwnd) != 0;
+        let geometry_restored =
+            positive_rect_size(previous_outer).is_some_and(|(width, height)| {
+                SetWindowPos(
+                    hwnd,
+                    ptr::null_mut(),
+                    previous_outer.left,
+                    previous_outer.top,
+                    width,
+                    height,
+                    SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+                ) != 0
+            });
+        MenuRollbackResult {
+            menu_restored,
+            menu_drawn,
+            geometry_restored,
+            candidate_detached,
+            candidate_adopted_for_safety: false,
+        }
+    }
+
+    unsafe fn rollback_failed_menu_transaction(
+        surface: &mut NativeSurface,
+        previous_attached_menu: HMENU,
+        previous_outer: RECT,
+        candidate_menu: Option<HMENU>,
+        candidate_draw_tokens: Vec<usize>,
+        candidate_minimum_dpi: Option<u32>,
+    ) -> MenuRollbackResult {
+        let candidate_handle = candidate_menu.unwrap_or(ptr::null_mut());
+        let mut result = restore_previous_menu_and_geometry(
+            surface.hwnd,
+            previous_attached_menu,
+            previous_outer,
+            candidate_handle,
+        );
+        if result.candidate_detached {
+            if let Some(menu) = candidate_menu {
+                DestroyMenu(menu);
+            }
+            unregister_menu_draw_items(&candidate_draw_tokens);
+            return result;
+        }
+
+        // The only safe fallback after both bounded rollback attempts fail is
+        // to keep owning the still-attached candidate. This is not a successful
+        // transaction commit: the API still returns an error, but the HWND can
+        // continue dispatching owner-draw messages without a dangling HMENU or
+        // token pointer and normal surface teardown will release it exactly once.
+        if let Some(candidate) = candidate_menu {
+            let previous_menu = surface.menu.replace(candidate);
+            let previous_draw_tokens =
+                mem::replace(&mut surface.menu_draw_tokens, candidate_draw_tokens);
+            surface.menu_minimum_dpi = candidate_minimum_dpi;
+            if let Some(previous) = previous_menu {
+                if previous != candidate {
+                    DestroyMenu(previous);
+                }
+            }
+            unregister_menu_draw_items(&previous_draw_tokens);
+            result.candidate_adopted_for_safety = true;
+        } else {
+            unregister_menu_draw_items(&candidate_draw_tokens);
+        }
+        result
+    }
+
+    fn rect_from_position_size(x: i32, y: i32, width: i32, height: i32) -> Option<RECT> {
+        if width <= 0 || height <= 0 {
+            return None;
+        }
+        Some(RECT {
+            left: x,
+            top: y,
+            right: x.checked_add(width)?,
+            bottom: y.checked_add(height)?,
+        })
+    }
+
+    fn positive_rect_size(rect: RECT) -> Option<(i32, i32)> {
+        let width = rect.right.checked_sub(rect.left)?;
+        let height = rect.bottom.checked_sub(rect.top)?;
+        (width > 0 && height > 0).then_some((width, height))
+    }
+
+    fn clamp_outer_rect_to_work_area(rect: RECT, work: RECT) -> Option<OuterClampPlan> {
+        let (requested_width, requested_height) = positive_rect_size(rect)?;
+        let (work_width, work_height) = positive_rect_size(work)?;
+        let width = requested_width.min(work_width);
+        let height = requested_height.min(work_height);
+        let width_clamped = width != requested_width;
+        let height_clamped = height != requested_height;
+        let max_left = work.right.checked_sub(width)?;
+        let max_top = work.bottom.checked_sub(height)?;
+        let left = rect.left.clamp(work.left, max_left);
+        let top = rect.top.clamp(work.top, max_top);
+        let position_clamped = left != rect.left || top != rect.top;
+        Some(OuterClampPlan {
+            rect: rect_from_position_size(left, top, width, height)?,
+            width_clamped,
+            height_clamped,
+            position_clamped,
+        })
+    }
+
+    fn geometry_residual(
+        requested_width: i32,
+        requested_height: i32,
+        actual_width: i32,
+        actual_height: i32,
+    ) -> GeometryResidual {
+        GeometryResidual {
+            width: requested_width.saturating_sub(actual_width),
+            height: requested_height.saturating_sub(actual_height),
+        }
+    }
+
+    #[cfg(test)]
+    fn residual_within_tolerance(residual: GeometryResidual) -> bool {
+        residual_axis_within_tolerance(residual.width)
+            && residual_axis_within_tolerance(residual.height)
+    }
+
+    fn residual_axis_within_tolerance(residual: i32) -> bool {
+        residual.unsigned_abs() <= 2
+    }
+
+    fn residual_requires_correction(clamp: OuterClampPlan, residual: GeometryResidual) -> bool {
+        (!clamp.width_clamped && !residual_axis_within_tolerance(residual.width))
+            || (!clamp.height_clamped && !residual_axis_within_tolerance(residual.height))
+    }
+
+    fn apply_menu_wrap_estimate(mut adjusted: RECT, nc_calc_client_top: i32) -> Option<RECT> {
+        adjusted.bottom = adjusted.bottom.checked_add(nc_calc_client_top)?;
+        positive_rect_size(adjusted)?;
+        Some(adjusted)
+    }
+
+    fn geometry_satisfies_constraints(
+        actual_client: (i32, i32),
+        minimum_client: Option<(i32, i32)>,
+        width_clamped: bool,
+        height_clamped: bool,
+        residual: GeometryResidual,
+    ) -> bool {
+        if let Some((minimum_width, minimum_height)) = minimum_client {
+            if actual_client.0 < minimum_width || actual_client.1 < minimum_height {
+                return false;
+            }
+        }
+        (width_clamped || residual_axis_within_tolerance(residual.width))
+            && (height_clamped || residual_axis_within_tolerance(residual.height))
+    }
+
+    fn corrected_outer_size(
+        requested_client: (i32, i32),
+        actual_outer: (i32, i32),
+        actual_client: (i32, i32),
+        width_clamped: bool,
+        height_clamped: bool,
+    ) -> Option<(i32, i32)> {
+        let non_client_width = actual_outer.0.checked_sub(actual_client.0)?;
+        let non_client_height = actual_outer.1.checked_sub(actual_client.1)?;
+        if non_client_width < 0 || non_client_height < 0 {
+            return None;
+        }
+        Some((
+            if width_clamped {
+                actual_outer.0
+            } else {
+                requested_client.0.checked_add(non_client_width)?
+            },
+            if height_clamped {
+                actual_outer.1
+            } else {
+                requested_client.1.checked_add(non_client_height)?
+            },
+        ))
+    }
+
+    fn minimum_track_outer_size(
+        adjusted: RECT,
+        menu_client_top: Option<i32>,
+    ) -> Option<(i32, i32)> {
+        let menu_aware = match menu_client_top {
+            Some(client_top) => apply_menu_wrap_estimate(adjusted, client_top)?,
+            None => adjusted,
+        };
+        positive_rect_size(menu_aware)
+    }
+
+    fn record_window_geometry_diagnostics(diagnostics: WindowGeometryDiagnostics) {
+        *WINDOW_GEOMETRY_DIAGNOSTICS
+            .lock()
+            .expect("Steam overlay window geometry diagnostic lock poisoned") = Some(diagnostics);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn record_menu_transaction_failure(
+        hwnd: HWND,
+        dpi: u32,
+        desired_logical_client: Option<(i32, i32)>,
+        requested_physical_client: (i32, i32),
+        minimum_physical_client: Option<(i32, i32)>,
+        pre_outer: RECT,
+        pre_client: RECT,
+        draw_menu_bar_result: Option<bool>,
+        reason: &'static str,
+    ) -> String {
+        let requested_client = (
+            requested_physical_client.0.max(1),
+            requested_physical_client.1.max(1),
+        );
+        let mut adjusted = RECT {
+            left: 0,
+            top: 0,
+            right: requested_client.0,
+            bottom: requested_client.1,
+        };
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let has_menu = i32::from(!GetMenu(hwnd).is_null());
+        if adjust_window_rect_ex_for_dpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
+            adjusted = RECT {
+                left: 0,
+                top: 0,
+                right: requested_client.0,
+                bottom: requested_client.1,
+            };
+        }
+        let adjust_estimate = adjusted;
+        if has_menu != 0 {
+            let mut nc_calc_probe = adjusted;
+            nc_calc_probe.bottom = 0x7fff;
+            SendMessageW(
+                hwnd,
+                WM_NCCALCSIZE,
+                0,
+                &mut nc_calc_probe as *mut RECT as LPARAM,
+            );
+            if let Some(wrapped) = apply_menu_wrap_estimate(adjusted, nc_calc_probe.top) {
+                adjusted = wrapped;
+            }
+        }
+        let nc_calc_estimate = adjusted;
+        let preferred_outer = positive_rect_size(adjusted)
+            .and_then(|(width, height)| {
+                rect_from_position_size(pre_outer.left, pre_outer.top, width, height)
+            })
+            .unwrap_or(pre_outer);
+        let monitor = MonitorFromRect(&preferred_outer, MONITOR_DEFAULTTONEAREST);
+        let mut monitor_info: MONITORINFO = mem::zeroed();
+        monitor_info.cbSize = mem::size_of::<MONITORINFO>() as u32;
+        let work_area = if !monitor.is_null()
+            && GetMonitorInfoW(monitor, &mut monitor_info) != 0
+            && positive_rect_size(monitor_info.rcWork).is_some()
+        {
+            monitor_info.rcWork
+        } else {
+            pre_outer
+        };
+        let clamp_plan =
+            clamp_outer_rect_to_work_area(preferred_outer, work_area).unwrap_or(OuterClampPlan {
+                rect: pre_outer,
+                width_clamped: false,
+                height_clamped: false,
+                position_clamped: false,
+            });
+        let final_outer = read_window_rect(hwnd);
+        let final_client = read_client_rect(hwnd);
+        let final_residual = final_client
+            .and_then(positive_rect_size)
+            .map(|(width, height)| {
+                geometry_residual(requested_client.0, requested_client.1, width, height)
+            });
+        let diagnostics = WindowGeometryDiagnostics {
+            operation: "menu-change",
+            dpi,
+            window_per_monitor_v2: window_is_per_monitor_v2(hwnd),
+            style,
+            ex_style,
+            menu_attached: has_menu != 0,
+            desired_logical_client: desired_logical_client
+                .map(|(width, height)| GeometrySize { width, height }),
+            requested_physical_client: GeometrySize {
+                width: requested_client.0,
+                height: requested_client.1,
+            },
+            minimum_physical_client: minimum_physical_client
+                .map(|(width, height)| GeometrySize { width, height }),
+            pre_outer: pre_outer.into(),
+            pre_client: pre_client.into(),
+            work_area: work_area.into(),
+            adjust_window_rect_estimate: adjust_estimate.into(),
+            nc_calc_size_estimate: nc_calc_estimate.into(),
+            candidate_outer: clamp_plan.rect.into(),
+            final_outer: final_outer.map(Into::into),
+            final_client: final_client.map(Into::into),
+            clamp_reason: clamp_plan.reason(),
+            correction_count: 0,
+            final_residual,
+            draw_menu_bar_result,
+            success: false,
+            error: Some(reason.to_owned()),
+        };
+        let compact = diagnostics.compact();
+        record_window_geometry_diagnostics(diagnostics);
+        compact
+    }
+
+    fn geometry_failure(mut diagnostics: WindowGeometryDiagnostics, reason: &'static str) -> Error {
+        diagnostics.success = false;
+        diagnostics.error = Some(reason.to_owned());
+        let compact = diagnostics.compact();
+        record_window_geometry_diagnostics(diagnostics);
+        Error::from_reason(format!("{reason} ({compact})"))
+    }
+
     unsafe fn resize_window_for_client_size(
         hwnd: HWND,
         x: i32,
         y: i32,
         client_width: i32,
         client_height: i32,
+        desired_logical_client: Option<(i32, i32)>,
+        minimum_physical_client: Option<(i32, i32)>,
+        dpi_override: Option<u32>,
+        operation: &'static str,
+        draw_menu_bar_result: Option<bool>,
     ) -> Result<(), Error> {
-        let window_dpi = dpi_for_window(hwnd);
-        let dpi = if window_dpi == 0 {
-            dpi_for_system().max(96)
-        } else {
-            window_dpi.max(96)
-        };
+        let _dpi_awareness = ThreadDpiAwarenessGuard::per_monitor_v2();
+        let pre_outer = read_window_rect(hwnd).ok_or_else(|| {
+            Error::from_reason("Failed to inspect the native overlay host outer geometry")
+        })?;
+        let pre_client = read_client_rect(hwnd).ok_or_else(|| {
+            Error::from_reason("Failed to inspect the native overlay host client geometry")
+        })?;
+        let dpi = dpi_override.unwrap_or_else(|| dpi_for_window(hwnd)).max(96);
+        let requested_client = (client_width.max(1), client_height.max(1));
         let mut adjusted = RECT {
             left: 0,
             top: 0,
-            right: client_width.max(1),
-            bottom: client_height.max(1),
+            right: requested_client.0,
+            bottom: requested_client.1,
         };
         let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         let has_menu = i32::from(!GetMenu(hwnd).is_null());
         if adjust_window_rect_ex_for_dpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
             return Err(Error::from_reason(
-                "Failed to preserve the native overlay host client size after changing its menu",
+                "Failed to estimate the native overlay host outer geometry",
             ));
         }
-        let mut window_width = (adjusted.right - adjusted.left).max(1);
-        let mut window_height = (adjusted.bottom - adjusted.top).max(1);
-        for _ in 0..3 {
-            if SetWindowPos(
+        let adjust_estimate = adjusted;
+        if has_menu != 0 {
+            let mut nc_calc_probe = adjusted;
+            nc_calc_probe.bottom = 0x7fff;
+            SendMessageW(
+                hwnd,
+                WM_NCCALCSIZE,
+                0,
+                &mut nc_calc_probe as *mut RECT as LPARAM,
+            );
+            adjusted = apply_menu_wrap_estimate(adjusted, nc_calc_probe.top).ok_or_else(|| {
+                Error::from_reason("Native overlay host menu geometry overflowed")
+            })?;
+        }
+        let nc_calc_estimate = adjusted;
+        let (estimated_width, estimated_height) =
+            positive_rect_size(adjusted).ok_or_else(|| {
+                Error::from_reason("Native overlay host outer geometry estimate was invalid")
+            })?;
+        let preferred_outer = rect_from_position_size(x, y, estimated_width, estimated_height)
+            .ok_or_else(|| Error::from_reason("Native overlay host outer geometry overflowed"))?;
+        let monitor = MonitorFromRect(&preferred_outer, MONITOR_DEFAULTTONEAREST);
+        let mut monitor_info: MONITORINFO = mem::zeroed();
+        monitor_info.cbSize = mem::size_of::<MONITORINFO>() as u32;
+        if monitor.is_null() || GetMonitorInfoW(monitor, &mut monitor_info) == 0 {
+            return Err(Error::from_reason(
+                "Failed to inspect the native overlay host monitor work area",
+            ));
+        }
+        let work_area = monitor_info.rcWork;
+        let mut clamp_plan = clamp_outer_rect_to_work_area(preferred_outer, work_area)
+            .ok_or_else(|| Error::from_reason("Native overlay host work area was invalid"))?;
+        let mut diagnostics = WindowGeometryDiagnostics {
+            operation,
+            dpi,
+            window_per_monitor_v2: window_is_per_monitor_v2(hwnd),
+            style,
+            ex_style,
+            menu_attached: has_menu != 0,
+            desired_logical_client: desired_logical_client
+                .map(|(width, height)| GeometrySize { width, height }),
+            requested_physical_client: GeometrySize {
+                width: requested_client.0,
+                height: requested_client.1,
+            },
+            minimum_physical_client: minimum_physical_client
+                .map(|(width, height)| GeometrySize { width, height }),
+            pre_outer: pre_outer.into(),
+            pre_client: pre_client.into(),
+            work_area: work_area.into(),
+            adjust_window_rect_estimate: adjust_estimate.into(),
+            nc_calc_size_estimate: nc_calc_estimate.into(),
+            candidate_outer: clamp_plan.rect.into(),
+            final_outer: None,
+            final_client: None,
+            clamp_reason: clamp_plan.reason(),
+            correction_count: 0,
+            final_residual: None,
+            draw_menu_bar_result,
+            success: false,
+            error: None,
+        };
+        let apply = |rect: RECT| {
+            let Some((width, height)) = positive_rect_size(rect) else {
+                return false;
+            };
+            SetWindowPos(
                 hwnd,
                 ptr::null_mut(),
-                x,
-                y,
-                window_width,
-                window_height,
+                rect.left,
+                rect.top,
+                width,
+                height,
                 SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
-            ) == 0
-            {
-                return Err(Error::from_reason(
-                    "Failed to preserve the native overlay host client size after changing its menu",
-                ));
-            }
-            let Some(client) = read_client_rect(hwnd) else {
-                break;
-            };
-            let actual_width = (client.right - client.left).max(1);
-            let actual_height = (client.bottom - client.top).max(1);
-            let width_delta = client_width.max(1) - actual_width;
-            let height_delta = client_height.max(1) - actual_height;
-            if width_delta == 0 && height_delta == 0 {
-                return Ok(());
-            }
-            window_width = (window_width + width_delta).max(1);
-            window_height = (window_height + height_delta).max(1);
-        }
-        let client = read_client_rect(hwnd).ok_or_else(|| {
-            Error::from_reason("Failed to verify the native overlay host client size")
-        })?;
-        if (client.right - client.left).max(1) != client_width.max(1)
-            || (client.bottom - client.top).max(1) != client_height.max(1)
-        {
-            return Err(Error::from_reason(
-                "Native overlay host client size did not stabilize after changing its menu",
+            ) != 0
+        };
+        if !apply(clamp_plan.rect) {
+            return Err(geometry_failure(
+                diagnostics,
+                "Failed to apply the native overlay host geometry",
             ));
         }
+        let mut actual_outer = read_window_rect(hwnd).ok_or_else(|| {
+            geometry_failure(
+                diagnostics.clone(),
+                "Failed to verify the native overlay host outer geometry",
+            )
+        })?;
+        let mut actual_client = read_client_rect(hwnd).ok_or_else(|| {
+            geometry_failure(
+                diagnostics.clone(),
+                "Failed to verify the native overlay host client geometry",
+            )
+        })?;
+        let actual_outer_size = positive_rect_size(actual_outer).ok_or_else(|| {
+            geometry_failure(
+                diagnostics.clone(),
+                "Native overlay host outer geometry was invalid",
+            )
+        })?;
+        let mut actual_client_size = positive_rect_size(actual_client).ok_or_else(|| {
+            geometry_failure(
+                diagnostics.clone(),
+                "Native overlay host client geometry was invalid",
+            )
+        })?;
+        let mut residual = geometry_residual(
+            requested_client.0,
+            requested_client.1,
+            actual_client_size.0,
+            actual_client_size.1,
+        );
+
+        if residual_requires_correction(clamp_plan, residual) {
+            let corrected_size = corrected_outer_size(
+                requested_client,
+                actual_outer_size,
+                actual_client_size,
+                clamp_plan.width_clamped,
+                clamp_plan.height_clamped,
+            )
+            .ok_or_else(|| {
+                geometry_failure(
+                    diagnostics.clone(),
+                    "Native overlay host non-client geometry was invalid",
+                )
+            })?;
+            let corrected = rect_from_position_size(
+                actual_outer.left,
+                actual_outer.top,
+                corrected_size.0,
+                corrected_size.1,
+            )
+            .and_then(|rect| clamp_outer_rect_to_work_area(rect, work_area))
+            .ok_or_else(|| {
+                geometry_failure(
+                    diagnostics.clone(),
+                    "Native overlay host correction geometry was invalid",
+                )
+            })?;
+            clamp_plan = clamp_plan.followed_by(corrected);
+            diagnostics.candidate_outer = clamp_plan.rect.into();
+            diagnostics.clamp_reason = clamp_plan.reason();
+            diagnostics.correction_count = 1;
+            if !apply(clamp_plan.rect) {
+                return Err(geometry_failure(
+                    diagnostics,
+                    "Failed to correct the native overlay host geometry",
+                ));
+            }
+            actual_outer = read_window_rect(hwnd).ok_or_else(|| {
+                geometry_failure(
+                    diagnostics.clone(),
+                    "Failed to verify the corrected native overlay host outer geometry",
+                )
+            })?;
+            actual_client = read_client_rect(hwnd).ok_or_else(|| {
+                geometry_failure(
+                    diagnostics.clone(),
+                    "Failed to verify the corrected native overlay host client geometry",
+                )
+            })?;
+            positive_rect_size(actual_outer).ok_or_else(|| {
+                geometry_failure(
+                    diagnostics.clone(),
+                    "Corrected native overlay host outer geometry was invalid",
+                )
+            })?;
+            actual_client_size = positive_rect_size(actual_client).ok_or_else(|| {
+                geometry_failure(
+                    diagnostics.clone(),
+                    "Corrected native overlay host client geometry was invalid",
+                )
+            })?;
+            residual = geometry_residual(
+                requested_client.0,
+                requested_client.1,
+                actual_client_size.0,
+                actual_client_size.1,
+            );
+        }
+
+        diagnostics.final_outer = Some(actual_outer.into());
+        diagnostics.final_client = Some(actual_client.into());
+        diagnostics.final_residual = Some(residual);
+        if !geometry_satisfies_constraints(
+            actual_client_size,
+            minimum_physical_client,
+            clamp_plan.width_clamped,
+            clamp_plan.height_clamped,
+            residual,
+        ) {
+            if minimum_physical_client.is_some_and(|(minimum_width, minimum_height)| {
+                actual_client_size.0 < minimum_width || actual_client_size.1 < minimum_height
+            }) {
+                return Err(geometry_failure(
+                    diagnostics,
+                    "Native overlay host client geometry fell below its configured minimum",
+                ));
+            }
+            return Err(geometry_failure(
+                diagnostics,
+                "Native overlay host client geometry retained an unexplained residual",
+            ));
+        }
+        diagnostics.success = true;
+        diagnostics.error = None;
+        STANDALONE_DISPLAY_CLAMPED.store(clamp_plan.size_clamped(), Ordering::Relaxed);
+        record_window_geometry_diagnostics(diagnostics);
         Ok(())
     }
 
@@ -5307,6 +6120,7 @@ mod windows {
     }
 
     unsafe fn minimum_window_track_size(hwnd: HWND) -> Option<(i32, i32)> {
+        let _dpi_awareness = ThreadDpiAwarenessGuard::per_monitor_v2();
         let (client_width, client_height) = standalone_min_client_size()?;
         let window_dpi = dpi_for_window(hwnd);
         let dpi = if window_dpi == 0 {
@@ -5316,18 +6130,6 @@ mod windows {
         };
         let target_client_width = logical_pixels_to_physical(client_width, dpi);
         let target_client_height = logical_pixels_to_physical(client_height, dpi);
-        if let (Some(window), Some(client)) = (read_window_rect(hwnd), read_client_rect(hwnd)) {
-            let non_client_width =
-                ((window.right - window.left) - (client.right - client.left)).max(0);
-            let non_client_height =
-                ((window.bottom - window.top) - (client.bottom - client.top)).max(0);
-            return Some((
-                target_client_width.saturating_add(non_client_width).max(1),
-                target_client_height
-                    .saturating_add(non_client_height)
-                    .max(1),
-            ));
-        }
         let mut adjusted = RECT {
             left: 0,
             top: 0,
@@ -5337,12 +6139,30 @@ mod windows {
         let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         let has_menu = i32::from(!GetMenu(hwnd).is_null());
-        if adjust_window_rect_ex_for_dpi(&mut adjusted, style, has_menu, ex_style, dpi) == 0 {
-            return None;
+        if adjust_window_rect_ex_for_dpi(&mut adjusted, style, has_menu, ex_style, dpi) != 0 {
+            let menu_client_top = if has_menu != 0 {
+                let mut nc_calc_probe = adjusted;
+                nc_calc_probe.bottom = 0x7fff;
+                SendMessageW(
+                    hwnd,
+                    WM_NCCALCSIZE,
+                    0,
+                    &mut nc_calc_probe as *mut RECT as LPARAM,
+                );
+                Some(nc_calc_probe.top)
+            } else {
+                None
+            };
+            return minimum_track_outer_size(adjusted, menu_client_top);
         }
+
+        let (window_width, window_height) = read_window_rect(hwnd).and_then(positive_rect_size)?;
+        let (client_width, client_height) = read_client_rect(hwnd).and_then(positive_rect_size)?;
+        let non_client_width = window_width.checked_sub(client_width)?;
+        let non_client_height = window_height.checked_sub(client_height)?;
         Some((
-            (adjusted.right - adjusted.left).max(1),
-            (adjusted.bottom - adjusted.top).max(1),
+            target_client_width.checked_add(non_client_width)?,
+            target_client_height.checked_add(non_client_height)?,
         ))
     }
 
@@ -5361,8 +6181,6 @@ mod windows {
             return;
         }
         let work = monitor_info.rcWork;
-        let work_width = rect_width(work);
-        let work_height = rect_height(work);
         let current_outside = current.left < work.left
             || current.top < work.top
             || current.right > work.right
@@ -5386,32 +6204,36 @@ mod windows {
                     physical_pixels_to_logical(rect_height(client), dpi),
                 )
             });
-        let mut desired = RECT {
-            left: 0,
-            top: 0,
-            right: logical_pixels_to_physical(logical_width, dpi),
-            bottom: logical_pixels_to_physical(logical_height, dpi),
-        };
-        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        let has_menu = i32::from(!GetMenu(hwnd).is_null());
-        if adjust_window_rect_ex_for_dpi(&mut desired, style, has_menu, ex_style, dpi) == 0 {
-            return;
-        }
-        let desired_width = rect_width(desired);
-        let desired_height = rect_height(desired);
-        let should_clamp = desired_width > work_width || desired_height > work_height;
-        let (x, y, width, height) = centered_window_rect(desired_width, desired_height, &work);
-        if SetWindowPos(
+        let minimum_physical_client =
+            standalone_min_client_size().map(|(minimum_width, minimum_height)| {
+                (
+                    logical_pixels_to_physical(minimum_width, dpi),
+                    logical_pixels_to_physical(minimum_height, dpi),
+                )
+            });
+        if resize_window_for_client_size(
             hwnd,
-            ptr::null_mut(),
-            x,
-            y,
-            width,
-            height,
-            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
-        ) != 0
+            current.left,
+            current.top,
+            logical_pixels_to_physical(logical_width, dpi),
+            logical_pixels_to_physical(logical_height, dpi),
+            Some((logical_width, logical_height)),
+            minimum_physical_client,
+            Some(dpi),
+            "work-area-reconcile",
+            None,
+        )
+        .is_err()
         {
-            STANDALONE_DISPLAY_CLAMPED.store(should_clamp, Ordering::Relaxed);
+            SetWindowPos(
+                hwnd,
+                ptr::null_mut(),
+                current.left,
+                current.top,
+                rect_width(current),
+                rect_height(current),
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED,
+            );
         }
     }
 
@@ -5453,11 +6275,14 @@ mod windows {
     #[allow(clippy::items_after_test_module)]
     mod tests {
         use super::{
-            centered_window_rect, clamp_client_size_to_minimum, logical_pixels_to_physical,
-            menu_text_without_mnemonics, minimum_menu_dpi, normalize_windows_display_refresh_rate,
-            physical_pixels_to_logical, set_standalone_logical_client_size,
-            set_standalone_min_client_size, standalone_logical_client_size,
-            standalone_min_client_size, RECT,
+            apply_menu_wrap_estimate, centered_window_rect, clamp_client_size_to_minimum,
+            clamp_outer_rect_to_work_area, corrected_outer_size, geometry_residual,
+            geometry_satisfies_constraints, logical_pixels_to_physical,
+            menu_text_without_mnemonics, minimum_menu_dpi, minimum_track_outer_size,
+            normalize_windows_display_refresh_rate, physical_pixels_to_logical, positive_rect_size,
+            rect_from_position_size, residual_requires_correction, residual_within_tolerance,
+            set_standalone_logical_client_size, set_standalone_min_client_size,
+            standalone_logical_client_size, standalone_min_client_size, OuterClampPlan, RECT,
         };
 
         #[test]
@@ -5476,6 +6301,10 @@ mod windows {
             assert_eq!(logical_pixels_to_physical(1, 120), 1);
             assert_eq!(physical_pixels_to_logical(2304, 216), 1024);
             assert_eq!(physical_pixels_to_logical(1728, 216), 768);
+            for dpi in [96, 120, 144, 168, 192, 216] {
+                let physical = logical_pixels_to_physical(1280, dpi);
+                assert_eq!(physical_pixels_to_logical(physical, dpi), 1280);
+            }
         }
 
         #[test]
@@ -5529,6 +6358,250 @@ mod windows {
             assert_eq!(
                 centered_window_rect(2300, 1200, &work_area),
                 (0, 0, 1920, 1040)
+            );
+        }
+
+        #[test]
+        fn standalone_outer_geometry_clamps_each_work_area_boundary() {
+            let work = RECT {
+                left: 0,
+                top: 0,
+                right: 2560,
+                bottom: 1400,
+            };
+            let fit = clamp_outer_rect_to_work_area(
+                rect_from_position_size(100, 100, 1200, 800).unwrap(),
+                work,
+            )
+            .unwrap();
+            assert_eq!(fit.reason(), "none");
+            assert_eq!(positive_rect_size(fit.rect), Some((1200, 800)));
+
+            let edge = clamp_outer_rect_to_work_area(
+                rect_from_position_size(-50, 900, 1200, 800).unwrap(),
+                work,
+            )
+            .unwrap();
+            assert_eq!(edge.reason(), "position");
+            assert_eq!((edge.rect.left, edge.rect.top), (0, 600));
+
+            let width = clamp_outer_rect_to_work_area(
+                rect_from_position_size(0, 100, 3000, 800).unwrap(),
+                work,
+            )
+            .unwrap();
+            assert_eq!(width.reason(), "width");
+            assert_eq!(positive_rect_size(width.rect), Some((2560, 800)));
+
+            let height = clamp_outer_rect_to_work_area(
+                rect_from_position_size(100, 0, 1200, 1800).unwrap(),
+                work,
+            )
+            .unwrap();
+            assert_eq!(height.reason(), "height");
+            assert_eq!(positive_rect_size(height.rect), Some((1200, 1400)));
+
+            let both = clamp_outer_rect_to_work_area(
+                rect_from_position_size(0, 0, 3000, 1800).unwrap(),
+                work,
+            )
+            .unwrap();
+            assert_eq!(both.reason(), "width-height");
+            assert_eq!(positive_rect_size(both.rect), Some((2560, 1400)));
+        }
+
+        #[test]
+        fn legion_go_200_percent_menu_geometry_is_a_valid_constraint() {
+            let desired_client = (
+                logical_pixels_to_physical(1280, 192),
+                logical_pixels_to_physical(720, 192),
+            );
+            assert_eq!(desired_client, (2560, 1440));
+            let work = RECT {
+                left: 0,
+                top: 0,
+                right: 2560,
+                bottom: 1400,
+            };
+            let outer = rect_from_position_size(0, 0, 2592, 1540).unwrap();
+            let plan = clamp_outer_rect_to_work_area(outer, work).unwrap();
+            assert!(plan.size_clamped());
+            assert_eq!(positive_rect_size(plan.rect), Some((2560, 1400)));
+            let residual = geometry_residual(2560, 1440, 2528, 1300);
+            assert!(geometry_satisfies_constraints(
+                (2528, 1300),
+                Some((1280, 960)),
+                true,
+                true,
+                residual,
+            ));
+        }
+
+        #[test]
+        fn menu_wrap_estimate_is_based_on_the_unmodified_preferred_rect() {
+            let adjusted = RECT {
+                left: -8,
+                top: -31,
+                right: 1288,
+                bottom: 728,
+            };
+            let wrapped = apply_menu_wrap_estimate(adjusted, 26).unwrap();
+            assert_eq!(wrapped.bottom, 754);
+            assert_eq!(apply_menu_wrap_estimate(adjusted, 26).unwrap().bottom, 754);
+            assert!(apply_menu_wrap_estimate(adjusted, i32::MAX).is_none());
+        }
+
+        #[test]
+        fn minimum_track_size_includes_a_menu_row_added_at_the_target_width() {
+            // AdjustWindowRectExForDpi estimated a single-row menu. The live
+            // WM_NCCALCSIZE probe at the narrower configured minimum reports
+            // another 23 physical pixels after localized labels wrap.
+            let adjusted = RECT {
+                left: -8,
+                top: -31,
+                right: 648,
+                bottom: 488,
+            };
+            assert_eq!(minimum_track_outer_size(adjusted, None), Some((656, 519)));
+            assert_eq!(
+                minimum_track_outer_size(adjusted, Some(23)),
+                Some((656, 542))
+            );
+        }
+
+        #[test]
+        fn standalone_geometry_allows_two_pixels_and_only_one_measured_correction() {
+            assert!(residual_within_tolerance(geometry_residual(
+                1280, 720, 1278, 722
+            )));
+            assert!(!residual_within_tolerance(geometry_residual(
+                1280, 720, 1277, 720
+            )));
+            assert_eq!(
+                corrected_outer_size((1280, 720), (1312, 800), (1277, 717), false, false),
+                Some((1315, 803))
+            );
+            assert_eq!(
+                corrected_outer_size((1280, 720), (1200, 700), (1280, 720), false, false),
+                None
+            );
+        }
+
+        #[test]
+        fn standalone_geometry_corrects_only_unclamped_residual_axes() {
+            let width_clamped = OuterClampPlan {
+                rect: rect_from_position_size(0, 0, 1250, 760).unwrap(),
+                width_clamped: true,
+                height_clamped: false,
+                position_clamped: false,
+            };
+            let wrapped_height_residual = geometry_residual(1280, 720, 1200, 700);
+            assert!(residual_requires_correction(
+                width_clamped,
+                wrapped_height_residual
+            ));
+            assert!(!geometry_satisfies_constraints(
+                (1200, 700),
+                Some((640, 480)),
+                true,
+                false,
+                wrapped_height_residual,
+            ));
+            // The measured 60px nonclient height includes the extra menu row.
+            assert_eq!(
+                corrected_outer_size((1280, 720), (1250, 760), (1200, 700), true, false),
+                Some((1250, 780))
+            );
+            assert!(geometry_satisfies_constraints(
+                (1200, 720),
+                Some((640, 480)),
+                true,
+                false,
+                geometry_residual(1280, 720, 1200, 720),
+            ));
+
+            let height_clamped = OuterClampPlan {
+                rect: rect_from_position_size(0, 0, 1310, 700).unwrap(),
+                width_clamped: false,
+                height_clamped: true,
+                position_clamped: false,
+            };
+            let width_residual = geometry_residual(1280, 720, 1270, 650);
+            assert!(residual_requires_correction(height_clamped, width_residual));
+            assert_eq!(
+                corrected_outer_size((1280, 720), (1310, 700), (1270, 650), false, true),
+                Some((1320, 700))
+            );
+
+            let both_clamped = OuterClampPlan {
+                rect: rect_from_position_size(0, 0, 1200, 700).unwrap(),
+                width_clamped: true,
+                height_clamped: true,
+                position_clamped: false,
+            };
+            assert!(!residual_requires_correction(
+                both_clamped,
+                geometry_residual(1280, 720, 1100, 620)
+            ));
+            assert!(geometry_satisfies_constraints(
+                (1100, 620),
+                Some((640, 480)),
+                true,
+                true,
+                geometry_residual(1280, 720, 1100, 620),
+            ));
+        }
+
+        #[test]
+        fn standalone_geometry_rejects_below_minimum_and_unexplained_residuals() {
+            assert!(geometry_satisfies_constraints(
+                (1280, 720),
+                Some((640, 480)),
+                false,
+                false,
+                geometry_residual(1280, 720, 1280, 720),
+            ));
+            assert!(!geometry_satisfies_constraints(
+                (1270, 720),
+                Some((640, 480)),
+                false,
+                false,
+                geometry_residual(1280, 720, 1270, 720),
+            ));
+            assert!(!geometry_satisfies_constraints(
+                (1200, 700),
+                Some((1280, 720)),
+                true,
+                true,
+                geometry_residual(1280, 720, 1200, 700),
+            ));
+            assert!(rect_from_position_size(i32::MAX, 0, 2, 1).is_none());
+            assert_eq!(
+                positive_rect_size(RECT {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 1,
+                }),
+                None
+            );
+            assert_eq!(
+                positive_rect_size(RECT {
+                    left: 2,
+                    top: 0,
+                    right: 1,
+                    bottom: 1,
+                }),
+                None
+            );
+            assert_eq!(
+                positive_rect_size(RECT {
+                    left: i32::MIN,
+                    top: i32::MIN,
+                    right: i32::MAX,
+                    bottom: i32::MAX,
+                }),
+                None
             );
         }
 
