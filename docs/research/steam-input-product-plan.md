@@ -2,6 +2,11 @@
 
 Last reviewed: 2026-08-08
 
+> Historical design record. The unreleased 0.4 application facade and universal
+> renderer-input boundary in `current-work.md` supersede the public import and
+> keyboard/mouse ownership decisions below; the native Steam Input invariants
+> remain applicable.
+
 Status: implemented in the active worktree; automated qualification is green.
 Physical controller qualification remains evidence-bound to the release-candidate
 lanes below and is not claimed from a machine with no connected controller.
@@ -192,9 +197,9 @@ ownership are the intended contract.
 
 ```ts
 import path from "node:path";
-import steamworks, { defineSteamInput } from "steam-bridge";
+import { defineSteamInput, startSteam } from "steam-bridge";
 
-const client = steamworks.init({ appId: 123456 });
+const steam = startSteam({ appId: 123456 });
 
 const actions = defineSteamInput({
   actionSets: {
@@ -215,7 +220,7 @@ const actions = defineSteamInput({
   }
 });
 
-const input = client.input.createSession({
+const input = steam.steamInput.createSession({
   definition: actions,
   manifestPath: path.join(process.resourcesPath, "steam_input_manifest.vdf"),
   controllers: "individual"

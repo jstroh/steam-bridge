@@ -4,6 +4,11 @@ Steam Bridge is expanding toward broad Steamworks client coverage, but it does
 not yet expose every Steamworks interface. This document is a contributor map for
 what is available today and what still needs work.
 
+This inventory describes the exhaustive `steam-bridge/steamworks` and
+`steam-bridge/server/advanced` surfaces. The ordinary `steam-bridge` entrypoint
+is intentionally curated around `startSteam()` and does not re-export every
+item listed here.
+
 The native layer primarily targets the Steamworks flat C API through
 `steamworks-sys 0.13`, with narrow local C++ shims for SDK surfaces that are
 documented in headers but omitted from the generated flat bindings.
@@ -97,9 +102,10 @@ covered.
   route,
   and publisher-only SiteLicense, Inventory price-sheet, and PublishedFile
   deletion calls on the API host;
-  keyless helpers on the main
-  entrypoint; trusted publisher, MicroTxn, and encrypted-ticket operations on
-  `steam-bridge/server`; header-only key transport, HTTPS enforcement,
+  keyless helpers on `steam-bridge/steamworks`; trusted publisher and MicroTxn
+  operations through `createSteamPublisherApi()` on `steam-bridge/server`, with
+  encrypted-ticket and specialized transport primitives on
+  `steam-bridge/server/advanced`; header-only key transport, HTTPS enforcement,
   client-runtime rejection, and redacted response URLs; generic URL building
   and JSON/text fetch helpers for any
   `interface/method/version` path, supported-API discovery helpers, user stats

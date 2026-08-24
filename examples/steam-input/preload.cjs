@@ -1,7 +1,7 @@
 "use strict";
 
 const { contextBridge, ipcRenderer } = require("electron");
-const { subscribeElectronSteamInput } = require("steam-bridge/electron");
+const { subscribeElectronSteamInput } = require("steam-bridge/electron/advanced");
 
 const frameListeners = new Set();
 const errorListeners = new Set();

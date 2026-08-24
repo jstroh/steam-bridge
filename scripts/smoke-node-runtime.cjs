@@ -22,10 +22,10 @@ try {
     "-e",
     [
       'const assert = require("node:assert/strict");',
-      'const steam = require("steam-bridge");',
+      'const steam = require("steam-bridge/steamworks");',
       'const server = require("steam-bridge/server");',
       'assert.equal(steam.buildSteamWebApiUrl({ interfaceName: "ITest", methodName: "Runtime", version: 1 }), "https://api.steampowered.com/ITest/Runtime/v0001/");',
-      'assert.equal(typeof server.createPublisherWebApiClient, "function");',
+      'assert.equal(typeof server.createSteamPublisherApi, "function");',
       'assert.equal(steam.SteamworksEnums.EResult.k_EResultOK, 1);'
     ].join("\n")
   ]);
@@ -34,10 +34,10 @@ try {
     "-e",
     [
       'import assert from "node:assert/strict";',
-      'import steam, { buildSteamWebApiUrl, SteamworksEnums } from "steam-bridge";',
-      'import { createPublisherWebApiClient } from "steam-bridge/server";',
+      'import steam, { buildSteamWebApiUrl, SteamworksEnums } from "steam-bridge/steamworks";',
+      'import { createSteamPublisherApi } from "steam-bridge/server";',
       'assert.equal(buildSteamWebApiUrl({ interfaceName: "ITest", methodName: "Runtime", version: "v2" }), "https://api.steampowered.com/ITest/Runtime/v0002/");',
-      'assert.equal(typeof createPublisherWebApiClient, "function");',
+      'assert.equal(typeof createSteamPublisherApi, "function");',
       'assert.equal(SteamworksEnums.EResult.k_EResultOK, 1);',
       'assert.equal(steam.SteamworksEnums, SteamworksEnums);'
     ].join("\n")

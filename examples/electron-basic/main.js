@@ -5,8 +5,8 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, crashReporter, ipcMain } = require("electron");
-const steamworks = require("steam-bridge");
-const { createPublisherWebApiClient } = require("steam-bridge/server");
+const steamworks = require("steam-bridge/steamworks");
+const { createPublisherWebApiClient } = require("steam-bridge/server/advanced");
 const { sanitizeSmokeValue } = require("./smoke-sanitize.cjs");
 const { serializeSmokeError } = require("./smoke-error.cjs");
 const {

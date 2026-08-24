@@ -2,6 +2,127 @@
 
 Last reviewed: 2026-08-23
 
+### 2026-08-23 Windows constrained menu-geometry repair
+
+An affected Windows handheld reaches Steam initialization but the native host
+then rejects its real File/Edit/View menu because the old menu path requires
+the pre-menu client size to converge exactly after three `SetWindowPos` calls.
+At 200% display scaling, the requested 1280x720 logical client is already
+2560x1440 physical before caption, borders, and the menu are added, so exact
+preservation is impossible inside the monitor work area. The active repair is
+unreleased and has passed final independent source review. It keeps the desired logical
+client separate from the constrained actual client, performs the whole menu
+transaction under per-monitor-v2 thread DPI awareness, includes real menu
+wrapping through `WM_NCCALCSIZE`, clamps the outer window once to the nearest
+work area, applies one synchronous frame change, and permits at most one
+measured non-client correction whenever an unconstrained axis retains more
+than a two-physical-pixel residual. Clamp acceptance is evaluated per axis, so
+a width clamp cannot hide unexplained client-height loss from another wrapped
+menu row, and a height clamp cannot hide unexplained width loss. A positive
+constrained client is valid only when it remains above the configured
+DPI-scaled minimum.
+
+Menu ownership and owner-draw registrations remain uncommitted until attach,
+`DrawMenuBar`, sizing, and validation all succeed. A failure restores the prior
+menu and outer rectangle before destroying the candidate. Cleanup verifies that
+the candidate is detached; if Windows refuses both bounded rollback attempts,
+the surface adopts the still-attached menu solely to retain safe ownership until
+teardown rather than destroying an attached handle. The same solver now owns
+DPI-change and work-area reconciliation so display changes cannot restore the
+exact-convergence defect. Minimum tracking also includes actual menu wrapping.
+One bounded native diagnostic snapshot records the requested logical/physical
+client, DPI context, pre/final geometry, work area,
+`AdjustWindowRectExForDpi` and `WM_NCCALCSIZE` estimates, clamp reason,
+correction count, residual, and menu-draw result.
+Early `SetMenu` and `DrawMenuBar` failures include that bounded geometry plus
+rollback state directly in the startup error. Geometry diagnostics also record
+style, extended style, and whether a menu is attached. Pre-transaction and
+rollback rectangles use checked positive dimensions, and minimum tracking
+always probes real-menu wrapping at the configured minimum width before using
+measured current-window extents as a fallback.
+
+All 65 native tests pass, including fit/edge/width/height/both clamp, 96-216
+DPI scaling, the 2560x1440-at-200-percent constrained case, menu wrapping,
+target-minimum-width menu wrapping, per-axis residual correction, two-pixel
+tolerance, one correction, below-minimum rejection, invalid/extreme rectangle
+handling, overflow, and source ownership contracts. The complete repository
+suite passes 439 tests
+with the two expected Windows privilege-dependent symlink skips, the packed
+package smoke passes, the optimized native addon builds, the public API and
+platform audits pass, and the production dependency audit reports zero
+vulnerabilities. This Codex host required Windows PowerShell's built-in module
+directory to precede an incompatible PowerShell 7 module mirror for the package
+smoke; the unchanged candidate-protection and deployment self-tests then passed.
+
+The exact optimized addon also passed live source-linked Windows checks at 250%
+DPI. A feasible 1280x720 logical client measured exactly 3200x1800 physical.
+An intentionally oversized 1600x900 logical client clamped once to the
+3456x2050 work area and retained a 3424x1913 client above the scaled minimum.
+Replace, equivalent replace, remove, and reattach cycles all returned to the
+exact requested client with zero residual/correction and no size creep. This is
+not affected-handheld or packaged-release proof. The live case was not repeated
+after the pure per-axis/validation hardening because its both-clamped and
+unclamped behavior did not change; focused native and full repository gates were
+rerun instead. The independent Esteban review inspected the revised exact
+worktree and returned GO: its per-axis acceptance, target-width menu wrapping,
+bounded error diagnostics, checked geometry, and HMENU/owner-draw ownership all
+have no remaining source blocker. This is still not affected-Legion-Go or
+immutable packaged-consumer proof, so the player incident must remain
+empirically open until that exact package/device retest succeeds. No commit,
+publish, or Steam release was performed from this checkpoint.
+
+### 2026-08-23 unreleased 0.4 application API redesign
+
+The active source is preparing an intentionally breaking `0.4.0` public API;
+it is not published or deployed. The package root now exposes only
+`startSteam`, `defineSteamInput`, and `packageVersion`. `startSteam()` returns
+one lifetime-owning application object with grouped services, overlay events,
+game-host creation, and idempotent shutdown. The exhaustive compatibility
+surface moved to the explicit `steam-bridge/steamworks` entrypoint. Electron,
+renderer, trusted-server, and electron-builder consumers each receive one
+recommended factory/read boundary, while their individual primitives remain
+available under explicit `/advanced` entrypoints. Steam Input layout tooling
+now lives at `steam-bridge/steam-input/layouts`. The application Steam Input
+service exposes only managed session creation, not raw action/controller
+handles. The combined electron-builder hooks prepare Linux and macOS, skip
+Windows without mutation, and run signing verification only for macOS.
+
+Renderer input is version 2. The context-isolated preload exposes one
+`window.steamBridge.input` boundary with application-driven `read()` and the
+frame-critical `gamepads.read()` path; it creates no animation-frame scheduler.
+Steam Bridge owns focus, keyboard, pointer, wheel, touch/pen metadata, bounded
+ordered edges, hot-plug and stale-state cleanup, complete raw controller state,
+semantic left/right sticks, position-named buttons, primary-controller
+selection, and bounded Steam-action transport. Unchanged nested controller
+state is reused before Electron performs its required contextBridge copy.
+An idle connected Steam controller does not claim `lastInput`; only active
+digital state/edges or analog input beyond the drift threshold changes prompt
+ownership.
+Client-PX has a dual-boundary adapter in its own checkout: new shells consume
+the version-2 semantic state without controller tables or per-frame remapping,
+while old 0.3 shells and ordinary browser Gamepad input remain supported. This
+source now passes the package, TypeScript, native, API, and Electron performance
+gates: 439 JavaScript/TypeScript tests pass with the two expected Windows
+symlink-privilege skips, all 65 native tests pass, Rust format/check/clippy are
+clean, the packed-package smoke and supported-platform/API audits pass, and the
+production dependency audit reports zero vulnerabilities. The Electron
+controller benchmark completed 20,000 contextBridge reads at 0.036225 ms
+average, below its 0.20 ms guardrail. The asynchronous Windows texture method is
+now a required TypeScript member because every current session implements it,
+including the synchronous compatibility fallback when the native async binding
+is unavailable.
+
+The public documentation has been rewritten around the managed 0.4 boundaries:
+the project and npm READMEs, Steam Input guide, API coverage map, both example
+guides, contributor policy, migration table, and release procedure now separate
+ordinary application entrypoints from explicit advanced escape hatches. The
+Windows guide no longer recommends the obsolete synchronous texture loop; it
+requires the fenced asynchronous producer lifetime and bounded-backpressure
+semantics. The release guide no longer carries a hard-coded historical tag and
+now describes the exact audited candidate, protected Windows proof, gated npm
+publisher, durable evidence, and rollback flow. Publication must not occur
+without an explicit release request.
+
 ### 2026-08-23 Windows 10 native-loader compatibility checkpoint
 
 Three independent production reports now say the Windows 10 game does not

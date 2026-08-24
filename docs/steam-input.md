@@ -2,13 +2,14 @@
 
 Steam Bridge exposes two Steam Input layers:
 
-- `client.input.createSession(...)` is the recommended game-facing API. It owns
+- `startSteam(...).steamInput.createSession(...)` is the recommended
+  game-facing API. It owns
   the Steam Input lifecycle, resolves manifest names, polls every declared
   action in one native call, computes digital edges, tracks controllers, and
   serves prompts and output helpers.
-- The remaining `client.input` methods and `Controller` class mirror Valve's
-  lower-level API. Use them only when the session does not expose a Steamworks
-  feature you need.
+- `steam-bridge/steamworks` exposes the remaining low-level `input` methods and
+  `Controller` class. Use that explicit advanced entrypoint only when the
+  managed session does not expose a Steamworks feature you need.
 
 The raw `input.registerActionEventCallback()` path multiplexes JavaScript
 subscribers over Valve's single callback and uses a bounded native queue. It is
@@ -61,12 +62,12 @@ and [action-manifest guide](https://partner.steamgames.com/doc/features/steam_co
 
 ```ts
 import path from "node:path";
-import steamworks from "steam-bridge";
+import { startSteam } from "steam-bridge";
 import { steamInputDefinition } from "./generated/steam-input";
 
-const client = steamworks.init(MY_APP_ID);
+const steam = startSteam({ appId: MY_APP_ID });
 
-const steamInput = client.input.createSession({
+const steamInput = steam.steamInput.createSession({
   definition: steamInputDefinition,
   controllers: "individual",
   // Primary-controller/prompt selection only. Gameplay values are untouched.
@@ -257,9 +258,11 @@ keyboard. The one-shot helper resolves to the submitted text, or `null` when
 the player cancels:
 
 ```ts
-const name = await client.utils.showGamepadTextInput(
-  client.utils.GamepadTextInputMode.Normal,
-  client.utils.GamepadTextInputLineMode.SingleLine,
+import * as steamworks from "steam-bridge/steamworks";
+
+const name = await steamworks.utils.showGamepadTextInput(
+  steamworks.utils.GamepadTextInputMode.Normal,
+  steamworks.utils.GamepadTextInputLineMode.SingleLine,
   "Character name",
   32,
   currentName
@@ -339,13 +342,11 @@ bounded MessagePort delivery, and shutdown:
 
 ```ts
 import { ipcMain, session } from "electron";
-import {
-  createElectronSteamInputService,
-  registerElectronSteamInputPreload
-} from "steam-bridge/electron";
+import { configureSteamElectron } from "steam-bridge/electron";
 
-const preload = registerElectronSteamInputPreload(session.defaultSession);
-const inputService = createElectronSteamInputService(
+const electron = configureSteamElectron();
+const preload = electron.installRendererInput(session.defaultSession);
+const inputService = electron.connectActionInput(
   steamInput,
   ipcMain,
   gameWindow.webContents,
@@ -357,21 +358,21 @@ Electron 35+ uses `Session.registerPreloadScript`; Steam Bridge transparently
 uses the older session preload list on supported Electron 24-34 releases and
 restores that list without removing application-owned preloads.
 
-The preload exposes only `window.steamBridgeInput`, never `ipcRenderer`:
+The 0.4 preload API exposes the versioned `window.steamBridge.input` object,
+never `ipcRenderer`:
 
 ```ts
-import { getSteamBridgeInput } from "steam-bridge/input";
+import { getRendererInput } from "steam-bridge/renderer";
 
-const input = getSteamBridgeInput();
-const controllers = input?.readGamepads(); // frame-critical, controller-only
-const everything = input?.readSnapshot();  // keys/pointer/wheel/text/events too
+const input = getRendererInput();
+const controllers = input?.gamepads.read(); // frame-critical, controller-only
+const everything = input?.read();           // keys/pointer/wheel/text/events too
 ```
 
-`readGamepads()` is the low-allocation game-loop path. It captures every
+`gamepads.read()` is the low-allocation game-loop path. It captures every
 connected browser gamepad's complete axes/buttons/touch surfaces, semantic
-`controls` (including `leftStick` and position-named buttons), Bridge-selected
-`primaryGamepadIndex`, and the newest Steam action
-frame, but does not accumulate or copy DOM input events. `readSnapshot()` opts
+`sticks` and position-named buttons, Bridge-selected `primary`, and the newest
+Steam action frame, but does not accumulate or copy DOM input events. `read()` opts
 into complete keyboard, pointer, touch/pen, wheel, text/composition,
 focus/visibility, connection, gamepad, and Steam action state. Pointer motion is
 coalesced, ordered edge storage is a fixed 256-entry ring, only one Steam frame
@@ -379,21 +380,27 @@ request may be pending, and the preload does no polling or event accumulation
 until a consumer reads it. A read made by an application's own game loop
 requests the next Steam frame directly and does not create a second animation-
 frame scheduler. Unchanged normalized controller arrays are reused internally;
-Electron's `contextBridge` still copies and freezes each returned graph. Call
-`start()` only when an application has no frame/input scheduler and explicitly
-wants the preload's autonomous once-per-animation-frame polling. Without a
-Steam action service, controller reads issue no IPC at all. Old clients
+Electron's `contextBridge` still copies and freezes each returned graph. The
+preload never creates its own animation-frame scheduler; the application owns
+when input advances. Without a Steam action service, controller reads issue no
+IPC at all. Old clients
 therefore pay only two event-driven hot-plug listeners while dormant. Empty-pad
 enumeration is capped at once per second; after connection, the consumer gets
 one sample per requested game frame. Old shells remain compatible through
 ordinary DOM/Gamepad APIs.
+During rollout, the preload also exposes a narrow undocumented
+`window.steamBridgeInput.readGamepads()` adapter so an already-cached 0.3
+Client-PX bundle can run under a 0.4 shell. That adapter is not an npm API and
+does no work unless an old client calls it.
 
-Standalone native hosts can also delegate raw host-to-renderer translation to
-`createElectronNativeInputForwarder(...)`. It owns virtual-key translation,
+Standalone native hosts can delegate raw host-to-renderer translation to
+`configureSteamElectron().connectNativeInput(...)`. It owns virtual-key translation,
 modifiers, numpad identity, aspect-fit pointer coordinates, capture continuity,
 and deterministic key/button release across blur, minimize, overlay, and
 shutdown. Application menu commands and fullscreen/overlay shortcuts remain
 explicit callbacks because they are application policy, not device input.
+The underlying `createElectronNativeInputForwarder(...)` primitive remains
+available from `steam-bridge/electron/advanced`.
 
 The semantic stick source is `standard` when Chromium supplies the W3C standard
 mapping and `heuristic` for raw non-standard ordering. Applications consume
@@ -424,7 +431,7 @@ Main process:
 
 ```ts
 import { BrowserWindow } from "electron";
-import { createElectronSteamInputTransport } from "steam-bridge/electron";
+import { createElectronSteamInputTransport } from "steam-bridge/electron/advanced";
 
 const transport = createElectronSteamInputTransport(
   steamInput,
@@ -441,7 +448,7 @@ Preload:
 
 ```ts
 import { contextBridge, ipcRenderer } from "electron";
-import { subscribeElectronSteamInput } from "steam-bridge/electron";
+import { subscribeElectronSteamInput } from "steam-bridge/electron/advanced";
 
 const listeners = new Set<(frame: unknown) => void>();
 const subscription = subscribeElectronSteamInput(ipcRenderer, (frame) => {
@@ -481,13 +488,20 @@ acknowledgement.
 ## Shutdown
 
 ```ts
-transport?.close();
+inputService?.close();
+preload?.close();
 steamInput.dispose();
-steamworks.shutdown();
+electron.close();
+steam.close();
 ```
 
-Close renderer transport first, dispose the session, then shut down the Steam
-client. Await every pending Steam Bridge Promise before client shutdown.
+Close renderer connections first, dispose the session, close the Electron
+integration, then close the Steam application. These operations are idempotent,
+and the owning facades also release their still-open children during shutdown.
+Await every pending Steam Bridge Promise before application shutdown. A caller
+using the manual advanced transport closes it first and uses
+`steamworks.shutdown()` only with the explicit `steam-bridge/steamworks`
+lifecycle.
 
 ## Release checklist
 

@@ -56,8 +56,18 @@ achievements, stats, inventory, UGC, and economy behavior.
   examples.
 - Do not commit Steamworks SDK redistributables or generated native build
   output.
-- Prefer small changes that preserve the existing TypeScript and Rust API
-  shapes.
+- Keep the ordinary application API small and task-oriented. Reusable Steam,
+  Electron, renderer-input, server, and packaging policy belongs in the
+  corresponding managed facade; application code should not need native
+  handles, raw IPC, controller model tables, or Steam callback bookkeeping.
+- Preserve the advanced TypeScript and Rust APIs unless a deliberate breaking
+  change has been approved. During a breaking major/minor API redesign, update
+  the managed facade, migration guide, examples, export audit, and package
+  smoke tests together rather than retaining accidental compatibility shims.
+- Treat `steam-bridge/steamworks`, `steam-bridge/electron/advanced`,
+  `steam-bridge/renderer/advanced`, `steam-bridge/server/advanced`, and
+  `steam-bridge/electron-builder/advanced` as expert escape hatches, not the
+  default shape shown to new users.
 
 ## Release Candidates, Publication, and Rollback
 

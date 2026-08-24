@@ -2,8 +2,8 @@
 
 const path = require("node:path");
 const { app, BrowserWindow, ipcMain } = require("electron");
-const steamworks = require("steam-bridge");
-const { createElectronSteamInputTransport } = require("steam-bridge/electron");
+const steamworks = require("steam-bridge/steamworks");
+const { createElectronSteamInputTransport } = require("steam-bridge/electron/advanced");
 const inputDefinition = require("./definition.cjs");
 
 const APP_ID = Number(process.env.STEAM_APP_ID || 480);

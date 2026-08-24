@@ -7,6 +7,14 @@ Desktop Mode and macOS Apple Silicon; Linux x64 helper coverage is verified
 through the Deck, and Windows x64 helper coverage now includes live interactive
 native-load and process-per-case Steam-launched baseline overlay proof.
 
+This is intentionally an **advanced release-proof harness**, not the smallest
+application example. It imports `steam-bridge/steamworks` and
+`steam-bridge/server/advanced` because it must inspect low-level diagnostics and
+exercise failure paths. Ordinary applications should start with `startSteam()`
+from `steam-bridge`, `configureSteamElectron()` from `steam-bridge/electron`,
+and `getRendererInput()` from `steam-bridge/renderer` as shown in the root
+README.
+
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
 
@@ -30,14 +38,19 @@ Steam.
 
 ### Windows standalone game host
 
-`createElectronSteamOverlay()` remains the normal Linux/macOS product API.
+The managed `steam.gameHost.attachElectronWindow(...)` path is the normal macOS
+product API, while Linux uses its native application host. This harness imports
+the corresponding advanced primitives because it must audit them directly.
 Windows attached presentation is unsupported: child swapchains produced no
 Steam pixels, while popup presenters failed native window lifecycle. A Windows
 game must create an offscreen
 `BrowserWindow` with `useSharedTexture: true` and pass every paint event's NT
-handle to `startNativeOverlaySession().updateSharedTexture(...)`. Release the
-Electron texture in a `finally` block immediately after the update returns;
-Steam Bridge has already copied it into bridge-owned storage.
+handle to the native session. Prefer `updateSharedTextureAsync(...)`: start the
+submission without blocking the paint callback and release that exact Electron
+texture only after the returned promise settles. A `false` result means the
+bounded queue retained the prior frame; it is backpressure, not permission to
+retry the pooled handle. `updateSharedTexture(...)` remains the synchronous
+compatibility path.
 
 Use the current monitor's `displayFrequency` for both
 `webContents.setFrameRate(...)` and the native session's `frameRate`. Reapply
@@ -55,8 +68,10 @@ presentation before forwarding it to the offscreen renderer, and release all
 pressed input on `blur` or `captureLost`. Electron's
 [official shared-texture contract](https://github.com/electron/electron/blob/main/shell/browser/osr/README.md)
 requires opening every event's pooled handle, copying it before release, and
-releasing the pooled texture promptly; the bridge performs that copy
-synchronously inside `updateSharedTexture(...)`.
+releasing the pooled texture promptly. Steam Bridge's asynchronous path retains
+the producer until its GPU fence confirms that the bridge-owned copy is safe;
+never release it early, reuse its handle, or wait synchronously on the Electron
+paint callback.
 
 ## Packaged Smoke Builds
 
@@ -88,7 +103,7 @@ current checkout, pass its tarball and exact lowercase SHA-256 together:
 
 ```sh
 npm run example:package:mac -- \
-  --package-tarball /absolute/steam-bridge-0.3.9.tgz \
+  --package-tarball /absolute/steam-bridge-<version>.tgz \
   --expected-package-sha256 <64-character-sha256>
 ```
 

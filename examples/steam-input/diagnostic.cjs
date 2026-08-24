@@ -1,7 +1,7 @@
 "use strict";
 
 const path = require("node:path");
-const steamworks = require("steam-bridge");
+const steamworks = require("steam-bridge/steamworks");
 const inputDefinition = require("./definition.cjs");
 
 const appId = Number(process.env.STEAM_APP_ID || 480);

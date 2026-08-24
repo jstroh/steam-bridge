@@ -1934,7 +1934,7 @@ export interface NativeOverlaySession extends CallbackHandle {
    * that callers may safely release Electron's pooled producer texture.
    * `false` means bounded backpressure intentionally retained the prior frame.
    */
-  updateSharedTextureAsync?(texture: NativeOverlaySharedTexture): Promise<boolean>;
+  updateSharedTextureAsync(texture: NativeOverlaySharedTexture): Promise<boolean>;
   setCursorHidden(hidden: boolean): void;
   setFrameRate(frameRate: number): void;
   setFullScreen(fullScreen: boolean): void;

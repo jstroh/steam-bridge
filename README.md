@@ -1,410 +1,368 @@
 # Steam Bridge
 
-[![npm](https://img.shields.io/npm/v/steam-bridge)](https://www.npmjs.com/package/steam-bridge)
-[![CI](https://github.com/jstroh/steam-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/jstroh/steam-bridge/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/steam-bridge)](LICENSE)
+Steam Bridge gives Node and Electron applications a small, lifecycle-owned API
+for Steamworks, Steam Input, secure renderer input, native Steam presentation,
+trusted publisher Web API calls, and Steam-safe packaging.
 
-Steamworks for Electron and Node, with a typed JavaScript API and prebuilt
-native binaries for Windows, Linux/Steam Deck, and Apple Silicon macOS.
+Version 0.4 intentionally simplifies the public API. Applications start one
+Steam lifetime, configure one Electron integration, and read one normalized
+renderer-input boundary. Exhaustive SDK mirrors and low-level integration
+primitives remain available from explicit advanced entrypoints.
+
+## Platform Targets
+
+| Platform | Target | Product window model |
+| --- | --- | --- |
+| Windows | x64 | One standalone native D3D11 host with an offscreen Electron renderer |
+| Linux | x64 | Native X11/GLX application host; Steam Deck Desktop and Game Mode supported |
+| macOS | Apple Silicon arm64 | One managed Metal child attached to the Electron window |
+
+Intel macOS, Rosetta, universal macOS packages, Windows attached/popup overlay
+hosts, and a CPU-rendering fallback are not supported.
+
+## Install
 
 ```sh
 npm install steam-bridge
 ```
 
-Steam Bridge handles Steam initialization, callbacks, achievements, stats,
-cloud saves, inventory, input, networking, matchmaking, Workshop/UGC, game
-servers, overlays, and the Steam Web API. Published packages include the native
-addons and Valve runtime libraries for every supported target, so application
-developers do not need a local Steamworks SDK.
+Electron is an optional peer dependency. Use a stable Electron release; do not
+ship alpha or beta Electron builds.
 
-## Start here
+## Public entrypoints
 
-You need:
-
-- Node.js 18 or newer;
-- Electron 24 or newer for Electron applications;
-- a running Steam client; and
-- a Steam app ID that the current Steam account can run.
-
-## Platform Targets
-
-| Supported system | Native target |
+| Entrypoint | Ordinary application use |
 | --- | --- |
-| Windows x64 | `x86_64-pc-windows-msvc` |
-| Linux x64 and Steam Deck | `x86_64-unknown-linux-gnu` |
-| Apple Silicon macOS | `aarch64-apple-darwin` |
+| `steam-bridge` | Start and own one Steam application |
+| `steam-bridge/electron` | Configure Electron and connect renderer/native input |
+| `steam-bridge/renderer` | Read normalized input inside a context-isolated renderer |
+| `steam-bridge/server` | Create a trusted publisher Web API client |
+| `steam-bridge/electron-builder` | Install the complete packaging hook pair |
+| `steam-bridge/steam-input/layouts` | Generate device-correct legacy layouts |
 
-The Linux artifact is CI-tested and physically qualified on Steam Deck. General
-non-Deck Linux remains a separate physical X11/Wayland qualification lane; do
-not claim that lane green from CI, WSL, a VM, or a Steam Deck receipt.
+Low-level surfaces are deliberately explicit:
 
-### macOS Apple Silicon Only
+- `steam-bridge/steamworks`
+- `steam-bridge/electron/advanced`
+- `steam-bridge/renderer/advanced`
+- `steam-bridge/server/advanced`
+- `steam-bridge/electron-builder/advanced`
 
-Intel macOS, Rosetta, universal macOS packages, Windows ARM, and Linux ARM are
-not supported.
-Do not package, launch, or verify macOS smoke apps through Rosetta.
-
-Valve's SpaceWar App ID `480` is useful for generic smoke testing. Use your own
-app ID for production and for app-specific inventory, achievements, or
-commerce. When developing outside a Steam launch, put a `steam_appid.txt`
-containing the app ID beside the executable or in its working directory.
-
-## Five-minute client setup
+## Start one Steam application
 
 ```ts
-import steamworks from "steam-bridge";
+import { startSteam } from "steam-bridge";
 
-const client = steamworks.init(480);
+const steam = startSteam({ appId: 480 });
 
-console.log("Steam ID:", client.localplayer.getSteamId().steamId64);
-console.log("Subscribed:", client.apps.isSubscribed());
+console.log(steam.localPlayer.getName());
+console.log({
+  steamDeck: steam.isSteamDeck,
+  bigPicture: steam.isBigPicture,
+  overlay: steam.overlay.isAvailable()
+});
 
-client.callback.register("GameOverlayActivated", ({ active }) => {
+const stopOverlayEvents = steam.events.onOverlayChanged((active) => {
   console.log("Steam overlay active:", active);
 });
 
-client.overlay.activateToStore(480, client.overlay.StoreFlag.None);
+steam.overlay.open({ type: "store" });
+
+// Application shutdown:
+stopOverlayEvents();
+steam.close();
 ```
 
-Steam Bridge owns Valve's manual callback dispatcher and starts its safe
-callback pump for initialized clients. If your application uses a custom pump,
-call `runCallbacks()`. Register client callbacks with
-`client.callback.register(...)` and game-server callbacks with
-`client.gameServer.onCallback(...)`; the two domains are isolated. Do not mix
-Steam Bridge with raw `CCallbackBase` or `CCallResult` registration or
-unregistration; JS-supplied native pointers are never dereferenced. A custom
-`callbackIntervalMs` must be a positive integer timer delay. If native callback
-dispatch fails, the pump stops and emits warning code
-`STEAM_BRIDGE_CALLBACK_PUMP_FAILED` instead of failing silently.
-Successful first-time `initSafe()` and `initAnonymousUser()` calls start this
-same automatic pump. Authentication tickets are live native resources: use
-`try`/`finally` and call `ticket.cancel()` immediately after the trusted verifier
-has consumed the bytes. Native finalization is a last-resort cleanup, not a
-substitute for explicit cancellation.
+`startSteam()` permits one active application per process. The returned object
+owns callbacks, managed Steam Input sessions, game hosts, and Steam shutdown.
+`close()` is idempotent.
 
-Run client and game-server native APIs on Node's main thread, and await every
-native Promise before calling `init()`, `initSafe()`, `initAnonymousUser()`, or
-`shutdown()`. Steam Bridge rejects native client calls from `worker_threads`
-and rejects lifecycle changes while an async native operation is pending. Pure
-URL/Web API helpers and the trusted `steam-bridge/server` publisher-ticket
-utilities remain available in server workers.
+The grouped services cover ordinary app needs:
 
-For controller actions, generated manifest types, one-call frame batching,
-button edges, glyph prompts, rebinding, haptics, and bounded Electron renderer
-delivery, follow the [Steam Input guide](docs/steam-input.md).
+- `apps`, `localPlayer`, `achievements`, `auth`, `cloud`, and `friends`;
+- `inventory`, `matchmaking`, `networking`, `screenshots`, `stats`, and
+  `workshop`;
+- `events`, `overlay`, `gameHost`, and managed `steamInput` sessions.
 
-## Steam Input in ten minutes
+Use `steam-bridge/steamworks` only when the managed surface does not expose a
+required SDK feature.
 
-Create Valve's `steam_input_manifest.vdf`, export the official controller
-layouts from Steam, and validate/generate the game-facing names:
+## Configure Electron once
+
+Call `configureSteamElectron()` before Electron becomes ready:
+
+```ts
+import { app, session } from "electron";
+import { configureSteamElectron } from "steam-bridge/electron";
+
+const steamElectron = configureSteamElectron();
+
+app.whenReady().then(() => {
+  const rendererInput = steamElectron.installRendererInput(session.defaultSession);
+
+  app.once("before-quit", () => {
+    rendererInput.close();
+    steamElectron.close();
+  });
+});
+```
+
+The integration owns its preload registrations, main/renderer Steam Input
+connections, native input forwarders, and any repaint policy it started. Only
+one integration may be active in a process.
+
+## Read input in the renderer
+
+The preload exposes no `ipcRenderer` and starts no animation-frame loop. The
+application reads input from its existing game/update scheduler:
+
+```ts
+import { getRendererInput } from "steam-bridge/renderer";
+
+const input = getRendererInput();
+
+function updateGame(): void {
+  const frame = input?.gamepads.read();
+  const pad = frame?.primary;
+
+  if (pad?.sticks.left.available) {
+    movePlayer(pad.sticks.left.x, pad.sticks.left.y);
+  }
+  if (pad?.buttons.south.pressed) {
+    interact();
+  }
+}
+```
+
+Use `input.read()` when the application also needs keyboard state, modifiers,
+pointer/touch/pen state, wheel accumulation, text/composition, ordered input
+edges, focus, the last meaningful input source, or Steam action frames.
+
+Steam Bridge owns:
+
+- focus/visibility neutralization and held-state cleanup;
+- keyboard, mouse, wheel, touch, pen, and controller normalization;
+- hot-plugging, sparse controller indexes, multiple controllers, and primary
+  controller selection;
+- position-named buttons and semantic left/right sticks;
+- complete raw axes/buttons for advanced binding UIs;
+- bounded event storage and bounded/coalesced Steam Input IPC;
+- one-second no-controller discovery instead of per-frame empty enumeration.
+
+An inactive game exposes no actionable primary controller or stale Steam
+actions. An idle connected Steam controller does not steal prompt ownership.
+
+The controller-only path is designed for frame loops. The repository benchmark
+runs 20,000 reads and enforces a sub-millisecond budget; it does not create a
+second scheduler.
+
+## Managed Steam Input actions
+
+Define game meaning in the application and let Steam Bridge own controller
+handles, frame batching, edges, prompts, output, and lifecycle:
+
+```ts
+import { defineSteamInput, startSteam } from "steam-bridge";
+
+const definition = defineSteamInput({
+  actionSets: { gameplay: "Gameplay" },
+  digital: { interact: "Interact", pause: "Pause" },
+  analog: { move: "Move" }
+});
+
+const steam = startSteam({ appId: 480 });
+const actions = steam.steamInput.createSession({ definition }).start();
+actions.activateActionSet("gameplay");
+
+function updateGame(): void {
+  const controller = actions.update().primaryController;
+  if (controller?.digital.interact.pressedThisFrame) interact();
+  if (controller?.analog.move.active) {
+    movePlayer(controller.analog.move.x, controller.analog.move.y);
+  }
+}
+```
+
+Generate and verify typed manifests with:
 
 ```sh
 npx steam-bridge-input validate ./input/steam_input_manifest.vdf
-npx steam-bridge-input generate ./input/steam_input_manifest.vdf --out ./src/steam-input.generated.ts
+npx steam-bridge-input generate ./input/steam_input_manifest.vdf \
+  --out ./src/generated/steam-input.ts
+npx steam-bridge-input generate ./input/steam_input_manifest.vdf \
+  --out ./src/generated/steam-input.ts --check
 ```
 
-Keep one session in the process that initialized Steamworks and poll it once
-from the game-frame scheduler:
+For legacy keyboard/mouse-style games, generate controller-family layouts from
+one semantic JSON spec:
 
-```ts
-import steamworks from "steam-bridge";
-import { steamInputDefinition } from "./steam-input.generated";
-
-const client = steamworks.init(MY_APP_ID);
-const input = client.input.createSession({
-  definition: steamInputDefinition,
-  controllers: "individual",
-  // Only controls which device supplies UI prompts; action values are unchanged.
-  activeControllerAnalogThreshold: 0.1
-}).start();
-
-input.activateActionSet("gameplay");
-
-input.on("controller-disconnected", ({ releasedController }) => {
-  // Clear held per-player state with the final synthesized release edges.
-  if (releasedController?.digital.pause.releasedThisFrame) closePauseMenu();
-});
-
-function gameFrame() {
-  const controller = input.update().primaryController;
-  if (controller?.digital.jump.pressedThisFrame) player.jump();
-  if (controller?.analog.move.active) {
-    player.move(controller.analog.move.x, controller.analog.move.y);
-  }
-}
-
-const jumpPrompt = input.getDigitalPrompt("jump");
-input.showBindingPanel();
-
-// On application shutdown:
-input.dispose();
-steamworks.shutdown();
+```sh
+steam-bridge-generate-legacy-layouts ./input/layout.json --out ./input/layouts
+steam-bridge-generate-legacy-layouts ./input/layout.json --out ./input/layouts --check
 ```
 
-Calling `activateActionSet()` immediately after `start()` is safe. The session
-remembers the selected set, retries while Steam loads the handle, and reapplies
-it before later polls and after hot-plug callbacks. This keeps a newly connected
-controller out of an arbitrary/default set. A per-controller selection overrides
-the all-controller default for local multiplayer. Apply action layers only on
-game-state transitions; layer order matters.
+The generator owns Xbox, PlayStation, Switch/Joy-Con, Steam Controller, Steam
+Deck, generic-controller, and Remote Play layout details. Application code does
+not carry controller model tables.
 
-Poll `update()` exactly once from the game-frame owner. Use
-`pressedThisFrame`/`releasedThisFrame` for edges, accept keyboard and mouse at
-the same time, and use Valve's returned glyphs instead of assuming Xbox labels.
-The default primary-controller threshold ignores ordinary stick drift without
-changing the analog values delivered to the game.
+See [Steam Input for game developers](docs/steam-input.md).
 
-Electron apps that want one generic device boundary can register Steam
-Bridge's packaged preload and read semantic controller state without owning
-renderer IPC, raw axis indexes, or controller-family tables:
+## Choose the correct window model
+
+### Windows
+
+Use one standalone native game host. Electron renders offscreen and Steam
+Bridge imports/presents the GPU texture in the native D3D11 window. Do not add
+a visible Electron game window underneath it and do not attach a popup or child
+presenter.
 
 ```ts
-// Electron main process, before creating the game BrowserWindow:
-import { ipcMain, session } from "electron";
-import {
-  createElectronSteamInputService,
-  registerElectronSteamInputPreload
-} from "steam-bridge/electron";
-
-registerElectronSteamInputPreload(session.defaultSession);
-createElectronSteamInputService(input, ipcMain, gameWindow.webContents);
-```
-
-```ts
-// Context-isolated renderer:
-import { getSteamBridgeInput } from "steam-bridge/input";
-
-const frame = getSteamBridgeInput()?.readGamepads();
-const primary = frame?.gamepads.find(
-  (gamepad) => gamepad.index === frame.primaryGamepadIndex
-);
-const move = primary?.controls.leftStick;
-```
-
-Use `readSnapshot()` when the app also needs normalized keyboard, mouse,
-wheel, touch, pen, text/composition, focus, and ordered input edges. Generate
-device-correct legacy Steam layouts from one app-owned semantic binding file
-with `steam-bridge-generate-legacy-layouts <spec> --out <directory>`.
-
-Omit `manifestPath` in a deployed Steam build so Steam uses the depot
-configuration. Use an absolute override only during development. Electron
-games keep this session in main and use the bounded transport from
-`steam-bridge/electron`; the runnable
-[Steam Input example](examples/steam-input/README.md) includes a secure
-context-isolated inspector. The full guide covers prompts, local multiplayer,
-disconnect releases, diagnostics, packaging, Steam Deck, and physical QA.
-
-Steam Networking custom-signaling and non-null pointer-valued config escape
-hatches are also unavailable. JavaScript cannot prove ownership, layout, or
-lifetime for those C++ interface pointers, so Steam Bridge rejects them instead
-of risking a native process crash. Use the managed networking/callback facades;
-null pointer config remains available only for clearing a value.
-
-## Choose the correct Electron window model
-
-Steam hooks platform surfaces differently. Choose the model before building
-your window integration and keep the same native host for its lifetime.
-
-| Use case | Supported model |
-| --- | --- |
-| Windows game window | One visible Steam Bridge D3D11 host fed by one hidden Electron offscreen renderer |
-| Linux or Steam Deck live game window | One visible Steam Bridge X11/GLX application host fed by one hidden Electron offscreen renderer |
-| macOS game window | One Metal child attached to the Electron parent window |
-| Ordinary Linux/macOS Electron overlay routes | One managed controller attached to the existing Electron window |
-
-The important rules are simple:
-
-- Keep exactly one visible game host.
-- Never turn the Steam surface into a popup, topmost companion, `keepAbove`
-  window, or recreate-on-resize fallback.
-- Windows attached/child presentation intentionally fails closed. Use the
-  standalone D3D11 host.
-- Linux still needs an Xwayland `DISPLAY` because Steam hooks the GLX host,
-  even if Electron itself uses native Wayland.
-- The macOS surface stays an AppKit child. In fullscreen it remains transparent
-  so Steam's translucent pixels composite over the live game.
-- Close Chromium DevTools during live Steam overlay testing.
-- On Windows, let the managed session discard offscreen textures while Steam
-  owns the overlay and until the native game window has actually regained
-  focus or Steam has released mouse capture. Keep rendering; the managed
-  post-overlay texture quarantine retains the last clean frame for five seconds
-  by default. This covers the measured interval in which Steam can keep its HWND
-  Present hook after the visible overlay closes; the next normal paint then
-  replaces the retained frame. If Windows omits the expected focus/capture
-  edge, the inactive callback plus that full quarantine is the bounded fallback
-  so a missed window message cannot freeze the retained frame forever.
-
-### Managed routes on Linux and macOS
-
-Configure Electron before readiness, create one controller for the main window,
-and reuse it:
-
-```ts
-import { app, BrowserWindow } from "electron";
-import steamworks from "steam-bridge";
-
-steamworks.electronConfigureSteamOverlay();
-const client = steamworks.init(480);
-
-app.whenReady().then(async () => {
-  const gameWindow = new BrowserWindow({ width: 1280, height: 720 });
-  const overlay = client.overlay.createElectronSteamOverlay(gameWindow);
-
-  const result = await overlay.openStoreAndWaitIfAvailable({ appId: 480 });
-  if (!result) console.warn("Steam overlay is not ready");
-});
-```
-
-Wait helpers resolve after the Steam surface closes and focus returns. Store,
-browser, Friends/chat, profile, community, achievement, statistics, and
-checkout routes share the same controller.
-
-### Standalone game host on Windows and Linux
-
-Render Electron offscreen and forward its frames and mapped input to one native
-application host:
-
-```ts
-const session = client.overlay.startNativeOverlaySession({
+const host = steam.gameHost.createNativeWindow({
   title: "My Game",
   clientWidth: 1280,
   clientHeight: 720,
-  minClientWidth: 640,
-  minClientHeight: 480,
-  frameRate: 60,
-  useLinuxApplicationHost: process.platform === "linux",
-  onInputEvent: forwardInputToOffscreenRenderer,
+  frameRate: 120
 });
 ```
 
-The native host owns window chrome, movement, resize, maximize, minimize,
-fullscreen, focus, cursor, rounded corners, input, DPI, and the surface Steam
-hooks. The application owns its logical size, aspect-fit policy, menus, and
-renderer frame rate. `1280x720` with a `640x480` minimum is a safe desktop
-default; Steam Deck Game Mode may use the full `1280x800` display.
+Connect the host's native input events to the offscreen renderer with
+`steamElectron.connectNativeInput(...)`. Keep the same host for launch, resize,
+maximize, fullscreen, minimize, overlay, and shutdown.
 
-Set both Electron and the native session to the active display rate. Preserve
-aspect ratio in the renderer—Steam Bridge deliberately does not force one.
-The [Electron integration guide](examples/electron-basic/README.md) contains
-the complete shared-texture, input-mapping, checkout-reservation, fullscreen,
-and packaging implementation.
+Submit Electron pooled textures with `host.updateSharedTextureAsync(texture)`
+and release each texture only after that submission promise settles. A `false`
+result is bounded backpressure and retains the prior frame; never retry or reuse
+the pooled handle. The synchronous `updateSharedTexture(...)` method exists for
+compatibility, not as the preferred frame loop.
 
-## Client code and server code
+### Linux and Steam Deck
 
-Keep publisher credentials out of Electron and browser processes.
+Use the native X11/GLX application host for Steam-over-live-WebGL presentation.
+The packaged launcher must retain `--no-zygote --no-sandbox`; Steam otherwise
+injects into Chromium children and creates competing overlay targets.
 
-| Import | Use it for |
-| --- | --- |
-| `steam-bridge` | Native Steam client/game-server APIs and public, keyless Web API calls |
-| `steam-bridge/server` | Authenticated/user-key and publisher-key Web API calls, MicroTxn operations, and encrypted-ticket decryption on a trusted Node.js server |
-| `steam-bridge/electron-builder` | Linux and macOS packaging preparation |
+Steam Deck remains a Steam platform. Use `steam.isSteamDeck` and
+`steam.isBigPicture` only to choose presentation/UI policy.
+
+General non-Deck Linux remains a separate physical X11/Wayland qualification lane;
+Steam Deck evidence does not qualify ordinary Linux desktops.
+
+### macOS Apple Silicon Only
+
+Use one managed Electron attachment and reuse it through resize, maximize,
+minimize, and fullscreen transitions:
 
 ```ts
-import { createPublisherWebApiClient } from "steam-bridge/server";
-
-const steamWebApi = createPublisherWebApiClient();
-const transaction = await steamWebApi.microTxn.initClientTxn(request);
+const overlay = steam.gameHost.attachElectronWindow(mainWindow);
+await overlay.openStoreAndWaitIfAvailable({ appId: steam.appId });
 ```
 
-`createPublisherWebApiClient()` reads `STEAM_PUBLISHER_WEB_API_KEY`, with
-`STEAM_WEB_API_KEY` retained as a server-only compatibility alias. Steam Bridge
-sends keys in `x-webapi-key`, requires HTTPS, rejects credential-bearing
-redirects, and keeps keys out of generated and returned URLs. Requests with
-caller-provided headers receive the same HTTPS, no-redirect, and error-redaction
-protections.
+The supported package is Apple Silicon arm64, signed and notarized. Do not
+build or test it through Rosetta.
 
-See the [Web API reference](packages/steam-bridge/README.md#steam-web-api) for
-public, user-key, publisher-key, authentication-ticket, and encrypted-ticket
-examples.
+Do not package, launch, or verify macOS smoke apps through Rosetta.
+
+## Client code and trusted server code
+
+Never place publisher keys in an Electron main process, preload, renderer, or
+browser bundle.
+
+```ts
+import { createSteamPublisherApi } from "steam-bridge/server";
+
+const steamApi = createSteamPublisherApi({
+  publisherApiKey: process.env.STEAM_PUBLISHER_WEB_API_KEY
+});
+```
+
+The safe server facade rejects client-runtime publisher-secret overrides. More
+specialized server primitives are available only from
+`steam-bridge/server/advanced`.
+
+Authentication tickets and inventory result handles are live native resources.
+Cancel/destroy them in `finally`; garbage collection is only a safety net.
 
 ## Package Electron applications
 
-The native addon and matching Valve runtime libraries must remain outside ASAR.
-With electron-builder, prepare Linux and macOS packages in `afterPack`:
-
 ```js
-const {
-  prepareLinuxSteamAppAfterPack,
-  prepareMacosSteamAppAfterPack,
-} = require("steam-bridge/electron-builder");
+const { createSteamBuildHooks } = require("steam-bridge/electron-builder");
+const steamBuild = createSteamBuildHooks();
 
-exports.afterPack = async (context) => {
-  // Required on Linux/Steam: installs the --no-zygote --no-sandbox launcher.
-  prepareLinuxSteamAppAfterPack(context);
-  prepareMacosSteamAppAfterPack(context);
-};
+exports.afterPack = steamBuild.afterPack;
+exports.afterSign = steamBuild.afterSign;
 ```
 
-The Linux helper installs the Steam-safe launcher before Chromium creates its
-zygote. Its `--no-zygote --no-sandbox` switches are an intentional,
-non-optional requirement: Steam otherwise injects into Chromium children and
-creates competing overlay targets that have crashed or presented incorrectly
-in the actual game. This disables Chromium's process sandbox for the Linux
-package; do not remove it unless a replacement passes actual-game QA on Linux
-Desktop and both Steam Deck modes. Custom `launcherArgs` are appended and
-cannot remove either required switch. Both packaging helpers are safe to rerun
-in an existing output directory: they replace a stale renamed Electron binary,
-resume an interrupted rename, and reject a launcher whose Electron target is
-missing. The macOS helper installs the native
-launcher and Steam-compatible entitlements; run your normal Apple signing and
-notarization pipeline after it. Windows application signing remains the
-application distributor's responsibility.
+The hook pair:
 
-## Steam Deck Game Mode
+- prepares the Linux launcher after packing;
+- prepares the macOS launcher/entitlements after packing;
+- verifies the signed macOS app after signing; and
+- deliberately does nothing to Windows packages.
 
-Desktop Mode and Game Mode use the same Linux package but not identical Steam
-UI routes. Gamescope can present compositor-native routes such as Store, while
-a managed desktop web route may not activate.
+Keep the native addon and matching Valve runtime libraries outside ASAR.
+Windows signing remains the application distributor's responsibility.
 
-Use `client.utils.isSteamRunningOnSteamDeck()` and
-`client.utils.isSteamInBigPictureMode()` to choose Game Mode policy. Do not
-retry a desktop route indefinitely or create a second window as a fallback.
+## Compatibility and migration
 
-## Troubleshooting checklist
+0.4 is intentionally breaking at the npm import boundary:
+
+| Before 0.4 | 0.4 |
+| --- | --- |
+| `steam-bridge` low-level API | `steam-bridge/steamworks` |
+| `steam-bridge/electron` primitives | `steam-bridge/electron/advanced` |
+| `steam-bridge/input` | `steam-bridge/renderer` |
+| `steam-bridge/server` primitives | `steam-bridge/server/advanced` |
+| `steam-bridge/electron-builder` primitives | `steam-bridge/electron-builder/advanced` |
+| `steam-bridge/steam-input-layouts` | `steam-bridge/steam-input/layouts` |
+
+The Electron shell/client protocol has a narrower compatibility requirement
+than npm imports. New shells temporarily expose a migration-only legacy
+controller reader for cached 0.3 Client-PX bundles, while new Client-PX builds
+accept both the 0.4 and 0.3 boundaries. The adapter does no work unless an old
+client calls it.
+
+## Troubleshooting
 
 | Symptom | Check first |
 | --- | --- |
-| Steam does not initialize | Steam is running, the account owns the app, the app ID is correct, and `steam_appid.txt` is in the actual working directory for non-Steam launches |
-| Overlay never appears | The game was launched through Steam, initialization happened before graphics-device creation, DevTools is closed, and only one machine is running Steam for the account |
-| Windows overlay is missing or covers the wrong window | Use the standalone D3D11 host; do not attach a popup or child to a visible Electron window |
-| Linux overlay crashes at startup | Run the packaged executable prepared by `prepareLinuxSteamAppAfterPack()` and retain the Xwayland `DISPLAY` |
-| macOS overlay loses alignment | Keep one attached child and reuse one controller through resize, focus, minimize, and fullscreen transitions |
-| Native addon works unpackaged but not after packaging | Keep the addon and Valve libraries outside ASAR and verify the packaged target matches the current OS/architecture |
-| Overlay is tiny, duplicated, or stale | Keep one visible host and stop forwarding Steam-contaminated offscreen frames while Steam's overlay is active |
+| Steam does not initialize | Steam is running, the account owns the app, the App ID is correct, and local launches have `steam_appid.txt` in the real working directory |
+| Overlay does not appear | Launch through Steam, initialize before graphics-device creation, close DevTools, and ensure only one test machine owns the Steam session |
+| Windows window/overlay is missing | Use the standalone native host, not Electron attachment or a popup |
+| Linux crashes or has duplicate overlay targets | Use the packaged Steam Bridge launcher and retain the Xwayland `DISPLAY` |
+| macOS overlay loses alignment | Reuse one managed attachment through every window-state transition |
+| Controller input sticks after focus loss | Consume the normalized renderer boundary and propagate native-host active/inactive state |
+| Native addon works unpackaged only | Keep the addon and platform Valve libraries outside ASAR and verify OS/architecture matching |
 
-## Before release QA
-
-- Use an exact stable Electron release—never alpha, beta, nightly, or another
-  prerelease.
-- Force-close Steam and its helper processes on every other test machine.
-- Exercise the actual Steam-launched game, not only a synthetic example.
-- Cover ordinary and high refresh, low resolution, DPI/scale, drag, resize,
-  minimum size, maximize, minimize, focus, fullscreen, overlay open/close, and
-  clean shutdown.
-- Treat shared-texture copy timeouts, adapter switches, device recovery, and
-  post-overlay frame drops as separate diagnostics; one is not evidence for
-  another.
-- Never complete a purchase or subscription during QA.
-
-## Documentation
-
-- [npm package reference](packages/steam-bridge/README.md)
-- [Electron example and platform guide](examples/electron-basic/README.md)
-- [Steam API coverage](docs/steam-api-coverage.md)
-- [Steam Input for game developers](docs/steam-input.md)
-- [Contributing and release process](CONTRIBUTING.md)
-- [Architecture decisions and retained QA evidence](docs/research)
-
-Repository development uses Node.js 22.13 or newer, Rust stable, and the
-Steamworks SDK through `steamworks-sys` or `STEAMWORKS_SDK_PATH`.
+## Development and release gates
 
 ```sh
-npm install
-npm run native:build
+npm ci
+npm run build
 npm test
 npm run package:smoke
+npm run check:platform
+npm run native:fmt
+npm run native:check
+npm run api:check
+npm run steam-input:benchmark:electron
+npm audit
 ```
+
+Automated checks are not physical-device proof. Before release, qualify the
+exact packed candidate on supported hosts, with one Steam client running at a
+time, and inspect the resulting diagnostics/receipts.
+
+## More documentation
+
+- [Steam Input guide](docs/steam-input.md)
+- [Steam API coverage](docs/steam-api-coverage.md)
+- [Current engineering checkpoint](docs/research/current-work.md)
+- [Electron smoke and actual-game QA](examples/electron-basic/README.md)
+- [Steam Input example](examples/steam-input/README.md)
+
+Files under `docs/research/` preserve design decisions, experiments, and
+historical qualification evidence. They are not the recommended 0.4 API guide.
 
 ## License
 
-[MIT](LICENSE)
+MIT

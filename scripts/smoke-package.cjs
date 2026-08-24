@@ -225,15 +225,22 @@ function runMacosPackageSigningStaticChecks() {
   assertExecutableFile(path.join(packageRoot, "bin", "steam-input.cjs"));
   assert.equal(
     packageJson.exports?.["./electron-builder"]?.default,
-    "./dist/electron-builder.js",
+    "./dist/electron-builder-app.js",
     "steam-bridge package must expose the electron-builder helper subpath"
   );
   assert.equal(
     packageJson.exports?.["./server"]?.default,
-    "./dist/server.js",
+    "./dist/server-app.js",
     "steam-bridge package must expose the trusted server subpath"
   );
-  assert.equal(packageJson.exports?.["./server"]?.types, "./dist/server.d.ts");
+  assert.equal(packageJson.exports?.["./server"]?.types, "./dist/server-app.d.ts");
+  assert.equal(packageJson.exports?.["."]?.default, "./dist/app.js");
+  assert.equal(packageJson.exports?.["./steamworks"]?.default, "./dist/index.js");
+  assert.equal(packageJson.exports?.["./renderer"]?.default, "./dist/renderer-app.js");
+  assert.equal(packageJson.exports?.["./renderer/advanced"]?.default, "./dist/input.js");
+  assert.equal(packageJson.exports?.["./electron/advanced"]?.default, "./dist/electron.js");
+  assert.equal(packageJson.exports?.["./server/advanced"]?.default, "./dist/server.js");
+  assert.equal(packageJson.exports?.["./electron-builder/advanced"]?.default, "./dist/electron-builder.js");
   assertExecutableFile(path.join(packageRoot, "bin", "prepare-macos-app.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "validate-checkout-target.cjs"));
   assertExecutableFile(path.join(packageRoot, "bin", "verify-macos-signing.cjs"));
@@ -318,8 +325,8 @@ function runMacosPackageSigningStaticChecks() {
   );
   assert.match(
     packageReadme,
-    /prepareMacosSteamAppAfterPack[\s\S]*afterPack/,
-    "package README must document the electron-builder afterPack helper"
+    /createSteamBuildHooks[\s\S]*afterPack[\s\S]*afterSign/,
+    "package README must document the complete electron-builder hook facade"
   );
   assert.match(
     exampleReadme,
@@ -4655,11 +4662,23 @@ function runConsumerChecks() {
     path.join(consumerDir, "check-cjs.cjs"),
     `
 const assert = require("node:assert/strict");
-const steam = require("steam-bridge");
-const steamServer = require("steam-bridge/server");
-const electron = require("steam-bridge/electron");
-const electronBuilder = require("steam-bridge/electron-builder");
+const appApi = require("steam-bridge");
+const steam = require("steam-bridge/steamworks");
+const serverApi = require("steam-bridge/server");
+const steamServer = require("steam-bridge/server/advanced");
+const electronApi = require("steam-bridge/electron");
+const electron = require("steam-bridge/electron/advanced");
+const rendererApi = require("steam-bridge/renderer");
+const builderApi = require("steam-bridge/electron-builder");
+const electronBuilder = require("steam-bridge/electron-builder/advanced");
 
+assert.deepEqual(Object.keys(appApi).sort(), ["defineSteamInput", "packageVersion", "startSteam"]);
+assert.equal(typeof appApi.startSteam, "function");
+assert.equal(typeof appApi.defineSteamInput, "function");
+assert.deepEqual(Object.keys(serverApi), ["createSteamPublisherApi"]);
+assert.equal(typeof electronApi.configureSteamElectron, "function");
+assert.deepEqual(Object.keys(rendererApi), ["getRendererInput"]);
+assert.equal(typeof builderApi.createSteamBuildHooks, "function");
 assert.equal(typeof steam.init, "function");
 assert.equal(typeof steam.default.init, "function");
 assert.equal(typeof steam.default.openProfileOverlay, "function");
@@ -4744,6 +4763,7 @@ assert.throws(() => electronBuilder.prepareMacosSteamAppAfterPack({
     path.join(consumerDir, "check-esm.mjs"),
     `
 import assert from "node:assert/strict";
+import * as appApi from "steam-bridge";
 import steam, {
   createSteamWebApiClient,
   isOverlayNeedsPresentPollingEnabled,
@@ -4753,11 +4773,22 @@ import steam, {
   SteamOverlayMainThreadRequiredError,
   SteamOverlayNativeSurfaceOwnershipError,
   SteamworksEnums
-} from "steam-bridge";
-import * as electron from "steam-bridge/electron";
-import * as electronBuilder from "steam-bridge/electron-builder";
-import * as steamServer from "steam-bridge/server";
+} from "steam-bridge/steamworks";
+import { configureSteamElectron } from "steam-bridge/electron";
+import * as electron from "steam-bridge/electron/advanced";
+import { getRendererInput } from "steam-bridge/renderer";
+import { createSteamBuildHooks } from "steam-bridge/electron-builder";
+import * as electronBuilder from "steam-bridge/electron-builder/advanced";
+import { createSteamPublisherApi } from "steam-bridge/server";
+import * as steamServer from "steam-bridge/server/advanced";
 
+assert.equal(typeof appApi.startSteam, "function");
+assert.equal(typeof appApi.defineSteamInput, "function");
+assert.equal(appApi.init, undefined);
+assert.equal(typeof configureSteamElectron, "function");
+assert.equal(typeof getRendererInput, "function");
+assert.equal(typeof createSteamBuildHooks, "function");
+assert.equal(typeof createSteamPublisherApi, "function");
 assert.equal(typeof steam.init, "function");
 assert.equal(typeof steam.openCommunityOverlay, "function");
 assert.equal(typeof steam.openStatsOverlay, "function");
@@ -4837,6 +4868,7 @@ assert.equal(typeof electronBuilder.verifyMacosSteamAppAfterSign, "function");
   fs.writeFileSync(
     path.join(consumerDir, "consumer.ts"),
     `
+import { defineSteamInput, startSteam, type SteamApplication } from "steam-bridge";
 import steam, {
   createSteamWebApiClient,
   isOverlayNeedsPresentPollingEnabled,
@@ -4859,30 +4891,34 @@ import steam, {
   type SteamId,
   type SteamOverlayWaitSnapshot,
   type SteamOverlayTarget
-} from "steam-bridge";
+} from "steam-bridge/steamworks";
+import { configureSteamElectron, type SteamElectron } from "steam-bridge/electron";
+import { getRendererInput, type RendererInput } from "steam-bridge/renderer";
 import {
   createElectronSteamInputTransport,
   electronConfigureSteamOverlay,
   subscribeElectronSteamInput,
   type ElectronSteamInputFrame,
   type ElectronSteamInputTransport
-} from "steam-bridge/electron";
-import { electronNativeOverlaySessionOptions } from "steam-bridge/electron";
-import { electronOverlayPresenterOptions } from "steam-bridge/electron";
-import { electronScrubSteamOverlayChildProcessEnv } from "steam-bridge/electron";
+} from "steam-bridge/electron/advanced";
+import { electronNativeOverlaySessionOptions } from "steam-bridge/electron/advanced";
+import { electronOverlayPresenterOptions } from "steam-bridge/electron/advanced";
+import { electronScrubSteamOverlayChildProcessEnv } from "steam-bridge/electron/advanced";
+import { createSteamBuildHooks, type SteamBuildHooks } from "steam-bridge/electron-builder";
 import {
   prepareMacosSteamAppAfterPack,
   verifyMacosSteamAppAfterSign,
   type ElectronBuilderAfterPackContext,
   type PrepareMacosSteamAppAfterPackResult
-} from "steam-bridge/electron-builder";
+} from "steam-bridge/electron-builder/advanced";
+import { createSteamPublisherApi } from "steam-bridge/server";
 import {
   createPublisherWebApiClient,
   type SteamWebApiServerClientOptions
-} from "steam-bridge/server";
+} from "steam-bridge/server/advanced";
 
 const client = steam.init(480);
-const inputDefinition = steam.defineSteamInput({
+const inputDefinition = defineSteamInput({
   actionSets: { gameplay: "gameplay" },
   digital: { jump: "jump" },
   analog: { move: "move" }
@@ -4903,6 +4939,13 @@ let typedInputTransport: ElectronSteamInputTransport<typeof inputDefinition> | u
 const web = createSteamWebApiClient({ apiKey: "test" });
 const serverOptions: SteamWebApiServerClientOptions = { publisherApiKey: "test" };
 const publisherWeb = createPublisherWebApiClient(serverOptions);
+const curatedStart: (options: { appId: number }) => SteamApplication = startSteam;
+const curatedElectron: (options?: {}) => SteamElectron = configureSteamElectron;
+const rendererInput: RendererInput | null = getRendererInput();
+const curatedBuildHooks: SteamBuildHooks = createSteamBuildHooks();
+const curatedPublisherWeb = createSteamPublisherApi({ publisherApiKey: "test" });
+// @ts-expect-error client-runtime publisher-secret bypasses are advanced-only
+createSteamPublisherApi({ dangerouslyAllowClientSidePublisherSecrets: true });
 const enumValue: number = SteamworksEnums.EResult.k_EResultOK;
 const needsPresentPollingFn: () => boolean = isOverlayNeedsPresentPollingEnabled;
 const needsPresentPollingUtilsFn: () => boolean = steam.utils.isOverlayNeedsPresentPollingEnabled;

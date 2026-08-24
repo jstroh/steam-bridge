@@ -13,6 +13,8 @@ if (process.isMainFrame !== false) {
   const MAX_EVENTS = 256;
   const GAMEPAD_DISCOVERY_INTERVAL_MS = 1000;
   const EMPTY_GAMEPADS = Object.freeze([]);
+  const UNAVAILABLE_BUTTON = Object.freeze({ available: false, pressed: false, touched: false, value: 0 });
+  const UNAVAILABLE_STICK = Object.freeze({ available: false, x: 0, y: 0 });
   const keys = new Map();
   const pointers = new Map();
   const events = new Array(MAX_EVENTS);
@@ -20,11 +22,9 @@ if (process.isMainFrame !== false) {
   let eventCount = 0;
   let droppedEventCount = 0;
   let sequence = 0;
-  let enabled = false;
   let captureDom = false;
   let domListenersInstalled = false;
   let requestPending = false;
-  let animationFrame = 0;
   let steamPort;
   let steamInput = null;
   let wheelX = 0;
@@ -54,7 +54,7 @@ if (process.isMainFrame !== false) {
     if (event.type === "pointer-move" && eventCount > 0) {
       const lastIndex = (eventHead + eventCount - 1) % MAX_EVENTS;
       const previous = events[lastIndex];
-      if (previous && previous.type === "pointer-move" && previous.pointer.pointerId === event.pointer.pointerId) {
+      if (previous && previous.type === "pointer-move" && previous.pointer.id === event.pointer.id) {
         events[lastIndex] = event;
         return;
       }
@@ -78,8 +78,8 @@ if (process.isMainFrame !== false) {
     return result;
   };
   const pointerSnapshot = (event) => ({
-    pointerId: Number.isSafeInteger(event.pointerId) ? event.pointerId : 0,
-    pointerType: event.pointerType === "touch" || event.pointerType === "pen" ? event.pointerType : "mouse",
+    id: Number.isSafeInteger(event.pointerId) ? event.pointerId : 0,
+    type: event.pointerType === "touch" || event.pointerType === "pen" ? event.pointerType : "mouse",
     primary: event.isPrimary !== false,
     x: Number.isFinite(event.clientX) ? event.clientX : 0,
     y: Number.isFinite(event.clientY) ? event.clientY : 0,
@@ -93,12 +93,12 @@ if (process.isMainFrame !== false) {
     if (!captureDom) return;
     const capturedAtMs = now();
     const pointer = pointerSnapshot(event);
-    if (type === "pointer-up" || type === "pointer-cancel") pointers.delete(pointer.pointerId);
-    else pointers.set(pointer.pointerId, pointer);
-    recordActivity(pointer.pointerType === "mouse" ? "pointer" : pointer.pointerType, capturedAtMs);
+    if (type === "pointer-up" || type === "pointer-cancel") pointers.delete(pointer.id);
+    else pointers.set(pointer.id, pointer);
+    recordActivity(pointer.type === "mouse" ? "pointer" : pointer.type, capturedAtMs);
     pushEvent({
       type,
-      capturedAtMs,
+      atMs: capturedAtMs,
       pointer,
       button: Number.isSafeInteger(event.button) ? event.button : -1,
       modifiers: modifierSnapshot(event),
@@ -120,10 +120,14 @@ if (process.isMainFrame !== false) {
   };
   const focusEvent = (type) => pushEvent({
     type,
-    capturedAtMs: now(),
-    focused: document.hasFocus(),
-    visible: document.visibilityState === "visible",
+    atMs: now(),
+    focus: focusSnapshot(),
   });
+  const focusSnapshot = () => {
+    const focused = document.hasFocus();
+    const visible = document.visibilityState === "visible";
+    return { focused, visible, active: focused && visible };
+  };
 
   // Hot-plug discovery is the only controller listener installed eagerly. It
   // lets frame-loop reads skip navigator enumeration while no pad is present.
@@ -136,7 +140,7 @@ if (process.isMainFrame !== false) {
     recordActivity("gamepad", capturedAtMs);
     pushEvent({
       type: "gamepad-connected",
-      capturedAtMs,
+      atMs: capturedAtMs,
       index: gamepad.index,
       id: gamepad.id,
       mapping: gamepad.mapping,
@@ -149,7 +153,7 @@ if (process.isMainFrame !== false) {
     gamepadConnectionDirty = true;
     if (captureDom) pushEvent({
       type: "gamepad-disconnected",
-      capturedAtMs: now(),
+      atMs: now(),
       index: gamepad.index,
       id: gamepad.id,
       mapping: gamepad.mapping,
@@ -166,7 +170,7 @@ if (process.isMainFrame !== false) {
     recordActivity("keyboard", capturedAtMs);
     pushEvent({
       type: "key-down",
-      capturedAtMs,
+      atMs: capturedAtMs,
       code: event.code,
       key: event.key,
       location: event.location,
@@ -182,7 +186,7 @@ if (process.isMainFrame !== false) {
     recordActivity("keyboard", capturedAtMs);
     pushEvent({
       type: "key-up",
-      capturedAtMs,
+      atMs: capturedAtMs,
       code: event.code,
       key: event.key,
       location: event.location,
@@ -207,7 +211,7 @@ if (process.isMainFrame !== false) {
     recordActivity("pointer", capturedAtMs);
     pushEvent({
       type: "wheel",
-      capturedAtMs,
+      atMs: capturedAtMs,
       x: Number.isFinite(event.clientX) ? event.clientX : 0,
       y: Number.isFinite(event.clientY) ? event.clientY : 0,
       deltaX,
@@ -223,7 +227,7 @@ if (process.isMainFrame !== false) {
     recordActivity("keyboard", capturedAtMs);
     pushEvent({
       type: "text",
-      capturedAtMs,
+      atMs: capturedAtMs,
       inputType: typeof event.inputType === "string" ? event.inputType : "",
       data: typeof event.data === "string" ? event.data : null,
       composing: event.isComposing === true,
@@ -238,7 +242,7 @@ if (process.isMainFrame !== false) {
       if (!captureDom) return;
       pushEvent({
         type,
-        capturedAtMs: now(),
+        atMs: now(),
         data: typeof event.data === "string" ? event.data : "",
       });
     }, true);
@@ -264,6 +268,32 @@ if (process.isMainFrame !== false) {
     Array.isArray(value.controllers) &&
     Object.prototype.hasOwnProperty.call(value, "primaryController")
   );
+  const hasSteamActionActivity = (controller) => {
+    if (!controller || typeof controller !== "object") return false;
+    const digital = controller.digital;
+    if (digital && typeof digital === "object") {
+      for (const name in digital) {
+        if (!Object.prototype.hasOwnProperty.call(digital, name)) continue;
+        const action = digital[name];
+        if (action && action.active === true &&
+          (action.isDown === true || action.pressedThisFrame === true || action.releasedThisFrame === true)) {
+          return true;
+        }
+      }
+    }
+    const analog = controller.analog;
+    if (analog && typeof analog === "object") {
+      for (const name in analog) {
+        if (!Object.prototype.hasOwnProperty.call(analog, name)) continue;
+        const action = analog[name];
+        if (action && action.active === true &&
+          (Math.abs(clampAxis(action.x)) >= 0.20 || Math.abs(clampAxis(action.y)) >= 0.20)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
   const closeSteamPort = () => {
     if (!steamPort) return;
     steamPort.onmessage = null;
@@ -290,7 +320,7 @@ if (process.isMainFrame !== false) {
       }
       steamInput = frame;
       requestPending = false;
-      if (frame.primaryController !== null) recordActivity("steam-input", now());
+      if (hasSteamActionActivity(frame.primaryController)) recordActivity("steam-input", now());
       try {
         nextPort.postMessage({ type: "ack", sequence: frame.sequence });
       } catch {
@@ -312,8 +342,8 @@ if (process.isMainFrame !== false) {
     else nativeAuxiliaryButtons &= ~buttonMask;
     const capturedAtMs = now();
     const pointer = {
-      pointerId: 1,
-      pointerType: "mouse",
+      id: 1,
+      type: "mouse",
       primary: true,
       x: value.x,
       y: value.y,
@@ -323,13 +353,13 @@ if (process.isMainFrame !== false) {
       tiltY: 0,
       twist: 0,
     };
-    if (value.type === "pointer-up") pointers.delete(pointer.pointerId);
-    else pointers.set(pointer.pointerId, pointer);
+    if (value.type === "pointer-up") pointers.delete(pointer.id);
+    else pointers.set(pointer.id, pointer);
     recordActivity("pointer", capturedAtMs);
     const names = Array.isArray(value.modifiers) ? value.modifiers : [];
     pushEvent({
       type: value.type,
-      capturedAtMs,
+      atMs: capturedAtMs,
       pointer,
       button: value.button,
       modifiers: {
@@ -341,60 +371,41 @@ if (process.isMainFrame !== false) {
     });
   });
 
-  const requestLoop = () => {
-    animationFrame = 0;
-    if (!enabled) return;
-    requestSteamFrame();
-    animationFrame = requestAnimationFrame(requestLoop);
-  };
   const requestSteamFrame = () => {
     if (!steamPort || requestPending || !document.hasFocus() || document.visibilityState !== "visible") return;
     requestPending = true;
     ipcRenderer.send(REQUEST_CHANNEL);
   };
-  const start = () => {
-    if (enabled) return;
-    enabled = true;
-    if (!animationFrame) animationFrame = requestAnimationFrame(requestLoop);
-  };
-  const stop = () => {
-    enabled = false;
-    captureDom = false;
-    requestPending = false;
-    if (animationFrame) cancelAnimationFrame(animationFrame);
-    animationFrame = 0;
-    clearHeldState();
-  };
   const clampAxis = (value) => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
   const clampButton = (value) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
   const semanticStick = (gamepad, offset) => gamepad.axes.length >= offset + 2 ? {
+    available: true,
     x: clampAxis(gamepad.axes[offset]),
     y: clampAxis(gamepad.axes[offset + 1]),
-    source: gamepad.mapping === "standard" ? "standard" : "heuristic",
-  } : null;
+  } : UNAVAILABLE_STICK;
   const semanticControls = (gamepad, buttons) => {
-    const button = (index) => buttons[index] || null;
+    const button = (index) => buttons[index] || UNAVAILABLE_BUTTON;
     return {
-      source: gamepad.mapping === "standard" ? "standard" : "heuristic",
-      leftStick: semanticStick(gamepad, 0),
-      rightStick: semanticStick(gamepad, 2),
-      faceSouth: button(0), faceEast: button(1), faceWest: button(2), faceNorth: button(3),
+      sticks: { left: semanticStick(gamepad, 0), right: semanticStick(gamepad, 2) },
+      buttons: {
+      south: button(0), east: button(1), west: button(2), north: button(3),
       leftBumper: button(4), rightBumper: button(5), leftTrigger: button(6), rightTrigger: button(7),
-      view: button(8), menu: button(9), leftStickPress: button(10), rightStickPress: button(11),
+      view: button(8), menu: button(9), leftStick: button(10), rightStick: button(11),
       dpadUp: button(12), dpadDown: button(13), dpadLeft: button(14), dpadRight: button(15),
       home: button(16), touchpad: button(17),
+      },
     };
   };
   const gamepadTouches = (gamepad) => Array.from(gamepad.touches || [], (touch) => {
     const dimensions = touch && touch.surfaceDimensions;
     const snapshot = {
-      touchId: Number.isSafeInteger(touch && touch.touchId) ? touch.touchId : 0,
-      surfaceId: Number.isSafeInteger(touch && touch.surfaceId) ? touch.surfaceId : 0,
+      id: Number.isSafeInteger(touch && touch.touchId) ? touch.touchId : 0,
+      surface: Number.isSafeInteger(touch && touch.surfaceId) ? touch.surfaceId : 0,
       position: [clampAxis(touch && touch.position && touch.position[0]), clampAxis(touch && touch.position && touch.position[1])],
     };
     return dimensions && dimensions.length >= 2 ? {
       ...snapshot,
-      surfaceDimensions: [
+      surfaceSize: [
         Number.isFinite(dimensions[0]) ? Math.max(0, dimensions[0]) : 0,
         Number.isFinite(dimensions[1]) ? Math.max(0, dimensions[1]) : 0,
       ],
@@ -402,31 +413,35 @@ if (process.isMainFrame !== false) {
   });
   const gamepadSnapshot = (gamepad, timestamp) => {
     const buttons = Array.from(gamepad.buttons, (button) => ({
+      available: true,
       pressed: button.pressed === true,
       touched: button.touched === true,
       value: clampButton(button.value),
     }));
+    const axes = Array.from(gamepad.axes, clampAxis);
+    const controls = semanticControls(gamepad, buttons);
     return {
       index: gamepad.index,
       id: gamepad.id,
       mapping: gamepad.mapping,
       connected: true,
       timestamp,
-      controls: semanticControls(gamepad, buttons),
-      axes: Array.from(gamepad.axes, clampAxis),
-      buttons,
+      mappingSource: gamepad.mapping === "standard" ? "standard" : "heuristic",
+      sticks: controls.sticks,
+      buttons: controls.buttons,
       touches: gamepadTouches(gamepad),
+      raw: { axes, buttons },
     };
   };
   const gamepadChanged = (previous, gamepad) => {
     if (!previous || previous.id !== gamepad.id || previous.mapping !== gamepad.mapping) return true;
-    if (previous.axes.length !== gamepad.axes.length || previous.buttons.length !== gamepad.buttons.length) return true;
+    if (previous.raw.axes.length !== gamepad.axes.length || previous.raw.buttons.length !== gamepad.buttons.length) return true;
     for (let index = 0; index < gamepad.axes.length; index += 1) {
       const value = clampAxis(gamepad.axes[index]);
-      if (previous.axes[index] !== value) return true;
+      if (previous.raw.axes[index] !== value) return true;
     }
     for (let index = 0; index < gamepad.buttons.length; index += 1) {
-      const before = previous.buttons[index];
+      const before = previous.raw.buttons[index];
       const after = gamepad.buttons[index];
       const value = clampButton(after.value);
       if (before.pressed !== (after.pressed === true) || before.touched !== (after.touched === true) || before.value !== value) {
@@ -439,13 +454,13 @@ if (process.isMainFrame !== false) {
       const before = previous.touches[index];
       const after = touches[index];
       if (
-        before.touchId !== (Number.isSafeInteger(after.touchId) ? after.touchId : 0) ||
-        before.surfaceId !== (Number.isSafeInteger(after.surfaceId) ? after.surfaceId : 0) ||
+        before.id !== (Number.isSafeInteger(after.touchId) ? after.touchId : 0) ||
+        before.surface !== (Number.isSafeInteger(after.surfaceId) ? after.surfaceId : 0) ||
         before.position[0] !== clampAxis(after.position && after.position[0]) ||
         before.position[1] !== clampAxis(after.position && after.position[1]) ||
-        (before.surfaceDimensions && before.surfaceDimensions[0]) !==
+        (before.surfaceSize && before.surfaceSize[0]) !==
           (after.surfaceDimensions && Number.isFinite(after.surfaceDimensions[0]) ? Math.max(0, after.surfaceDimensions[0]) : undefined) ||
-        (before.surfaceDimensions && before.surfaceDimensions[1]) !==
+        (before.surfaceSize && before.surfaceSize[1]) !==
           (after.surfaceDimensions && Number.isFinite(after.surfaceDimensions[1]) ? Math.max(0, after.surfaceDimensions[1]) : undefined)
       ) return true;
     }
@@ -453,17 +468,17 @@ if (process.isMainFrame !== false) {
   };
   const meaningfulGamepadActivity = (previous, snapshot) => {
     if (!previous) {
-      return snapshot.buttons.some((button) => button.pressed || button.value >= 0.5) ||
-        snapshot.axes.some((axis) => Math.abs(axis) >= 0.20) || snapshot.touches.length > 0;
+      return snapshot.raw.buttons.some((button) => button.pressed || button.value >= 0.5) ||
+        snapshot.raw.axes.some((axis) => Math.abs(axis) >= 0.20) || snapshot.touches.length > 0;
     }
-    for (let index = 0; index < snapshot.buttons.length; index += 1) {
-      const before = previous.buttons[index];
-      const after = snapshot.buttons[index];
+    for (let index = 0; index < snapshot.raw.buttons.length; index += 1) {
+      const before = previous.raw.buttons[index];
+      const after = snapshot.raw.buttons[index];
       if (!before || before.pressed !== after.pressed || Math.abs(before.value - after.value) >= 0.05) return true;
     }
-    for (let index = 0; index < snapshot.axes.length; index += 1) {
-      const before = previous.axes[index] || 0;
-      const after = snapshot.axes[index];
+    for (let index = 0; index < snapshot.raw.axes.length; index += 1) {
+      const before = previous.raw.axes[index] || 0;
+      const after = snapshot.raw.axes[index];
       if (Math.abs(after) >= 0.20 && Math.abs(after - before) >= 0.01) return true;
     }
     if (snapshot.touches.length !== previous.touches.length) return true;
@@ -471,7 +486,7 @@ if (process.isMainFrame !== false) {
       const before = previous.touches[index];
       const after = snapshot.touches[index];
       if (
-        before.touchId !== after.touchId || before.surfaceId !== after.surfaceId ||
+        before.id !== after.id || before.surface !== after.surface ||
         before.position[0] !== after.position[0] || before.position[1] !== after.position[1]
       ) return true;
     }
@@ -514,30 +529,35 @@ if (process.isMainFrame !== false) {
     if (primaryGamepadIndex === null && gamepads.length > 0) primaryGamepadIndex = gamepads[0].index;
     return gamepads;
   };
+  const primaryGamepad = (gamepads) => {
+    if (primaryGamepadIndex === null) return null;
+    for (const gamepad of gamepads) {
+      if (gamepad.index === primaryGamepadIndex) return gamepad;
+    }
+    return null;
+  };
   const readSnapshot = () => {
     installDomCapture();
     captureDom = true;
     requestSteamFrame();
-    const focused = document.hasFocus();
-    const visible = document.visibilityState === "visible";
+    const focus = focusSnapshot();
+    const gamepads = captureGamepads(true);
+    const primary = focus.active ? primaryGamepad(gamepads) : null;
     const snapshot = {
-      version: 1,
+      version: 2,
       sequence: ++sequence,
-      capturedAtMs: now(),
-      focused,
-      visible,
-      active: focused && visible,
-      lastActiveSource,
-      lastActivityAtMs,
-      modifiers: modifierSnapshot(),
-      keys: Array.from(keys.values()),
+      timestampMs: now(),
+      focus,
+      lastInput: lastActiveSource !== null && lastActivityAtMs !== null
+        ? { source: lastActiveSource, atMs: lastActivityAtMs }
+        : null,
+      keyboard: { modifiers: modifierSnapshot(), keys: Array.from(keys.values()) },
       pointers: Array.from(pointers.values()),
-      wheel: { deltaX: wheelX, deltaY: wheelY, deltaZ: wheelZ },
-      gamepads: captureGamepads(true),
-      primaryGamepadIndex,
-      steamInput,
+      wheel: { x: wheelX, y: wheelY, z: wheelZ },
+      gamepads: { connected: gamepads, primary },
+      steamActions: focus.active ? steamInput : null,
       events: consumeEvents(),
-      droppedEventCount,
+      droppedEvents: droppedEventCount,
     };
     wheelX = 0;
     wheelY = 0;
@@ -548,20 +568,90 @@ if (process.isMainFrame !== false) {
 
   const readGamepads = () => {
     requestSteamFrame();
-    const focused = document.hasFocus();
-    const visible = document.visibilityState === "visible";
+    const gamepads = captureGamepads(false);
+    const focus = focusSnapshot();
     return {
-      version: 1,
+      version: 2,
       sequence: ++sequence,
-      capturedAtMs: now(),
-      focused,
-      visible,
-      active: focused && visible,
-      gamepads: captureGamepads(false),
-      primaryGamepadIndex,
-      steamInput,
+      timestampMs: now(),
+      focus,
+      connected: gamepads,
+      primary: focus.active ? primaryGamepad(gamepads) : null,
+      steamActions: focus.active ? steamInput : null,
     };
   };
 
-  contextBridge.exposeInMainWorld("steamBridgeInput", Object.freeze({ start, stop, readSnapshot, readGamepads }));
+  // Migration bridge for already-deployed Client-PX bundles. This is not a
+  // 0.4 npm API: it preserves the shell/client protocol while pinned and
+  // cached game deployments advance independently.
+  const legacyButton = (button) => ({
+    pressed: button.pressed,
+    touched: button.touched,
+    value: button.value,
+  });
+  const legacyGamepad = (gamepad) => {
+    const button = (value) => value.available ? legacyButton(value) : null;
+    const source = gamepad.mappingSource;
+    return {
+      index: gamepad.index,
+      id: gamepad.id,
+      mapping: gamepad.mapping,
+      connected: true,
+      timestamp: gamepad.timestamp,
+      controls: {
+        source,
+        leftStick: gamepad.sticks.left.available
+          ? { x: gamepad.sticks.left.x, y: gamepad.sticks.left.y, source }
+          : null,
+        rightStick: gamepad.sticks.right.available
+          ? { x: gamepad.sticks.right.x, y: gamepad.sticks.right.y, source }
+          : null,
+        faceSouth: button(gamepad.buttons.south),
+        faceEast: button(gamepad.buttons.east),
+        faceWest: button(gamepad.buttons.west),
+        faceNorth: button(gamepad.buttons.north),
+        leftBumper: button(gamepad.buttons.leftBumper),
+        rightBumper: button(gamepad.buttons.rightBumper),
+        leftTrigger: button(gamepad.buttons.leftTrigger),
+        rightTrigger: button(gamepad.buttons.rightTrigger),
+        view: button(gamepad.buttons.view),
+        menu: button(gamepad.buttons.menu),
+        leftStickPress: button(gamepad.buttons.leftStick),
+        rightStickPress: button(gamepad.buttons.rightStick),
+        dpadUp: button(gamepad.buttons.dpadUp),
+        dpadDown: button(gamepad.buttons.dpadDown),
+        dpadLeft: button(gamepad.buttons.dpadLeft),
+        dpadRight: button(gamepad.buttons.dpadRight),
+        home: button(gamepad.buttons.home),
+        touchpad: button(gamepad.buttons.touchpad),
+      },
+      axes: gamepad.raw.axes,
+      buttons: gamepad.raw.buttons.map(legacyButton),
+      touches: gamepad.touches.map((touch) => ({
+        touchId: touch.id,
+        surfaceId: touch.surface,
+        position: touch.position,
+        ...(touch.surfaceSize ? { surfaceDimensions: touch.surfaceSize } : {}),
+      })),
+    };
+  };
+  const readLegacyGamepads = () => {
+    const frame = readGamepads();
+    return {
+      version: 1,
+      sequence: frame.sequence,
+      capturedAtMs: frame.timestampMs,
+      focused: frame.focus.focused,
+      visible: frame.focus.visible,
+      active: frame.focus.active,
+      gamepads: frame.connected.map(legacyGamepad),
+      primaryGamepadIndex: frame.primary ? frame.primary.index : null,
+      steamInput: frame.steamActions,
+    };
+  };
+
+  const gamepadsApi = Object.freeze({ read: readGamepads });
+  const inputApi = Object.freeze({ version: 2, read: readSnapshot, gamepads: gamepadsApi });
+  contextBridge.exposeInMainWorld("steamBridge", Object.freeze({ version: 1, input: inputApi }));
+  contextBridge.exposeInMainWorld("steamBridgeInput", Object.freeze({ readGamepads: readLegacyGamepads }));
 }

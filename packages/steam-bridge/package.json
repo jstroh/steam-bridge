@@ -1,6 +1,6 @@
 {
   "name": "steam-bridge",
-  "version": "0.3.39",
+  "version": "0.4.0",
   "description": "Native-backed Steamworks bridge for Electron and Node.",
   "license": "MIT",
   "homepage": "https://github.com/jstroh/steam-bridge#readme",
@@ -24,8 +24,8 @@
     "linux",
     "apple-silicon"
   ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/app.js",
+  "types": "dist/app.d.ts",
   "bin": {
     "steam-bridge-init-client-txn": "bin/init-client-txn.cjs",
     "steam-bridge-generate-legacy-layouts": "bin/generate-steam-legacy-layouts.cjs",
@@ -36,26 +36,46 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    },
+    "./steamworks": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./electron": {
+      "types": "./dist/electron-app.d.ts",
+      "default": "./dist/electron-app.js"
+    },
+    "./electron/advanced": {
       "types": "./dist/electron.d.ts",
       "default": "./dist/electron.js"
     },
-    "./input": {
+    "./renderer": {
+      "types": "./dist/renderer-app.d.ts",
+      "default": "./dist/renderer-app.js"
+    },
+    "./renderer/advanced": {
       "types": "./dist/input.d.ts",
       "default": "./dist/input.js"
     },
-    "./steam-input-layouts": {
+    "./steam-input/layouts": {
       "types": "./dist/steam-input-layouts.d.ts",
       "default": "./dist/steam-input-layouts.js"
     },
     "./electron-builder": {
+      "types": "./dist/electron-builder-app.d.ts",
+      "default": "./dist/electron-builder-app.js"
+    },
+    "./electron-builder/advanced": {
       "types": "./dist/electron-builder.d.ts",
       "default": "./dist/electron-builder.js"
     },
     "./server": {
+      "types": "./dist/server-app.d.ts",
+      "default": "./dist/server-app.js"
+    },
+    "./server/advanced": {
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     }

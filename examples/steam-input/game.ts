@@ -1,9 +1,9 @@
 import path from "node:path";
-import steamworks from "steam-bridge";
+import { startSteam } from "steam-bridge";
 import { steamInputDefinition } from "./steam-input.generated";
 
-const client = steamworks.init(Number(process.env.STEAM_APP_ID));
-const session = client.input
+const steam = startSteam({ appId: Number(process.env.STEAM_APP_ID ?? 480) });
+const session = steam.steamInput
   .createSession({
     definition: steamInputDefinition,
     controllers: "individual",
@@ -29,5 +29,5 @@ export function updateGame(): void {
 
 export function shutdownGame(): void {
   session.dispose();
-  steamworks.shutdown();
+  steam.close();
 }
