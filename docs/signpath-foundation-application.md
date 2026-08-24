@@ -50,6 +50,10 @@ immediately before transmission and are not stored in this repository.
 
 ## Configuration after acceptance
 
+Application status: submitted to SignPath Foundation on 2026-08-24 at
+16:31 PDT. SignPath displayed `Form submitted` and `Thank you, we'll be in
+touch soon.` No project approval or signing certificate has been granted yet.
+
 1. Add SignPath's GitHub connector and grant it access only to this repository.
 2. Configure an artifact that contains exactly one Authenticode target:
    `steam_bridge_native.win32-x64-msvc.node`.
