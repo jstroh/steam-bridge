@@ -23,6 +23,43 @@ function readSourceFile(...pathSegments) {
     .replace(/\r\n?/g, "\n");
 }
 
+test("SignPath policy signs only the project-owned Windows addon", () => {
+  const readme = readSourceFile("README.md");
+  const policy = readSourceFile("CODE_SIGNING_POLICY.md");
+  const privacy = readSourceFile("PRIVACY.md");
+  const workflow = readSourceFile(".github", "workflows", "signpath.yml");
+
+  for (const document of [readme, policy]) {
+    assert.match(document, /Free code signing provided by \[SignPath\.io\]/u);
+    assert.match(document, /certificate by \[SignPath Foundation\]/u);
+  }
+  assert.match(policy, /steam_bridge_native\.win32-x64-msvc\.node/u);
+  assert.match(policy, /must never be re-signed/u);
+  assert.match(privacy, /does not transfer telemetry/u);
+  assert.match(workflow, /runs-on: windows-latest/u);
+  assert.match(workflow, /github\.ref_name/u);
+  assert.match(workflow, /github-artifact-id/u);
+  assert.match(workflow, /SignPath Foundation/u);
+  assert.match(workflow, /--output-dir dist\/signpath-build/u);
+  assert.match(workflow, /Copy-Item[\s\S]*dist\/signpath-unsigned\/steam_bridge_native\.win32-x64-msvc\.node/u);
+  assert.match(workflow, /steam_bridge_native\.win32-x64-msvc\.node/u);
+  assert.doesNotMatch(workflow, /steam_api64\.dll|sdkencryptedappticket64\.dll/u);
+  assert.doesNotMatch(workflow, /workflow_dispatch/u);
+});
+
+test("Windows native addon embeds SignPath-required project and release metadata", () => {
+  const buildScript = readSourceFile("crates", "native", "build.rs");
+  const nativeManifest = readSourceFile("crates", "native", "Cargo.toml");
+
+  assert.match(nativeManifest, /winresource = \{ version = "0\.1\.31", default-features = false \}/u);
+  assert.match(buildScript, /packages[\s\S]*steam-bridge[\s\S]*package\.json/u);
+  assert.match(buildScript, /\.set\("ProductName", "Steam Bridge"\)/u);
+  assert.match(buildScript, /\.set\("FileVersion", version\)/u);
+  assert.match(buildScript, /\.set\("ProductVersion", version\)/u);
+  assert.match(buildScript, /steam_bridge_native\.win32-x64-msvc\.node/u);
+  assert.match(buildScript, /VersionInfo::FILETYPE, 0x2/u);
+});
+
 test("Windows native surface resolves optional DPI APIs without blacklisting OS versions", () => {
   const surfaceSource = readSourceFile("crates", "native", "src", "native_surface.rs");
   const dpiSource = readSourceFile("crates", "native", "src", "windows_dpi.rs");

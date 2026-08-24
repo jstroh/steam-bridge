@@ -4,6 +4,17 @@ Steam Bridge gives Node and Electron applications a small, lifecycle-owned API
 for Steamworks, Steam Input, secure renderer input, native Steam presentation,
 trusted publisher Web API calls, and Steam-safe packaging.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/),
+certificate by [SignPath Foundation](https://signpath.org/).
+
+The free OSS signing scope is limited to binaries built from this repository's
+MIT-licensed source, beginning with the project-owned Windows native addon.
+Valve Steamworks redistributables and applications that consume Steam Bridge
+are explicitly excluded. See the complete [code signing policy](CODE_SIGNING_POLICY.md)
+and [privacy policy](PRIVACY.md).
+
 Version 0.4 intentionally simplifies the public API. Applications start one
 Steam lifetime, configure one Electron integration, and read one normalized
 renderer-input boundary. Exhaustive SDK mirrors and low-level integration
@@ -356,6 +367,8 @@ time, and inspect the resulting diagnostics/receipts.
 
 - [Steam Input guide](docs/steam-input.md)
 - [Steam API coverage](docs/steam-api-coverage.md)
+- [Code signing policy](CODE_SIGNING_POLICY.md)
+- [Privacy policy](PRIVACY.md)
 - [Current engineering checkpoint](docs/research/current-work.md)
 - [Electron smoke and actual-game QA](examples/electron-basic/README.md)
 - [Steam Input example](examples/steam-input/README.md)

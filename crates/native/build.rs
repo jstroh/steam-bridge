@@ -30,6 +30,10 @@ fn main() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
     }
 
+    if target_os == "windows" {
+        compile_windows_version_resource();
+    }
+
     link_sdk_encrypted_app_ticket(&target, &target_os);
 
     println!("cargo:rerun-if-changed=src/steam_music_remote_bridge.cpp");
@@ -65,6 +69,74 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=MetalKit");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
     }
+}
+
+#[cfg(target_os = "windows")]
+fn compile_windows_version_resource() {
+    use winresource::{VersionInfo, WindowsResource};
+
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory is available"),
+    );
+    let package_json = manifest_dir
+        .join("..")
+        .join("..")
+        .join("packages")
+        .join("steam-bridge")
+        .join("package.json");
+    println!("cargo:rerun-if-changed={}", package_json.display());
+
+    let package: serde_json::Value = serde_json::from_slice(
+        &fs::read(&package_json).expect("read Steam Bridge package metadata"),
+    )
+    .expect("parse Steam Bridge package metadata");
+    let version = package
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .expect("Steam Bridge package version is present");
+    let version_words = parse_windows_version(version);
+    let encoded_version = (u64::from(version_words[0]) << 48)
+        | (u64::from(version_words[1]) << 32)
+        | (u64::from(version_words[2]) << 16)
+        | u64::from(version_words[3]);
+
+    let mut resource = WindowsResource::new();
+    resource
+        .set("ProductName", "Steam Bridge")
+        .set("FileDescription", "Steam Bridge native addon")
+        .set("CompanyName", "Steam Bridge contributors")
+        .set(
+            "OriginalFilename",
+            "steam_bridge_native.win32-x64-msvc.node",
+        )
+        .set("FileVersion", version)
+        .set("ProductVersion", version)
+        .set_version_info(VersionInfo::FILEVERSION, encoded_version)
+        .set_version_info(VersionInfo::PRODUCTVERSION, encoded_version)
+        .set_version_info(VersionInfo::FILETYPE, 0x2);
+    resource
+        .compile()
+        .expect("compile Steam Bridge Windows version resource");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn compile_windows_version_resource() {
+    unreachable!("Windows version resources are compiled only for Windows targets");
+}
+
+fn parse_windows_version(version: &str) -> [u16; 4] {
+    let fields = version.split('.').collect::<Vec<_>>();
+    assert!(
+        fields.len() == 3,
+        "Steam Bridge Windows releases require a major.minor.patch version"
+    );
+    let mut words = [0_u16; 4];
+    for (index, field) in fields.into_iter().enumerate() {
+        words[index] = field
+            .parse::<u16>()
+            .expect("Steam Bridge Windows version components must be uint16 integers");
+    }
+    words
 }
 
 fn link_sdk_encrypted_app_ticket(target: &str, target_os: &str) {
