@@ -4631,6 +4631,20 @@ function runConsumerChecks() {
     /Object\.defineProperty\(exports,["']SteamworksEnums["']/,
     "Packed SteamworksEnums must remain a direct CommonJS export that Node 22 can import by name"
   );
+  const installedRendererSource = fs.readFileSync(
+    path.join(installedPackageRoot, "dist", "renderer-app.js"),
+    "utf8"
+  );
+  assert.match(
+    installedRendererSource,
+    /exports\.getRendererInput\s*=/,
+    "Packed renderer facade must expose a direct CommonJS assignment that Node 22 can import by name"
+  );
+  assert.doesNotMatch(
+    installedRendererSource,
+    /Object\.defineProperty\(exports,["']getRendererInput["']/,
+    "Packed renderer facade must not hide its named ESM export behind a CommonJS getter"
+  );
   const initTxnCapture = path.join(installedPackageRoot, "bin", "init-client-txn.cjs");
   const steamInputManifestCli = path.join(installedPackageRoot, "bin", "steam-input.cjs");
   const macosPrepareApp = path.join(installedPackageRoot, "bin", "prepare-macos-app.cjs");
