@@ -1,6 +1,61 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-23
+Last reviewed: 2026-08-24
+
+### 2026-08-24 Electron shutdown repaint repair
+
+Production Sentry group `FOV4-STEAM-1J` maps its minified Steam Bridge frame
+exactly to the one-shot `did-finish-load` repaint installed by
+`electronConfigureSteamOverlay`. The affected app had already closed its only
+window and entered `before-quit`; the late callback then called
+`webContents.invalidate()` on the destroyed renderer and raised `Object has
+been destroyed`. All Steam Bridge repaint entry points now use one bounded
+best-effort invalidation guard. It rejects a destroyed BrowserWindow or
+WebContents before dispatch, treats Electron's exact destroyed-object error as
+the check/use race, and continues to surface every unrelated repaint error.
+Focused coverage proves both pre-destroyed states, the destruction race, and
+unexpected-error propagation. This source repair is not yet published or
+present in a Steam package.
+
+### 2026-08-24 Windows shared-texture stall containment
+
+Bugdesk group `E-E9CC12EE32` contains two Windows renderer-hang terminations
+from the same 240 Hz system. Both attached telemetry streams show healthy
+hardware acceleration and native presentation but hundreds of D3D11 copy waits
+over 500 ms, copy completion and dispatcher delays approaching one to one and a
+half seconds, all four copy slots repeatedly occupied, and no device loss,
+software fallback, or memory exhaustion. Chromium reports exit code 258 as
+`WAIT_TIMEOUT`, so this is a genuine renderer-hang termination rather than OOM.
+
+Electron 43 documents a ten-frame offscreen GPU producer pool and requires each
+shared texture to be released as soon as consumption is complete. Steam Bridge
+must retain a producer until its asynchronous D3D11 fence proves the copy no
+longer reads that texture; releasing earlier would permit corruption or a
+use-after-reuse. The previous four-copy limit was safe in ordinary 165 Hz QA but
+allowed a slow cross-device queue to retain four producers and submit four
+outstanding copies while the GPU was already stalled. The production repair
+uses double-buffering instead: at most two copies may be submitted and retain
+Electron producers. Later paint events are rejected before native submission,
+and the configured consumer immediately releases their textures while the last
+complete native frame remains presented. This reserves eight of Electron's ten
+pool frames and bounds additional GPU pressure without CPU rendering,
+resolution/refresh reduction, early producer release, or removal of the fence.
+
+The two native bounds are intentionally identical: the process-wide N-API job
+permit and the reusable D3D11 fence-event slot pool are both two. Rust coverage
+proves the slot pool rejects a third reservation and reuses only a released
+slot; the source contract proves the process-wide admission bound and immediate
+caller-release contract. A source-linked optimized-addon run through the
+Steam-installed `0.1.21` shell exercised live-world movement, a 3200x1800
+backing surface at 250% DPI, maximize/restore, fullscreen/restore, and clean
+shutdown. Its final sample reported 59.9 paint/shared-texture FPS and 59.8
+native/DXGI FPS on the available 60 Hz display, 14,223 accepted and completed
+copies, maximum in-flight depth two, 13 pre-submission saturation drops, zero
+copy timeouts/fatal timeouts/submission failures, zero CPU uploads, and no
+device loss. The direct source-linked launch could not activate the Steam
+overlay, so it is not overlay qualification. The exact 240 Hz affected system
+still needs an immutable-package retest before the Bugdesk regression is
+empirically closed.
 
 ### 2026-08-23 Windows constrained menu-geometry repair
 

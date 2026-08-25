@@ -68,7 +68,12 @@ type FatalThreadsafeFunction<T> = ThreadsafeFunction<T, (), Vec<T>, Status, fals
 type JsCallback<'scope, T> = Function<'scope, T, ()>;
 
 #[cfg(target_os = "windows")]
-const NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT: usize = 4;
+// Electron 43's offscreen GPU path uses a finite ten-frame producer pool. Keep
+// only a double-buffered pair alive in Steam Bridge so a slow cross-device copy
+// cannot retain most of Chromium's reusable frames or build a deep D3D queue.
+// Newer paint events are rejected before native submission and their Electron
+// textures are released by the caller immediately.
+const NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT: usize = 2;
 
 #[cfg(target_os = "windows")]
 static NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_COUNT: std::sync::atomic::AtomicUsize =
@@ -111,6 +116,11 @@ fn try_reserve_native_overlay_shared_texture_copy_job(
 #[cfg(target_os = "windows")]
 pub(crate) fn native_overlay_shared_texture_copy_job_count() -> usize {
     NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_COUNT.load(std::sync::atomic::Ordering::Acquire)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn native_overlay_shared_texture_copy_job_limit() -> usize {
+    NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT
 }
 
 #[cfg(target_os = "windows")]

@@ -43,7 +43,10 @@ const FRAME_LATENCY_WAIT_POLL_MS: u32 = 0;
 const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
 const SHARED_TEXTURE_COPY_TIMEOUT_MS: u128 = 500;
 const SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS: u128 = 2_000;
-const SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 4;
+// Match the process-wide submission limit. Two slots preserve normal
+// high-refresh pipelining while reserving eight of Electron 43's ten offscreen
+// producer frames during a slow or wedged cross-device GPU copy.
+const SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 2;
 static NEXT_FRAME_LATENCY_WAIT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 struct SharedTextureCopySlot {

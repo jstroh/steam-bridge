@@ -512,6 +512,111 @@ test("electron overlay repaint loop replaces changed intervals and can be disabl
   assert.deepEqual(cleared.map((timer) => timer.intervalMs), [33, 16, 20]);
 });
 
+test("electron overlay repaint callbacks tolerate renderer destruction during shutdown", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  let onBrowserWindowCreated;
+  let repaintTick;
+  let listedWindows = [];
+  const previousSetInterval = global.setInterval;
+  const previousClearInterval = global.clearInterval;
+  global.setInterval = (callback) => {
+    repaintTick = callback;
+    return { unref() {} };
+  };
+  global.clearInterval = () => {};
+  mockElectronModule(t, {
+    app: {
+      commandLine: {
+        appendSwitch() {}
+      },
+      on(event, listener) {
+        if (event === "browser-window-created") onBrowserWindowCreated = listener;
+      }
+    },
+    BrowserWindow: {
+      getAllWindows() {
+        return listedWindows;
+      }
+    }
+  });
+  clearSteamBridgeCache();
+  const electron = require(distFile("electron.js"));
+  t.after(() => {
+    electron.electronDisableSteamOverlayRepaintLoop();
+    clearSteamBridgeCache();
+    global.setInterval = previousSetInterval;
+    global.clearInterval = previousClearInterval;
+  });
+
+  electron.electronConfigureSteamOverlay({ profile: "repaint", repaintIntervalMs: 33 });
+  assert.equal(typeof onBrowserWindowCreated, "function");
+  assert.equal(typeof repaintTick, "function");
+
+  const invokeAfterLoad = ({ windowDestroyed = false, rendererDestroyed = false, invalidate }) => {
+    let onFinishedLoad;
+    onBrowserWindowCreated({}, {
+      isDestroyed() {
+        return windowDestroyed;
+      },
+      webContents: {
+        once(event, listener) {
+          if (event === "did-finish-load") onFinishedLoad = listener;
+        },
+        isDestroyed() {
+          return rendererDestroyed;
+        },
+        invalidate,
+        send() {}
+      }
+    });
+    assert.equal(typeof onFinishedLoad, "function");
+    return onFinishedLoad;
+  };
+
+  let invalidateCount = 0;
+  invokeAfterLoad({
+    windowDestroyed: true,
+    invalidate() {
+      invalidateCount += 1;
+    }
+  })();
+  invokeAfterLoad({
+    rendererDestroyed: true,
+    invalidate() {
+      invalidateCount += 1;
+    }
+  })();
+  assert.equal(invalidateCount, 0);
+
+  assert.doesNotThrow(() => invokeAfterLoad({
+    invalidate() {
+      throw new Error("Object has been destroyed");
+    }
+  })());
+  listedWindows = [{
+    isDestroyed() {
+      return true;
+    },
+    webContents: {
+      once() {},
+      invalidate() {
+        invalidateCount += 1;
+      },
+      send() {}
+    }
+  }];
+  assert.doesNotThrow(() => repaintTick());
+  assert.equal(invalidateCount, 0);
+  assert.throws(
+    () => invokeAfterLoad({
+      invalidate() {
+        throw new Error("unexpected repaint failure");
+      }
+    })(),
+    /unexpected repaint failure/
+  );
+});
+
 test("electron overlay repaint interval rejects invalid timer values", (t) => {
   setProcessPlatformForTest(t, "win32");
   const { electron } = loadElectronOverlayConfigHarness(t);
@@ -1202,11 +1307,20 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /frame_statistics_counter_delta/);
   assert.doesNotMatch(d3dSource, /PresentCount\.wrapping_sub|PresentRefreshCount\s*\.wrapping_sub/);
   assert.match(d3dSource, /SetEventOnCompletion/);
-  assert.match(d3dSource, /SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 4/);
+  assert.match(d3dSource, /SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 2/);
   assert.match(d3dSource, /SharedTextureImportSubmission::Dropped/);
   assert.match(nativeSource, /beginNativeOverlayHostSharedTextureCopy/);
   assert.match(nativeSource, /steam-bridge-d3d11-copy/);
-  assert.match(nativeSource, /NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT: usize = 4/);
+  assert.match(nativeSource, /NATIVE_OVERLAY_SHARED_TEXTURE_COPY_JOB_LIMIT: usize = 2/);
+  assert.match(source, /"limit": crate::native_overlay_shared_texture_copy_job_limit\(\)/);
+  assert.match(
+    nativeSource,
+    /finite ten-frame producer pool[\s\S]*?double-buffered pair[\s\S]*?released by the caller immediately/
+  );
+  assert.match(
+    d3dSource,
+    /Two slots preserve normal[\s\S]*?reserving eight of Electron 43's ten offscreen[\s\S]*?producer frames/
+  );
   assert.match(nativeSource, /try_reserve_native_overlay_shared_texture_copy_job/);
   assert.doesNotMatch(nativeSource, /NativeOverlaySharedTextureCopyTask/);
   assert.doesNotMatch(nativeSource, /AsyncTask|impl Task for/);

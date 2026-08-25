@@ -1244,6 +1244,7 @@ interface ElectronWindow {
   getNativeWindowHandle?(): Buffer;
   webContents: {
     once(event: "did-finish-load", handler: () => void): void;
+    isDestroyed?(): boolean;
     focus?(): void;
     invalidate(): void;
     send(channel: string, ...args: unknown[]): void;
@@ -1367,7 +1368,7 @@ export function electronConfigureSteamOverlay(
   if (!browserWindowCreatedListenerInstalled) {
     electron.app.on("browser-window-created", (_event, window) => {
       window.webContents.once("did-finish-load", () => {
-        window.webContents.invalidate();
+        invalidateElectronWindow(window);
       });
     });
     browserWindowCreatedListenerInstalled = true;
@@ -1380,9 +1381,7 @@ export function electronConfigureSteamOverlay(
   if (!repaintTimer && repaintIntervalMs > 0) {
     repaintTimer = setInterval(() => {
       for (const window of electron.BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) {
-          window.webContents.invalidate();
-        }
+        invalidateElectronWindow(window);
       }
     }, repaintIntervalMs);
 
@@ -1412,6 +1411,35 @@ export function electronDisableSteamOverlayRepaintLoop(): void {
     repaintTimer = undefined;
   }
   activeRepaintIntervalMs = 0;
+}
+
+function invalidateElectronWindow(window: ElectronWindow): boolean {
+  if (window.isDestroyed() || window.webContents.isDestroyed?.()) {
+    return false;
+  }
+  try {
+    window.webContents.invalidate();
+    return true;
+  } catch (error) {
+    if (
+      window.isDestroyed() ||
+      window.webContents.isDestroyed?.() ||
+      electronObjectDestroyedError(error)
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function electronObjectDestroyedError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string" &&
+    (error as { message: string }).message === "Object has been destroyed"
+  );
 }
 
 function normalizeElectronRepaintIntervalMs(intervalMs: number): number {
@@ -1548,7 +1576,7 @@ function electronWindowNativeOverlayOptions<
       window.show?.();
       window.focus?.();
       window.webContents.focus?.();
-      window.webContents.invalidate();
+      invalidateElectronWindow(window);
     }
   } as T;
 }
