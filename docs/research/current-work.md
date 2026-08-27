@@ -1,6 +1,55 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-24
+Last reviewed: 2026-08-26
+
+### 2026-08-26 legacy D3D11 shared-texture completion repair
+
+A fresh critical production report on a Radeon R5 220 with driver
+`8.17.10.1404` isolates a compatibility failure after Chromium's hardware GPU
+render and before native presentation. Both sessions retained GPU compositing,
+WebGL, rasterization, shared-texture import, and native D3D11 presentation with
+zero software frames, CPU uploads, device losses, import failures, or upload
+failures. The device does not expose the newer D3D11 fence interfaces, so the
+shipping bridge selected `d3d11-query-legacy-only` and synchronously waited for
+every `D3D11_QUERY_EVENT` from Electron's paint callback. Completion normally
+took 33-70 ms and reached 331 ms, reducing renderer paint/texture delivery to
+about 3.1 FPS and native/DXGI presentation to about 4 FPS on a 60 Hz display.
+The retained native pump, sub-millisecond draw/Present work, low process CPU,
+and absence of device loss rule out ordinary scene rendering, refresh pacing,
+memory exhaustion, and the Steam overlay as the primary stall.
+
+The active repair gives non-fence devices the same bounded asynchronous
+producer-lifetime contract as modern devices. It creates two reusable event
+queries, reserves one before copying, submits `CopySubresourceRegion`, calls
+`End`, and flushes exactly once on Electron's thread. The existing dedicated
+copy-completion worker then polls `GetData` with
+`D3D11_ASYNC_GETDATA_DONOTFLUSH`; JavaScript releases the Electron producer only
+after the query proves that the bridge-owned copy no longer reads it. A single
+renderer-owned mutex serializes every immediate-context transaction and its
+DXGI resize/present operation with worker query polling. This follows D3D11's
+one-thread-at-a-time immediate-context contract without enabling per-call
+multithread-layer overhead and without permitting query polling to overlap
+`Present`. The two native query slots and two process-wide jobs retain the
+existing double-buffered pressure bound. Extra paint frames are rejected before
+submission, the latest completed native frame remains visible, and there is no
+CPU rendering, resolution reduction, refresh cap, early producer release, or
+GPU/OS blacklist.
+
+Diagnostics now distinguish `d3d11-query-async` from modern
+`d3d11-fence-async` and the last-resort `d3d11-query-legacy-only` mode. The
+established unsupported-fence error text remains unchanged so older configured
+consumers can still invoke their explicit synchronous compatibility path if a
+driver cannot create even isolated event queries. A QA-only environment switch
+can force the query mode on a modern Windows device. The focused hardware test
+created a real D3D11 device, submitted a real texture copy and event query,
+polled it on another thread while serializing a main-thread context operation,
+completed successfully, and released its slot exactly once. Rust compilation,
+formatting, Clippy, all native tests, and the complete JavaScript/TypeScript
+suite pass. A source-linked FOV4 launch on the protected development PC was
+correctly blocked by Smart App Control because the newly built local addon is
+unsigned; security policy was not weakened. An exact trusted package or an
+unprotected QA host is still required for actual-game proof, and the affected
+R5 220 remains the decisive production retest before this report is closed.
 
 ### 2026-08-24 Electron shutdown repaint repair
 

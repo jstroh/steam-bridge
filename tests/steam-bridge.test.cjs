@@ -1290,6 +1290,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
     /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
   );
   assert.match(d3dSource, /D3D11_QUERY_EVENT/);
+  assert.match(d3dSource, /D3D11_ASYNC_GETDATA_DONOTFLUSH/);
   assert.match(d3dSource, /CopySubresourceRegion\(/);
   assert.match(d3dSource, /wait_for_shared_texture_copy\(\)/);
   assert.match(d3dSource, /SHARED_TEXTURE_COPY_TIMEOUT_MS/);
@@ -1307,6 +1308,28 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /frame_statistics_counter_delta/);
   assert.doesNotMatch(d3dSource, /PresentCount\.wrapping_sub|PresentRefreshCount\s*\.wrapping_sub/);
   assert.match(d3dSource, /SetEventOnCompletion/);
+  assert.match(d3dSource, /"d3d11-query-async"/);
+  assert.match(d3dSource, /STEAM_BRIDGE_QA_FORCE_D3D11_QUERY_COMPLETION/);
+  assert.match(
+    d3dSource,
+    /legacy_query_slots[\s\S]*?CreateQuery\(&query_desc[\s\S]*?query: Some/
+  );
+  assert.match(
+    d3dSource,
+    /SharedTextureCopyCompletion::Query[\s\S]*?context_lock[\s\S]*?\.lock\(\)[\s\S]*?\.GetData\(/
+  );
+  assert.match(
+    d3dSource,
+    /fn lock_shared_texture_context[\s\S]*?lock\.lock\(\)/
+  );
+  assert.match(
+    d3dSource,
+    /pub unsafe fn render[\s\S]*?lock_shared_texture_context\(&context_lock\)[\s\S]*?swap_chain\.Present/
+  );
+  assert.match(
+    d3dSource,
+    /self\.context\.End\(&query\);[\s\S]*?self\.context\.Flush\(\);[\s\S]*?SharedTextureCopyCompletion::Query/
+  );
   assert.match(d3dSource, /SHARED_TEXTURE_COPY_SLOT_COUNT: usize = 2/);
   assert.match(d3dSource, /SharedTextureImportSubmission::Dropped/);
   assert.match(nativeSource, /beginNativeOverlayHostSharedTextureCopy/);
