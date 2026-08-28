@@ -47,10 +47,15 @@ game must create an offscreen
 `BrowserWindow` with `useSharedTexture: true` and pass every paint event's NT
 handle to the native session. Prefer `updateSharedTextureAsync(...)`: start the
 submission without blocking the paint callback and release that exact Electron
-texture only after the returned promise settles. A `false` result means the
-bounded queue retained the prior frame; it is backpressure, not permission to
-retry the pooled handle. `updateSharedTexture(...)` remains the synchronous
-compatibility path.
+texture after the returned promise resolves. A `false` result means the bounded
+queue retained the prior frame; it is backpressure, not permission to retry the
+pooled handle. If a rejected `NativeOverlaySharedTextureCopyError` reports
+`producerReleaseSafe: false`, retain that exact producer without calling
+`texture.release()` for the remainder of the application process, then
+terminate and relaunch the application. Closing the native host or session, or
+reconstructing the graphics device in the same process, is not a proven release
+boundary. `updateSharedTexture(...)` remains the synchronous compatibility
+path.
 
 Use the current monitor's `displayFrequency` for both
 `webContents.setFrameRate(...)` and the native session's `frameRate`. Reapply

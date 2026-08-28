@@ -1300,11 +1300,15 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /CreateFence\(0, D3D11_FENCE_FLAG_NONE/);
   assert.match(d3dSource, /ID3D11DeviceContext4::Signal/);
   assert.match(d3dSource, /submission_error: Option<String>/);
-  assert.match(d3dSource, /submission_failure_count[\s\S]*?D3D11 shared-texture copy completion previously stalled/);
+  assert.match(d3dSource, /terminal_failure_count[\s\S]*?D3D11 shared-texture copy completion previously stalled/);
   assert.match(d3dSource, /Signal\(&fence, fence_value\)\.err\(\)/);
-  assert.match(d3dSource, /submission_error\.is_some\(\)[\s\S]*?submission_failure_count[\s\S]*?fetch_add\(1, Ordering::Release\)/);
+  assert.match(d3dSource, /signal_error\.is_some\(\)[\s\S]*?submission_failure_count[\s\S]*?fetch_add\(1, Ordering::Release\)/);
   assert.match(d3dSource, /failed after submission:[\s\S]*native graphics device must be restarted/);
+  assert.match(d3dSource, /Signal\(&fence, fence_value\)[\s\S]*?CreateQuery[\s\S]*?SharedTextureCopyCompletion::Query/);
+  assert.match(d3dSource, /WAIT_FAILED[\s\S]*?use_event_wait = false[\s\S]*?GetCompletedValue/);
   assert.match(source, /"submissionFailureCount"/);
+  assert.match(source, /"terminalFailureCount"/);
+  assert.match(nativeSource, /"producerReleaseSafe": false/);
   assert.match(d3dSource, /frame_statistics_counter_delta/);
   assert.doesNotMatch(d3dSource, /PresentCount\.wrapping_sub|PresentRefreshCount\s*\.wrapping_sub/);
   assert.match(d3dSource, /SetEventOnCompletion/);
@@ -25998,13 +26002,27 @@ test("Windows asynchronous shared-texture completion rejects native errors and m
     clearSteamBridgeCache();
   });
 
+  const explicitlySafe = session.updateSharedTextureAsync({
+    handle: Buffer.alloc(8, 9),
+    width: 1,
+    height: 1,
+  });
+  completions.shift()({ accepted: true, producerReleaseSafe: true });
+  assert.equal(await explicitlySafe, true);
+
   const nativeFailure = session.updateSharedTextureAsync({
     handle: Buffer.alloc(8, 10),
     width: 1,
     height: 1,
   });
-  completions.shift()({ error: "copy failed" });
-  await assert.rejects(nativeFailure, /copy failed/);
+  completions.shift()({ error: "copy failed", producerReleaseSafe: false });
+  await assert.rejects(nativeFailure, (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
+    assert.equal(error.producerReleaseSafe, false);
+    assert.match(error.message, /copy failed/);
+    return true;
+  });
 
   const malformed = session.updateSharedTextureAsync({
     handle: Buffer.alloc(8, 11),
@@ -26012,7 +26030,87 @@ test("Windows asynchronous shared-texture completion rejects native errors and m
     height: 1,
   });
   completions.shift()({ accepted: false });
-  await assert.rejects(malformed, /completion result was malformed/);
+  await assert.rejects(malformed, (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.producerReleaseSafe, false);
+    assert.match(error.message, /completion result was malformed/);
+    return true;
+  });
+
+  const contradictory = session.updateSharedTextureAsync({
+    handle: Buffer.alloc(8, 12),
+    width: 1,
+    height: 1,
+  });
+  completions.shift()({ accepted: true, producerReleaseSafe: false });
+  await assert.rejects(contradictory, (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.producerReleaseSafe, false);
+    assert.match(error.message, /completion result was malformed/);
+    return true;
+  });
+
+  for (const [index, producerReleaseSafe] of [null, 0, "false"].entries()) {
+    const invalidSafetyFlag = session.updateSharedTextureAsync({
+      handle: Buffer.alloc(8, 13 + index),
+      width: 1,
+      height: 1,
+    });
+    completions.shift()({ accepted: true, producerReleaseSafe });
+    await assert.rejects(invalidSafetyFlag, (error) => {
+      assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+      assert.equal(error.producerReleaseSafe, false);
+      assert.match(error.message, /completion result was malformed/);
+      return true;
+    });
+  }
+});
+
+test("unsafe asynchronous shared-texture producers remain quarantined until process exit", () => {
+  const contracts = [
+    readSourceFile("README.md"),
+    readSourceFile("packages/steam-bridge/README.md"),
+    readSourceFile("examples/electron-basic/README.md"),
+    readSourceFile("packages/steam-bridge/src/index.ts"),
+  ];
+
+  for (const contract of contracts) {
+    assert.match(contract, /remainder of the application process/);
+    assert.match(contract, /not a proven release\s+boundary/);
+    assert.doesNotMatch(
+      contract,
+      /producer[^\n]*(?:host|device)[^\n]*teardown[^\n]*(?:restart|release)/i
+    );
+  }
+});
+
+test("Windows asynchronous shared-texture begin failures conservatively retain the producer", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  fake.beginNativeOverlayHostSharedTextureCopy = function () {
+    throw new Error("copy boundary failed");
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  await assert.rejects(
+    session.updateSharedTextureAsync({
+      handle: Buffer.alloc(8, 13),
+      width: 1,
+      height: 1,
+    }),
+    (error) => {
+      assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+      assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
+      assert.equal(error.producerReleaseSafe, false);
+      assert.match(error.message, /copy boundary failed/);
+      return true;
+    }
+  );
 });
 
 test("asynchronous shared-texture API remains compatible with an older synchronous native payload", async (t) => {

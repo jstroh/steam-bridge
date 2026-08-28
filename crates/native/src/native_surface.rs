@@ -3755,6 +3755,7 @@ mod windows {
                     "completionMode": renderer.shared_texture_copy_completion_mode(),
                     "completedCount": renderer.shared_texture_copy_completed_count(),
                     "submissionFailureCount": renderer.shared_texture_copy_submission_failure_count(),
+                    "terminalFailureCount": renderer.shared_texture_copy_terminal_failure_count(),
                     "timeoutCount": renderer.shared_texture_copy_timeout_count(),
                     "fatalTimeoutCount": renderer.shared_texture_copy_fatal_timeout_count(),
                     "lastDispatchDelayMs": renderer.last_shared_texture_copy_dispatch_delay_ms(),

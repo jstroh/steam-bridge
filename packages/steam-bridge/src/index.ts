@@ -1756,6 +1756,19 @@ export interface NativeOverlaySharedTexture {
   presentationRect?: NativeOverlayBounds;
 }
 
+export class NativeOverlaySharedTextureCopyError extends Error {
+  readonly code = "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED";
+
+  constructor(
+    message: string,
+    readonly producerReleaseSafe: boolean
+  ) {
+    super(message);
+    this.name = "NativeOverlaySharedTextureCopyError";
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 export type NativeOverlayInputEventKind =
   | "mouseMove"
   | "leftMouseDown"
@@ -1930,9 +1943,14 @@ export interface NativeOverlaySession extends CallbackHandle {
   /**
    * Submit a Windows Electron shared texture without blocking the JavaScript
    * thread. Native presentation is queued immediately after accepted D3D
-   * submission, while this Promise resolves only after the copy fence proves
-   * that callers may safely release Electron's pooled producer texture.
-   * `false` means bounded backpressure intentionally retained the prior frame.
+   * submission. A resolved Promise always means callers may safely release
+   * Electron's pooled producer texture. `false` means bounded backpressure
+   * rejected the frame before native submission. A rejected
+   * NativeOverlaySharedTextureCopyError explicitly reports whether release is
+   * safe. When producerReleaseSafe is false, retain the exact producer without
+   * releasing it for the remainder of the application process, then terminate
+   * and relaunch. Native host/session close or same-process graphics-device
+   * reconstruction is not a proven release boundary.
    */
   updateSharedTextureAsync(texture: NativeOverlaySharedTexture): Promise<boolean>;
   setCursorHidden(hidden: boolean): void;
@@ -9868,6 +9886,8 @@ export function updateNativeOverlayHostSharedTextureAsync(
     if (!accepted) {
       resolve(false);
     }
+  }).catch((error) => {
+    throw asNativeOverlaySharedTextureCopyError(error, false);
   });
 }
 
@@ -10840,6 +10860,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         }
         sharedTextureDropCount += 1;
         return false;
+      })
+      .catch((error) => {
+        throw asNativeOverlaySharedTextureCopyError(error, false);
       });
   };
 
@@ -32128,14 +32151,40 @@ function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
   result = unwrapNativeCallbackArgument(result);
   if (result && typeof result === "object" && !Array.isArray(result)) {
     const completion = result as Record<string, unknown>;
-    if (completion.accepted === true && completion.error === undefined) {
+    if (
+      completion.accepted === true
+      && completion.error === undefined
+      && (
+        completion.producerReleaseSafe === undefined
+        || completion.producerReleaseSafe === true
+      )
+    ) {
       return true;
     }
     if (typeof completion.error === "string" && completion.error.length > 0) {
-      throw new Error(completion.error);
+      throw new NativeOverlaySharedTextureCopyError(
+        completion.error,
+        completion.producerReleaseSafe === true
+      );
     }
   }
-  throw new Error("The D3D11 shared-texture completion result was malformed.");
+  throw new NativeOverlaySharedTextureCopyError(
+    "The D3D11 shared-texture completion result was malformed.",
+    false
+  );
+}
+
+function asNativeOverlaySharedTextureCopyError(
+  error: unknown,
+  producerReleaseSafe: boolean
+): NativeOverlaySharedTextureCopyError {
+  if (error instanceof NativeOverlaySharedTextureCopyError) {
+    return error;
+  }
+  return new NativeOverlaySharedTextureCopyError(
+    error instanceof Error ? error.message : String(error),
+    producerReleaseSafe
+  );
 }
 
 function resolveSteamCallbackId(steamCallback: SteamCallbackName | SteamCallbackId | number): number {

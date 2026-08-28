@@ -241,10 +241,16 @@ Connect the host's native input events to the offscreen renderer with
 maximize, fullscreen, minimize, overlay, and shutdown.
 
 Submit Electron pooled textures with `host.updateSharedTextureAsync(texture)`
-and release each texture only after that submission promise settles. A `false`
-result is bounded backpressure and retains the prior frame; never retry or reuse
-the pooled handle. The synchronous `updateSharedTexture(...)` method exists for
-compatibility, not as the preferred frame loop.
+and release each texture after the promise resolves. A `false` result is bounded
+backpressure before native submission and retains the prior frame. A rejected
+`NativeOverlaySharedTextureCopyError` reports `producerReleaseSafe`. When that
+field is `false`, retain the exact Electron producer without calling
+`texture.release()` for the remainder of the application process, then
+terminate and relaunch the application. Closing the native host or session, or
+reconstructing the graphics device in the same process, is not a proven release
+boundary. Never retry or reuse the pooled handle. The synchronous
+`updateSharedTexture(...)` method exists for compatibility, not as the
+preferred frame loop.
 
 ### Linux and Steam Deck
 

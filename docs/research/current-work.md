@@ -1,6 +1,38 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-26
+Last reviewed: 2026-08-27
+
+### 2026-08-27 shared-texture release-safety contract hardening
+
+A full rendering-path review found that the public asynchronous Windows
+shared-texture contract described every settled promise as safe for releasing
+Electron's pooled producer. That was not true for terminal failures after
+`CopySubresourceRegion`, including an unrecoverable fence signal failure,
+event-query polling error, fatal timeout, or device removal. FOV4 already
+retained failed producers until its application process exited and relaunched,
+but a generic caller following the public documentation could recycle a texture
+while native GPU use remained unproven.
+
+The active uncommitted repair makes release safety explicit. Native completion
+payloads mark successful completion as release-safe and terminal post-submit
+errors as unsafe. JavaScript exposes those failures as
+`NativeOverlaySharedTextureCopyError` with a typed `producerReleaseSafe` field.
+A resolved promise is always safe, while a rejection with that field set to
+false requires retaining the exact producer without releasing it for the
+remainder of the application process, followed by process termination and
+relaunch. Native host or session close and same-process graphics-device
+reconstruction are not proven release boundaries. The renderer rejects further
+asynchronous imports after an unproven terminal failure. Fence event wait
+failures now fall back to nonblocking fence-value polling, and a failed
+post-copy `Signal` attempts a same-context `D3D11_QUERY_EVENT` so the worker can
+still prove completion. Only failure of both notification paths produces the
+unsafe terminal outcome.
+
+The focused ownership/parser tests, full JavaScript unit suite, TypeScript
+build, API coverage audit, and diff check pass after the final contract
+correction. The unchanged native slice retains its previously green Windows
+Rust test, Clippy, and formatting evidence. This change has not been committed,
+pushed, published, packaged, or released.
 
 ### 2026-08-26 legacy D3D11 shared-texture completion repair
 

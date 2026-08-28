@@ -267,12 +267,18 @@ const host = steam.gameHost.createNativeWindow({
 
 Forward Electron shared textures according to Electron's pooled-texture
 contract. Prefer `host.updateSharedTextureAsync(texture)` and release that exact
-Electron texture only after the returned promise settles; this keeps GPU-copy
+Electron texture after the returned promise resolves. This keeps GPU-copy
 completion asynchronous without releasing Electron's pooled producer early. A
-`false` result is bounded backpressure and means the retained frame stays on
-screen. Do not retry or reuse that pooled handle. Do not add a popup, topmost
-companion, visible Electron window underneath, attached Windows child,
-in-process GPU fallback, or CPU upload path.
+`false` result is bounded backpressure before native submission and means the
+retained frame stays on screen. A rejected
+`NativeOverlaySharedTextureCopyError` reports `producerReleaseSafe`. If it is
+`false`, retain that exact producer without calling `texture.release()` for the
+remainder of the application process, then terminate and relaunch the
+application. Closing the native host or session, or reconstructing the graphics
+device in the same process, is not a proven release boundary. Do not retry or
+reuse that pooled handle. Do not add a popup, topmost companion, visible
+Electron window underneath, attached Windows child, in-process GPU fallback, or
+CPU upload path.
 
 ### Linux and Steam Deck
 

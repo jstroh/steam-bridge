@@ -134,6 +134,7 @@ struct SharedTextureCopyTelemetry {
     fatal_timeout_count: AtomicU64,
     completed_count: AtomicU64,
     submission_failure_count: AtomicU64,
+    terminal_failure_count: AtomicU64,
     last_dispatch_delay_micros: AtomicU64,
     max_dispatch_delay_micros: AtomicU64,
     last_duration_micros: AtomicU64,
@@ -177,6 +178,9 @@ impl SharedTextureCopyWaitHandle {
             .max_dispatch_delay_micros
             .fetch_max(dispatch_delay_micros, Ordering::Relaxed);
         if let Some(error) = self.submission_error.as_ref() {
+            self.telemetry
+                .terminal_failure_count
+                .fetch_add(1, Ordering::Release);
             return Err(error.clone());
         }
         let started = self.submitted_at;
@@ -191,25 +195,26 @@ impl SharedTextureCopyWaitHandle {
             SharedTextureCopyCompletion::Query { .. } => false,
         };
 
+        let mut use_event_wait = event_registered;
         loop {
             let complete = match &self.completion {
                 SharedTextureCopyCompletion::Fence { fence, fence_value } => {
-                    if event_registered {
+                    if use_event_wait {
                         let wait_result =
                             unsafe { WaitForSingleObjectEx(self.slot.event, 10, false) };
-                        if wait_result == WAIT_FAILED {
-                            return Err(
-                                "WaitForSingleObjectEx for the D3D11 shared-texture fence failed"
-                                    .to_owned(),
-                            );
+                        if wait_result == WAIT_FAILED
+                            || (wait_result != WAIT_OBJECT_0 && wait_result != WAIT_TIMEOUT)
+                        {
+                            // The event is only a notification optimization. A
+                            // failed or unexpected kernel wait does not make the
+                            // fence value unavailable, so continue with direct
+                            // nonblocking fence polling instead of abandoning a
+                            // submitted producer texture.
+                            use_event_wait = false;
+                            false
+                        } else {
+                            wait_result == WAIT_OBJECT_0
                         }
-                        if wait_result != WAIT_OBJECT_0 && wait_result != WAIT_TIMEOUT {
-                            return Err(
-                                "WaitForSingleObjectEx for the D3D11 shared-texture fence returned an unexpected result"
-                                    .to_owned(),
-                            );
-                        }
-                        wait_result == WAIT_OBJECT_0
                     } else {
                         unsafe { fence.GetCompletedValue() >= *fence_value }
                     }
@@ -224,23 +229,34 @@ impl SharedTextureCopyWaitHandle {
                     // every main-thread context/DXGI transaction. The copy was
                     // explicitly flushed at submission, so polling must not
                     // flush again and turn this worker into another producer.
-                    let _context_guard = context_lock
-                        .lock()
-                        .map_err(|_| "D3D11 shared-texture context lock was poisoned".to_owned())?;
+                    let _context_guard = match context_lock.lock() {
+                        Ok(guard) => guard,
+                        Err(_) => {
+                            self.telemetry
+                                .terminal_failure_count
+                                .fetch_add(1, Ordering::Release);
+                            return Err(
+                                "D3D11 shared-texture context lock was poisoned; the native graphics device must be restarted"
+                                    .to_owned(),
+                            );
+                        }
+                    };
                     let mut completed = 0i32;
-                    unsafe {
-                        context
-                            .GetData(
-                                query,
-                                Some((&mut completed as *mut i32).cast()),
-                                std::mem::size_of::<i32>() as u32,
-                                D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
-                            )
-                            .map_err(|error| {
-                                format!(
-                                    "ID3D11DeviceContext::GetData for asynchronous shared texture copy failed: {error}"
-                                )
-                            })?;
+                    let get_data = unsafe {
+                        context.GetData(
+                            query,
+                            Some((&mut completed as *mut i32).cast()),
+                            std::mem::size_of::<i32>() as u32,
+                            D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                        )
+                    };
+                    if let Err(error) = get_data {
+                        self.telemetry
+                            .terminal_failure_count
+                            .fetch_add(1, Ordering::Release);
+                        return Err(format!(
+                            "ID3D11DeviceContext::GetData for asynchronous shared texture copy failed: {error}; the native graphics device must be restarted"
+                        ));
                     }
                     completed != 0
                 }
@@ -277,12 +293,15 @@ impl SharedTextureCopyWaitHandle {
                 ));
             }
             if let Err(error) = unsafe { self.device.GetDeviceRemovedReason() } {
+                self.telemetry
+                    .terminal_failure_count
+                    .fetch_add(1, Ordering::Release);
                 return Err(format!(
                     "D3D11 device was removed while waiting for the Electron shared-texture copy: {error}"
                 ));
             }
             if matches!(&self.completion, SharedTextureCopyCompletion::Query { .. })
-                || !event_registered
+                || !use_event_wait
             {
                 std::thread::sleep(Duration::from_millis(1));
             }
@@ -1076,7 +1095,7 @@ impl WindowsD3d11Renderer {
                 > 0
                 || self
                     .shared_texture_copy_telemetry
-                    .submission_failure_count
+                    .terminal_failure_count
                     .load(Ordering::Acquire)
                     > 0)
         {
@@ -1313,21 +1332,52 @@ impl WindowsD3d11Renderer {
                     // A post-submit Signal failure must settle through the
                     // callback so JavaScript retains that producer until the
                     // graphics device is restarted.
-                    let submission_error =
-                        context4.Signal(&fence, fence_value).err().map(|error| {
-                            format!(
-                                "ID3D11DeviceContext4::Signal for shared texture copy failed after submission: {error}; the native graphics device must be restarted"
-                            )
-                        });
-                    if submission_error.is_some() {
+                    let signal_error = context4.Signal(&fence, fence_value).err();
+                    if signal_error.is_some() {
                         self.shared_texture_copy_telemetry
                             .submission_failure_count
                             .fetch_add(1, Ordering::Release);
                     }
+                    let mut fallback_query = None;
+                    let fallback_query_error = if signal_error.is_some() {
+                        self.device
+                            .CreateQuery(
+                                &D3D11_QUERY_DESC {
+                                    Query: D3D11_QUERY_EVENT,
+                                    MiscFlags: 0,
+                                },
+                                Some(&mut fallback_query),
+                            )
+                            .err()
+                    } else {
+                        None
+                    };
+                    let completion = if let Some(query) = fallback_query {
+                        let context_lock = self
+                            .shared_texture_context_lock
+                            .get_or_insert_with(|| Arc::new(Mutex::new(())))
+                            .clone();
+                        self.context.End(&query);
+                        SharedTextureCopyCompletion::Query {
+                            context: self.context.clone(),
+                            query,
+                            context_lock,
+                        }
+                    } else {
+                        SharedTextureCopyCompletion::Fence { fence, fence_value }
+                    };
+                    let submission_error = signal_error.map(|error| {
+                        let fallback = fallback_query_error
+                            .map(|fallback_error| format!("; fallback event query creation failed: {fallback_error}"))
+                            .unwrap_or_else(|| "; fallback event query returned no query".to_owned());
+                        format!(
+                            "ID3D11DeviceContext4::Signal for shared texture copy failed after submission: {error}{fallback}; the native graphics device must be restarted"
+                        )
+                    }).filter(|_| matches!(&completion, SharedTextureCopyCompletion::Fence { .. }));
                     self.context.Flush();
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
-                        completion: SharedTextureCopyCompletion::Fence { fence, fence_value },
+                        completion,
                         slot: reservation.into_slot(),
                         submitted_at: copy_submitted_at,
                         telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
@@ -1921,6 +1971,12 @@ impl WindowsD3d11Renderer {
     pub fn shared_texture_copy_submission_failure_count(&self) -> u64 {
         self.shared_texture_copy_telemetry
             .submission_failure_count
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn shared_texture_copy_terminal_failure_count(&self) -> u64 {
+        self.shared_texture_copy_telemetry
+            .terminal_failure_count
             .load(Ordering::Relaxed)
     }
 
