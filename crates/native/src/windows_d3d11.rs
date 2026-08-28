@@ -30,11 +30,12 @@ use windows::Win32::Graphics::Dxgi::Common::{
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory6,
-    IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_CREATE_FACTORY_FLAGS,
-    DXGI_ERROR_WAS_STILL_DRAWING, DXGI_FRAME_STATISTICS, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-    DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT, DXGI_PRESENT_DO_NOT_WAIT, DXGI_SCALING_STRETCH,
-    DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
-    DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_ADAPTER_FLAG_SOFTWARE,
+    DXGI_CREATE_FACTORY_FLAGS, DXGI_ERROR_WAS_STILL_DRAWING, DXGI_FRAME_STATISTICS,
+    DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT,
+    DXGI_PRESENT_DO_NOT_WAIT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+    DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+    DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOERROR};
 use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess, WaitForSingleObjectEx};
@@ -541,13 +542,25 @@ unsafe impl Send for WindowsD3d11Renderer {}
 
 impl WindowsD3d11Renderer {
     pub unsafe fn new(hwnd: *mut c_void, width: u32, height: u32) -> Result<Self, String> {
-        Self::new_with_adapter(
-            hwnd,
-            width,
-            height,
-            preferred_high_performance_adapter(),
-            true,
-        )
+        let mut candidates = Vec::new();
+        let mut adapter_luids = Vec::new();
+        if let Some(adapter) = preferred_high_performance_adapter() {
+            push_hardware_adapter_candidate(&mut candidates, &mut adapter_luids, adapter);
+        }
+        for adapter in adapters_in_enum_order() {
+            push_hardware_adapter_candidate(&mut candidates, &mut adapter_luids, adapter);
+        }
+        candidates.push(("default hardware adapter".to_owned(), None));
+
+        try_candidates_in_order(candidates, |adapter| {
+            Self::new_with_adapter(hwnd, width, height, adapter, true)
+        })
+        .map_err(|failures| {
+            format!(
+                "D3D11 renderer creation failed on every hardware adapter ({})",
+                failures.join("; ")
+            )
+        })
     }
 
     pub unsafe fn new_for_shared_texture(
@@ -2087,9 +2100,10 @@ impl Drop for WindowsD3d11Renderer {
 #[cfg(test)]
 mod shared_texture_copy_slot_tests {
     use super::{
-        shared_texture_copy_completion_mode_name, try_reserve_shared_texture_copy_slot,
-        SharedTextureCopyCompletion, SharedTextureCopySlot, SharedTextureCopyTelemetry,
-        SharedTextureCopyWaitHandle, WindowsD3d11Renderer, SHARED_TEXTURE_COPY_SLOT_COUNT,
+        shared_texture_copy_completion_mode_name, try_candidates_in_order,
+        try_reserve_shared_texture_copy_slot, SharedTextureCopyCompletion, SharedTextureCopySlot,
+        SharedTextureCopyTelemetry, SharedTextureCopyWaitHandle, WindowsD3d11Renderer,
+        SHARED_TEXTURE_COPY_SLOT_COUNT,
     };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -2153,6 +2167,34 @@ mod shared_texture_copy_slot_tests {
             shared_texture_copy_completion_mode_name(false, 0),
             "d3d11-query-legacy-only"
         );
+    }
+
+    #[test]
+    fn adapter_fallback_preserves_order_and_reports_every_failed_candidate() {
+        let mut attempts = Vec::new();
+        let selected = try_candidates_in_order(
+            vec![
+                ("preferred".to_owned(), 1),
+                ("integrated".to_owned(), 2),
+                ("default".to_owned(), 3),
+            ],
+            |candidate| {
+                attempts.push(candidate);
+                (candidate == 2)
+                    .then_some(candidate)
+                    .ok_or_else(|| format!("candidate {candidate} failed"))
+            },
+        )
+        .expect("the second hardware adapter should be selected");
+        assert_eq!(selected, 2);
+        assert_eq!(attempts, vec![1, 2]);
+
+        let failures = try_candidates_in_order(
+            vec![("first".to_owned(), 1), ("second".to_owned(), 2)],
+            |candidate| Err::<(), _>(format!("failure {candidate}")),
+        )
+        .expect_err("all adapter failures should remain diagnostic");
+        assert_eq!(failures, vec!["first: failure 1", "second: failure 2"]);
     }
 
     #[test]
@@ -2243,6 +2285,45 @@ mod shared_texture_copy_slot_tests {
             assert!(!slot.in_flight.load(Ordering::Acquire));
         }
     }
+}
+
+fn try_candidates_in_order<T, R>(
+    candidates: Vec<(String, T)>,
+    mut attempt: impl FnMut(T) -> Result<R, String>,
+) -> Result<R, Vec<String>> {
+    let mut failures = Vec::new();
+    for (label, candidate) in candidates {
+        match attempt(candidate) {
+            Ok(result) => return Ok(result),
+            Err(error) => failures.push(format!("{label}: {error}")),
+        }
+    }
+    Err(failures)
+}
+
+unsafe fn push_hardware_adapter_candidate(
+    candidates: &mut Vec<(String, Option<IDXGIAdapter1>)>,
+    adapter_luids: &mut Vec<(i32, u32)>,
+    adapter: IDXGIAdapter1,
+) {
+    let description = adapter.GetDesc1().ok();
+    if description
+        .as_ref()
+        .is_some_and(|desc| desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0)
+    {
+        return;
+    }
+    if let Some(luid) = description
+        .as_ref()
+        .map(|desc| (desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart))
+    {
+        if adapter_luids.contains(&luid) {
+            return;
+        }
+        adapter_luids.push(luid);
+    }
+    let label = adapter_name(&adapter).unwrap_or_else(|_| "unnamed hardware adapter".to_owned());
+    candidates.push((label, Some(adapter)));
 }
 
 unsafe fn preferred_high_performance_adapter() -> Option<IDXGIAdapter1> {

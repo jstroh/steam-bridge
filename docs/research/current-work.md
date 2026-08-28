@@ -2,6 +2,34 @@
 
 Last reviewed: 2026-08-27
 
+### 2026-08-27 Windows initial D3D11 adapter fallback
+
+Production Sentry group `FOV4-STEAM-B` contains Windows native-host startup
+failures where `D3D11CreateDevice` returns `E_FAIL` on a hybrid-GPU machine.
+The shared-texture import path already searches the adapter that owns
+Electron's texture and then every enumerated adapter, but the initial visible
+host tried only the preferred high-performance adapter. A transient or
+output-incompatible preferred adapter therefore terminated startup before the
+first Electron texture could identify the correct device.
+
+The reviewed `0.4.4` release candidate preserves the preferred hardware adapter as the first
+choice, then tries every other enumerated hardware adapter exactly once, and
+finally lets D3D11 select the default hardware adapter. Explicit software
+adapters remain excluded. The first successful renderer is retained, while a
+total failure reports every attempted adapter in order. The existing first
+shared-texture import can still rebuild onto the texture-owning adapter, so the
+fallback does not pin later presentation to the initial device. Focused Rust
+coverage proves ordered fallback, early success, and complete failure
+diagnostics. Formatting, focused tests, compile checks, and Clippy pass. The
+complete JavaScript and release-package gate passes 444 tests with the two
+expected Windows symlink-privilege skips. The protected Windows host blocked a
+newly compiled Rust test executable before it could run, without weakening the
+policy; the exact Rust source had already passed 67 tests with its one
+interactive-hardware test intentionally ignored before the version-only release
+edits. The change is not yet packaged or live, and the affected hybrid-GPU
+startup remains open until an immutable consumer package proves startup and
+first-texture adapter reconciliation.
+
 ### 2026-08-27 shared-texture release-safety contract hardening
 
 A full rendering-path review found that the public asynchronous Windows
