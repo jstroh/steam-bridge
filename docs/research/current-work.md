@@ -13,9 +13,9 @@ retained failed producers until its application process exited and relaunched,
 but a generic caller following the public documentation could recycle a texture
 while native GPU use remained unproven.
 
-The active uncommitted repair makes release safety explicit. Native completion
-payloads mark successful completion as release-safe and terminal post-submit
-errors as unsafe. JavaScript exposes those failures as
+The reviewed `0.4.3` release candidate makes release safety explicit. Native
+completion payloads mark successful completion as release-safe and terminal
+post-submit errors as unsafe. JavaScript exposes those failures as
 `NativeOverlaySharedTextureCopyError` with a typed `producerReleaseSafe` field.
 A resolved promise is always safe, while a rejection with that field set to
 false requires retaining the exact producer without releasing it for the
@@ -30,9 +30,10 @@ unsafe terminal outcome.
 
 The focused ownership/parser tests, full JavaScript unit suite, TypeScript
 build, API coverage audit, and diff check pass after the final contract
-correction. The unchanged native slice retains its previously green Windows
-Rust test, Clippy, and formatting evidence. This change has not been committed,
-pushed, published, packaged, or released.
+correction. The native slice passes the Windows Rust suite, its real D3D11
+event-query test, Clippy, and formatting checks. Commit `dadc093a` is pushed to
+`main`; npm publication remains gated on the exact `v0.4.3` cross-platform
+candidate, protected Windows live-proof receipt, and trusted publisher flow.
 
 ### 2026-08-26 legacy D3D11 shared-texture completion repair
 
