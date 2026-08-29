@@ -31,6 +31,10 @@ published. The full JavaScript/TypeScript suite, 67 native tests with the one
 interactive hardware case intentionally ignored, API and platform audits, Rust
 format and compile checks, package smoke, candidate-protection self-tests, and
 diff checks pass. No current FOV4 or npm release bytes were rebuilt or changed.
+After Electron `44.0.0` became the latest stable release, the repository's
+latest-version CI gate required the smoke example and lockfile to advance from
+`43.4.1`. This is an example/toolchain compatibility update only; it does not
+change Steam Bridge's public API or the Electron version packaged by FOV4.
 
 ### 2026-08-27 Windows initial D3D11 adapter fallback
 
