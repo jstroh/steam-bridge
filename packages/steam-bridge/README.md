@@ -280,6 +280,11 @@ reuse that pooled handle. Do not add a popup, topmost companion, visible
 Electron window underneath, attached Windows child, in-process GPU fallback, or
 CPU upload path.
 
+The synchronous `updateSharedTexture(...)` compatibility method can fail after
+native submission. Such a failure is a `NativeOverlaySharedTextureCopyError`
+with `producerReleaseSafe: false`; retain the producer for the remainder of the
+process and relaunch just as for an unsafe asynchronous failure.
+
 ### Linux and Steam Deck
 
 Use the native X11/GLX application host. Electron may use native Wayland, but

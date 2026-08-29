@@ -9,6 +9,10 @@ trusted publisher Web API calls, and Steam-safe packaging.
 Free code signing provided by [SignPath.io](https://about.signpath.io/),
 certificate by [SignPath Foundation](https://signpath.org/).
 
+The integrated fail-closed signing boundary applies to releases after `0.4.4`.
+The published `0.4.4` Windows addon itself is unsigned; see the
+[code-signing policy](CODE_SIGNING_POLICY.md) for exact scope and provenance.
+
 The free OSS signing scope is limited to binaries built from this repository's
 MIT-licensed source, beginning with the project-owned Windows native addon.
 Valve Steamworks redistributables and applications that consume Steam Bridge
@@ -250,7 +254,10 @@ terminate and relaunch the application. Closing the native host or session, or
 reconstructing the graphics device in the same process, is not a proven release
 boundary. Never retry or reuse the pooled handle. The synchronous
 `updateSharedTexture(...)` method exists for compatibility, not as the
-preferred frame loop.
+preferred frame loop. A native error from that synchronous method is reported
+as `NativeOverlaySharedTextureCopyError` with `producerReleaseSafe: false`
+because the copy may already reference Electron's producer. Apply the same
+process-lifetime quarantine and relaunch rule.
 
 ### Linux and Steam Deck
 
@@ -368,6 +375,11 @@ npm audit
 Automated checks are not physical-device proof. Before release, qualify the
 exact packed candidate on supported hosts, with one Steam client running at a
 time, and inspect the resulting diagnostics/receipts.
+
+An immutable `v*` tag release signs the exact Windows native addon inside the
+release job before the npm candidate is assembled. Missing or rejected SignPath
+configuration fails that release. A manually dispatched unsigned candidate is
+useful for QA but is not eligible for the separate production publish workflow.
 
 ## More documentation
 

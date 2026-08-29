@@ -61,13 +61,14 @@ touch soon.` No project approval or signing certificate has been granted yet.
    tag for every signed file.
 4. Exclude all Valve, Electron, application, and third-party binaries.
 5. Configure a release-signing policy limited to immutable `v*` tags and the
-   GitHub-hosted workflow in `.github/workflows/signpath.yml`.
+   integrated GitHub-hosted release workflow in `.github/workflows/release.yml`.
 6. Assign a submitter token with no configuration or approval permission.
 7. Require a separate manual SignPath approval for every signing request.
 8. Add the organization/project/policy/configuration identifiers as GitHub
    repository variables and the submitter token as an Actions secret.
-9. Run the workflow for a release tag, verify its unsigned hash, review the
-   SignPath request, then approve it.
+9. Push an immutable release tag, verify the staged addon's unsigned hash,
+   review the SignPath request created inside the Release workflow, then approve
+   it. The workflow must fail if approval or signing does not complete.
 10. Publish only the exact signed artifact produced by that request and retain
     the signing-request URL, source commit, unsigned hash, and signed hash in the
     release record.

@@ -1939,6 +1939,13 @@ export interface NativeOverlaySession extends CallbackHandle {
    */
   notifyBoundsChanged(): void;
   updateFrame(frame: NativeOverlayFrame): void;
+  /**
+   * Synchronous Windows compatibility path. If native submission throws a
+   * NativeOverlaySharedTextureCopyError with producerReleaseSafe false, retain
+   * the exact Electron producer for the remainder of the application process,
+   * then terminate and relaunch. Prefer updateSharedTextureAsync for frame
+   * loops because it proves completion without blocking JavaScript.
+   */
   updateSharedTexture(texture: NativeOverlaySharedTexture): void;
   /**
    * Submit a Windows Electron shared texture without blocking the JavaScript
@@ -9791,6 +9798,12 @@ export function updateNativeOverlayHostFrame(frame: Buffer, width: number, heigh
   runRawNativeOverlaySurfaceMutation(() => native().updateNativeOverlayHostFrame(frame, width, height));
 }
 
+/**
+ * Synchronous raw-surface compatibility path. A native failure is reported as
+ * NativeOverlaySharedTextureCopyError with producerReleaseSafe false because
+ * submission may already reference Electron's pooled producer. Quarantine that
+ * exact producer until application-process exit, then relaunch.
+ */
 export function updateNativeOverlayHostSharedTexture(
   handle: Buffer,
   width: number,
@@ -9817,20 +9830,27 @@ export function updateNativeOverlayHostSharedTexture(
       normalizedHeight,
       "presentationRect"
     );
-    update.call(
-      binding,
-      handle,
-      normalizedWidth,
-      normalizedHeight,
-      normalizedContentRect.x,
-      normalizedContentRect.y,
-      normalizedContentRect.width,
-      normalizedContentRect.height,
-      normalizedPresentationRect.x,
-      normalizedPresentationRect.y,
-      normalizedPresentationRect.width,
-      normalizedPresentationRect.height
-    );
+    try {
+      update.call(
+        binding,
+        handle,
+        normalizedWidth,
+        normalizedHeight,
+        normalizedContentRect.x,
+        normalizedContentRect.y,
+        normalizedContentRect.width,
+        normalizedContentRect.height,
+        normalizedPresentationRect.x,
+        normalizedPresentationRect.y,
+        normalizedPresentationRect.width,
+        normalizedPresentationRect.height
+      );
+    } catch (error) {
+      // A synchronous native failure can occur after CopySubresourceRegion has
+      // begun using Electron's pooled producer. Without a positive completion
+      // signal, release is unsafe for the rest of this process.
+      throw asNativeOverlaySharedTextureCopyError(error, false);
+    }
   });
 }
 
@@ -9845,8 +9865,10 @@ export function updateNativeOverlayHostSharedTextureAsync(
   const binding = native();
   const beginCopy = binding.beginNativeOverlayHostSharedTextureCopy;
   if (typeof beginCopy !== "function") {
-    updateNativeOverlayHostSharedTexture(handle, width, height, contentRect, presentationRect);
-    return Promise.resolve(true);
+    return Promise.resolve().then(() => {
+      updateNativeOverlayHostSharedTexture(handle, width, height, contentRect, presentationRect);
+      return true;
+    });
   }
   const normalizedWidth = normalizeNativeOverlayFrameDimension(width, "shared texture width");
   const normalizedHeight = normalizeNativeOverlayFrameDimension(height, "shared texture height");
@@ -10713,6 +10735,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           presentationRect.width,
           presentationRect.height
         );
+      } catch (error) {
+        throw asNativeOverlaySharedTextureCopyError(error, false);
       } finally {
         recordSharedTextureUpdateDuration(updateStartedAt);
       }
@@ -10802,8 +10826,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
     const beginCopy = binding.beginNativeOverlayHostSharedTextureCopy;
     if (typeof beginCopy !== "function") {
-      updateSharedTexture(texture);
-      return Promise.resolve(true);
+      return Promise.resolve().then(() => {
+        updateSharedTexture(texture);
+        return true;
+      });
     }
     const updateStartedAt = performance.now();
     let completion: Promise<boolean>;

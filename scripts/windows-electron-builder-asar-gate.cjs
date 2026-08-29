@@ -34,6 +34,7 @@ const outputRoot = path.resolve(readArg("--output-dir") || path.join(repoRoot, "
 const requestedTarball = readArg("--tarball");
 const keepStage = process.argv.includes("--keep-stage") || process.env.STEAM_BRIDGE_KEEP_WINDOWS_ASAR_STAGE === "1";
 const requireSigned = process.argv.includes("--require-signed");
+const requireNativeAddonSigned = process.argv.includes("--require-native-addon-signed");
 const expectedPublisherSubject =
   readArg("--expected-publisher-subject") || process.env.STEAM_BRIDGE_WINDOWS_EXPECTED_PUBLISHER_SUBJECT || "";
 const expectedPublisherThumbprintInput =
@@ -94,10 +95,13 @@ async function main() {
   if (expectedPublisherThumbprintInput && expectedPublisherThumbprint.length !== 40) {
     throw new Error("The expected Windows publisher thumbprint must contain exactly 40 hexadecimal characters.");
   }
-  if (requireSigned && !expectedPublisherSubject && !expectedPublisherThumbprint) {
+  if ((requireSigned || requireNativeAddonSigned) && !expectedPublisherSubject && !expectedPublisherThumbprint) {
     throw new Error(
-      "--require-signed also requires --expected-publisher-subject or --expected-publisher-thumbprint."
+      "A signed package gate also requires --expected-publisher-subject or --expected-publisher-thumbprint."
     );
+  }
+  if (requireSigned && requireNativeAddonSigned) {
+    throw new Error("Choose either full-application signing or native-addon-only signing, not both.");
   }
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-asar-gate-"));
   const packDir = path.join(tempRoot, "pack");
@@ -235,11 +239,20 @@ async function main() {
     };
     if (requireSigned) {
       for (const [fileName, signature] of Object.entries(signatures)) {
-        assert.equal(signature.status, "Valid", `${fileName} must have a valid Authenticode signature`);
+        assertTrustedCodeSignature(signature, fileName);
       }
       assertExpectedPublisher(signatures.appExecutable, "packaged Electron executable");
       assertExpectedPublisher(signatures[WINDOWS_RUNTIME_FILES[0]], "Steam Bridge native addon");
       publisherMatches.appExecutable = true;
+      publisherMatches.nativeAddon = true;
+    } else if (requireNativeAddonSigned) {
+      assert.equal(
+        signatures.appExecutable.status,
+        "NotSigned",
+        "The example Electron executable must remain unsigned under the addon-only SignPath policy"
+      );
+      assertTrustedCodeSignature(signatures[WINDOWS_RUNTIME_FILES[0]], "Steam Bridge native addon");
+      assertExpectedPublisher(signatures[WINDOWS_RUNTIME_FILES[0]], "Steam Bridge native addon");
       publisherMatches.nativeAddon = true;
     }
 
@@ -307,7 +320,8 @@ async function main() {
         archive: bundleArchive
       },
       signing: {
-        required: requireSigned,
+        required: requireSigned || requireNativeAddonSigned,
+        scope: requireSigned ? "application" : requireNativeAddonSigned ? "native-addon" : "none",
         expectedPublisherSubjectConfigured: Boolean(expectedPublisherSubject),
         expectedPublisherThumbprintConfigured: Boolean(expectedPublisherThumbprint),
         publisherMatches
@@ -709,9 +723,16 @@ function getAuthenticodeEvidence(files) {
         "-NonInteractive",
         "-Command",
         "$signature = Get-AuthenticodeSignature -LiteralPath $env:STEAM_BRIDGE_SIGNATURE_FILE; " +
+          "$signer = $signature.SignerCertificate; $timestamp = $signature.TimeStamperCertificate; " +
+          "$codeSigningOid = '1.3.6.1.5.5.7.3.3'; " +
           "[PSCustomObject]@{ status = [string]$signature.Status; " +
-          "signerSubject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { $null }; " +
-          "signerThumbprint = if ($signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint } else { $null } } " +
+          "signerSubject = if ($signer) { $signer.Subject } else { $null }; " +
+          "signerThumbprint = if ($signer) { $signer.Thumbprint } else { $null }; " +
+          "signerChainTrusted = if ($signer) { $signer.Verify() } else { $false }; " +
+          "signerPublicKeyOid = if ($signer) { $signer.PublicKey.Oid.Value } else { $null }; " +
+          "hasCodeSigningEku = if ($signer) { @($signer.EnhancedKeyUsageList | Where-Object { $_.ObjectId -eq $codeSigningOid }).Count -gt 0 } else { $false }; " +
+          "timestampPresent = [bool]$timestamp; " +
+          "timestampChainTrusted = if ($timestamp) { $timestamp.Verify() } else { $false } } " +
           "| ConvertTo-Json -Compress"
       ],
       { env, encoding: "utf8", windowsHide: true }
@@ -728,6 +749,19 @@ function getAuthenticodeEvidence(files) {
     evidence[label] = { ...signature, sha256: after.sha256 };
   }
   return evidence;
+}
+
+function assertTrustedCodeSignature(signature, label) {
+  assert.equal(signature.status, "Valid", `${label} must have a valid Authenticode signature`);
+  assert.equal(signature.signerChainTrusted, true, `${label} signer chain must be publicly trusted`);
+  assert.equal(
+    signature.signerPublicKeyOid,
+    "1.2.840.113549.1.1.1",
+    `${label} signer must use an RSA public key`
+  );
+  assert.equal(signature.hasCodeSigningEku, true, `${label} signer must have the code-signing EKU`);
+  assert.equal(signature.timestampPresent, true, `${label} must have an RFC 3161 timestamp`);
+  assert.equal(signature.timestampChainTrusted, true, `${label} timestamp chain must be publicly trusted`);
 }
 
 function assertSignatureHashesMatchInspection(appDir, files, signatures, inspection) {

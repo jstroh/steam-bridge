@@ -1,6 +1,36 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-27
+Last reviewed: 2026-08-28
+
+### 2026-08-28 post-0.4.4 ownership and release enforcement
+
+The public `0.4.4` package and FOV4 Steam `0.1.24` release exposed two gaps in
+the otherwise reviewed Windows path. First, the last-resort synchronous D3D11
+compatibility method could throw after `CopySubresourceRegion` without marking
+Electron's pooled producer as release-unsafe. Steam Bridge now converts native
+synchronous submission failures into `NativeOverlaySharedTextureCopyError`
+with `producerReleaseSafe: false`, and its asynchronous compatibility fallback
+always returns a rejecting promise rather than throwing before a promise exists.
+FOV4 additionally treats that typed outcome and the two legacy query timeout or
+`GetData` errors as process-restart conditions. The exact producer remains
+quarantined until process exit on every post-submit failure path.
+
+Second, tag-triggered npm candidates could be assembled while the independent
+SignPath workflow failed. Signing is now inside the Windows prebuild job: the
+exact addon built by the release matrix is submitted, the SignPath Foundation
+signature and timestamp are verified, and those signed bytes replace the
+unsigned addon before the Windows package audit. Tag releases fail before a
+publishable candidate exists when signing is unavailable. Manual workflow
+candidates remain unsigned and cannot satisfy the publish workflow's required
+tag-triggered Release-run check. The package audit represents the intentional
+mixed policy explicitly: the open-source addon is signed by SignPath Foundation
+while the example Electron executable remains outside that certificate's scope.
+
+These corrections are reviewed source changes after `0.4.4`; they are not yet
+published. The full JavaScript/TypeScript suite, 67 native tests with the one
+interactive hardware case intentionally ignored, API and platform audits, Rust
+format and compile checks, package smoke, candidate-protection self-tests, and
+diff checks pass. No current FOV4 or npm release bytes were rebuilt or changed.
 
 ### 2026-08-27 Windows initial D3D11 adapter fallback
 
@@ -12,7 +42,7 @@ host tried only the preferred high-performance adapter. A transient or
 output-incompatible preferred adapter therefore terminated startup before the
 first Electron texture could identify the correct device.
 
-The reviewed `0.4.4` release candidate preserves the preferred hardware adapter as the first
+The released `0.4.4` package preserves the preferred hardware adapter as the first
 choice, then tries every other enumerated hardware adapter exactly once, and
 finally lets D3D11 select the default hardware adapter. Explicit software
 adapters remain excluded. The first successful renderer is retained, while a
@@ -26,9 +56,9 @@ expected Windows symlink-privilege skips. The protected Windows host blocked a
 newly compiled Rust test executable before it could run, without weakening the
 policy; the exact Rust source had already passed 67 tests with its one
 interactive-hardware test intentionally ignored before the version-only release
-edits. The change is not yet packaged or live, and the affected hybrid-GPU
-startup remains open until an immutable consumer package proves startup and
-first-texture adapter reconciliation.
+edits. Steam Bridge `0.4.4` is published on npm and is packaged in public FOV4
+Steam `0.1.24` BuildID `25003217`. The affected hybrid-GPU startup remains open
+until that machine proves startup and first-texture adapter reconciliation.
 
 ### 2026-08-27 shared-texture release-safety contract hardening
 
@@ -41,7 +71,7 @@ retained failed producers until its application process exited and relaunched,
 but a generic caller following the public documentation could recycle a texture
 while native GPU use remained unproven.
 
-The reviewed `0.4.3` release candidate makes release safety explicit. Native
+The released `0.4.3` change makes release safety explicit. Native
 completion payloads mark successful completion as release-safe and terminal
 post-submit errors as unsafe. JavaScript exposes those failures as
 `NativeOverlaySharedTextureCopyError` with a typed `producerReleaseSafe` field.
@@ -60,8 +90,8 @@ The focused ownership/parser tests, full JavaScript unit suite, TypeScript
 build, API coverage audit, and diff check pass after the final contract
 correction. The native slice passes the Windows Rust suite, its real D3D11
 event-query test, Clippy, and formatting checks. Commit `dadc093a` is pushed to
-`main`; npm publication remains gated on the exact `v0.4.3` cross-platform
-candidate, protected Windows live-proof receipt, and trusted publisher flow.
+`main`; it was published and is superseded by `0.4.4`. The 2026-08-28 checkpoint
+above records the remaining synchronous compatibility correction.
 
 ### 2026-08-26 legacy D3D11 shared-texture completion repair
 
@@ -79,7 +109,7 @@ The retained native pump, sub-millisecond draw/Present work, low process CPU,
 and absence of device loss rule out ordinary scene rendering, refresh pacing,
 memory exhaustion, and the Steam overlay as the primary stall.
 
-The active repair gives non-fence devices the same bounded asynchronous
+The released `0.4.2` repair gives non-fence devices the same bounded asynchronous
 producer-lifetime contract as modern devices. It creates two reusable event
 queries, reserves one before copying, submits `CopySubresourceRegion`, calls
 `End`, and flushes exactly once on Electron's thread. The existing dedicated
@@ -124,8 +154,8 @@ best-effort invalidation guard. It rejects a destroyed BrowserWindow or
 WebContents before dispatch, treats Electron's exact destroyed-object error as
 the check/use race, and continues to surface every unrelated repaint error.
 Focused coverage proves both pre-destroyed states, the destruction race, and
-unexpected-error propagation. This source repair is not yet published or
-present in a Steam package.
+unexpected-error propagation. The repair shipped in Steam Bridge `0.4.1` and is
+present in public FOV4 Steam `0.1.24` through Steam Bridge `0.4.4`.
 
 ### 2026-08-24 Windows shared-texture stall containment
 

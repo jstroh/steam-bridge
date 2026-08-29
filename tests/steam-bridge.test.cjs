@@ -27,7 +27,7 @@ test("SignPath policy signs only the project-owned Windows addon", () => {
   const readme = readSourceFile("README.md");
   const policy = readSourceFile("CODE_SIGNING_POLICY.md");
   const privacy = readSourceFile("PRIVACY.md");
-  const workflow = readSourceFile(".github", "workflows", "signpath.yml");
+  const workflow = readSourceFile(".github", "workflows", "release.yml");
 
   for (const document of [readme, policy]) {
     assert.match(document, /Free code signing provided by \[SignPath\.io\]/u);
@@ -40,11 +40,31 @@ test("SignPath policy signs only the project-owned Windows addon", () => {
   assert.match(workflow, /github\.ref_name/u);
   assert.match(workflow, /github-artifact-id/u);
   assert.match(workflow, /SignPath Foundation/u);
-  assert.match(workflow, /--output-dir dist\/signpath-build/u);
-  assert.match(workflow, /Copy-Item[\s\S]*dist\/signpath-unsigned\/steam_bridge_native\.win32-x64-msvc\.node/u);
+  assert.match(
+    workflow,
+    /napi build[\s\S]*Copy-Item -LiteralPath \$addon -Destination dist\/signpath-unsigned\/steam_bridge_native\.win32-x64-msvc\.node/u
+  );
+  assert.match(
+    workflow,
+    /dist\/signpath-signed[\s\S]*Copy-Item[\s\S]*packages\/steam-bridge\/steam_bridge_native\.win32-x64-msvc\.node/u
+  );
+  assert.match(workflow, /--require-native-addon-signed/u);
+  assert.match(workflow, /name: signpath-input-\$\{\{ github\.ref_name \}\}/u);
+  assert.match(workflow, /pattern: steam-bridge-\*/u);
+  assert.match(workflow, /1\.2\.840\.113549\.1\.1\.1/u);
+  assert.match(workflow, /1\.3\.6\.1\.5\.5\.7\.3\.3/u);
+  assert.match(workflow, /TimeStamperCertificate/u);
   assert.match(workflow, /steam_bridge_native\.win32-x64-msvc\.node/u);
-  assert.doesNotMatch(workflow, /steam_api64\.dll|sdkencryptedappticket64\.dll/u);
-  assert.doesNotMatch(workflow, /workflow_dispatch/u);
+  const signingSlice = workflow.slice(
+    workflow.indexOf("Stage exact Windows addon for SignPath"),
+    workflow.indexOf("Verify and install signed Windows addon")
+  );
+  assert.doesNotMatch(signingSlice, /steam_api64\.dll|sdkencryptedappticket64\.dll/u);
+  assert.equal(fs.existsSync(path.join(repoRoot, ".github", "workflows", "signpath.yml")), false);
+  assert.ok(
+    workflow.indexOf("Sign exact Windows addon with SignPath Foundation")
+      < workflow.indexOf("Run exact signed-addon Windows package gate")
+  );
 });
 
 test("Windows native addon embeds SignPath-required project and release metadata", () => {
@@ -26131,6 +26151,42 @@ test("asynchronous shared-texture API remains compatible with an older synchrono
     fake.calls.filter((call) => call.method === "updateNativeOverlayHostSharedTexture").length,
     1
   );
+});
+
+test("legacy synchronous shared-texture failures quarantine the producer", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  fake.updateNativeOverlayHostSharedTexture = function () {
+    throw new Error("Timed out waiting 500 ms for the Electron shared texture copy");
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  assert.throws(
+    () => session.updateSharedTexture({ handle: Buffer.alloc(8, 9), width: 1, height: 1 }),
+    (error) => {
+      assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+      assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
+      assert.equal(error.producerReleaseSafe, false);
+      assert.match(error.message, /Timed out waiting 500 ms/u);
+      return true;
+    }
+  );
+
+  let completion;
+  assert.doesNotThrow(() => {
+    completion = session.updateSharedTextureAsync({ handle: Buffer.alloc(8, 10), width: 1, height: 1 });
+  });
+  await assert.rejects(completion, (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.producerReleaseSafe, false);
+    assert.match(error.message, /Timed out waiting 500 ms/u);
+    return true;
+  });
 });
 
 test("closing a Windows session cancels its queued frame-driven pump", async (t) => {

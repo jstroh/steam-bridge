@@ -536,6 +536,8 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
         `publishing requires matching source and final hashes for ${fileName}`
       );
     }
+    const signingScope = audit.signing.scope ?? (audit.signing.required ? "application" : "none");
+    assert.match(signingScope, /^(?:none|native-addon|application)$/u, "publishing requires a valid signing scope");
     if (audit.signing.required) {
       assert.equal(
         audit.signing.expectedPublisherSubjectConfigured === true ||
@@ -543,24 +545,42 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
         true,
         "signed publishing requires an exact expected publisher policy in the package audit"
       );
-      for (const fileName of ["appExecutable", "steam_bridge_native.win32-x64-msvc.node"]) {
+      const signedFiles = signingScope === "native-addon"
+        ? ["steam_bridge_native.win32-x64-msvc.node"]
+        : ["appExecutable", "steam_bridge_native.win32-x64-msvc.node"];
+      for (const fileName of signedFiles) {
+        assertTrustedAuthenticodeEvidence(audit.finalBundle?.authenticode?.[fileName], fileName);
+      }
+      if (signingScope === "native-addon") {
         assert.equal(
-          audit.finalBundle?.authenticode?.[fileName]?.status,
-          "Valid",
-          `signed publishing requires valid Authenticode evidence for ${fileName}`
+          audit.finalBundle?.authenticode?.appExecutable?.status,
+          "NotSigned",
+          "addon-only publishing requires the example Electron executable to remain unsigned"
+        );
+        assert.equal(
+          audit.signing.publisherMatches?.appExecutable,
+          false,
+          "addon-only publishing must not claim the Electron executable matches the addon publisher"
+        );
+      } else {
+        assert.equal(
+          signingScope,
+          "application",
+          "signed publishing requires an explicit application or native-addon scope"
+        );
+        assert.equal(
+          audit.signing.publisherMatches?.appExecutable,
+          true,
+          "signed publishing requires the Electron executable to match the expected publisher"
         );
       }
-      assert.equal(
-        audit.signing.publisherMatches?.appExecutable,
-        true,
-        "signed publishing requires the Electron executable to match the expected publisher"
-      );
       assert.equal(
         audit.signing.publisherMatches?.nativeAddon,
         true,
         "signed publishing requires the native addon to match the expected publisher"
       );
     } else {
+      assert.equal(signingScope, "none", "unsigned publishing must declare signing scope none");
       assert.equal(audit.signing.expectedPublisherSubjectConfigured, false);
       assert.equal(audit.signing.expectedPublisherThumbprintConfigured, false);
       assert.equal(audit.signing.publisherMatches?.appExecutable, false);
@@ -585,6 +605,23 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
   actual.packageVersion = audit.package?.version;
   actual.candidateBinding = candidateBinding;
   return actual;
+}
+
+function assertTrustedAuthenticodeEvidence(signature, fileName) {
+  assert.equal(signature?.status, "Valid", `signed publishing requires valid Authenticode evidence for ${fileName}`);
+  assert.equal(signature?.signerChainTrusted, true, `signed publishing requires a trusted signer chain for ${fileName}`);
+  assert.equal(
+    signature?.signerPublicKeyOid,
+    "1.2.840.113549.1.1.1",
+    `signed publishing requires an RSA publisher key for ${fileName}`
+  );
+  assert.equal(signature?.hasCodeSigningEku, true, `signed publishing requires a code-signing EKU for ${fileName}`);
+  assert.equal(signature?.timestampPresent, true, `signed publishing requires an RFC 3161 timestamp for ${fileName}`);
+  assert.equal(
+    signature?.timestampChainTrusted,
+    true,
+    `signed publishing requires a trusted timestamp chain for ${fileName}`
+  );
 }
 
 function validatePublishTag(packageVersion, tag) {
@@ -679,6 +716,22 @@ function selfTest() {
       sha512: crypto.createHash("sha512").update(bytes).digest("hex"),
       integrity: `sha512-${crypto.createHash("sha512").update(bytes).digest("base64")}`
     };
+    const trustedSignatureEvidence = {
+      status: "Valid",
+      signerChainTrusted: true,
+      signerPublicKeyOid: "1.2.840.113549.1.1.1",
+      hasCodeSigningEku: true,
+      timestampPresent: true,
+      timestampChainTrusted: true
+    };
+    const unsignedSignatureEvidence = {
+      status: "NotSigned",
+      signerChainTrusted: false,
+      signerPublicKeyOid: null,
+      hasCodeSigningEku: false,
+      timestampPresent: false,
+      timestampChainTrusted: false
+    };
     fs.writeFileSync(
       audit,
       `${JSON.stringify({
@@ -712,6 +765,7 @@ function selfTest() {
         electronBuilder: { electronVersion: "43.1.0" },
         signing: {
           required: true,
+          scope: "application",
           expectedPublisherSubjectConfigured: false,
           expectedPublisherThumbprintConfigured: true,
           publisherMatches: { appExecutable: true, nativeAddon: true }
@@ -741,8 +795,8 @@ function selfTest() {
             }
           },
           authenticode: {
-            appExecutable: { status: "Valid" },
-            "steam_bridge_native.win32-x64-msvc.node": { status: "Valid" },
+            appExecutable: { ...trustedSignatureEvidence },
+            "steam_bridge_native.win32-x64-msvc.node": { ...trustedSignatureEvidence },
             "steam_api64.dll": { status: "Valid" },
             "sdkencryptedappticket64.dll": { status: "Valid" }
           }
@@ -766,6 +820,40 @@ function selfTest() {
     writeJson(receiptPath, createSelfTestReceipt(publishableCandidate.candidateBinding));
     assert.ok(validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding));
     const signedAudit = JSON.parse(fs.readFileSync(audit, "utf8"));
+    for (const [field, invalidValue, expectedMessage] of [
+      ["signerChainTrusted", false, /trusted signer chain/],
+      ["signerPublicKeyOid", "1.2.840.10045.2.1", /RSA publisher key/],
+      ["hasCodeSigningEku", false, /code-signing EKU/],
+      ["timestampPresent", false, /RFC 3161 timestamp/],
+      ["timestampChainTrusted", false, /trusted timestamp chain/]
+    ]) {
+      const invalidSignatureAudit = JSON.parse(JSON.stringify(signedAudit));
+      invalidSignatureAudit.finalBundle.authenticode["steam_bridge_native.win32-x64-msvc.node"][field] = invalidValue;
+      writeJson(audit, invalidSignatureAudit);
+      assert.throws(
+        () => verifyReleaseCandidate(tarball, audit, {
+          requirePublishable: true,
+          releaseTag: "v0.1.0",
+          bundleArchive
+        }),
+        expectedMessage
+      );
+    }
+    writeJson(audit, signedAudit);
+    const addonOnlyAudit = JSON.parse(JSON.stringify(signedAudit));
+    addonOnlyAudit.signing.scope = "native-addon";
+    addonOnlyAudit.signing.publisherMatches.appExecutable = false;
+    addonOnlyAudit.finalBundle.authenticode.appExecutable = { ...unsignedSignatureEvidence };
+    writeJson(audit, addonOnlyAudit);
+    assert.equal(
+      verifyReleaseCandidate(tarball, audit, {
+        requirePublishable: true,
+        releaseTag: "v0.1.0",
+        bundleArchive
+      }).sha256,
+      expected.sha256
+    );
+    writeJson(audit, signedAudit);
     const previousDocsTarball = createDocumentationOnlySelfTestTarball(
       tempRoot,
       "previous-docs-package",
@@ -868,12 +956,15 @@ function selfTest() {
     const unsignedAudit = JSON.parse(JSON.stringify(signedAudit));
     unsignedAudit.signing = {
       required: false,
+      scope: "none",
       expectedPublisherSubjectConfigured: false,
       expectedPublisherThumbprintConfigured: false,
       publisherMatches: { appExecutable: false, nativeAddon: false }
     };
-    unsignedAudit.finalBundle.authenticode.appExecutable.status = "NotSigned";
-    unsignedAudit.finalBundle.authenticode["steam_bridge_native.win32-x64-msvc.node"].status = "NotSigned";
+    unsignedAudit.finalBundle.authenticode.appExecutable = { ...unsignedSignatureEvidence };
+    unsignedAudit.finalBundle.authenticode["steam_bridge_native.win32-x64-msvc.node"] = {
+      ...unsignedSignatureEvidence
+    };
     writeJson(audit, unsignedAudit);
     const unsignedCandidate = verifyReleaseCandidate(tarball, audit, {
       requirePublishable: true,

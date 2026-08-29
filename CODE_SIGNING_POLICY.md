@@ -21,6 +21,10 @@ The Windows addon dynamically loads those Valve redistributables at runtime.
 The signing request contains the project-owned addon and bounded origin
 metadata only; it does not submit Valve binaries for signing.
 
+The published `0.4.4` Windows addon predates enforcement of the integrated
+signing boundary and is unsigned. The post-`0.4.4` release workflow described
+below is fail-closed; do not represent an older package as SignPath-signed.
+
 ## Source and build provenance
 
 - Source: <https://github.com/jstroh/steam-bridge>
@@ -29,15 +33,19 @@ metadata only; it does not submit Valve binaries for signing.
 - Package: <https://www.npmjs.com/package/steam-bridge>
 
 Signing candidates are built from an immutable `v*` tag by the repository's
-GitHub-hosted Windows runner. The workflow uploads the unsigned addon to GitHub
-before requesting signing, allowing SignPath's GitHub connector to verify the
-repository, tag, commit, workflow, and hosted build origin. Every signing
-request requires manual approval. The signed addon is verified for a trusted
-Authenticode chain, code-signing EKU, RSA key, SignPath Foundation publisher,
-and trusted timestamp before it is released.
+GitHub-hosted Windows release runner. The release job uploads that exact
+prebuilt addon to GitHub before requesting signing, allowing SignPath's GitHub
+connector to verify the repository, tag, commit, workflow, and hosted build
+origin. Every signing request requires manual approval. The signed bytes then
+replace the unsigned addon in the same release job. A trusted Authenticode
+chain, code-signing EKU, RSA key, SignPath Foundation publisher, and trusted
+timestamp are verified before the package gate can create the npm candidate.
+Missing SignPath configuration, rejection, timeout, or signature mismatch fails
+the tag release and therefore makes it ineligible for the separate npm publish
+workflow.
 
-All GitHub Actions dependencies in the signing workflow are pinned to immutable
-commits. Release source, CI, package gates, and the signing workflow are review
+All GitHub Actions dependencies in the release workflow are pinned to immutable
+commits. Release source, CI, package gates, and the signing path are review
 security boundaries and must receive the same review as native code.
 
 ## Team roles

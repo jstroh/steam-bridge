@@ -55,7 +55,9 @@ pooled handle. If a rejected `NativeOverlaySharedTextureCopyError` reports
 terminate and relaunch the application. Closing the native host or session, or
 reconstructing the graphics device in the same process, is not a proven release
 boundary. `updateSharedTexture(...)` remains the synchronous compatibility
-path.
+path. If it throws `NativeOverlaySharedTextureCopyError` with
+`producerReleaseSafe: false`, apply the same process-lifetime quarantine and
+relaunch rule because native completion was not proven.
 
 Use the current monitor's `displayFrequency` for both
 `webContents.setFrameRate(...)` and the native session's `frameRate`. Reapply

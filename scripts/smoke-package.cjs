@@ -678,8 +678,8 @@ function runWindowsSmokeHelperStaticChecks() {
   );
   assert.match(
     releaseWorkflow,
-    /permissions:\s*\n\s+contents: read/,
-    "Release workflow must keep its token at contents-read permission"
+    /permissions:\s*\n\s+actions: read\s*\n\s+contents: read\s*\n/,
+    "Release workflow must grant only the read permissions needed to retrieve its exact signing artifact"
   );
   for (const expected of [
     "Restore proved runtime payload for documentation-only v0.1.6",
@@ -692,9 +692,11 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   assert.ok(
     !releaseWorkflow.includes("--require-signed") &&
+      releaseWorkflow.includes("--require-native-addon-signed") &&
+      releaseWorkflow.includes("signpath/github-action-submit-signing-request") &&
       !releaseWorkflow.includes("WINDOWS_CSC_LINK") &&
       !releaseWorkflow.includes("azure/login"),
-    "npm release workflow must not require Windows Authenticode signing"
+    "npm release workflow must require only the project-owned addon to pass SignPath Authenticode verification"
   );
   assert.doesNotMatch(releaseWorkflow, /(?:^|\s)--publish(?:\s|$)/m, "Release workflow must remain candidate-only");
   assert.ok(
