@@ -45,9 +45,16 @@ publishable-candidate verifier. The canonical tarball SHA-256 is
 the package-audit SHA-256 is
 `27E97638EAE882F7CE688A29E7C0ED99F95D439A0005AC156504BA78D19B68A4`.
 The release notes explicitly disclose that the addon is unsigned and Microsoft
-is pending. npm publication remains blocked on a fresh candidate-bound Windows
-standalone live-proof receipt; the owner waiver did not fabricate or bypass
-that QA evidence.
+is pending. The product owner subsequently directed publication without waiting
+for that determination so dependent release work could continue. The exact
+GitHub Release tarball was downloaded on macOS, verified again at SHA-256
+`D7FD0998E588C081C0EF020665AF7306E4282A0CAE2A2553A4036E0935A2E43A`, and
+published to npm as `steam-bridge@0.4.5` on 2026-08-30. A fresh registry
+download reproduced the same SHA-256; npm records SHA-1
+`fb52045d67cf49ff2470376616fbb5a026266201` and integrity
+`sha512-uhAHCPaQdt/d3Wpuo5GjFTVXj0WZuu4sHKYugn3qRiPX8iN43Sv33qB8k/9vCXhsGGhXG8/4FY4U9PSRAcWApQ==`.
+No candidate-bound Windows standalone live-proof receipt was fabricated or
+claimed, and the Microsoft determination and SignPath signature remain pending.
 
 ### 2026-08-30 Windows native crash symbol retention
 
