@@ -698,6 +698,18 @@ function runWindowsSmokeHelperStaticChecks() {
       !releaseWorkflow.includes("azure/login"),
     "npm release workflow must require only the project-owned addon to pass SignPath Authenticode verification"
   );
+  for (const expected of [
+    "Verify exact Windows addon and PDB pair",
+    "scripts/verify-windows-native-symbols.cjs",
+    "native-symbols-windows-${{ github.sha }}",
+    "Upload exact Windows PDB to FOV4 Sentry",
+    "SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}",
+    "debug-files upload",
+    "--project fov4-steam",
+    "target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb"
+  ]) {
+    assert.ok(releaseWorkflow.includes(expected), `Windows native-symbol Release workflow missing ${expected}`);
+  }
   assert.doesNotMatch(releaseWorkflow, /(?:^|\s)--publish(?:\s|$)/m, "Release workflow must remain candidate-only");
   assert.ok(
     !releaseWorkflow.includes("--live-proof-receipt"),

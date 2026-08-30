@@ -44,6 +44,22 @@ jobs:
         run: npm test
       - run: npm run build
       - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
+      - name: Verify exact Windows addon and PDB pair
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          node scripts/verify-windows-native-symbols.cjs `
+            --addon packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node `
+            --pdb target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb
+      - name: Retain exact Windows PDB
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # Keep symbols outside the steam-bridge-* namespace consumed by
+          # release-artifact assembly. The PDB never enters the npm package.
+          name: native-symbols-windows-${{ github.sha }}
+          path: target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb
+          if-no-files-found: error
       - name: Stage exact Windows addon for SignPath
         if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
         id: signpath-input
@@ -119,6 +135,24 @@ jobs:
           }
           Copy-Item -LiteralPath $files[0].FullName -Destination packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node -Force
           Get-FileHash -LiteralPath packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node -Algorithm SHA256
+      - name: Upload exact Windows PDB to FOV4 Sentry
+        if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SENTRY_AUTH_TOKEN)) {
+            throw "SENTRY_AUTH_TOKEN is required for immutable Steam Bridge releases"
+          }
+          node scripts/verify-windows-native-symbols.cjs `
+            --addon packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node `
+            --pdb target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb
+          node node_modules/@sentry/cli/bin/sentry-cli debug-files upload `
+            --org pixel-games-llc `
+            --project fov4-steam `
+            --type pdb `
+            --wait `
+            target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb
       - run: node packages/steam-bridge/scripts/link-native.cjs --runtime-only --target ${{ matrix.target }}
       - run: node scripts/verify-release-artifacts.cjs --target ${{ matrix.target }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

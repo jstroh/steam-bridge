@@ -1,6 +1,32 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-28
+Last reviewed: 2026-08-30
+
+### 2026-08-30 Windows native crash symbol retention
+
+Production Sentry group `FOV4-STEAM-1C` contains a native Node/V8 worker fatal
+from the Steam Bridge process but cannot resolve Bridge frames because release
+`0.4.4` discarded its compiler PDB after signing. The current Rust release
+profile already emits a usable PDB, and Sentry CLI proves that a freshly built
+Windows addon and PDB contain the same debug identifier. The gap is release
+artifact handling, not compilation or runtime behavior.
+
+The active release-workflow repair verifies the exact addon/PDB pair before
+signing, retains the PDB as a CI-only artifact outside the runtime-artifact
+assembly namespace, verifies it again against the final SignPath-signed addon,
+and uploads only the PDB to the existing FOV4 Steam Sentry project on immutable
+tags. The PDB does not enter the npm package or any consumer depot. A missing
+Sentry token, missing PDB, mismatched debug identifier, or failed upload stops
+the tag release. The verifier rejected a stale local addon paired with the new
+PDB, then passed after the exact release command rebuilt both outputs. It has
+focused parser coverage and passes against that real optimized Windows pair.
+The full 445-test JavaScript/TypeScript suite passes with the two expected
+Windows symlink-privilege skips, all 67
+native tests pass with the one interactive hardware case intentionally ignored,
+and the platform audit, API audit, Rust format and compile checks, Windows
+package gate, package smoke, and diff checks pass. The discarded `0.4.4` PDB
+cannot be recreated because its debug identifier is build-specific; this repair
+applies to the next immutable Bridge release and later.
 
 ### 2026-08-28 post-0.4.4 ownership and release enforcement
 
