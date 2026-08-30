@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-08-30
 
-### 2026-08-30 v0.4.5 release candidate
+### 2026-08-30 v0.4.5 release handoff
 
 The reviewed `0.4.5` candidate contains the three commits after immutable
 `v0.4.4`: fail-closed signed-candidate and shared-texture ownership enforcement,
@@ -32,6 +32,22 @@ bytes on 2026-08-30 for Smart App Control reputation review. Its initial
 status is only `Submitted`; no clean determination, signature, Sentry PDB
 upload, npm publication, or FOV4 package/release is claimed. SignPath has not
 approved or signed this release and remains a separate future signing route.
+
+The product owner explicitly waived waiting for the Microsoft determination and
+SignPath availability for the public GitHub release. The immutable
+`v0.4.5` GitHub Release is published at
+`https://github.com/jstroh/steam-bridge/releases/tag/v0.4.5` with the audited
+tarball, package audit, and matching PDB. The exact detached-tag assembly
+reproduced all three CI addon hashes, passed the cross-platform package smoke,
+API audit, Electron 44 native-load probe, Windows ASAR/package audit, and
+publishable-candidate verifier. The canonical tarball SHA-256 is
+`D7FD0998E588C081C0EF020665AF7306E4282A0CAE2A2553A4036E0935A2E43A` and
+the package-audit SHA-256 is
+`27E97638EAE882F7CE688A29E7C0ED99F95D439A0005AC156504BA78D19B68A4`.
+The release notes explicitly disclose that the addon is unsigned and Microsoft
+is pending. npm publication remains blocked on a fresh candidate-bound Windows
+standalone live-proof receipt; the owner waiver did not fabricate or bypass
+that QA evidence.
 
 ### 2026-08-30 Windows native crash symbol retention
 
