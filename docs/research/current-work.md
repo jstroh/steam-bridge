@@ -19,6 +19,20 @@ complete cross-platform package smoke. The next immutable tag must retain and
 upload the matching Windows PDB, receive the required SignPath approval, and
 produce the audited candidate before any live proof or npm publication.
 
+The immutable tag workflow run `33305048135` retained the exact unsigned
+Windows addon, matching PDB, and macOS/Linux prebuilds before stopping at the
+unconfigured SignPath step. The Windows addon SHA-256 is
+`7F9C6A5EC2AFBAD9A4020A2AA7C1F702136EA4A658CBF676D3C79D92D9D866AC`; the
+PDB SHA-256 is
+`4F861339850F9B4C7B39B7863C3994CF9AA379B20FE9AA70E41C40583A0C0576`, and
+the pair shares debug ID `b262a9ab-a622-4ced-9565-0e051afcc0b5-1`.
+Microsoft Security Intelligence submission
+`b362782e-6d40-4467-8dab-4cdba80ed9a1` received those exact Windows addon
+bytes on 2026-08-30 for Smart App Control reputation review. Its initial
+status is only `Submitted`; no clean determination, signature, Sentry PDB
+upload, npm publication, or FOV4 package/release is claimed. SignPath has not
+approved or signed this release and remains a separate future signing route.
+
 ### 2026-08-30 Windows native crash symbol retention
 
 Production Sentry group `FOV4-STEAM-1C` contains a native Node/V8 worker fatal
