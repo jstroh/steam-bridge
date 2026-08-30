@@ -2,6 +2,23 @@
 
 Last reviewed: 2026-08-30
 
+### 2026-08-30 v0.4.5 release candidate
+
+The reviewed `0.4.5` candidate contains the three commits after immutable
+`v0.4.4`: fail-closed signed-candidate and shared-texture ownership enforcement,
+Electron 44 smoke-runtime coverage, and Windows native-symbol retention. This is
+a code release and must receive a new candidate-bound Windows live-proof
+receipt; it is not eligible for documentation-only proof reuse.
+
+All root, workspace, and lockfile version records agree on `0.4.5`. The exact
+versioned source passes 445 JavaScript/TypeScript tests with the two expected
+Windows symlink-privilege skips, 67 native tests with the one interactive D3D11
+hardware test intentionally ignored, platform and API audits, Rust formatting
+and compilation, the Windows release gates, release assembly checks, and the
+complete cross-platform package smoke. The next immutable tag must retain and
+upload the matching Windows PDB, receive the required SignPath approval, and
+produce the audited candidate before any live proof or npm publication.
+
 ### 2026-08-30 Windows native crash symbol retention
 
 Production Sentry group `FOV4-STEAM-1C` contains a native Node/V8 worker fatal
