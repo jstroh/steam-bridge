@@ -1,6 +1,31 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-08-30
+Last reviewed: 2026-09-01
+
+### 2026-09-01 bundled Steam Input layout correction
+
+The reviewed follow-up corrects the public legacy-layout generator to
+emit Valve's documented `Action Manifest` root with a plural `configurations`
+block. The Steam Deck profile now binds group 21 to the physical D-pad while
+retaining group 22 as the right trackpad. The public validator rejects singular,
+mixed, and `In Game Actions` configuration blocks, still accepts an ordinary
+actions-only `In Game Actions` file, and follows every generated controller-file
+reference. Each referenced file must contain exactly one scalar
+`controller_type` matching its manifest controller family case-insensitively.
+Focused tests cover missing, duplicate, mismatched, and case-insensitive values,
+and corrupt each of the 16 generated controller files in turn to prove that none
+can be skipped silently. Version 1 preserves its released directional movement
+bindings by default. An explicit `analogMovement` opt-in emits Valve's
+`joystick_move` mode while retaining the stick-click binding. Display strings
+use KeyValues quote and backslash escaping. The validator decodes those two
+escapes while preserving unknown backslash sequences such as Windows-relative
+paths, with a Valve-style quoted localization fixture covering the round trip.
+
+The TypeScript build and typecheck, platform and API audits, native formatting
+and compilation, 445 JavaScript/TypeScript tests with two expected Windows
+symlink-privilege skips, 67 native tests with one hardware-only test ignored,
+package smoke, and diff check pass. This non-native correction is not yet
+versioned, published, or released through FOV4 Steam.
 
 ### 2026-08-30 v0.4.5 release handoff
 

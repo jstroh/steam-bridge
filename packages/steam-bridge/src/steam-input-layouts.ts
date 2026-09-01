@@ -55,6 +55,8 @@ export interface SteamLegacyLayoutSpec {
   readonly description: string;
   readonly actionSetName?: string;
   readonly actionSetTitle?: string;
+  /** Emit native left-stick axes instead of the version 1 directional bindings. */
+  readonly analogMovement?: boolean;
   readonly bindings: SteamLegacyInputBindingSpec;
 }
 
@@ -79,7 +81,7 @@ const CONTROLLER_SOURCE_PROFILES: Readonly<Record<SteamLegacyControllerType, rea
   controller_generic: FULL_GAMEPAD_SOURCES,
   controller_mobile_touch: FULL_GAMEPAD_SOURCES,
   controller_neptune: [
-    [26, "switch"], [20, "button_diamond"], [21, "left_trackpad"], [22, "right_trackpad"],
+    [26, "switch"], [20, "button_diamond"], [21, "dpad"], [22, "right_trackpad"],
     [23, "joystick"], [24, "left_trigger"], [25, "right_trigger"], [27, "right_joystick"]
   ],
   controller_ps3: FULL_GAMEPAD_SOURCES,
@@ -140,6 +142,9 @@ export function validateSteamLegacyLayoutSpec(value: unknown): asserts value is 
     throw new Error("Steam legacy layout actionSetName is invalid");
   }
   if (spec.actionSetTitle != null) validatePlainText(spec.actionSetTitle, "actionSetTitle");
+  if (spec.analogMovement != null && typeof spec.analogMovement !== "boolean") {
+    throw new TypeError("Steam legacy layout analogMovement must be a boolean");
+  }
   if (!spec.bindings || typeof spec.bindings !== "object") {
     throw new TypeError("Steam legacy layout bindings must be an object");
   }
@@ -165,7 +170,7 @@ function renderManifest(actionSetName: string, actionSetTitle: string): string {
   const configurations = STEAM_LEGACY_CONTROLLER_TYPES.map((type) =>
     `\t\t"${type}"\n\t\t{\n\t\t\t"0"\n\t\t\t{\n\t\t\t\t"path"\t\t"${type}.vdf"\n\t\t\t}\n\t\t}`
   ).join("\n");
-  return `"In Game Actions"\n{\n\t"configuration"\n\t{\n${configurations}\n\t}\n\n\t"actions"\n\t{\n\t\t"${actionSetName}"\n\t\t{\n\t\t\t"title"\t\t"#Set_${actionSetName}"\n\t\t}\n\t}\n\n\t"localization"\n\t{\n\t\t"english"\n\t\t{\n\t\t\t"Set_${actionSetName}"\t\t"${vdf(actionSetTitle)}"\n\t\t}\n\t}\n}\n`;
+  return `"Action Manifest"\n{\n\t"configurations"\n\t{\n${configurations}\n\t}\n\n\t"actions"\n\t{\n\t\t"${actionSetName}"\n\t\t{\n\t\t\t"title"\t\t"#Set_${actionSetName}"\n\t\t}\n\t}\n\n\t"localization"\n\t{\n\t\t"english"\n\t\t{\n\t\t\t"Set_${actionSetName}"\t\t"${vdf(actionSetTitle)}"\n\t\t}\n\t}\n}\n`;
 }
 
 function renderControllerLayout(
@@ -177,6 +182,9 @@ function renderControllerLayout(
 ): string {
   const b = spec.bindings;
   const sourceBindings = sources.map(([group, source]) => `"${group}" "${source} active"`).join(" ");
+  const movementGroup = spec.analogMovement === true
+    ? `\t"group" { "id" "23" "mode" "joystick_move" "inputs" { ${button("click", b.movementClick)} } "settings" { } }\n`
+    : `\t"group" { "id" "23" "mode" "dpad" "inputs" { ${button("dpad_north", b.movementUp)} ${button("dpad_south", b.movementDown)} ${button("dpad_east", b.movementRight)} ${button("dpad_west", b.movementLeft)} ${button("click", b.movementClick)} } "settings" { "requires_click" "0" } }\n`;
   return `"controller_mappings"\n{\n` +
     `\t"version"\t\t"3"\n\t"title"\t\t"#Title_Config"\n\t"description"\t\t"#Description_Config"\n` +
     `\t"controller_type"\t\t"${controllerType}"\n\t"major_revision"\t\t"1"\n\t"minor_revision"\t\t"0"\n\n` +
@@ -185,7 +193,7 @@ function renderControllerLayout(
     `\t"group" { "id" "20" "mode" "four_buttons" "inputs" { ${button("button_a", b.primary)} ${button("button_b", b.cancel)} ${button("button_x", b.secondary)} ${button("button_y", b.inventory)} } }\n` +
     `\t"group" { "id" "21" "mode" "dpad" "inputs" { ${button("dpad_north", b.dpadUp)} ${button("dpad_south", b.dpadDown)} ${button("dpad_east", b.dpadRight)} ${button("dpad_west", b.dpadLeft)} } "settings" { "requires_click" "0" } }\n` +
     `\t"group" { "id" "22" "mode" "absolute_mouse" "inputs" { ${button("click", b.pointerClick)} } "settings" { "sensitivity" "145" } }\n` +
-    `\t"group" { "id" "23" "mode" "dpad" "inputs" { ${button("dpad_north", b.movementUp)} ${button("dpad_south", b.movementDown)} ${button("dpad_east", b.movementRight)} ${button("dpad_west", b.movementLeft)} ${button("click", b.movementClick)} } "settings" { "requires_click" "0" } }\n` +
+    movementGroup +
     `\t"group" { "id" "24" "mode" "trigger" "inputs" { ${button("edge", b.leftTrigger)} } }\n` +
     `\t"group" { "id" "25" "mode" "trigger" "inputs" { ${button("edge", b.rightTrigger)} } }\n` +
     `\t"group" { "id" "26" "mode" "switches" "inputs" { ${button("button_escape", b.view)} ${button("button_menu", b.menu)} ${button("left_bumper", b.leftBumper)} ${button("right_bumper", b.rightBumper)} } }\n` +
@@ -194,10 +202,10 @@ function renderControllerLayout(
     `\t"settings" { "left_trackpad_mode" "0" "right_trackpad_mode" "0" }\n}\n`;
 }
 
-function button(input: string, binding: string): string {
-  return `"${input}" { "activators" { "Full_Press" { "bindings" { "binding" "${binding}" } "settings" { "repeat_rate" "99" } } } }`;
-}
-
 function vdf(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function button(input: string, binding: string): string {
+  return `"${input}" { "activators" { "Full_Press" { "bindings" { "binding" "${binding}" } "settings" { "repeat_rate" "99" } } } }`;
 }

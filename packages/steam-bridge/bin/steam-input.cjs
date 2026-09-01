@@ -458,22 +458,53 @@ function validateLocalization(root, references, errors, warnings) {
 
 function validateConfigurationFiles(root, filename, checkFiles, errors, warnings) {
   const configurationNodes = childrenNamed(root, "configurations");
+  const singularConfigurationNodes = childrenNamed(root, "configuration");
   if (configurationNodes.length > 1) {
     errors.push(issue(configurationNodes[1], `Expected at most one configurations block, found ${configurationNodes.length}.`));
   }
-  const configurations = configurationNodes[0];
-  if (!configurations) {
+  if (singularConfigurationNodes.length > 0) {
+    errors.push(issue(
+      singularConfigurationNodes[0],
+      'Steam Input configuration blocks must use Valve\'s documented plural name "configurations", not "configuration".'
+    ));
+  }
+  if (singularConfigurationNodes.length > 1) {
+    errors.push(issue(
+      singularConfigurationNodes[1],
+      `Expected at most one configuration block, found ${singularConfigurationNodes.length}.`
+    ));
+  }
+  if (configurationNodes.length > 0 && singularConfigurationNodes.length > 0) {
+    errors.push(issue(
+      singularConfigurationNodes[0],
+      'Steam Input manifests must not mix "configurations" and "configuration" blocks.'
+    ));
+  }
+  const configurationBlocks = [...configurationNodes, ...singularConfigurationNodes];
+  if (lower(root.key) === "in game actions" && configurationBlocks.length > 0) {
+    errors.push(issue(
+      configurationBlocks[0],
+      'Bundled controller configurations require an "Action Manifest" root; "In Game Actions" must not contain configuration blocks.'
+    ));
+  }
+  if (configurationBlocks.length === 0) {
     if (lower(root.key) === "action manifest") {
       warnings.push(issue(root, "Action Manifest has no configurations block; no official bundled layouts can be verified."));
     }
     return;
   }
-  if (!configurations.children) {
-    errors.push(issue(configurations, "configurations must be a block."));
-    return;
-  }
   const base = path.dirname(filename);
   const seenControllerTypes = new Map();
+  for (const configurations of configurationBlocks) {
+    validateConfigurationBlock(configurations, base, checkFiles, errors, seenControllerTypes);
+  }
+}
+
+function validateConfigurationBlock(configurations, base, checkFiles, errors, seenControllerTypes) {
+  if (!configurations.children) {
+    errors.push(issue(configurations, `${configurations.key} must be a block.`));
+    return;
+  }
   for (const controllerType of configurations.children) {
     validateUniqueName(controllerType, seenControllerTypes, "controller configuration type", errors);
     if (!SUPPORTED_CONTROLLER_TYPES.has(lower(controllerType.key))) {
@@ -516,20 +547,35 @@ function validateConfigurationFiles(root, filename, checkFiles, errors, warnings
         } else if (!fs.statSync(resolved).isFile()) {
           errors.push(issue(pathNode, `Referenced controller configuration is not a file: ${resolved}`));
         } else {
-          validateControllerConfigurationFile(resolved, pathNode, errors);
+          validateControllerConfigurationFile(resolved, pathNode, controllerType.key, errors);
         }
       }
     }
   }
 }
 
-function validateControllerConfigurationFile(filename, sourceNode, errors) {
+function validateControllerConfigurationFile(filename, sourceNode, expectedControllerType, errors) {
   try {
     const source = fs.readFileSync(filename, "utf8").replace(/^\uFEFF/, "");
     const entries = parseKeyValues(source, filename);
     const roots = entries.filter((entry) => lower(entry.key) === "controller_mappings");
     if (roots.length !== 1 || !roots[0].children) {
       errors.push(issue(sourceNode, `Referenced controller configuration must contain exactly one controller_mappings root: ${filename}`));
+      return;
+    }
+    const controllerTypes = childrenNamed(roots[0], "controller_type");
+    if (controllerTypes.length !== 1 || controllerTypes[0].value === undefined) {
+      errors.push(issue(
+        controllerTypes[1] ?? controllerTypes[0] ?? sourceNode,
+        `Referenced controller configuration must contain exactly one scalar controller_type: ${filename}`
+      ));
+      return;
+    }
+    if (lower(controllerTypes[0].value) !== lower(expectedControllerType)) {
+      errors.push(issue(
+        controllerTypes[0],
+        `Referenced controller configuration controller_type "${controllerTypes[0].value}" does not match manifest controller family "${expectedControllerType}": ${filename}`
+      ));
     }
   } catch (error) {
     errors.push(issue(sourceNode, `Referenced controller configuration is invalid: ${error.message}`));
@@ -664,13 +710,22 @@ function tokenizeKeyValues(source, filename) {
       let closed = false;
       while (index < source.length) {
         const current = advance();
+        if (current === "\\") {
+          const escaped = source[index];
+          if (escaped === '"' || escaped === "\\") {
+            advance();
+            value += escaped;
+            continue;
+          }
+          // Preserve unknown escapes so Windows-relative paths such as
+          // configs\xbox.vdf retain their literal backslash.
+          value += current;
+          continue;
+        }
         if (current === '"') {
           closed = true;
           break;
         }
-        // Valve's KeyValues parser leaves escape sequences disabled by default.
-        // Preserve backslashes so Windows-relative configuration paths do not
-        // silently change (for example configs\\xbox.vdf -> configsxbox.vdf).
         value += current;
       }
       if (!closed) throw syntaxError(filename, { line: tokenLine, column: tokenColumn }, "Unclosed quoted string.");
@@ -797,7 +852,8 @@ function runSelfTest() {
   try {
     const manifest = path.join(root, "steam_input_manifest.vdf");
     const config = path.join(root, "xbox.vdf");
-    fs.writeFileSync(config, '"controller_mappings" { "version" "3" }\n');
+    const validConfig = '"controller_mappings" { "controller_type" "controller_xboxone" "version" "3" }\n';
+    fs.writeFileSync(config, validConfig);
     fs.writeFileSync(
       manifest,
       `"Action Manifest"
@@ -833,6 +889,26 @@ function runSelfTest() {
     assert.deepEqual(inspected.actionLayers, ["Inventory"]);
     assert.deepEqual(inspected.digitalActions, ["Accept", "Jump"]);
     assert.deepEqual(inspected.analogActions, ["Move"]);
+
+    fs.writeFileSync(config, '"controller_mappings" { "version" "3" }\n');
+    assert.ok(inspectManifest(manifest, { checkFiles: true }).errors.some((entry) =>
+      /exactly one scalar controller_type/.test(entry.message)
+    ));
+    fs.writeFileSync(
+      config,
+      '"controller_mappings" { "controller_type" "controller_xboxone" "controller_type" "controller_xboxone" "version" "3" }\n'
+    );
+    assert.ok(inspectManifest(manifest, { checkFiles: true }).errors.some((entry) =>
+      /exactly one scalar controller_type/.test(entry.message)
+    ));
+    fs.writeFileSync(config, '"controller_mappings" { "controller_type" "controller_neptune" "version" "3" }\n');
+    assert.ok(inspectManifest(manifest, { checkFiles: true }).errors.some((entry) =>
+      /does not match manifest controller family "controller_xboxone"/.test(entry.message)
+    ));
+    fs.writeFileSync(config, '"controller_mappings" { "controller_type" "CONTROLLER_XBOXONE" "version" "3" }\n');
+    assert.deepEqual(inspectManifest(manifest, { checkFiles: true }).errors, []);
+    fs.writeFileSync(config, validConfig);
+
     const generated = generateTypeScriptDefinition(inspected, manifest);
     assert.match(generated, /defineSteamInput/);
     assert.match(generated, /"Jump": "Jump"/);
@@ -863,6 +939,45 @@ function runSelfTest() {
     assert.ok(badConfigurationResult.errors.some((entry) => /Unsupported Steam Input controller type/.test(entry.message)));
     assert.ok(badConfigurationResult.errors.some((entry) => /must be a non-negative integer/.test(entry.message)));
     assert.ok(badConfigurationResult.errors.some((entry) => /is not a file/.test(entry.message)));
+
+    const singularConfiguration = path.join(root, "singular-configuration.vdf");
+    fs.writeFileSync(
+      singularConfiguration,
+      '"Action Manifest" { "configuration" { "controller_xboxone" { "0" { "path" "missing.vdf" } } } "actions" { "Game" { "Button" { "Fire" "Fire" } } } }'
+    );
+    const singularConfigurationResult = inspectManifest(singularConfiguration, { checkFiles: true });
+    assert.ok(singularConfigurationResult.errors.some((entry) => /documented plural name "configurations"/.test(entry.message)));
+    assert.ok(singularConfigurationResult.errors.some((entry) => /does not exist/.test(entry.message)));
+
+    const hybridConfiguration = path.join(root, "hybrid-configuration.vdf");
+    fs.writeFileSync(
+      hybridConfiguration,
+      `"Action Manifest" {
+        "configurations" { "controller_xboxone" { "0" { "path" "xbox.vdf" } } }
+        "configuration" { "controller_ps5" { "0" { "path" "xbox.vdf" } } }
+        "actions" { "Game" { "Button" { "Fire" "Fire" } } }
+      }`
+    );
+    const hybridConfigurationResult = inspectManifest(hybridConfiguration, { checkFiles: true });
+    assert.ok(hybridConfigurationResult.errors.some((entry) => /must not mix "configurations" and "configuration"/.test(entry.message)));
+
+    const hybridRoot = path.join(root, "hybrid-root.vdf");
+    fs.writeFileSync(
+      hybridRoot,
+      `"In Game Actions" {
+        "configurations" { "controller_xboxone" { "0" { "path" "xbox.vdf" } } }
+        "actions" { "Game" { "Button" { "Fire" "Fire" } } }
+      }`
+    );
+    const hybridRootResult = inspectManifest(hybridRoot, { checkFiles: true });
+    assert.ok(hybridRootResult.errors.some((entry) => /require an "Action Manifest" root/.test(entry.message)));
+
+    const ordinaryInGameActions = path.join(root, "ordinary-in-game-actions.vdf");
+    fs.writeFileSync(
+      ordinaryInGameActions,
+      '"In Game Actions" { "actions" { "Game" { "title" "#Set_Game" "Button" { "Fire" "#Action_Fire" } } } "localization" { "english" { "Set_Game" "Game" "Action_Fire" "Fire" } } }'
+    );
+    assert.deepEqual(inspectManifest(ordinaryInGameActions, { checkFiles: true }).errors, []);
 
     const malformedActions = path.join(root, "malformed-actions.vdf");
     fs.writeFileSync(
@@ -945,10 +1060,20 @@ function runSelfTest() {
       parseKeyValues(String.raw`"path" "configs\xbox.vdf"`, "windows-path.vdf")[0].value,
       String.raw`configs\xbox.vdf`
     );
+    const escapedStrings = parseKeyValues(
+      String.raw`"root" { "title" "\"Point and click\" with mouse" "escaped" "A\\B" "path" "configs\xbox.vdf" }`,
+      "escaped-strings.vdf"
+    )[0];
+    assert.equal(childValue(escapedStrings, "title"), '"Point and click" with mouse');
+    assert.equal(childValue(escapedStrings, "escaped"), String.raw`A\B`);
+    assert.equal(childValue(escapedStrings, "path"), String.raw`configs\xbox.vdf`);
 
     const nestedConfigDirectory = path.join(root, "configs");
     fs.mkdirSync(nestedConfigDirectory);
-    fs.writeFileSync(path.join(nestedConfigDirectory, "xbox.vdf"), '"controller_mappings" { "version" "3" }\n');
+    fs.writeFileSync(
+      path.join(nestedConfigDirectory, "xbox.vdf"),
+      '"controller_mappings" { "controller_type" "controller_xboxone" "version" "3" }\n'
+    );
     const windowsRelativePath = path.join(root, "windows-relative-path.vdf");
     fs.writeFileSync(
       windowsRelativePath,

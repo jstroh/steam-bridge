@@ -31306,14 +31306,120 @@ test("legacy layout generator owns device-correct controller source profiles", (
   const second = layouts.generateSteamLegacyLayoutAssets(structuredClone(spec));
   assert.deepEqual(first, second, "generation is deterministic");
   assert.equal(Object.keys(first.files).length, 17);
+  assert.match(first.files[first.manifestFileName], /^"Action Manifest"\r?\n/u);
+  assert.match(first.files[first.manifestFileName], /^\s*"configurations"\s*$/mu);
+  assert.doesNotMatch(first.files[first.manifestFileName], /^\s*"configuration"\s*$/mu);
+  assert.match(first.files["controller_neptune.vdf"], /"21" "dpad active"/u);
   assert.match(first.files["controller_neptune.vdf"], /"22" "right_trackpad active"/);
+  assert.doesNotMatch(first.files["controller_neptune.vdf"], /"21" "left_trackpad active"/u);
   assert.match(first.files["controller_ps5.vdf"], /"22" "center_trackpad active"/);
   assert.doesNotMatch(first.files["controller_generic.vdf"], /trackpad active/);
   assert.match(first.files["controller_switch_joycon_left.vdf"], /"23" "joystick active"/);
   assert.doesNotMatch(first.files["controller_switch_joycon_left.vdf"], /(?:dpad|trigger|right_joystick|trackpad) active/);
+  for (const controllerType of layouts.STEAM_LEGACY_CONTROLLER_TYPES) {
+    const source = first.files[`${controllerType}.vdf`];
+    assert.match(source, /"id" "23" "mode" "dpad"/u);
+    assert.match(source, /"click"[^\n]+"binding" "key_press LEFT_SHIFT"/u);
+    assert.doesNotMatch(source, /"id" "23" "mode" "joystick_move"/u);
+    for (const key of ["W", "A", "S", "D"]) {
+      assert.match(source, new RegExp(`"binding" "key_press ${key}"`, "u"));
+    }
+  }
+  const analogAssets = layouts.generateSteamLegacyLayoutAssets({ ...spec, analogMovement: true });
+  for (const controllerType of layouts.STEAM_LEGACY_CONTROLLER_TYPES) {
+    const source = analogAssets.files[`${controllerType}.vdf`];
+    assert.match(source, /"id" "23" "mode" "joystick_move"/u);
+    assert.match(source, /"click"[^\n]+"binding" "key_press LEFT_SHIFT"/u);
+    assert.doesNotMatch(source, /"id" "23" "mode" "dpad"/u);
+    assert.doesNotMatch(source, /"binding" "key_press [WASD]"/u);
+  }
+  assert.throws(
+    () => layouts.generateSteamLegacyLayoutAssets({ ...spec, analogMovement: "yes" }),
+    /analogMovement must be a boolean/
+  );
+  const generatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-legacy-layouts-"));
+  t.after(() => fs.rmSync(generatedRoot, { recursive: true, force: true }));
+  for (const [name, source] of Object.entries(first.files)) {
+    fs.writeFileSync(path.join(generatedRoot, name), source);
+  }
+  const inputCli = require(path.join(repoRoot, "packages", "steam-bridge", "bin", "steam-input.cjs"));
+  const generatedManifest = path.join(generatedRoot, first.manifestFileName);
+  assert.deepEqual(inputCli.inspectManifest(generatedManifest, { checkFiles: true }).errors, []);
+  for (const controllerType of layouts.STEAM_LEGACY_CONTROLLER_TYPES) {
+    const filename = path.join(generatedRoot, `${controllerType}.vdf`);
+    fs.writeFileSync(filename, '"not_controller_mappings" { "version" "3" }\n');
+    const invalidResult = inputCli.inspectManifest(generatedManifest, { checkFiles: true });
+    assert.ok(
+      invalidResult.errors.some((entry) =>
+        entry.message.includes(`exactly one controller_mappings root: ${filename}`)
+      ),
+      `${controllerType} must be opened and validated through the generated manifest`
+    );
+    fs.writeFileSync(filename, first.files[`${controllerType}.vdf`]);
+  }
   assert.throws(() => layouts.generateSteamLegacyLayoutAssets({ ...spec, bindings: {
     ...spec.bindings, primary: 'key_press SPACE" } malicious'
   } }), /binding primary is invalid/);
+
+  const quotedDisplaySpec = {
+    ...spec,
+    title: 'Test "Game"',
+    description: 'Bindings "Desktop"',
+    actionSetTitle: 'Gameplay "World"'
+  };
+  const quotedDisplayAssets = layouts.generateSteamLegacyLayoutAssets(quotedDisplaySpec);
+  for (const [name, source] of Object.entries(quotedDisplayAssets.files)) {
+    fs.writeFileSync(path.join(generatedRoot, name), source);
+  }
+  assert.deepEqual(inputCli.inspectManifest(generatedManifest, { checkFiles: true }).errors, []);
+  const quotedControllerRoot = inputCli.parseKeyValues(
+    quotedDisplayAssets.files["controller_xboxone.vdf"],
+    "controller_xboxone.vdf"
+  )[0];
+  const quotedControllerEnglish = quotedControllerRoot.children
+    .find((entry) => entry.key === "localization").children
+    .find((entry) => entry.key === "english");
+  assert.equal(quotedControllerEnglish.children.find((entry) => entry.key === "Title_Config").value, 'Test "Game"');
+  assert.equal(quotedControllerEnglish.children.find((entry) => entry.key === "Description_Config").value, 'Bindings "Desktop"');
+  assert.equal(quotedControllerEnglish.children.find((entry) => entry.key === "Set_GameplayControls").value, 'Gameplay "World"');
+  const quotedManifestRoot = inputCli.parseKeyValues(
+    quotedDisplayAssets.files[quotedDisplayAssets.manifestFileName],
+    quotedDisplayAssets.manifestFileName
+  )[0];
+  const quotedManifestEnglish = quotedManifestRoot.children
+    .find((entry) => entry.key === "localization").children
+    .find((entry) => entry.key === "english");
+  assert.equal(quotedManifestEnglish.children.find((entry) => entry.key === "Set_GameplayControls").value, 'Gameplay "World"');
+
+  const literalBackslashSpec = {
+    ...spec,
+    title: "Test\\Game",
+    description: "Bindings\\Desktop",
+    actionSetTitle: "Gameplay\\World"
+  };
+  const literalBackslashAssets = layouts.generateSteamLegacyLayoutAssets(literalBackslashSpec);
+  for (const [name, source] of Object.entries(literalBackslashAssets.files)) {
+    fs.writeFileSync(path.join(generatedRoot, name), source);
+  }
+  assert.deepEqual(inputCli.inspectManifest(generatedManifest, { checkFiles: true }).errors, []);
+  const controllerRoot = inputCli.parseKeyValues(
+    literalBackslashAssets.files["controller_xboxone.vdf"],
+    "controller_xboxone.vdf"
+  )[0];
+  const controllerEnglish = controllerRoot.children
+    .find((entry) => entry.key === "localization").children
+    .find((entry) => entry.key === "english");
+  assert.equal(controllerEnglish.children.find((entry) => entry.key === "Title_Config").value, "Test\\Game");
+  assert.equal(controllerEnglish.children.find((entry) => entry.key === "Description_Config").value, "Bindings\\Desktop");
+  assert.equal(controllerEnglish.children.find((entry) => entry.key === "Set_GameplayControls").value, "Gameplay\\World");
+  const manifestRoot = inputCli.parseKeyValues(
+    literalBackslashAssets.files[literalBackslashAssets.manifestFileName],
+    literalBackslashAssets.manifestFileName
+  )[0];
+  const manifestEnglish = manifestRoot.children
+    .find((entry) => entry.key === "localization").children
+    .find((entry) => entry.key === "english");
+  assert.equal(manifestEnglish.children.find((entry) => entry.key === "Set_GameplayControls").value, "Gameplay\\World");
 });
 
 test("packaged universal input preload captures and bounds complete device state", () => {

@@ -421,9 +421,14 @@ steam-bridge-generate-legacy-layouts resources/steam-input-layout.json \
 ```
 
 The versioned JSON spec says that primary means Space, movement means WASD,
-and so on. The generator emits deterministic layouts for generic controllers,
-Xbox, PlayStation, Switch/Joy-Con, Steam Controller, Steam Deck, and Remote
-Play touch. A single Joy-Con therefore never references a nonexistent d-pad,
+and so on. Version 1 keeps those four directional movement bindings by default
+for existing keyboard-driven games. Set `analogMovement` to `true` only when
+the game consumes native left-stick axes; the emitted `joystick_move` group
+still retains `movementClick`. The directional fields remain required for
+version 1 compatibility but are inactive in that explicit analog mode. The
+generator emits deterministic layouts for generic controllers, Xbox,
+PlayStation, Switch/Joy-Con, Steam Controller, Steam Deck, and Remote Play
+touch. A single Joy-Con therefore never references a nonexistent d-pad,
 trigger, second stick, or trackpad; Deck and PlayStation layouts use their real
 trackpad sources. `--check` is intended as a package/release gate.
 
