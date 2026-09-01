@@ -5236,6 +5236,11 @@ function run(command, args, options = {}) {
     assert.ok(npmCli, "npm_execpath is required to run package smoke checks on Windows");
     executable = process.execPath;
     executableArgs = [npmCli, ...args];
+  } else if (process.platform === "win32" && command === "powershell.exe") {
+    childEnvironment = { ...process.env };
+    // Windows PowerShell rebuilds its compatible default module path when the
+    // PowerShell 7 parent path is not inherited.
+    delete childEnvironment.PSModulePath;
   } else if (process.platform === "win32" && command === "bash") {
     const bashCandidates = [
       process.env.STEAM_BRIDGE_BASH,

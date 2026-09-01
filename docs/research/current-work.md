@@ -2,6 +2,37 @@
 
 Last reviewed: 2026-09-01
 
+### 2026-09-01 v0.4.6 Steam Input tooling release
+
+The `0.4.6` candidate versions the reviewed bundled Steam Input correction at
+`ade02c6`. The published package changes only the public layout generator,
+validator CLI, generated TypeScript/JavaScript, tests, and documentation. It
+retains every native addon and Valve runtime-library byte from published
+`0.4.5`; no native source changed. FOV4 Steam requires this version so a clean
+registry install can reproduce and validate the analog-movement layouts and
+the physical Steam Deck D-pad mapping committed by the shell.
+
+The retained addon SHA-256 values are
+`119216B389573C345F389482109EE74531D44CAD2C8F1ACBC55E662B03868770`
+(macOS arm64),
+`87E1B9D095CBEDE8A86EB97A3750F86835A9D14A9DB80B4F582FC57C832A3EF2`
+(Linux x64), and
+`7F9C6A5EC2AFBAD9A4020A2AA7C1F702136EA4A658CBF676D3C79D92D9D866AC`
+(Windows x64). All six Valve runtime-library hashes also match the published
+`0.4.5` package.
+
+Electron `44.1.1` replaced `44.0.0` as npm's latest stable release before this
+candidate. The smoke example and lockfile therefore advance to `44.1.1` for the
+existing latest-version compatibility gate. This is a test/toolchain update and
+does not change the Electron version packaged by FOV4.
+
+The package smoke runner now prevents a PowerShell 7 parent module path from
+being inherited by Windows PowerShell 5.1. This keeps the existing ACL
+self-test on its compatible built-in Security module. The full package smoke,
+platform and API audits, native formatting and compilation, 445
+JavaScript/TypeScript tests with two expected Windows symlink-privilege skips,
+67 native tests with one hardware-only test ignored, and diff check pass.
+
 ### 2026-09-01 bundled Steam Input layout correction
 
 The reviewed follow-up corrects the public legacy-layout generator to
@@ -24,8 +55,8 @@ paths, with a Valve-style quoted localization fixture covering the round trip.
 The TypeScript build and typecheck, platform and API audits, native formatting
 and compilation, 445 JavaScript/TypeScript tests with two expected Windows
 symlink-privilege skips, 67 native tests with one hardware-only test ignored,
-package smoke, and diff check pass. This non-native correction is not yet
-versioned, published, or released through FOV4 Steam.
+package smoke, and diff check pass. The `0.4.6` candidate above versions this
+non-native correction for publication and later FOV4 Steam adoption.
 
 ### 2026-08-30 v0.4.5 release handoff
 
@@ -138,7 +169,8 @@ format and compile checks, package smoke, candidate-protection self-tests, and
 diff checks pass. No current FOV4 or npm release bytes were rebuilt or changed.
 After Electron `44.0.0` became the latest stable release, the repository's
 latest-version CI gate required the smoke example and lockfile to advance from
-`43.4.1`. This is an example/toolchain compatibility update only; it does not
+`43.4.1`. The `0.4.6` checkpoint records the subsequent `44.1.1` smoke-runtime
+update. These are example/toolchain compatibility updates only; they do not
 change Steam Bridge's public API or the Electron version packaged by FOV4.
 
 ### 2026-08-27 Windows initial D3D11 adapter fallback
