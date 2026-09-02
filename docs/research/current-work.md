@@ -4783,3 +4783,38 @@ complete, all 84 evidence files match their SHA-256 manifest, and manifest hash
 `0e66d8f158a87f015e00266b09ee2baec432aabe867f6155ae55bb401ee49d8e`
 matches the summary. ChatGPT, Chrome, and VSCodium visibility was restored after
 qualification; none was quit, and no lock- or sleep-capable test ran.
+
+### 2026-09-01 Steam Bridge 0.4.6 release
+
+Steam Bridge 0.4.6 is the reviewed Steam Input legacy-layout tooling repair from
+commit `ade02c6e30ca29650069e674207320ad9eb42d92`, released by commit
+`9ca2aa1fe79320d8f6d544b8a77ea80d2c444e2e` and immutable tag `v0.4.6`.
+Branch and tag CI passed package smoke on Windows, macOS, and Linux, the complete
+Node 18/20/22/24 matrix, and the dependency-security audit. The reusable native
+test suite passed 67 tests with one hardware-only D3D11 test intentionally
+ignored; JavaScript/TypeScript passed 445 active tests with two expected Windows
+symlink-privilege skips.
+
+This release changes JavaScript/TypeScript Steam Input generation and validation
+only. It intentionally reuses every native addon and Valve runtime library byte
+from 0.4.5. The exact addon SHA-256 values remain:
+
+- Windows x64: `7F9C6A5EC2AFBAD9A4020A2AA7C1F702136EA4A658CBF676D3C79D92D9D866AC`;
+- Linux x64: `87E1B9D095CBEDE8A86EB97A3750F86835A9D14A9DB80B4F582FC57C832A3EF2`;
+- macOS arm64: `119216B389573C345F389482109EE74531D44CAD2C8F1ACBC55E662B03868770`.
+
+GitHub Release `https://github.com/jstroh/steam-bridge/releases/tag/v0.4.6`
+contains the canonical tarball and matching Windows PDB. The tarball is
+10,787,876 bytes with SHA-256
+`6BBCC036709EC3977860E42B9F846B022A6046EB21470235DDA4F11B6294EED4`.
+The PDB SHA-256 is
+`4F861339850F9B4C7B39B7863C3994CF9AA379B20FE9AA70E41C40583A0C0576`.
+The formal release workflow's Windows signing job stopped only because SignPath
+organization configuration is not available. The GitHub notes therefore make no
+new signing or Microsoft-clearance claim.
+
+The exact GitHub tarball was published from the authenticated macOS npm session
+as public `steam-bridge@0.4.6`. A fresh registry download reproduced the same
+SHA-256. npm records SHA-1 `9b1d80d4a9db254bf2a2905e2eb488f25214863b`
+and integrity
+`sha512-L2YwGt0DukQpLa+HaUvY1CZ48MJfRFpr4XAdvSYgujumRsTlEFiKQlItU/HuiAcuD3+bwG6xodHDALrQzz0sGQ==`.
