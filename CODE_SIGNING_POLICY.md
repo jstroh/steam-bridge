@@ -1,29 +1,24 @@
 # Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/),
-certificate by [SignPath Foundation](https://signpath.org/).
+The Windows native addon is unsigned. No external signing provider is configured
+or required by the release workflow.
 
 ## Scope
 
-The SignPath Foundation application covers only binaries built from Steam
-Bridge's public MIT-licensed source and build scripts. Its first Windows
-artifact is:
+The project-owned Windows artifact built from Steam Bridge's public MIT-licensed
+source and build scripts is:
 
 - `steam_bridge_native.win32-x64-msvc.node`
 
-It does **not** cover applications that consume Steam Bridge, including Fantasy
-Online 2. It also does not cover Valve's Steamworks redistributables. In
-particular, `steam_api64.dll` and `sdkencryptedappticket64.dll` retain Valve's
-own bytes and Authenticode signatures and must never be re-signed with the
-Steam Bridge certificate.
+Signing applications that consume Steam Bridge is the distributor's
+responsibility. Valve's `steam_api64.dll` and `sdkencryptedappticket64.dll`
+retain Valve's own bytes and Authenticode signatures and must never be re-signed
+as project-owned code.
 
-The Windows addon dynamically loads those Valve redistributables at runtime.
-The signing request contains the project-owned addon and bounded origin
-metadata only; it does not submit Valve binaries for signing.
-
-The published `0.4.4` Windows addon predates enforcement of the integrated
-signing boundary and is unsigned. The post-`0.4.4` release workflow described
-below is fail-closed; do not represent an older package as SignPath-signed.
+Microsoft Security Intelligence submission is reputation review, not code
+signing or a guarantee that Smart App Control will allow an artifact. Record
+each determination against the exact submitted bytes. Consumers must still
+qualify their complete application under their own signing and security policy.
 
 ## Source and build provenance
 
@@ -32,20 +27,23 @@ below is fail-closed; do not represent an older package as SignPath-signed.
 - Releases: <https://github.com/jstroh/steam-bridge/releases>
 - Package: <https://www.npmjs.com/package/steam-bridge>
 
-Signing candidates are built from an immutable `v*` tag by the repository's
-GitHub-hosted Windows release runner. The release job uploads that exact
-prebuilt addon to GitHub before requesting signing, allowing SignPath's GitHub
-connector to verify the repository, tag, commit, workflow, and hosted build
-origin. Every signing request requires manual approval. The signed bytes then
-replace the unsigned addon in the same release job. A trusted Authenticode
-chain, code-signing EKU, RSA key, SignPath Foundation publisher, and trusted
-timestamp are verified before the package gate can create the npm candidate.
-Missing SignPath configuration, rejection, timeout, or signature mismatch fails
-the tag release and therefore makes it ineligible for the separate npm publish
-workflow.
+Release candidates are built from an immutable `v*` tag by the repository's
+GitHub-hosted runners. The Windows job verifies the tag/version match and exact
+addon/PDB pair, retains and uploads the matching symbols, and passes the exact
+prebuild to package assembly without replacing its bytes through a signing
+service. The Windows package gate records unsigned addon and example-app status
+while verifying Valve signatures, runtime-byte preservation, ASAR layout, native
+loading, and candidate hashes. The separate npm publication workflow still
+requires a successful matching tag release and candidate-bound Windows live proof.
+
+Generic optional Authenticode verification remains available for separately
+signed candidates. When requested, it requires the configured expected
+publisher, trusted certificate chain, code-signing EKU, RSA key, and trusted
+timestamp. Removing a provider does not make an unsigned artifact signed or
+weaken consumer application release gates.
 
 All GitHub Actions dependencies in the release workflow are pinned to immutable
-commits. Release source, CI, package gates, and the signing path are review
+commits. Release source, CI, package gates, and optional signature checks are review
 security boundaries and must receive the same review as native code.
 
 ## Team roles
@@ -54,13 +52,12 @@ security boundaries and must receive the same review as native code.
   [Jeromy Stroh (`@jstroh`)](https://github.com/jstroh).
 - Reviewers: repository collaborators who approve proposed changes before they
   are merged. A contributor may not approve their own untrusted contribution.
-- Signing approvers: the repository owner and any future maintainer explicitly
-  assigned the SignPath approver role. Every release signing request is
-  manually reviewed against its tag, CI result, source commit, and artifact
-  hash.
+- Release approvers: the repository owner and explicitly authorized maintainers
+  review the tag, CI result, source commit, artifact hashes, and live proof before
+  publication.
 
-All authors, reviewers, and signing approvers must use multi-factor
-authentication for GitHub and SignPath.
+All authors, reviewers, and release approvers must use multi-factor
+authentication for GitHub.
 
 ## Privacy
 
@@ -73,7 +70,7 @@ Steam/Steamworks or a configured publisher endpoint. See the full
 
 Security reports should use the repository's private
 [GitHub security-advisory flow](https://github.com/jstroh/steam-bridge/security/advisories/new).
-If a signing credential, workflow, release artifact, or maintainer account may
-be compromised, signing stops immediately while the incident is investigated.
-Affected releases will be identified publicly, and the certificate/signature
-will be revoked when necessary.
+If a workflow, release artifact, maintainer account, or signing credential may
+be compromised, publication stops immediately while the incident is investigated.
+Affected releases will be identified publicly, and any affected credential or
+certificate will be revoked when necessary.

@@ -6,18 +6,13 @@ trusted publisher Web API calls, and Steam-safe packaging.
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/),
-certificate by [SignPath Foundation](https://signpath.org/).
-
-The integrated fail-closed signing boundary applies to releases after `0.4.4`.
-The published `0.4.4` Windows addon itself is unsigned; see the
-[code-signing policy](CODE_SIGNING_POLICY.md) for exact scope and provenance.
-
-The free OSS signing scope is limited to binaries built from this repository's
-MIT-licensed source, beginning with the project-owned Windows native addon.
-Valve Steamworks redistributables and applications that consume Steam Bridge
-are explicitly excluded. See the complete [code signing policy](CODE_SIGNING_POLICY.md)
-and [privacy policy](PRIVACY.md).
+The Windows native addon is unsigned. Release candidates retain their exact
+source and artifact provenance and must pass package and live-proof gates.
+Valve redistributables keep their original bytes and signatures; signing an
+application that consumes Steam Bridge remains the distributor's responsibility.
+Microsoft Security Intelligence submission is reputation review, not code
+signing or a guarantee that Smart App Control will allow an artifact. See the
+[code signing policy](CODE_SIGNING_POLICY.md) and [privacy policy](PRIVACY.md).
 
 Version 0.4 intentionally simplifies the public API. Applications start one
 Steam lifetime, configure one Electron integration, and read one normalized
@@ -376,10 +371,11 @@ Automated checks are not physical-device proof. Before release, qualify the
 exact packed candidate on supported hosts, with one Steam client running at a
 time, and inspect the resulting diagnostics/receipts.
 
-An immutable `v*` tag release signs the exact Windows native addon inside the
-release job before the npm candidate is assembled. Missing or rejected SignPath
-configuration fails that release. A manually dispatched unsigned candidate is
-useful for QA but is not eligible for the separate production publish workflow.
+An immutable `v*` tag release verifies the exact Windows addon and matching PDB,
+retains and uploads the symbols, and audits the assembled unsigned candidate.
+The separate production publish workflow still requires the successful tag
+release and exact candidate-bound live proof. A manually dispatched candidate
+is useful for QA but does not satisfy that tag-release requirement.
 
 ## More documentation
 

@@ -249,7 +249,7 @@ async function main() {
       assert.equal(
         signatures.appExecutable.status,
         "NotSigned",
-        "The example Electron executable must remain unsigned under the addon-only SignPath policy"
+        "The example Electron executable must remain unsigned under the addon-only signing policy"
       );
       assertTrustedCodeSignature(signatures[WINDOWS_RUNTIME_FILES[0]], "Steam Bridge native addon");
       assertExpectedPublisher(signatures[WINDOWS_RUNTIME_FILES[0]], "Steam Bridge native addon");

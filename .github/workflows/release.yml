@@ -60,13 +60,12 @@ jobs:
           name: native-symbols-windows-${{ github.sha }}
           path: target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb
           if-no-files-found: error
-      - name: Stage exact Windows addon for SignPath
+      - name: Verify exact Windows release tag
         if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
-        id: signpath-input
         shell: pwsh
         run: |
           if ((git rev-list -n 1 $env:GITHUB_REF_NAME) -ne $env:GITHUB_SHA) {
-            throw "SignPath input must come from the exact immutable release tag"
+            throw "Windows addon must come from the exact immutable release tag"
           }
           $packageVersion = node -p "require('./packages/steam-bridge/package.json').version"
           if ("v$packageVersion" -ne $env:GITHUB_REF_NAME) {
@@ -76,65 +75,7 @@ jobs:
           if (!(Test-Path -LiteralPath $addon -PathType Leaf)) {
             throw "The exact Windows prebuild addon is missing"
           }
-          New-Item -ItemType Directory -Path dist/signpath-unsigned | Out-Null
-          Copy-Item -LiteralPath $addon -Destination dist/signpath-unsigned/steam_bridge_native.win32-x64-msvc.node
-          $files = @(Get-ChildItem -LiteralPath dist/signpath-unsigned -File -Recurse)
-          if ($files.Count -ne 1 -or $files[0].Name -ne 'steam_bridge_native.win32-x64-msvc.node') {
-            throw "SignPath input must contain exactly the project-owned Windows addon"
-          }
-          Get-FileHash -LiteralPath $files[0].FullName -Algorithm SHA256
-      - name: Upload exact unsigned Windows addon
-        if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
-        id: signpath_unsigned
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          # Keep this outside the steam-bridge-* namespace consumed by the
-          # release-artifact assembly job. Only the later signed prebuild may
-          # enter the canonical package.
-          name: signpath-input-${{ github.ref_name }}
-          path: dist/signpath-unsigned/steam_bridge_native.win32-x64-msvc.node
-          if-no-files-found: error
-      - name: Sign exact Windows addon with SignPath Foundation
-        if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
-        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          github-artifact-id: ${{ steps.signpath_unsigned.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: dist/signpath-signed
-      - name: Verify and install signed Windows addon
-        if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          $files = @(Get-ChildItem -LiteralPath dist/signpath-signed -Filter 'steam_bridge_native.win32-x64-msvc.node' -File -Recurse)
-          if ($files.Count -ne 1) {
-            throw "Expected exactly one signed Steam Bridge addon"
-          }
-          $signature = Get-AuthenticodeSignature -LiteralPath $files[0].FullName
-          if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate.Verify()) {
-            throw "Signed addon does not have a publicly trusted Authenticode signature"
-          }
-          if ($signature.SignerCertificate.Subject -notmatch 'SignPath Foundation') {
-            throw "Signed addon is not published by SignPath Foundation"
-          }
-          if ($signature.SignerCertificate.PublicKey.Oid.Value -ne '1.2.840.113549.1.1.1') {
-            throw "Signed addon publisher must use an RSA public key"
-          }
-          $codeSigningEku = @($signature.SignerCertificate.EnhancedKeyUsageList | Where-Object {
-            $_.ObjectId -eq '1.3.6.1.5.5.7.3.3'
-          })
-          if ($codeSigningEku.Count -eq 0) {
-            throw "Signed addon publisher has no code-signing EKU"
-          }
-          if (-not $signature.TimeStamperCertificate -or -not $signature.TimeStamperCertificate.Verify()) {
-            throw "Signed addon has no publicly trusted timestamp"
-          }
-          Copy-Item -LiteralPath $files[0].FullName -Destination packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node -Force
-          Get-FileHash -LiteralPath packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node -Algorithm SHA256
+          Get-FileHash -LiteralPath $addon -Algorithm SHA256
       - name: Upload exact Windows PDB to FOV4 Sentry
         if: github.ref_type == 'tag' && matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
@@ -220,11 +161,7 @@ jobs:
             }
             Copy-Item -LiteralPath $source -Destination "packages\steam-bridge\$fileName" -Force
           }
-      - name: Run exact signed-addon Windows package gate
-        if: github.ref_type == 'tag'
-        run: npm run windows:package-gate -- --require-native-addon-signed --expected-publisher-subject "SignPath Foundation"
-      - name: Run unsigned Windows package gate for a manual candidate
-        if: github.ref_type != 'tag'
+      - name: Run exact Windows package gate
         run: npm run windows:package-gate
       - name: Verify canonical npm release candidate
         shell: pwsh

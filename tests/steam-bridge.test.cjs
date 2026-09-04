@@ -23,51 +23,40 @@ function readSourceFile(...pathSegments) {
     .replace(/\r\n?/g, "\n");
 }
 
-test("SignPath policy signs only the project-owned Windows addon", () => {
+test("Windows release policy audits unsigned candidates without an external signing provider", () => {
   const readme = readSourceFile("README.md");
   const policy = readSourceFile("CODE_SIGNING_POLICY.md");
   const privacy = readSourceFile("PRIVACY.md");
   const workflow = readSourceFile(".github", "workflows", "release.yml");
 
   for (const document of [readme, policy]) {
-    assert.match(document, /Free code signing provided by \[SignPath\.io\]/u);
-    assert.match(document, /certificate by \[SignPath Foundation\]/u);
+    assert.match(document, /Windows native addon is unsigned/u);
+    assert.match(document, /Microsoft Security Intelligence submission is reputation review/u);
   }
   assert.match(policy, /steam_bridge_native\.win32-x64-msvc\.node/u);
   assert.match(policy, /must never be re-signed/u);
   assert.match(privacy, /does not transfer telemetry/u);
   assert.match(workflow, /runs-on: windows-latest/u);
   assert.match(workflow, /github\.ref_name/u);
-  assert.match(workflow, /github-artifact-id/u);
-  assert.match(workflow, /SignPath Foundation/u);
-  assert.match(
-    workflow,
-    /napi build[\s\S]*Copy-Item -LiteralPath \$addon -Destination dist\/signpath-unsigned\/steam_bridge_native\.win32-x64-msvc\.node/u
-  );
-  assert.match(
-    workflow,
-    /dist\/signpath-signed[\s\S]*Copy-Item[\s\S]*packages\/steam-bridge\/steam_bridge_native\.win32-x64-msvc\.node/u
-  );
-  assert.match(workflow, /--require-native-addon-signed/u);
-  assert.match(workflow, /name: signpath-input-\$\{\{ github\.ref_name \}\}/u);
+  assert.match(workflow, /Verify exact Windows release tag/u);
+  assert.match(workflow, /git rev-list -n 1 \$env:GITHUB_REF_NAME/u);
+  assert.match(workflow, /"v\$packageVersion" -ne \$env:GITHUB_REF_NAME/u);
+  assert.match(workflow, /Get-FileHash -LiteralPath \$addon -Algorithm SHA256/u);
+  assert.doesNotMatch(workflow, /submit-signing-request|github-artifact-id|--require-native-addon-signed|--expected-publisher-subject/u);
   assert.match(workflow, /pattern: steam-bridge-\*/u);
-  assert.match(workflow, /1\.2\.840\.113549\.1\.1\.1/u);
-  assert.match(workflow, /1\.3\.6\.1\.5\.5\.7\.3\.3/u);
-  assert.match(workflow, /TimeStamperCertificate/u);
   assert.match(workflow, /steam_bridge_native\.win32-x64-msvc\.node/u);
-  const signingSlice = workflow.slice(
-    workflow.indexOf("Stage exact Windows addon for SignPath"),
-    workflow.indexOf("Verify and install signed Windows addon")
-  );
-  assert.doesNotMatch(signingSlice, /steam_api64\.dll|sdkencryptedappticket64\.dll/u);
-  assert.equal(fs.existsSync(path.join(repoRoot, ".github", "workflows", "signpath.yml")), false);
+  assert.match(workflow, /Verify exact Windows addon and PDB pair/u);
+  assert.match(workflow, /Upload exact Windows PDB to FOV4 Sentry/u);
+  assert.match(workflow, /--require-publishable/u);
+  assert.doesNotMatch(workflow, /(?:^|\s)--publish(?:\s|$)/m);
+  assert.equal((workflow.match(/run: npm run windows:package-gate/g) || []).length, 1);
   assert.ok(
-    workflow.indexOf("Sign exact Windows addon with SignPath Foundation")
-      < workflow.indexOf("Run exact signed-addon Windows package gate")
+    workflow.indexOf("Verify exact Windows release tag")
+      < workflow.indexOf("Upload exact Windows PDB to FOV4 Sentry")
   );
 });
 
-test("Windows native addon embeds SignPath-required project and release metadata", () => {
+test("Windows native addon embeds project and release metadata", () => {
   const buildScript = readSourceFile("crates", "native", "build.rs");
   const nativeManifest = readSourceFile("crates", "native", "Cargo.toml");
 

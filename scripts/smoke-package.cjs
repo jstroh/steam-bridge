@@ -679,7 +679,7 @@ function runWindowsSmokeHelperStaticChecks() {
   assert.match(
     releaseWorkflow,
     /permissions:\s*\n\s+actions: read\s*\n\s+contents: read\s*\n/,
-    "Release workflow must grant only the read permissions needed to retrieve its exact signing artifact"
+    "Release workflow must grant only the read permissions needed to retrieve its exact build artifacts"
   );
   for (const expected of [
     "Restore proved runtime payload for documentation-only v0.1.6",
@@ -692,11 +692,14 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   assert.ok(
     !releaseWorkflow.includes("--require-signed") &&
-      releaseWorkflow.includes("--require-native-addon-signed") &&
-      releaseWorkflow.includes("signpath/github-action-submit-signing-request") &&
+      !releaseWorkflow.includes("--require-native-addon-signed") &&
+      !releaseWorkflow.includes("--expected-publisher-subject") &&
+      !releaseWorkflow.includes("submit-signing-request") &&
+      releaseWorkflow.includes("Verify exact Windows release tag") &&
+      releaseWorkflow.includes("Run exact Windows package gate") &&
       !releaseWorkflow.includes("WINDOWS_CSC_LINK") &&
       !releaseWorkflow.includes("azure/login"),
-    "npm release workflow must require only the project-owned addon to pass SignPath Authenticode verification"
+    "npm release workflow must audit the exact unsigned candidate without an external signing-provider dependency"
   );
   for (const expected of [
     "Verify exact Windows addon and PDB pair",

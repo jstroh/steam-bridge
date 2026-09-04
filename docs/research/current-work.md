@@ -1,6 +1,27 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-01
+Last reviewed: 2026-09-03
+
+### 2026-09-03 Windows signing-provider removal
+
+The external OSS signing application was rejected. Its attribution, application
+checklist, CI action, secret/variable references, staging, and required publisher
+gate are removed. Tag and manual candidates now use the same unsigned Windows
+package audit. Immutable tag/version checks, exact addon/PDB retention and upload,
+Valve signature and byte preservation, generic optional Authenticode verification,
+and the separate candidate-bound publication/live-proof gates remain intact.
+Windows native version metadata is retained for diagnostics; no native source or
+binary changes are needed. Microsoft submission remains reputation review, not
+a signature or a substitute for consumer Smart App Control qualification.
+
+Validation passes: the focused unsigned-release policy and metadata tests, full
+`npm test` (including TypeScript and 67 native tests, with the existing one
+hardware-only native test ignored), `package:smoke`, platform/API audits, native
+formatting and compilation, workflow YAML parsing, and `git diff --check`.
+The consumer's focused package/security guard tests also pass (16 tests). Tracked
+source searches in both repositories contain no retired-provider references.
+No new live-device or release-run proof is claimed. Do not publish a new package
+or rebuild a consumer runtime solely for this removal.
 
 ### 2026-09-01 v0.4.6 Steam Input tooling release
 
@@ -72,12 +93,13 @@ Windows symlink-privilege skips, 67 native tests with the one interactive D3D11
 hardware test intentionally ignored, platform and API audits, Rust formatting
 and compilation, the Windows release gates, release assembly checks, and the
 complete cross-platform package smoke. The next immutable tag must retain and
-upload the matching Windows PDB, receive the required SignPath approval, and
-produce the audited candidate before any live proof or npm publication.
+upload the matching Windows PDB and produce the audited candidate before any
+live proof or npm publication. The external signing prerequisite recorded at
+the time was subsequently retired.
 
 The immutable tag workflow run `33305048135` retained the exact unsigned
 Windows addon, matching PDB, and macOS/Linux prebuilds before stopping at the
-unconfigured SignPath step. The Windows addon SHA-256 is
+then-unconfigured external signing step. The Windows addon SHA-256 is
 `7F9C6A5EC2AFBAD9A4020A2AA7C1F702136EA4A658CBF676D3C79D92D9D866AC`; the
 PDB SHA-256 is
 `4F861339850F9B4C7B39B7863C3994CF9AA379B20FE9AA70E41C40583A0C0576`, and
@@ -86,11 +108,11 @@ Microsoft Security Intelligence submission
 `b362782e-6d40-4467-8dab-4cdba80ed9a1` received those exact Windows addon
 bytes on 2026-08-30 for Smart App Control reputation review. Its initial
 status is only `Submitted`; no clean determination, signature, Sentry PDB
-upload, npm publication, or FOV4 package/release is claimed. SignPath has not
-approved or signed this release and remains a separate future signing route.
+upload, npm publication, or FOV4 package/release was claimed at that stage. The
+addon was unsigned; the external signing route was later rejected and removed.
 
 The product owner explicitly waived waiting for the Microsoft determination and
-SignPath availability for the public GitHub release. The immutable
+external signing availability for the public GitHub release. The immutable
 `v0.4.5` GitHub Release is published at
 `https://github.com/jstroh/steam-bridge/releases/tag/v0.4.5` with the audited
 tarball, package audit, and matching PDB. The exact detached-tag assembly
@@ -110,7 +132,8 @@ download reproduced the same SHA-256; npm records SHA-1
 `fb52045d67cf49ff2470376616fbb5a026266201` and integrity
 `sha512-uhAHCPaQdt/d3Wpuo5GjFTVXj0WZuu4sHKYugn3qRiPX8iN43Sv33qB8k/9vCXhsGGhXG8/4FY4U9PSRAcWApQ==`.
 No candidate-bound Windows standalone live-proof receipt was fabricated or
-claimed, and the Microsoft determination and SignPath signature remain pending.
+claimed. At publication the Microsoft determination remained pending and the
+addon was unsigned.
 
 ### 2026-08-30 Windows native crash symbol retention
 
@@ -121,9 +144,9 @@ profile already emits a usable PDB, and Sentry CLI proves that a freshly built
 Windows addon and PDB contain the same debug identifier. The gap is release
 artifact handling, not compilation or runtime behavior.
 
-The active release-workflow repair verifies the exact addon/PDB pair before
-signing, retains the PDB as a CI-only artifact outside the runtime-artifact
-assembly namespace, verifies it again against the final SignPath-signed addon,
+The release workflow verifies the exact addon/PDB pair after the native build,
+retains the PDB as a CI-only artifact outside the runtime-artifact
+assembly namespace, verifies it again against the final addon,
 and uploads only the PDB to the existing FOV4 Steam Sentry project on immutable
 tags. The PDB does not enter the npm package or any consumer depot. A missing
 Sentry token, missing PDB, mismatched debug identifier, or failed upload stops
@@ -151,16 +174,14 @@ FOV4 additionally treats that typed outcome and the two legacy query timeout or
 `GetData` errors as process-restart conditions. The exact producer remains
 quarantined until process exit on every post-submit failure path.
 
-Second, tag-triggered npm candidates could be assembled while the independent
-SignPath workflow failed. Signing is now inside the Windows prebuild job: the
-exact addon built by the release matrix is submitted, the SignPath Foundation
-signature and timestamp are verified, and those signed bytes replace the
-unsigned addon before the Windows package audit. Tag releases fail before a
-publishable candidate exists when signing is unavailable. Manual workflow
-candidates remain unsigned and cannot satisfy the publish workflow's required
-tag-triggered Release-run check. The package audit represents the intentional
-mixed policy explicitly: the open-source addon is signed by SignPath Foundation
-while the example Electron executable remains outside that certificate's scope.
+Second, tag-triggered npm candidates could be assembled while an independent
+external signing workflow failed. The correction at the time moved the signing
+request and signature verification into the Windows prebuild job before the
+package audit. That provider was later rejected and its workflow dependency was
+removed on 2026-09-03. Candidates now explicitly use unsigned addon/app evidence;
+generic optional addon-only signing verification remains available. Manual
+workflow candidates still cannot satisfy the publish workflow's required
+tag-triggered Release-run check.
 
 These corrections are reviewed source changes after `0.4.4`; they are not yet
 published. The full JavaScript/TypeScript suite, 67 native tests with the one
@@ -4809,9 +4830,10 @@ contains the canonical tarball and matching Windows PDB. The tarball is
 `6BBCC036709EC3977860E42B9F846B022A6046EB21470235DDA4F11B6294EED4`.
 The PDB SHA-256 is
 `4F861339850F9B4C7B39B7863C3994CF9AA379B20FE9AA70E41C40583A0C0576`.
-The formal release workflow's Windows signing job stopped only because SignPath
-organization configuration is not available. The GitHub notes therefore make no
-new signing or Microsoft-clearance claim.
+The formal release workflow's Windows signing job stopped because the former
+provider configuration was unavailable. The provider dependency was later
+removed following rejection. The GitHub notes make no new signing or
+Microsoft-clearance claim.
 
 The exact GitHub tarball was published from the authenticated macOS npm session
 as public `steam-bridge@0.4.6`. A fresh registry download reproduced the same
