@@ -2,6 +2,32 @@
 
 Last reviewed: 2026-09-03
 
+### 2026-09-03 developer documentation rewrite
+
+The root and npm READMEs now share one short installation, API-selection, and
+platform guide, with npm-safe links. New focused guides cover getting started,
+Electron integration, packaging, and troubleshooting. The Steam Input guide
+and example entry points now distinguish runnable diagnostics from application
+excerpts and the advanced live qualification runbook. Contribution and release
+navigation is aligned without changing the underlying release gates.
+
+Examples were checked against current implementations and the bundled action
+manifest. The review corrected cached action-edge/focus handling, optional URL
+access, Linux application-host selection, and source texture rectangle wording.
+Unsafe producer retention remains process-lifetime quarantine, never release on
+an arbitrary rejection or same-process host/device close. No runtime, native,
+package-version, generated binding, or prebuilt artifact changed.
+
+Validation: full `npm test`, platform/API audits, native format/check, and the
+Windows package-cleanup self-test pass. All 13 TypeScript snippets typecheck,
+three JavaScript snippets parse, 102 guide links resolve, root/npm content
+matches, incoming Markdown anchors remain valid, and `git diff --check` passes.
+The cached renderer-action example also passes mocked startup, repeated-frame,
+focus, missing-input, and recovery cases. No new live-device qualification is
+claimed. Full package smoke awaits exact-commit Linux CI under the existing
+`WIN-PACKAGE-SMOKE-HOST-001` host restriction. Next: commit/push this documentation
+slice and verify GitHub CI. No npm publication or Steam release is requested.
+
 ### 2026-09-03 compatible dependency refresh
 
 The development toolchain advances to `@electron/asar` 4.3.0,

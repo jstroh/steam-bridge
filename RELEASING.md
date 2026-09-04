@@ -1,5 +1,27 @@
 # Releasing Steam Bridge
 
+This is the maintainer npm-release procedure, not a game's Steam depot upload
+guide. Application developers should use [Packaging your game](docs/packaging.md).
+
+| Stage | Required result |
+| --- | --- |
+| [Prepare source](#1-prepare-the-exact-source) | Reviewed versioned source and passing gates |
+| [Build prebuilds](#2-prove-the-cross-platform-prebuilds) | Audited artifacts for all supported targets |
+| [Tag candidate](#3-create-the-immutable-candidate-tag) | Exact immutable tag and successful tag-triggered run |
+| [Windows live proof](#4-run-the-protected-windows-actual-game-proof) | Sanitized receipt bound to those exact bytes |
+| [Publish](#5-publish-the-exact-audited-npm-tarball) | Explicit approval and verified npm publication |
+| [Retain and verify](#6-retain-and-verify-the-release) | Registry verification and durable evidence |
+
+Do not substitute a green build for live proof, silently reuse a tag, or
+rebuild native files between qualification and publication. Microsoft
+reputation review is not signing and does not replace these gates. See
+[the code signing policy](CODE_SIGNING_POLICY.md).
+
+Commands containing `<placeholders>` require real release-specific values.
+Backslash continuations are POSIX shell syntax; use a single line or PowerShell
+continuation syntax on Windows. Run only the stage appropriate to the current
+candidate.
+
 Steam Bridge releases are immutable, cross-platform npm packages. The supported
 native targets are:
 

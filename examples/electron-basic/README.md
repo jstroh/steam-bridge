@@ -1,11 +1,28 @@
-# Steam Bridge Electron Smoke
+# Steam Bridge Electron QA runbook
 
-This is a tiny Electron app for proving that Steam Bridge can initialize Steam,
-read basic Steamworks state, and exercise overlay paths on supported Steam
-desktop platforms. The deepest automated coverage currently targets Steam Deck
-Desktop Mode and macOS Apple Silicon; Linux x64 helper coverage is verified
-through the Deck, and Windows x64 helper coverage now includes live interactive
-native-load and process-per-case Steam-launched baseline overlay proof.
+Use this harness to investigate and qualify an exact Steam Bridge candidate.
+For a new game integration, start with the [Electron guide](../../docs/electron.md)
+and [packaging guide](../../docs/packaging.md), not the matrix commands below.
+
+This runbook contains development probes, candidate-bound release gates, and
+historical diagnostic context. A passing helper or native-load check is not
+physical platform qualification. Steam Deck Desktop/Game Mode, macOS arm64,
+and Windows standalone presentation each require their own applicable proof.
+
+| Task | Section |
+| --- | --- |
+| Run the local development harness | [Development](#development) |
+| Understand the Windows production model and texture lifetime | [Windows standalone game host](#windows-standalone-game-host) |
+| Stage an exact package for testing | [Packaged Smoke Builds](#packaged-smoke-builds) |
+| Qualify the supported Mac target | [macOS Apple Silicon Only](#macos-apple-silicon-only) |
+| Produce candidate-bound Windows evidence | [Windows standalone release proof](#windows-standalone-release-proof) |
+| Inspect automated-run output | [Autorun logs](#autorun-logs) |
+| Follow Deck-specific checks | [Steam Deck checks](#steam-deck-checks) |
+
+Run root npm commands from the repository root. Shell blocks using backslash
+continuations are POSIX syntax; PowerShell uses a backtick or a single line.
+Use only the section for your target and do not run a full live matrix simply
+because one unit test failed.
 
 This is intentionally an **advanced release-proof harness**, not the smallest
 application example. It imports `steam-bridge/steamworks` and
@@ -13,7 +30,7 @@ application example. It imports `steam-bridge/steamworks` and
 exercise failure paths. Ordinary applications should start with `startSteam()`
 from `steam-bridge`, `configureSteamElectron()` from `steam-bridge/electron`,
 and `getRendererInput()` from `steam-bridge/renderer` as shown in the root
-README.
+[README](../../README.md).
 
 It uses Valve's SpaceWar sample App ID `480` by default. Override it with
 `STEAM_BRIDGE_APP_ID` when testing your own app.
@@ -27,6 +44,10 @@ want the more aggressive comparison profile, including the legacy in-process GPU
 switch.
 
 ## Development
+
+Complete [repository setup](../../CONTRIBUTING.md#setup) first, with Steam
+running under the same desktop user. These commands build local native output;
+they do not qualify an immutable release candidate.
 
 ```sh
 npm run native:build
@@ -83,7 +104,9 @@ paint callback.
 ## Packaged Smoke Builds
 
 Download release artifacts from a successful `Release` workflow, then package a
-self-contained Electron smoke app:
+self-contained Electron smoke app. Choose the matching target command below,
+not all three on one host. macOS packaging and live proof require native
+Apple Silicon macOS; artifact assembly alone is not a cross-platform live test:
 
 ```sh
 gh run download <run-id> --dir /tmp/steam-bridge-release

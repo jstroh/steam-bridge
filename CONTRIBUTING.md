@@ -1,10 +1,22 @@
 # Contributing
 
+Installing Steam Bridge in a game? Start with [Getting started](docs/getting-started.md).
+This guide is for changing the library itself. For npm publication, follow
+[Releasing Steam Bridge](RELEASING.md); for application packaging, use
+[Packaging your game](docs/packaging.md).
+
 Thanks for helping improve Steam Bridge. The project is intended to stay generic
 and reusable for any Steamworks app, so examples and docs should use Valve's
 SpaceWar sample App ID `480` unless a test explicitly needs another ID.
 
 ## Setup
+
+Clone the repository and run the commands below from its root. You need Node,
+Rust stable, and the supported target's native compiler/linker toolchain.
+Read [AGENTS.md](AGENTS.md) for repository boundaries and
+[the findings ledger](docs/research/test-findings-ledger.md) before expensive
+or live experiments. Never commit SDK files, private runtime inputs, or raw
+player evidence.
 
 Use Node.js 22.13 or newer for repository development. The published package
 keeps a lower runtime engine where possible, but the current Electron and
@@ -30,6 +42,10 @@ aligned with that target unless the support policy changes.
 
 ## Checks
 
+Choose focused tests while developing; run the full gates before landing.
+The library has no established lint command. `native:fmt` checks formatting
+without rewriting source.
+
 Run these before opening a pull request:
 
 ```sh
@@ -45,9 +61,34 @@ runtime-library directory on Windows, Linux, and macOS. Do not replace that gate
 with `cargo check`; `cargo check` cannot exercise resource cleanup or lifecycle
 tests.
 
-Use `STEAM_BRIDGE_APP_ID=480 npm start -w steam-bridge-electron-example` for a
-local Electron smoke test. Use your own Steam app ID for app-specific
+Use `npm run example:start` for the local Electron smoke harness, which defaults
+to SpaceWar `480`. See its [runbook](examples/electron-basic/README.md) for
+platform restrictions and exact-candidate proof. Use your own Steam app ID for app-specific
 achievements, stats, inventory, UGC, and economy behavior.
+
+Run `npm run package:smoke` for packaging/helper changes on a supported
+test host. Native Windows has a known Unix-fixture limitation tracked as
+`WIN-PACKAGE-SMOKE-HOST-001` in the ledger; do not repeatedly rerun that unchanged
+failure or alter the machine merely to duplicate the full Linux CI lane.
+`git diff --check` is required for every slice, including documentation.
+
+## Repository map
+
+| Area | Responsibility |
+| --- | --- |
+| `packages/steam-bridge/src` | Managed APIs and advanced TypeScript wrappers |
+| `packages/steam-bridge/templates` | Renderer/preload integration |
+| `packages/steam-bridge/bin` | Consumer-facing command-line tools |
+| `crates/native` | Rust Steamworks and native presenter implementation |
+| `tests`, `scripts` | Regression coverage, package audits and QA tooling |
+| `examples` | Input demonstrations and the advanced Electron QA harness |
+| `docs` | User guides and API coverage |
+| `docs/research` | Continuity, dated evidence, architecture and rerun conditions |
+
+Keep the root and npm-package READMEs equivalent, using repository-relative
+links in the root and absolute GitHub links in the packaged copy. Keep public
+guides free of product-specific names and private identifiers. Detailed QA
+history belongs in the evidence docs, not the quick start.
 
 ## Contribution Notes
 
