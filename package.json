@@ -55,14 +55,14 @@
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
   },
   "devDependencies": {
-    "@electron/asar": "4.2.1",
-    "@electron/packager": "^20.0.4",
+    "@electron/asar": "4.3.0",
+    "@electron/packager": "^20.3.0",
     "@emnapi/runtime": "1.11.3",
-    "@napi-rs/cli": "3.7.4",
-    "@sentry/cli": "3.6.2",
+    "@napi-rs/cli": "3.9.0",
+    "@sentry/cli": "3.7.0",
     "electron-builder": "26.15.3",
     "tar": "7.5.22",
-    "terser": "^5.49.0",
+    "terser": "^5.51.2",
     "typescript": "6.0.3"
   },
   "engines": {

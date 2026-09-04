@@ -2,6 +2,39 @@
 
 Last reviewed: 2026-09-03
 
+### 2026-09-03 compatible dependency refresh
+
+The development toolchain advances to `@electron/asar` 4.3.0,
+`@electron/packager` 20.3.0, `@napi-rs/cli` 3.9.0, `@sentry/cli` 3.7.0,
+and Terser 5.51.2. The smoke example and lockfile pin exact stable Electron
+44.2.0; the Windows ASAR fixture reads that same manifest. Compatible security
+patches advance transitive `fast-uri` to 3.1.7 and both `@xmldom/xmldom`
+branches to 0.9.12/0.8.15. No force, peer-dependency override, native source,
+public API, package version, or prebuilt addon changes are included.
+
+TypeScript stays at 6.0.3, the latest version compatible with the existing
+`scripts/native-binding-manifest.cjs` compiler-API audit. TypeScript 7.0.2's
+main export provides version metadata only, not `createSourceFile` or
+`ScriptTarget`; changing that audit to the new unstable API is a separate
+migration. The updated tools support the repository's Node 22.13 development
+floor. `npm outdated` reports only this deliberate TypeScript exception.
+
+Validation passes: full `npm test` (445 JavaScript tests with the two existing
+Windows symlink skips, 67 native tests with the hardware-only test ignored),
+TypeScript build/typecheck, platform/API audits, native formatting and
+compilation, Electron's latest-version gate, native-binding manifest self-test,
+and `git diff --check`. `npm ls --all` has no missing or invalid dependencies;
+it retains two extraneous optional-WASM directories after npm prune. Install
+script approvals were not changed. The initial security audit's two findings
+were patched, but final audit verification timed out twice at npm's bulk
+advisory endpoint (20-second and 120-second bounds); no zero-audit claim is made.
+Retry the audit when the endpoint responds.
+The applicable Windows package-cleanup self-test passes. Full package smoke
+must run in exact-commit Linux CI, per ledger `WIN-PACKAGE-SMOKE-HOST-001`;
+do not repeat its unchanged Unix-fixture failure on native Windows.
+No native artifact rebuild, release packaging, live Steam/device run,
+publication, or deployment was performed. This is not release qualification.
+
 ### 2026-09-03 Windows signing-provider removal
 
 The external OSS signing application was rejected. Its attribution, application
