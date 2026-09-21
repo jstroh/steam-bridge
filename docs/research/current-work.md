@@ -5,7 +5,7 @@ Last reviewed: 2026-09-21
 ### 2026-09-21 release 0.4.7 preparation
 
 The maintainer requested new releases after the reviewed presentation repair.
-The diagnostic branch through `67e58a3` is fast-forwarded into local `main` and
+The diagnostic branch through `67e58a3` is fast-forwarded into `main` and
 the root, package and lock versions advance together to `0.4.7`. Registry latest
 remains `0.4.6`; `v0.4.7` does not yet exist. No candidate is published.
 
@@ -17,8 +17,17 @@ security policy or proof gate may be bypassed. Existing local symbol-upload
 credentials authenticate, but adding them to the required GitHub release secret
 awaits explicit approval. No credential values were read into agent output.
 
-Next: validate/version/commit the exact source, verify main CI, then create the
-immutable candidate tag after the symbol-upload configuration is ready. Retain
+Frozen release source is `f3ee71bb9cbc733823ebca5beb5e25b04d16c1d2`, committed and
+pushed to `main`. Its [CI 35581720274](https://github.com/jstroh/steam-bridge/actions/runs/35581720274)
+passes all Windows/macOS/Linux, package, Node-runtime and dependency-security
+jobs, including the Windows compilation blocked on the local host. The consuming
+shell's reviewed branch is also fast-forwarded and pushed to its release branch.
+An existing Node 24.18 runtime works on the Mac build host; its unrelated broken
+Homebrew runtime is unchanged. No new local npm login or token has been created.
+
+Next: obtain the requested approval to install the existing authenticated build
+credential as the GitHub symbol-upload secret, then tag the frozen release source.
+No immutable candidate tag or publication exists yet. Retain
 the exact artifacts and complete live proof before publishing the audited npm
 tarball and advancing the consumer to the new public dependency.
 
