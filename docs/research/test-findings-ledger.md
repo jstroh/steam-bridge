@@ -66,6 +66,24 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
+### WIN-COPY-COMPLETION-FOCUS-001 — OPEN
+
+A complete 38-record Windows 11 / RTX 3050 laptop / 60 Hz report records healthy
+59.9-FPS fresh texture delivery followed by 6.4 and 4.6 FPS after reported
+application switching. Renderer paint and native presentation remain near 60 FPS;
+the final snapshot has two copies in flight, 2,704 admission drops, 39 nonfatal
+500-ms copy waits, 590.552-ms maximum completion latency and 515.858-ms maximum
+dispatch delay. Foreground is restored, no overlay is active, Present is under
+0.3 ms in degraded samples, and no device loss is recorded. GPU world rendering
+remains sub-budget and shader fallback does not restore delivery. The current
+nonblocking-Present repair leaves this native completion worker unchanged, so it
+does not qualify as a confirmed fix. **Repeat only when** copy wait/dispatch or
+focus-return behavior changes, a diagnostic can distinguish completed fences
+from delayed notifications, or an exact candidate can be tested on affected
+hardware. Never release a producer early, raise the copy bound, infer fresh
+content from repeated presents, or call a speculative workaround proven. See
+[the checkpoint](current-work.md#2026-09-21-foreground-copy-completion-collapse-after-application-switching).
+
 ### WIN-DEV-BUILDSCRIPT-CONTROL-001 — ENVIRONMENT BLOCKER
 
 During versioned `0.4.7` source preparation, local `native:check` could not execute

@@ -33,10 +33,13 @@ JavaScript passes, two platform skips; 70 native passes, one hardware-only
 ignored), platform/API/format gates, workflow YAML parsing and whitespace checks.
 The npm publisher, candidate/live-proof verification and runtime code are unchanged.
 
-Next: commit the release-boundary correction, verify exact-source CI, and tag that
-corrected source. No immutable candidate tag or publication exists yet. Retain
-the exact artifacts and complete live proof before publishing the audited npm
-tarball and advancing the consumer to the new public dependency.
+Release-boundary correction `67b08327a90d4c941949e04e970abe029d40f471` is committed
+and pushed. [CI 35584117221](https://github.com/jstroh/steam-bridge/actions/runs/35584117221)
+passes all three platforms, full package smoke, four Node runtimes and dependency
+security. No immutable candidate tag or publication exists yet. A new report
+arrived before tagging; assess its distinct copy-completion failure below before
+claiming the pending presentation repair covers it. Retain exact release artifacts
+and complete live proof before publishing or advancing the public dependency.
 
 The versioned source passes 465 JavaScript tests (two platform skips), 70 native
 tests (one hardware-only ignored), platform/API/format/whitespace gates and a
@@ -45,6 +48,34 @@ blocked: Application Control refused Cargo's development build-script executable
 with OS error 4551 before it ran. Keep security policy unchanged and require the
 normal Windows CI compilation gate. Full package smoke remains a Linux CI gate
 under the known native-Windows fixture restriction.
+
+### 2026-09-21 foreground copy-completion collapse after application switching
+
+The newly supplied native paste ends mid-record after 33 complete records. The
+read-only report UI supplied all 38 original records, including the final sample
+and snapshot. On a Windows 11 / RTX 3050 laptop / 60 Hz consumer, fresh texture
+delivery changes from 59.9 to 6.4 and then 4.6 FPS after the reported application
+switch. Electron paint remains 58.2-59.7 FPS and native presentation 59.7-59.8 FPS.
+The final overlapping renderer window measures 60.003 loop FPS and 1.604 ms mean
+CPU work; direct-mode world GPU work is 0.724 ms. Presentation counts therefore
+must not be treated as fresh-content cadence.
+
+The final snapshot has two in-flight copies, 2,704 saturation drops, 290 slow
+copies and 39 nonfatal 500-ms copy waits. Completion latency reaches 590.552 ms
+and worker dispatch delay 515.858 ms. Present remains 0.224-0.295 ms in degraded
+samples, with its lifetime 47.772-ms maximum unchanged from startup. Foreground
+and visibility are true, overlay/handoff inactive, and device loss, fatal copy
+timeouts and copy submission failures remain zero. Battery state is true both
+before and after degradation; it is context, not a proven trigger. One DXGI
+readiness timeout/fallback coincides with the transition but causality is unknown.
+
+The native copy dispatcher and wait implementation are unchanged from `v0.4.6`.
+The pending nonblocking-Present repair is not demonstrated to fix this separate
+failure. Current duration metrics include dispatch/wait time and cannot separate
+GPU completion, notification delay and worker scheduling. Next: audit that
+distinction and focus-return behavior while preserving producer ownership, two
+in-flight copies and security policy. No speculative runtime fix or affected-
+device success is claimed. Shader probe/fallback did not restore fresh delivery.
 
 ### 2026-09-21 Windows presentation review corrections
 
