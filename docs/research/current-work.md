@@ -43,7 +43,14 @@ Initial CI passed all three platform jobs, package smoke and all four supported
 Node runtimes; its dependency gate exposed pre-existing js-yaml 4.3.1 advisory
 GHSA-2883-xcg3-v3hh. The compatible development-only lock update to 4.3.2 passes
 the full local suite and a zero-finding audit, without rebuilding the candidate.
-Exact follow-up CI verification remains the handoff step.
+Implementation commit `9ed00163017343d515d2cb8ee778d02685e66774` passed
+[CI 35563818608](https://github.com/jstroh/steam-bridge/actions/runs/35563818608):
+Windows x64, macOS arm64, Linux x64, package smoke, Node 18/20/22/24 and dependency
+security. The candidate's 64 built Bridge files and two consumer main files
+were byte-compared with its ASAR after the final local tests and matched.
+The bounded implementation/candidate/local-QA handoff is complete. Next is an
+explicit opt-in affected-hardware comparison and formal release qualification,
+not automatic publication or a shader rollback.
 
 
 ### 2026-09-03 developer documentation rewrite
