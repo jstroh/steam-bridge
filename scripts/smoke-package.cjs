@@ -705,13 +705,17 @@ function runWindowsSmokeHelperStaticChecks() {
     "Verify exact Windows addon and PDB pair",
     "scripts/verify-windows-native-symbols.cjs",
     "native-symbols-windows-${{ github.sha }}",
-    "Upload exact Windows PDB to FOV4 Sentry",
-    "SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}",
-    "debug-files upload",
-    "--project fov4-steam",
+    "Retain exact Windows PDB",
     "target/x86_64-pc-windows-msvc/release/steam_bridge_native.pdb"
   ]) {
     assert.ok(releaseWorkflow.includes(expected), `Windows native-symbol Release workflow missing ${expected}`);
+  }
+  for (const workflow of [releaseWorkflow, publishWorkflow]) {
+    assert.doesNotMatch(
+      workflow,
+      /SENTRY_AUTH_TOKEN|debug-files upload|--org\s|--project\s/u,
+      "Public library releases must not depend on consumer crash-service credentials"
+    );
   }
   assert.doesNotMatch(releaseWorkflow, /(?:^|\s)--publish(?:\s|$)/m, "Release workflow must remain candidate-only");
   assert.ok(

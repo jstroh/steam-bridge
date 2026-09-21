@@ -77,6 +77,13 @@ canonical npm tarball, retained Windows Electron bundle, package audit, and
 native-load result. The workflow itself neither publishes npm bytes nor creates
 a GitHub Release.
 
+The Windows prebuild separately verifies and retains the matching
+`steam_bridge_native.pdb` as `native-symbols-windows-<commit-sha>`. This artifact
+is outside package assembly and must never enter the npm package. Library
+releases require no consuming application's crash-service credentials. Consumers
+download the matching PDB, verify its debug ID against the addon they distribute,
+and upload it through their own crash-service configuration.
+
 For a local inspection, download the completed run and assemble its native
 artifacts into the package:
 
@@ -177,7 +184,9 @@ After publication:
    provenance, file inventory, and native/runtime hashes against the candidate.
 2. Create the stable GitHub Release for `v<version>` and retain the canonical
    `.tgz`, Windows bundle, audit JSON, native-load result, and sanitized live
-   receipt together.
+   receipt together. Download `native-symbols-windows-<commit-sha>` from the same
+   tag-triggered run, reverify its PDB against the retained Windows addon with
+   `scripts/verify-windows-native-symbols.cjs`, and attach the PDB separately.
 3. Confirm the intended npm dist-tag resolves to the new version.
 4. Delete `STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` from the GitHub
    environment.

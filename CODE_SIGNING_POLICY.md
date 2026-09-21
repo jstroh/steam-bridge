@@ -29,12 +29,17 @@ qualify their complete application under their own signing and security policy.
 
 Release candidates are built from an immutable `v*` tag by the repository's
 GitHub-hosted runners. The Windows job verifies the tag/version match and exact
-addon/PDB pair, retains and uploads the matching symbols, and passes the exact
+addon/PDB pair, retains the matching symbols as a CI artifact, and passes the exact
 prebuild to package assembly without replacing its bytes through a signing
 service. The Windows package gate records unsigned addon and example-app status
 while verifying Valve signatures, runtime-byte preservation, ASAR layout, native
 loading, and candidate hashes. The separate npm publication workflow still
 requires a successful matching tag release and candidate-bound Windows live proof.
+
+The matching PDB is also retained with the stable GitHub Release, outside the npm
+package. Uploading symbols to a consuming application's crash service is that
+application's release responsibility; public library workflows require no
+consumer crash-service credentials.
 
 Generic optional Authenticode verification remains available for separately
 signed candidates. When requested, it requires the configured expected

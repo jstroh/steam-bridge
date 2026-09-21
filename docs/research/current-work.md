@@ -13,21 +13,28 @@ This release changes native bytes and needs fresh exact-tag prebuilds, matching
 symbols, package audit and protected standalone-consumer proof. Do not reuse the
 `0.4.6` binaries, runtime approval or prior live receipts. The established unsigned
 Windows/reputation-review route is authorized for the consuming release; no
-security policy or proof gate may be bypassed. Existing local symbol-upload
-credentials authenticate, but adding them to the required GitHub release secret
-awaits explicit approval. No credential values were read into agent output.
+security policy or proof gate may be bypassed. The public library's release
+workflow incorrectly depended on a consuming application's crash-service upload.
+That coupling is removed: verify and retain the exact addon/PDB pair in CI and
+attach the matching PDB to the stable GitHub Release. Any consumer symbol upload
+belongs to that consumer's release. No consumer credential is copied to GitHub.
 
-Frozen release source is `f3ee71bb9cbc733823ebca5beb5e25b04d16c1d2`, committed and
-pushed to `main`. Its [CI 35581720274](https://github.com/jstroh/steam-bridge/actions/runs/35581720274)
+The prior versioned source `f3ee71bb9cbc733823ebca5beb5e25b04d16c1d2` is committed
+and pushed to `main`. Its [CI 35581720274](https://github.com/jstroh/steam-bridge/actions/runs/35581720274)
 passes all Windows/macOS/Linux, package, Node-runtime and dependency-security
 jobs, including the Windows compilation blocked on the local host. The consuming
 shell's reviewed branch is also fast-forwarded and pushed to its release branch.
 An existing Node 24.18 runtime works on the Mac build host; its unrelated broken
 Homebrew runtime is unchanged. No new local npm login or token has been created.
 
-Next: obtain the requested approval to install the existing authenticated build
-credential as the GitHub symbol-upload secret, then tag the frozen release source.
-No immutable candidate tag or publication exists yet. Retain
+The regression for consumer-independent public workflows failed before removal
+and passes afterward. The corrected source passes full `npm test` (466
+JavaScript passes, two platform skips; 70 native passes, one hardware-only
+ignored), platform/API/format gates, workflow YAML parsing and whitespace checks.
+The npm publisher, candidate/live-proof verification and runtime code are unchanged.
+
+Next: commit the release-boundary correction, verify exact-source CI, and tag that
+corrected source. No immutable candidate tag or publication exists yet. Retain
 the exact artifacts and complete live proof before publishing the audited npm
 tarball and advancing the consumer to the new public dependency.
 

@@ -46,14 +46,28 @@ test("Windows release policy audits unsigned candidates without an external sign
   assert.match(workflow, /pattern: steam-bridge-\*/u);
   assert.match(workflow, /steam_bridge_native\.win32-x64-msvc\.node/u);
   assert.match(workflow, /Verify exact Windows addon and PDB pair/u);
-  assert.match(workflow, /Upload exact Windows PDB to FOV4 Sentry/u);
+  assert.match(workflow, /Retain exact Windows PDB/u);
   assert.match(workflow, /--require-publishable/u);
   assert.doesNotMatch(workflow, /(?:^|\s)--publish(?:\s|$)/m);
   assert.equal((workflow.match(/run: npm run windows:package-gate/g) || []).length, 1);
   assert.ok(
-    workflow.indexOf("Verify exact Windows release tag")
-      < workflow.indexOf("Upload exact Windows PDB to FOV4 Sentry")
+    workflow.indexOf("Verify exact Windows addon and PDB pair")
+      < workflow.indexOf("Retain exact Windows PDB")
   );
+});
+
+test("Public releases retain matching native symbols without consumer crash-service credentials", () => {
+  const workflow = readSourceFile(".github", "workflows", "release.yml");
+  const publisher = readSourceFile(".github", "workflows", "publish.yml");
+  const verifier = readSourceFile("scripts", "verify-windows-native-symbols.cjs");
+
+  assert.match(workflow, /name: native-symbols-windows-\$\{\{ github\.sha \}\}/u);
+  assert.match(workflow, /path: target\/x86_64-pc-windows-msvc\/release\/steam_bridge_native\.pdb\s+if-no-files-found: error/u);
+  for (const source of [workflow, publisher]) {
+    assert.doesNotMatch(source, /SENTRY_AUTH_TOKEN|debug-files upload|--org\s|--project\s/u);
+  }
+  assert.match(verifier, /\[sentryCli, "debug-files", "check", filePath\]/u);
+  assert.doesNotMatch(verifier, /SENTRY_AUTH_TOKEN|"upload"/u);
 });
 
 test("Windows native addon embeds project and release metadata", () => {
