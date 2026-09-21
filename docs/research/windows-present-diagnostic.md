@@ -47,6 +47,9 @@ overlay activation and another copy's failure. Unsafe submitted failures still
 require process-lifetime quarantine. A skipped source forces the next accepted
 viewport copy to be complete, including a synchronous compatibility update.
 Native rejection invalidates damage immediately, before another same-turn call.
+The older-addon synchronous fallback submits within the async API's call, not a
+later microtask. Raw and managed APIs preserve ordering against newer bitmap or
+synchronous updates while retaining promise-based unsafe-failure reporting.
 No background FPS cap, shader change or cursor-specific workaround is included.
 
 Win32 modal move/resize and window-message repaint paths remain intact. The

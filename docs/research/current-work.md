@@ -9,6 +9,14 @@ earlier `50a51c3` repair. Both original reports are now complete: 30 native reco
 for one session and 54 for four sessions. They support investigating frame
 delivery, not a cursor-only patch or a shader rollback.
 
+A final review of `9211869` found the older-addon fallback still deferred
+submission with `Promise.then`, in both the raw and managed APIs. Both now call
+the synchronous compatibility method inside a Promise executor: native work
+keeps call order while unsafe failures still reject instead of escaping before
+a Promise is returned. Three new regressions failed before the change and pass
+afterward, covering mixed bitmap/texture updates, metadata mutation/close and
+raw-API ordering/error safety. This follow-up changes no native bytes.
+
 Three new regression checks failed before the corrections: pipelined throughput,
 mixed sync/async update order and default lifetime timer resolution. The
 single-active/newest-pending policy is removed. Two asynchronous copies can now
@@ -31,7 +39,7 @@ than 62. The shared-5-ms-service/four-producer model matches the baseline's 199
 completions and 40 ms p95 age; the former 30 ms freshness claim is superseded.
 These are deterministic regression models, not affected-GPU measurements.
 
-The full local suite passes 462 JavaScript tests (two platform skips) and 70
+The full local suite passes 465 JavaScript tests (two platform skips) and 70
 native tests (one hardware-only ignored), with platform/API audits, native
 formatting/compilation and whitespace checks. The optimized Windows addon builds;
 its SHA-256 is `1BE056378BFB92B190C84AFB4286809E4562B04754C42931A325410DCE4DE916`.
@@ -51,9 +59,10 @@ samples, while disclosing actual sync intervals and readiness fallback.
 Earlier protected AMD/60-Hz overlay/window-transition passes and the later
 telemetry capture's input-dispatch overrun remain recorded in the ledger and
 consumer runbook. Their exact bytes differ from this correction; they are not
-new-candidate proof. The reviewed source repair and local/CI gates are complete.
-Next is a matching protected-candidate live run and affected high-refresh/
-multi-client qualification remain explicit release gates. No publication or
+new-candidate proof. The compatibility follow-up's full local checks pass;
+its exact-commit remote CI is the remaining source handoff check.
+A matching protected-candidate live run and affected high-refresh/multi-client
+qualification remain explicit release gates. No publication or
 installed-game mutation is authorized by this source repair.
 
 ### 2026-09-21 opt-in Windows nonblocking presentation diagnostic

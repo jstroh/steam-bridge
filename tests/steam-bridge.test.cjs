@@ -26603,6 +26603,65 @@ test("legacy synchronous shared-texture failures quarantine the producer", async
   });
 });
 
+test("older native payload preserves mixed async, synchronous and bitmap frame order", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const submitted = [];
+  fake.updateNativeOverlayHostSharedTexture = handle => submitted.push(handle[0]);
+  fake.updateNativeOverlayHostFrame = data => submitted.push(data[0]);
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = id => ({ handle: Buffer.alloc(8, id), width: 1, height: 1 });
+  const first = session.updateSharedTextureAsync(frame(1));
+  session.updateSharedTexture(frame(2));
+  session.updateFrame({ data: Buffer.from([3, 0, 0, 0]), width: 1, height: 1 });
+  const fourth = session.updateSharedTextureAsync(frame(4));
+  assert.deepEqual(await Promise.all([first, fourth]), [true, true]);
+  assert.deepEqual(submitted, [1, 2, 3, 4]);
+});
+
+test("older native payload consumes texture metadata before immediate mutation and close", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const submitted = [];
+  fake.updateNativeOverlayHostSharedTexture = (handle, width, height) => {
+    submitted.push({ id: handle[0], width, height });
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = { handle: Buffer.alloc(8, 1), width: 1, height: 1 };
+  const completion = session.updateSharedTextureAsync(frame);
+  frame.handle.fill(9);
+  frame.width = 9;
+  session.close();
+  assert.equal(await completion, true);
+  assert.deepEqual(submitted, [{ id: 1, width: 1, height: 1 }]);
+});
+
+test("raw older-addon texture API preserves submission order and unsafe promise rejection", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const submitted = [];
+  fake.updateNativeOverlayHostSharedTexture = handle => submitted.push(handle[0]);
+  fake.updateNativeOverlayHostFrame = data => submitted.push(data[0]);
+  const steam = loadSteamWithFakeNative(fake);
+  steam.overlay.openNativeOverlayProbeWindow("Compatibility test");
+  t.after(() => { steam.overlay.closeNativeOverlayProbeWindow(); clearSteamBridgeCache(); });
+  const first = steam.overlay.updateNativeOverlayHostSharedTextureAsync(Buffer.alloc(8, 1), 1, 1);
+  steam.overlay.updateNativeOverlayHostSharedTexture(Buffer.alloc(8, 2), 1, 1);
+  steam.overlay.updateNativeOverlayHostFrame(Buffer.from([3, 0, 0, 0]), 1, 1);
+  assert.equal(await first, true);
+  assert.deepEqual(submitted, [1, 2, 3]);
+  fake.updateNativeOverlayHostSharedTexture = () => { throw Error("copy failed after submission"); };
+  let completion;
+  assert.doesNotThrow(() => {
+    completion = steam.overlay.updateNativeOverlayHostSharedTextureAsync(Buffer.alloc(8, 4), 1, 1);
+  });
+  await assert.rejects(completion, error => error.producerReleaseSafe === false);
+});
+
 test("closing a Windows session cancels its queued frame-driven pump", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();

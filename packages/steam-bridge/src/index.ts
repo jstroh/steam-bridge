@@ -9874,9 +9874,9 @@ export function updateNativeOverlayHostSharedTextureAsync(
   const binding = native();
   const beginCopy = binding.beginNativeOverlayHostSharedTextureCopy;
   if (typeof beginCopy !== "function") {
-    return Promise.resolve().then(() => {
+    return new Promise<boolean>((resolve) => {
       updateNativeOverlayHostSharedTexture(handle, width, height, contentRect, presentationRect);
-      return true;
+      resolve(true);
     });
   }
   const normalizedWidth = normalizeNativeOverlayFrameDimension(width, "shared texture width");
@@ -10896,9 +10896,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
 
     const beginCopy = binding.beginNativeOverlayHostSharedTextureCopy;
     if (typeof beginCopy !== "function") {
-      return Promise.resolve().then(() => {
+      return new Promise<boolean>((resolve) => {
         updateSharedTexture(texture);
-        return true;
+        resolve(true);
       });
     }
     const handle = texture.handle;
