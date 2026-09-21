@@ -59,8 +59,11 @@ samples, while disclosing actual sync intervals and readiness fallback.
 Earlier protected AMD/60-Hz overlay/window-transition passes and the later
 telemetry capture's input-dispatch overrun remain recorded in the ledger and
 consumer runbook. Their exact bytes differ from this correction; they are not
-new-candidate proof. The compatibility follow-up's full local checks pass;
-its exact-commit remote CI is the remaining source handoff check.
+new-candidate proof. Compatibility implementation
+`e8eda3f6450e6183164cd7d707a2327b5eda9ca9` is committed and pushed. Its full local
+checks and [CI 35579625364](https://github.com/jstroh/steam-bridge/actions/runs/35579625364)
+pass all platform, package, Node runtime and dependency-security jobs. The
+unchanged consumer branch is clean, pushed and revalidated. Source handoff is complete.
 A matching protected-candidate live run and affected high-refresh/multi-client
 qualification remain explicit release gates. No publication or
 installed-game mutation is authorized by this source repair.
