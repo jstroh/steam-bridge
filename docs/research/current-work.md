@@ -44,9 +44,15 @@ affected-device or four-actual-client hardware proof is claimed.
 
 Consumer tests pass 627 cases with six existing platform skips, plus lint and
 typecheck. Bridge platform/API, native format/check and Windows package-cleanup
-self-test pass. Final review/commit/push and exact-commit cross-platform CI remain
-in progress; full package smoke uses Linux CI under the recorded Windows host
-restriction. No production release or perfect fix is claimed.
+self-test pass. Implementation commit
+`50a51c3e3284228ce82884fc1156653560ee16c8` is pushed and passed every job in
+[CI 35567419174](https://github.com/jstroh/steam-bridge/actions/runs/35567419174):
+Windows x64, macOS arm64, Linux x64, full package smoke, Node 18/20/22/24 and
+dependency security. The consumer telemetry commit is also pushed. The bounded
+source repair, protected candidate and local regression handoff are complete.
+Next is affected integrated-GPU/multi-client and high-refresh qualification of
+these exact runtime bytes, followed by the normal explicit release gates.
+Do not infer a production release, a perfect fix, or affected-device proof.
 
 ### 2026-09-21 opt-in Windows nonblocking presentation diagnostic
 
