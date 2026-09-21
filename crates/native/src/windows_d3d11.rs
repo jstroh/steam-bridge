@@ -2600,18 +2600,17 @@ mod shared_texture_copy_slot_tests {
                             WaitForSingleObjectEx(baseline_event, 2_000, false),
                             WAIT_OBJECT_0
                         );
-                        assert!(
-                            fence.GetCompletedValue() >= value
-                                && fence.GetCompletedValue() != u64::MAX
-                        );
                     }
+                    let elapsed_micros = started.elapsed().as_secs_f64() * 1_000_000.0;
+                    let completed = fence.GetCompletedValue();
+                    assert!(completed >= value && completed != u64::MAX);
                     if iteration >= 32 {
                         if repaired {
                             &mut repaired_micros
                         } else {
                             &mut baseline_micros
                         }
-                        .push(started.elapsed().as_secs_f64() * 1_000_000.0);
+                        .push(elapsed_micros);
                     }
                 }
             }

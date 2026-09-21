@@ -84,11 +84,15 @@ low-rate telemetry, with null on older addons. See
 pass 466 JavaScript and 77 native tests (two skips/ignored cases in each suite),
 plus platform/API/format/whitespace gates. Both hardware cases separately pass
 three times on AMD Radeon(TM) Graphics, including a real copy with deliberately
-missing notification. The warmed 1080p copy-completion benchmark measures no
-local regression: repaired medians 230.2-244.7 us versus 237.0-247.9 us baseline.
+missing notification. Final benchmark review moved common post-test validation
+outside both timed regions. Corrected 1080p copy-completion means remain about
+0.25 ms for both paths, with small mixed variations rather than a consistent
+speedup or a zero-overhead guarantee; exact values are in the repair note.
 The consumer passes 643 tests, six skips, lint and typecheck.
 
-Next: review/commit this repair, verify exact-source CI, then retain new exact
+Implementation `5298b53515e8bb6722092a1e65d66bae1ae26e35` and the consumer telemetry
+change are committed and pushed. The subsequent benchmark-boundary correction
+changes test measurement only, not runtime logic. Next: verify exact-source CI, then retain new exact
 candidate bytes and protected actual-game proof. This fixes the reproduced
 notification/sentinel bugs, not a proven driver cause on the reporter's device.
 Shader probe/fallback did not restore fresh delivery in the supplied capture;

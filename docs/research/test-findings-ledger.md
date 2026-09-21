@@ -84,9 +84,10 @@ hardware. The repaired waiter now uses the authoritative fence value before and
 after event waits, rejects device removal and records exceptional outcomes.
 Three tests fail on the original waiter and pass after repair. A real-copy
 missing-notification test and the existing query hardware test pass three times
-on AMD Radeon(TM) Graphics. Interleaved warmed 1080p copy-completion medians are
-230.2-244.7 us repaired versus 237.0-247.9 us baseline, with no measured local
-regression. This is not an affected-device or cross-process gameplay pass.
+on AMD Radeon(TM) Graphics. Final benchmark review excludes common post-test
+validation from both timed regions; corrected interleaved 1080p means remain
+about 0.25 ms in both paths with small mixed variations, not a consistent speedup
+or a zero-overhead guarantee. This is not an affected-device or cross-process gameplay pass.
 See [the repair note](windows-copy-completion.md). Never release a producer early, raise the copy bound, infer fresh
 content from repeated presents, or call a speculative workaround proven. See
 [the checkpoint](current-work.md#2026-09-21-foreground-copy-completion-collapse-after-application-switching).

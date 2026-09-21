@@ -74,11 +74,15 @@ consumer passes 643 tests with six platform skips, lint and typecheck.
 
 On the available AMD Radeon(TM) Graphics device, the hardware test performs a
 real 1080p GPU copy with notification deliberately withheld, then interleaves 256
-warmed old/new copy-completion measurements using separate event handles. Across
-three trials, old/new medians were 237.7/233.5, 247.9/244.7 and 237.0/230.2 us;
-p95 values were 348.0/335.6, 320.6/310.7 and 327.6/299.0 us. No slowdown was
-measured there. These are local API microbenchmarks, not a zero-overhead guarantee,
-cross-process Electron gameplay proof or an affected-NVIDIA qualification.
+warmed old/new copy-completion measurements using separate event handles. Final
+review moved the common post-test fence assertion outside both timed regions;
+the initial comparison had included extra validation only in the baseline.
+The corrected three trials measure old/new medians of 231.9/235.9, 234.8/234.3
+and 233.4/233.6 us; means are 248.886/248.777, 247.282/247.567 and
+247.000/243.126 us. P95 values are 349.5/359.3, 329.4/333.2 and 321.2/304.5 us.
+Performance is approximately unchanged locally, with small mixed variations;
+do not claim zero overhead or a consistent speedup. These are API microbenchmarks,
+not cross-process Electron gameplay proof or an affected-NVIDIA qualification.
 
 Next: exact-source CI, immutable candidate packaging and protected actual-game
 focus/overlay/transition tests. An affected-device retest remains necessary to
