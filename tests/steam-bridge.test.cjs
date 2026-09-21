@@ -1335,6 +1335,9 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /frame_statistics_counter_delta/);
   assert.doesNotMatch(d3dSource, /PresentCount\.wrapping_sub|PresentRefreshCount\s*\.wrapping_sub/);
   assert.match(d3dSource, /SetEventOnCompletion/);
+  assert.match(d3dSource, /poll_shared_texture_copy_fence\([\s\S]*?\|\| unsafe \{ fence\.GetCompletedValue\(\) \}/);
+  assert.match(d3dSource, /if value == u64::MAX[\s\S]*?fence reports device removal/);
+  assert.match(source, /"fenceWait": renderer\.shared_texture_fence_wait_diagnostics\(\)/);
   assert.match(d3dSource, /"d3d11-query-async"/);
   assert.match(d3dSource, /STEAM_BRIDGE_QA_FORCE_D3D11_QUERY_COMPLETION/);
   assert.match(

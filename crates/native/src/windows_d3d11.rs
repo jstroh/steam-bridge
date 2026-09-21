@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use windows::core::{Interface, PCSTR};
 use windows::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE,
-    HWND, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    HWND, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
@@ -140,6 +140,60 @@ struct SharedTextureCopyTelemetry {
     max_dispatch_delay_micros: AtomicU64,
     last_duration_micros: AtomicU64,
     max_duration_micros: AtomicU64,
+    fence_wait: SharedTextureFenceWaitTelemetry,
+}
+
+#[derive(Default)]
+struct SharedTextureFenceWaitTelemetry {
+    event_timeout_count: AtomicU64,
+    completed_after_timeout_count: AtomicU64,
+    early_event_count: AtomicU64,
+    event_failure_count: AtomicU64,
+}
+
+fn shared_texture_fence_complete(value: u64, expected: u64) -> Result<bool, String> {
+    if value == u64::MAX {
+        Err("D3D11 shared-texture fence reports device removal; the native graphics device must be restarted".to_owned())
+    } else {
+        Ok(value >= expected)
+    }
+}
+
+fn poll_shared_texture_copy_fence(
+    fence_value: u64,
+    use_event_wait: &mut bool,
+    telemetry: &SharedTextureFenceWaitTelemetry,
+    mut completed_value: impl FnMut() -> u64,
+    mut wait_event: impl FnMut() -> WAIT_EVENT,
+) -> Result<bool, String> {
+    if shared_texture_fence_complete(completed_value(), fence_value)? {
+        return Ok(true);
+    }
+    if !*use_event_wait {
+        return Ok(false);
+    }
+    let result = wait_event();
+    if result != WAIT_OBJECT_0 && result != WAIT_TIMEOUT {
+        *use_event_wait = false;
+        telemetry
+            .event_failure_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+    let complete = shared_texture_fence_complete(completed_value(), fence_value)?;
+    if result == WAIT_TIMEOUT {
+        telemetry
+            .event_timeout_count
+            .fetch_add(1, Ordering::Relaxed);
+        if complete {
+            telemetry
+                .completed_after_timeout_count
+                .fetch_add(1, Ordering::Relaxed);
+        }
+    } else if result == WAIT_OBJECT_0 && !complete {
+        *use_event_wait = false;
+        telemetry.early_event_count.fetch_add(1, Ordering::Relaxed);
+    }
+    Ok(complete)
 }
 
 pub struct SharedTextureCopyWaitHandle {
@@ -187,38 +241,36 @@ impl SharedTextureCopyWaitHandle {
         let started = self.submitted_at;
         let mut recorded_slow_copy = false;
         let mut recorded_timeout = false;
-        let event_registered = match &self.completion {
-            SharedTextureCopyCompletion::Fence { fence, fence_value } => unsafe {
-                fence
-                    .SetEventOnCompletion(*fence_value, self.slot.event)
-                    .is_ok()
-            },
-            SharedTextureCopyCompletion::Query { .. } => false,
-        };
-
-        let mut use_event_wait = event_registered;
+        let mut event_registration_attempted = false;
+        let mut use_event_wait =
+            matches!(&self.completion, SharedTextureCopyCompletion::Fence { .. });
         loop {
             let complete = match &self.completion {
                 SharedTextureCopyCompletion::Fence { fence, fence_value } => {
-                    if use_event_wait {
-                        let wait_result =
-                            unsafe { WaitForSingleObjectEx(self.slot.event, 10, false) };
-                        if wait_result == WAIT_FAILED
-                            || (wait_result != WAIT_OBJECT_0 && wait_result != WAIT_TIMEOUT)
-                        {
-                            // The event is only a notification optimization. A
-                            // failed or unexpected kernel wait does not make the
-                            // fence value unavailable, so continue with direct
-                            // nonblocking fence polling instead of abandoning a
-                            // submitted producer texture.
-                            use_event_wait = false;
-                            false
-                        } else {
-                            wait_result == WAIT_OBJECT_0
-                        }
-                    } else {
-                        unsafe { fence.GetCompletedValue() >= *fence_value }
-                    }
+                    poll_shared_texture_copy_fence(
+                        *fence_value,
+                        &mut use_event_wait,
+                        &self.telemetry.fence_wait,
+                        || unsafe { fence.GetCompletedValue() },
+                        || unsafe {
+                            if !event_registration_attempted {
+                                event_registration_attempted = true;
+                                if fence
+                                    .SetEventOnCompletion(*fence_value, self.slot.event)
+                                    .is_err()
+                                {
+                                    return WAIT_FAILED;
+                                }
+                            }
+                            WaitForSingleObjectEx(self.slot.event, 10, false)
+                        },
+                    )
+                    .map_err(|error| {
+                        self.telemetry
+                            .terminal_failure_count
+                            .fetch_add(1, Ordering::Release);
+                        error
+                    })?
                 }
                 SharedTextureCopyCompletion::Query {
                     context,
@@ -1360,6 +1412,7 @@ impl WindowsD3d11Renderer {
                     let fence_value = self
                         .next_shared_texture_copy_fence_value
                         .checked_add(1)
+                        .filter(|value| *value != u64::MAX)
                         .ok_or_else(|| "D3D11 shared-texture fence value overflowed".to_owned())?;
                     self.next_shared_texture_copy_fence_value = fence_value;
                     Some(AsyncCopySubmission::Fence {
@@ -2145,6 +2198,16 @@ impl WindowsD3d11Renderer {
         )
     }
 
+    pub fn shared_texture_fence_wait_diagnostics(&self) -> serde_json::Value {
+        let telemetry = &self.shared_texture_copy_telemetry.fence_wait;
+        serde_json::json!({
+            "eventTimeoutCount": telemetry.event_timeout_count.load(Ordering::Relaxed),
+            "completedAfterTimeoutCount": telemetry.completed_after_timeout_count.load(Ordering::Relaxed),
+            "earlyEventCount": telemetry.early_event_count.load(Ordering::Relaxed),
+            "eventFailureCount": telemetry.event_failure_count.load(Ordering::Relaxed),
+        })
+    }
+
     pub fn shared_texture_copies_in_flight(&self) -> u64 {
         self.shared_texture_copy_slots
             .iter()
@@ -2212,20 +2275,370 @@ impl Drop for WindowsD3d11Renderer {
 #[cfg(test)]
 mod shared_texture_copy_slot_tests {
     use super::{
-        shared_texture_copy_completion_mode_name, try_candidates_in_order,
-        try_reserve_shared_texture_copy_slot, SharedTextureCopyCompletion, SharedTextureCopySlot,
-        SharedTextureCopyTelemetry, SharedTextureCopyWaitHandle, WindowsD3d11Renderer,
-        SHARED_TEXTURE_COPY_SLOT_COUNT,
+        poll_shared_texture_copy_fence, shared_texture_copy_completion_mode_name,
+        try_candidates_in_order, try_reserve_shared_texture_copy_slot, SharedTextureCopyCompletion,
+        SharedTextureCopySlot, SharedTextureCopyTelemetry, SharedTextureCopyWaitHandle,
+        SharedTextureFenceWaitTelemetry, WindowsD3d11Renderer, SHARED_TEXTURE_COPY_SLOT_COUNT,
     };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
-    use std::time::Instant;
-    use windows::Win32::Foundation::HANDLE;
+    use std::time::{Duration, Instant};
+    use windows::core::Interface;
+    use windows::Win32::Foundation::{
+        HANDLE, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    };
     use windows::Win32::Graphics::Direct3D11::{
         D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
         D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
     };
     use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+    use windows::Win32::System::Threading::WaitForSingleObjectEx;
+
+    #[test]
+    fn completed_fence_recovers_a_missing_event_notification() {
+        let mut use_event_wait = true;
+        let mut reads = 0;
+        let telemetry = SharedTextureFenceWaitTelemetry::default();
+        assert_eq!(
+            poll_shared_texture_copy_fence(
+                7,
+                &mut use_event_wait,
+                &telemetry,
+                || {
+                    reads += 1;
+                    if reads == 1 {
+                        6
+                    } else {
+                        7
+                    }
+                },
+                || WAIT_TIMEOUT
+            ),
+            Ok(true)
+        );
+        assert_eq!(reads, 2);
+        assert_eq!(telemetry.event_timeout_count.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            telemetry
+                .completed_after_timeout_count
+                .load(Ordering::Relaxed),
+            1
+        );
+        assert!(use_event_wait);
+    }
+
+    #[test]
+    fn stale_event_cannot_release_an_unfinished_producer() {
+        let mut use_event_wait = true;
+        let telemetry = SharedTextureFenceWaitTelemetry::default();
+        assert_eq!(
+            poll_shared_texture_copy_fence(
+                7,
+                &mut use_event_wait,
+                &telemetry,
+                || 6,
+                || WAIT_OBJECT_0
+            ),
+            Ok(false)
+        );
+        assert!(!use_event_wait);
+        assert_eq!(telemetry.early_event_count.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            poll_shared_texture_copy_fence(
+                7,
+                &mut use_event_wait,
+                &telemetry,
+                || 7,
+                || { panic!("stale signals must fall back to bounded fence polling") }
+            ),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn removed_device_fence_is_not_successful_completion() {
+        assert!(poll_shared_texture_copy_fence(
+            7,
+            &mut false,
+            &SharedTextureFenceWaitTelemetry::default(),
+            || u64::MAX,
+            || { panic!("polling fallback must not wait on an event") }
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn completed_fence_fast_path_does_not_register_or_wait_on_an_event() {
+        let telemetry = SharedTextureFenceWaitTelemetry::default();
+        for completed in [7, 8, u64::MAX - 1] {
+            assert_eq!(
+                poll_shared_texture_copy_fence(
+                    7,
+                    &mut true,
+                    &telemetry,
+                    || completed,
+                    || { panic!("completed copies must not call the event API") }
+                ),
+                Ok(true)
+            );
+        }
+        assert_eq!(telemetry.event_timeout_count.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            telemetry
+                .completed_after_timeout_count
+                .load(Ordering::Relaxed),
+            0
+        );
+        assert_eq!(telemetry.early_event_count.load(Ordering::Relaxed), 0);
+        assert_eq!(telemetry.event_failure_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn unfinished_fence_timeouts_do_not_release_or_claim_recovery() {
+        let telemetry = SharedTextureFenceWaitTelemetry::default();
+        let mut use_event_wait = true;
+        for _ in 0..60 {
+            assert_eq!(
+                poll_shared_texture_copy_fence(
+                    7,
+                    &mut use_event_wait,
+                    &telemetry,
+                    || 6,
+                    || WAIT_TIMEOUT
+                ),
+                Ok(false)
+            );
+        }
+        assert!(use_event_wait);
+        assert_eq!(telemetry.event_timeout_count.load(Ordering::Relaxed), 60);
+        assert_eq!(
+            telemetry
+                .completed_after_timeout_count
+                .load(Ordering::Relaxed),
+            0
+        );
+    }
+
+    #[test]
+    fn fence_wait_failure_uses_authoritative_bounded_polling() {
+        for failure in [WAIT_FAILED, WAIT_EVENT(0x80)] {
+            let telemetry = SharedTextureFenceWaitTelemetry::default();
+            let mut use_event_wait = true;
+            assert_eq!(
+                poll_shared_texture_copy_fence(
+                    7,
+                    &mut use_event_wait,
+                    &telemetry,
+                    || 6,
+                    || failure
+                ),
+                Ok(false)
+            );
+            assert!(!use_event_wait);
+            assert_eq!(telemetry.event_failure_count.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                poll_shared_texture_copy_fence(
+                    7,
+                    &mut use_event_wait,
+                    &telemetry,
+                    || 7,
+                    || { panic!("failed event must not be reused for this copy") }
+                ),
+                Ok(true)
+            );
+        }
+    }
+
+    #[test]
+    fn device_removal_during_a_signaled_wait_is_not_completion() {
+        for result in [WAIT_OBJECT_0, WAIT_TIMEOUT, WAIT_FAILED] {
+            let mut reads = 0;
+            assert!(poll_shared_texture_copy_fence(
+                7,
+                &mut true,
+                &SharedTextureFenceWaitTelemetry::default(),
+                || {
+                    reads += 1;
+                    if reads == 1 {
+                        6
+                    } else {
+                        u64::MAX
+                    }
+                },
+                || result
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an interactive Windows D3D11 hardware device"]
+    fn fence_completion_recovers_missing_notifications_on_hardware() {
+        unsafe {
+            let renderer =
+                WindowsD3d11Renderer::new_with_adapter(std::ptr::null_mut(), 64, 64, None, false)
+                    .expect("headless D3D11 renderer should initialize");
+            let fence = renderer
+                .shared_texture_copy_fence
+                .as_ref()
+                .expect("hardware must support fences");
+            let context = renderer
+                .shared_texture_copy_context4
+                .as_ref()
+                .expect("fence context should exist");
+            let baseline_event = renderer.shared_texture_copy_slots[0].event;
+            let repaired_event = renderer.shared_texture_copy_slots[1].event;
+            let desc = D3D11_TEXTURE2D_DESC {
+                Width: 1920,
+                Height: 1080,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_DEFAULT,
+                BindFlags: (D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE).0 as u32,
+                CPUAccessFlags: 0,
+                MiscFlags: 0,
+            };
+            let mut source = None;
+            let mut destination = None;
+            renderer
+                .device
+                .CreateTexture2D(&desc, None, Some(&mut source))
+                .unwrap();
+            renderer
+                .device
+                .CreateTexture2D(&desc, None, Some(&mut destination))
+                .unwrap();
+            let source = source.unwrap();
+            let destination = destination.unwrap();
+            renderer.context.CopyResource(&destination, &source);
+            context.Signal(fence, 1).unwrap();
+            renderer.context.Flush();
+            let telemetry = SharedTextureFenceWaitTelemetry::default();
+            let mut initial_read = true;
+            let mut use_event_wait = true;
+            let started = Instant::now();
+            loop {
+                if poll_shared_texture_copy_fence(
+                    1,
+                    &mut use_event_wait,
+                    &telemetry,
+                    || {
+                        if initial_read {
+                            initial_read = false;
+                            0
+                        } else {
+                            fence.GetCompletedValue()
+                        }
+                    },
+                    || {
+                        std::thread::sleep(Duration::from_millis(10));
+                        WAIT_TIMEOUT
+                    },
+                )
+                .unwrap()
+                {
+                    break;
+                }
+                assert!(
+                    started.elapsed() < Duration::from_secs(2),
+                    "real copy must complete without event notification"
+                );
+            }
+            assert_eq!(
+                telemetry
+                    .completed_after_timeout_count
+                    .load(Ordering::Relaxed),
+                1
+            );
+            assert!(fence.GetCompletedValue() >= 1 && fence.GetCompletedValue() != u64::MAX);
+
+            let mut baseline_micros = Vec::with_capacity(256);
+            let mut repaired_micros = Vec::with_capacity(256);
+            let mut value = 1;
+            for iteration in 0..288 {
+                for repaired in if iteration % 2 == 0 {
+                    [false, true]
+                } else {
+                    [true, false]
+                } {
+                    value += 1;
+                    let started = Instant::now();
+                    renderer.context.CopyResource(&destination, &source);
+                    context.Signal(fence, value).unwrap();
+                    renderer.context.Flush();
+                    if repaired {
+                        let mut registered = false;
+                        let mut use_event_wait = true;
+                        while !poll_shared_texture_copy_fence(
+                            value,
+                            &mut use_event_wait,
+                            &telemetry,
+                            || fence.GetCompletedValue(),
+                            || {
+                                if !registered {
+                                    registered = true;
+                                    fence.SetEventOnCompletion(value, repaired_event).unwrap();
+                                }
+                                WaitForSingleObjectEx(repaired_event, 10, false)
+                            },
+                        )
+                        .unwrap()
+                        {
+                            assert!(started.elapsed() < Duration::from_secs(2));
+                            if !use_event_wait {
+                                std::thread::sleep(Duration::from_millis(1));
+                            }
+                        }
+                    } else {
+                        fence.SetEventOnCompletion(value, baseline_event).unwrap();
+                        assert_eq!(
+                            WaitForSingleObjectEx(baseline_event, 2_000, false),
+                            WAIT_OBJECT_0
+                        );
+                        assert!(
+                            fence.GetCompletedValue() >= value
+                                && fence.GetCompletedValue() != u64::MAX
+                        );
+                    }
+                    if iteration >= 32 {
+                        if repaired {
+                            &mut repaired_micros
+                        } else {
+                            &mut baseline_micros
+                        }
+                        .push(started.elapsed().as_secs_f64() * 1_000_000.0);
+                    }
+                }
+            }
+            let adapter = renderer
+                .device
+                .cast::<windows::Win32::Graphics::Dxgi::IDXGIDevice>()
+                .unwrap()
+                .GetAdapter()
+                .unwrap()
+                .cast::<windows::Win32::Graphics::Dxgi::IDXGIAdapter1>()
+                .unwrap();
+            println!(
+                "Hardware fence test adapter: {}",
+                super::adapter_name(&adapter).unwrap()
+            );
+            for (name, mut values) in [("baseline", baseline_micros), ("repaired", repaired_micros)]
+            {
+                values.sort_by(f64::total_cmp);
+                println!(
+                    "{name} real 1080p copy+completion: median={:.3}us p95={:.3}us mean={:.3}us",
+                    values[128],
+                    values[243],
+                    values.iter().sum::<f64>() / values.len() as f64
+                );
+            }
+        }
+    }
 
     fn slots() -> Vec<Arc<SharedTextureCopySlot>> {
         (0..SHARED_TEXTURE_COPY_SLOT_COUNT)

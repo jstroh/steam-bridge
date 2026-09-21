@@ -1,0 +1,86 @@
+# Windows shared-texture fence completion repair
+
+## Evidence and scope
+
+A complete 38-record Windows 11 / RTX 3050 laptop / 60 Hz capture shows fresh
+texture delivery falling from 59.9 FPS to 6.4 and then 4.6 FPS after application
+switching. Paint and native presentation remain near 60 FPS. The final snapshot
+has two copies in flight, 2,704 admission drops, 39 nonfatal copy waits over
+500 ms, 590.552 ms maximum completion latency and 515.858 ms maximum dispatch
+delay. Foreground has returned and no Steam overlay is active. Present remains
+below 0.3 ms in degraded samples. Shader fallback does not restore delivery.
+
+This identifies the copy-completion path, not the precise driver or scheduling
+cause. Completion duration includes worker dispatch and waiting; it is not a GPU
+timestamp. Battery state is unchanged throughout the capture. The existing
+nonblocking-Present repair alone does not establish a fix for this report.
+
+## Primary-source contract
+
+- Microsoft documents [GetCompletedValue](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_3/nf-d3d11_3-id3d11fence-getcompletedvalue)
+  as the fence's current value, with the same semantics as its D3D12 counterpart.
+  That counterpart reserves [UINT64_MAX for device removal](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12fence-getcompletedvalue).
+- [SetEventOnCompletion](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_3/nf-d3d11_3-id3d11fence-seteventoncompletion)
+  requests notification at a fence value. Microsoft's
+  [sample](https://github.com/microsoft/DirectX-Graphics-Samples/blob/master/Samples/Desktop/D3D1211On12/src/D3D1211On12.cpp)
+  checks completed values before registering an unnecessary wait.
+- Electron's [shared-texture contract](https://www.electronjs.org/docs/latest/api/structures/offscreen-shared-texture)
+  has a finite producer pool; a consumer must finish using a texture before
+  releasing it. A timeout is not permission to reuse an unfinished producer.
+
+No exact upstream fix for this particular laptop capture was established.
+
+## Implementation
+
+The old worker consulted the completed value only when event registration or
+waiting failed. An accepted registration followed by repeated timeouts could
+retain an already completed copy. It also accepted an event signal without
+checking the target fence, and treated the device-removal sentinel as completion
+in its polling fallback.
+
+The worker now checks the authoritative value before waiting and after every
+event result. Already completed copies skip registration and waiting. Missing
+notifications can recover at the existing ten-millisecond wait boundary. A stale
+signal cannot release a producer; it switches that wait to the existing bounded
+one-millisecond polling fallback. Device removal fails release-unsafe through
+the existing terminal-failure path. The sentinel is not issued as a fence value.
+
+There are no new foreground waits, timers, threads, flushes, per-frame logs or
+queue slots. The two-copy bound, producer ownership, query fallback and two-second
+fatal guard remain. Four exceptional-path atomic counters are exposed through
+existing snapshots under `sharedTextureCopy.fenceWait`:
+
+- `eventTimeoutCount`: event waits that expired while the fence was inspected.
+- `completedAfterTimeoutCount`: the fence was complete when inspected after a
+  timeout. This does not distinguish a lost notification from completion racing
+  the timeout boundary.
+- `earlyEventCount`: an event signaled before its target value was observed.
+- `eventFailureCount`: failed registration, failed wait or unexpected wait status.
+
+The consumer forwards this object in existing low-rate diagnostics, using null
+with older addons. These counters do not identify the cause of an actually
+unfinished GPU fence or measure physical input-to-photon latency.
+
+## Validation
+
+Three regressions failed with the original logic: completed fence plus missing
+notification, stale signal with unfinished copy, and the device-removal sentinel.
+They pass after repair. Additional tests cover already-completed fast paths,
+repeated pending timeouts, event failures, device removal during the wait and
+diagnostic counters. Default native tests pass 77 cases with two hardware cases
+ignored; both hardware cases were separately executed and passed three times.
+The full JavaScript/type suite passes 466 cases with two platform skips. The
+consumer passes 643 tests with six platform skips, lint and typecheck.
+
+On the available AMD Radeon(TM) Graphics device, the hardware test performs a
+real 1080p GPU copy with notification deliberately withheld, then interleaves 256
+warmed old/new copy-completion measurements using separate event handles. Across
+three trials, old/new medians were 237.7/233.5, 247.9/244.7 and 237.0/230.2 us;
+p95 values were 348.0/335.6, 320.6/310.7 and 327.6/299.0 us. No slowdown was
+measured there. These are local API microbenchmarks, not a zero-overhead guarantee,
+cross-process Electron gameplay proof or an affected-NVIDIA qualification.
+
+Next: exact-source CI, immutable candidate packaging and protected actual-game
+focus/overlay/transition tests. An affected-device retest remains necessary to
+close the reported incident. Never label this defensive repair a demonstrated
+driver fix or publish a stale candidate/receipt.

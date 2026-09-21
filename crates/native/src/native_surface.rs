@@ -3798,6 +3798,7 @@ mod windows {
                     "maxDispatchDelayMs": renderer.max_shared_texture_copy_dispatch_delay_ms(),
                     "lastDurationMs": renderer.last_shared_texture_copy_duration_ms(),
                     "maxDurationMs": renderer.max_shared_texture_copy_duration_ms(),
+                    "fenceWait": renderer.shared_texture_fence_wait_diagnostics(),
                     "limit": crate::native_overlay_shared_texture_copy_job_limit(),
                     "inFlight": crate::native_overlay_shared_texture_copy_job_count(),
                     "maxInFlight": crate::native_overlay_shared_texture_copy_job_max(),

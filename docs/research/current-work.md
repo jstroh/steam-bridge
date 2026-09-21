@@ -69,13 +69,30 @@ timeouts and copy submission failures remain zero. Battery state is true both
 before and after degradation; it is context, not a proven trigger. One DXGI
 readiness timeout/fallback coincides with the transition but causality is unknown.
 
-The native copy dispatcher and wait implementation are unchanged from `v0.4.6`.
-The pending nonblocking-Present repair is not demonstrated to fix this separate
-failure. Current duration metrics include dispatch/wait time and cannot separate
-GPU completion, notification delay and worker scheduling. Next: audit that
-distinction and focus-return behavior while preserving producer ownership, two
-in-flight copies and security policy. No speculative runtime fix or affected-
-device success is claimed. Shader probe/fallback did not restore fresh delivery.
+At review anchor `3b468c2`, the native copy dispatcher and waiter were unchanged
+from `v0.4.6`. The maintainer then explicitly requested research and repair. Three
+regressions failed against the original logic: a completed fence with a missing
+notification, a stale signal before completion, and device removal misclassified
+as success. The worker now verifies the authoritative fence value before and
+after waiting, skips unnecessary registration, preserves bounded waiting for
+unfinished work and rejects device removal. It does not change the dispatcher,
+two-copy limit, query path, producer ownership or security policy.
+
+Four exceptional-path counters flow through existing snapshots and consumer
+low-rate telemetry, with null on older addons. See
+[the research and validation note](windows-copy-completion.md). Full local checks
+pass 466 JavaScript and 77 native tests (two skips/ignored cases in each suite),
+plus platform/API/format/whitespace gates. Both hardware cases separately pass
+three times on AMD Radeon(TM) Graphics, including a real copy with deliberately
+missing notification. The warmed 1080p copy-completion benchmark measures no
+local regression: repaired medians 230.2-244.7 us versus 237.0-247.9 us baseline.
+The consumer passes 643 tests, six skips, lint and typecheck.
+
+Next: review/commit this repair, verify exact-source CI, then retain new exact
+candidate bytes and protected actual-game proof. This fixes the reproduced
+notification/sentinel bugs, not a proven driver cause on the reporter's device.
+Shader probe/fallback did not restore fresh delivery in the supplied capture;
+the affected incident remains empirically open. No release has been tagged.
 
 ### 2026-09-21 Windows presentation review corrections
 

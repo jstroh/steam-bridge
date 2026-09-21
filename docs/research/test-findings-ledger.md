@@ -80,7 +80,14 @@ nonblocking-Present repair leaves this native completion worker unchanged, so it
 does not qualify as a confirmed fix. **Repeat only when** copy wait/dispatch or
 focus-return behavior changes, a diagnostic can distinguish completed fences
 from delayed notifications, or an exact candidate can be tested on affected
-hardware. Never release a producer early, raise the copy bound, infer fresh
+hardware. The repaired waiter now uses the authoritative fence value before and
+after event waits, rejects device removal and records exceptional outcomes.
+Three tests fail on the original waiter and pass after repair. A real-copy
+missing-notification test and the existing query hardware test pass three times
+on AMD Radeon(TM) Graphics. Interleaved warmed 1080p copy-completion medians are
+230.2-244.7 us repaired versus 237.0-247.9 us baseline, with no measured local
+regression. This is not an affected-device or cross-process gameplay pass.
+See [the repair note](windows-copy-completion.md). Never release a producer early, raise the copy bound, infer fresh
 content from repeated presents, or call a speculative workaround proven. See
 [the checkpoint](current-work.md#2026-09-21-foreground-copy-completion-collapse-after-application-switching).
 
