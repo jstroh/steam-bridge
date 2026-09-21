@@ -12,8 +12,8 @@ repeated metadata-retirement warnings. The package gate could not run. Do not
 rerun unchanged inputs, move the tag, reuse partial artifacts as a proved package,
 or bypass any publication gate.
 
-The replacement is `0.4.8`, retaining the reviewed runtime repair and advancing
-only the build CLI to exact 3.10.4 plus aligned package/lock versions. Upstream
+The first replacement attempt is `0.4.8`, retaining the reviewed runtime repair
+and trying CLI 3.10.4 with aligned package/lock versions. Upstream
 [3512](https://github.com/napi-rs/napi-rs/issues/3512),
 [3521](https://github.com/napi-rs/napi-rs/pull/3521) and
 [3530](https://github.com/napi-rs/napi-rs/pull/3530) document fixes in the failing
@@ -23,8 +23,32 @@ findings. Full local `npm test` again passes 466 JavaScript tests (two platform
 skips) and 77 native tests (two hardware cases ignored), plus platform/API/format
 and whitespace gates. This is build tooling, not another presentation/shader change.
 
-Next: finish local checks, commit/push and run exact-main CI plus a manual Release
-preflight before creating `v0.4.8`. Neither that tag nor its artifacts exist yet.
+Commit `4c8614f82657ed0abe1b05a42c7b00bacb638a77` passes
+[CI 35588561616](https://github.com/jstroh/steam-bridge/actions/runs/35588561616),
+but [manual Release 35588561614](https://github.com/jstroh/steam-bridge/actions/runs/35588561614)
+reproduces the Windows post-build lock timeout even with CLI 3.10.4. Rust again
+compiled successfully, in 3m20s; macOS/Linux prebuilds passed. The CLI upgrade is
+not a demonstrated fix for this runner failure. That unsuccessful dependency
+experiment is reverted; the existing CLI version remains for non-Windows work.
+
+The Windows workflow now uses the repository's existing direct-Cargo build
+approach, copies the exact compiled DLL to its canonical `.node` filename and
+checks source/destination SHA-256 equality before the existing PDB/artifact gates.
+Non-Windows targets retain the CLI. No lock is deleted, protection disabled or
+package/native-load/live-proof gate weakened. A focused regression fails on the
+old workflow and passes on this replacement. Local direct Cargo compilation
+succeeds, the copied addon loads with 1,155 exports including the copy/presenter
+functions, and its PDB matches debug ID `943e6630-1ff2-4075-9ec1-8c6763e1f0c3-1`.
+Its version resources read 0.4.8 and SHA-256 is
+`0AACF0D18778E7ACF72D99B12CCE81C43014363CA22701816EA14725DFC76D3E`.
+This local diagnostic artifact is not a tag-built release candidate.
+Full local `npm test` passes 467 JavaScript tests (two platform skips) and 77
+native tests (two hardware-only cases ignored), including the new workflow gate.
+The dependency graph is restored exactly to the prior CLI 3.9.0 baseline;
+clean installation/audit, focused workflow tests, platform/API/format gates,
+workflow YAML parsing and whitespace checks pass. Next: commit/push and a fresh
+exact-main CI/manual Release preflight before creating `v0.4.8`.
+That tag does not exist yet; partial failed-run artifacts are not qualified.
 The consumer's telemetry implementation is clean/pushed; its next public version
 must still wait for a qualified published Bridge package. No consumer credentials
 are put in this public repository. No Windows live candidate was launched and no

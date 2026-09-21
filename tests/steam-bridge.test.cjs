@@ -70,6 +70,24 @@ test("Public releases retain matching native symbols without consumer crash-serv
   assert.doesNotMatch(verifier, /SENTRY_AUTH_TOKEN|"upload"/u);
 });
 
+test("Windows release assembly uses the exact Cargo addon without CLI reconciliation", () => {
+  const workflow = readSourceFile(".github", "workflows", "release.yml");
+  const start = workflow.indexOf("- name: Build exact Windows native addon");
+  const verification = workflow.indexOf("- name: Verify exact Windows addon and PDB pair");
+  assert.ok(start > workflow.indexOf("run: npm test") && verification > start);
+  const step = workflow.slice(start, verification);
+  assert.match(step, /if: matrix\.target == 'x86_64-pc-windows-msvc'/u);
+  assert.match(step, /cargo build --release --target x86_64-pc-windows-msvc -p steam-bridge-native/u);
+  assert.match(step, /if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/u);
+  assert.match(step, /target\/x86_64-pc-windows-msvc\/release\/steam_bridge_native\.dll/u);
+  assert.match(step, /packages\/steam-bridge\/steam_bridge_native\.win32-x64-msvc\.node/u);
+  assert.match(step, /Copy-Item -LiteralPath \$nativeDll -Destination \$addon/u);
+  assert.match(step, /Get-FileHash -LiteralPath \$nativeDll -Algorithm SHA256/u);
+  assert.match(step, /Get-FileHash -LiteralPath \$addon -Algorithm SHA256/u);
+  assert.match(workflow, /if: matrix\.target != 'x86_64-pc-windows-msvc'\s+run: npx napi build/u);
+  assert.doesNotMatch(step, /npx napi|steam_bridge_native\.local\.node/u);
+});
+
 test("Windows native addon embeds project and release metadata", () => {
   const buildScript = readSourceFile("crates", "native", "build.rs");
   const nativeManifest = readSourceFile("crates", "native", "Cargo.toml");

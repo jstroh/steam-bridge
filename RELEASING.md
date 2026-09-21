@@ -72,6 +72,12 @@ The workflow builds and audits exactly one artifact for each supported target:
 - `steam-bridge-x86_64-pc-windows-msvc`
 - `steam-bridge-x86_64-unknown-linux-gnu`
 
+Windows uses the same direct Cargo compilation as the repository's native-build
+helper. Its compiled DLL is copied to the canonical `.node` filename with
+SHA-256 equality verification; the exact PDB, native-load and package gates still
+apply. This avoids the CLI's Windows post-build reconciliation failure without
+deleting locks or changing Windows security settings. Other targets use the CLI.
+
 It also creates `steam-bridge-windows-publish-package-gate`, containing the
 canonical npm tarball, retained Windows Electron bundle, package audit, and
 native-load result. The workflow itself neither publishes npm bytes nor creates

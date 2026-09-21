@@ -43,7 +43,21 @@ jobs:
       - name: Run full test gate
         run: npm test
       - run: npm run build
-      - run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
+      - if: matrix.target != 'x86_64-pc-windows-msvc'
+        run: npx napi build --release --target ${{ matrix.target }} --platform --no-js --manifest-path crates/native/Cargo.toml --package-json-path packages/steam-bridge/package.json --output-dir packages/steam-bridge
+      - name: Build exact Windows native addon
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc -p steam-bridge-native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $nativeDll = "target/x86_64-pc-windows-msvc/release/steam_bridge_native.dll"
+          $addon = "packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node"
+          Copy-Item -LiteralPath $nativeDll -Destination $addon
+          if ((Get-FileHash -LiteralPath $nativeDll -Algorithm SHA256).Hash -ne
+              (Get-FileHash -LiteralPath $addon -Algorithm SHA256).Hash) {
+            throw "The Windows addon differs from the exact Cargo output"
+          }
       - name: Verify exact Windows addon and PDB pair
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh

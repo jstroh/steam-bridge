@@ -74,7 +74,13 @@ its filesystem-reconciliation lock and repeatedly preserved supposedly replaced
 candidate metadata. Source/tag CI and macOS/Linux prebuilds passed; Windows
 package assembly did not run. Upstream issues/changes 3512, 3521 and 3530 cover
 Windows identity-probe and metadata-only reconciliation failures. The replacement
-candidate pins CLI 3.10.4; exact Windows preflight is still required. **Repeat
+candidate tried CLI 3.10.4, but manual Release `35588561614` reproduces the same
+post-compilation 120-second lock timeout. The upgrade does not settle this issue.
+That dependency experiment is reverted. The Windows workflow now builds with Cargo directly, following the existing
+repository development helper, and hash-verifies the copy of its exact DLL to
+the canonical `.node` name before the unchanged symbol and package gates.
+The local direct-Cargo addon loads 1,155 exports and matches its exact PDB;
+version resources read 0.4.8. Exact Windows CI preflight is still required. **Repeat
 only when** the CLI/runner inputs change or a demonstrated transient external
 condition clears. Do not retry unchanged inputs, delete locks blindly, disable
 host protections, move `v0.4.7` or publish partial artifacts. See
