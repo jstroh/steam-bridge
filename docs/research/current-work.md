@@ -38,8 +38,12 @@ its SHA-256 is `1BE056378BFB92B190C84AFB4286809E4562B04754C42931A325410DCE4DE916
 The consumer passes 643 tests (six skips), lint and typecheck. Its repeated
 diagnostics microbenchmark measures 0.1574 ms cold observation, 0.00077 ms warmed
 p95, and 0.66-2.06 ms worker dispatch; this is not gameplay or zero-overhead proof.
-Exact-commit CI and the full Linux package smoke are pending under the existing
-native-Windows package-smoke restriction. The
+Implementation `8a289cd8589ef9b3ad59af90d5569d691fc7088d` is committed and pushed;
+[CI 35578067301](https://github.com/jstroh/steam-bridge/actions/runs/35578067301)
+passes Windows x64, Linux x64, macOS arm64, full package smoke, Node 18/20/22/24
+and dependency security. The consumer correction is committed and pushed.
+A further deterministic sweep at 60/100/165/240 Hz across five completion-delay
+ratios per rate matches the two-slot baseline in all 20 cases. The
 consumer formatter identifies the corrected admission policy and its offline
 summarizer now rejects failed/out-of-bounds source health and duplicate/unordered
 samples, while disclosing actual sync intervals and readiness fallback.
@@ -47,8 +51,8 @@ samples, while disclosing actual sync intervals and readiness fallback.
 Earlier protected AMD/60-Hz overlay/window-transition passes and the later
 telemetry capture's input-dispatch overrun remain recorded in the ledger and
 consumer runbook. Their exact bytes differ from this correction; they are not
-new-candidate proof. Next: commit/push the reviewed source slice and verify CI.
-A matching protected-candidate live run and affected high-refresh/
+new-candidate proof. The reviewed source repair and local/CI gates are complete.
+Next is a matching protected-candidate live run and affected high-refresh/
 multi-client qualification remain explicit release gates. No publication or
 installed-game mutation is authorized by this source repair.
 
