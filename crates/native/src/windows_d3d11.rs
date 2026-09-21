@@ -462,6 +462,41 @@ impl SourceMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PresentMode {
+    Standard,
+    NonblockingVsync,
+    NonblockingImmediate,
+}
+
+impl PresentMode {
+    fn from_qa_environment(enabled: bool, value: Option<&str>) -> Self {
+        match (enabled, value) {
+            (true, Some("nonblocking-vsync")) => Self::NonblockingVsync,
+            (true, Some("nonblocking-immediate")) => Self::NonblockingImmediate,
+            _ => Self::Standard,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::NonblockingVsync => "nonblocking-vsync",
+            Self::NonblockingImmediate => "nonblocking-immediate",
+        }
+    }
+
+    fn parameters(self, sync_interval: u32, bypassed: bool) -> (u32, DXGI_PRESENT) {
+        if bypassed || self == Self::NonblockingImmediate {
+            (0, DXGI_PRESENT_DO_NOT_WAIT)
+        } else if self == Self::NonblockingVsync {
+            (sync_interval, DXGI_PRESENT_DO_NOT_WAIT)
+        } else {
+            (sync_interval, DXGI_PRESENT(0))
+        }
+    }
+}
+
 pub struct WindowsD3d11Renderer {
     device: ID3D11Device,
     context: ID3D11DeviceContext,
@@ -484,6 +519,11 @@ pub struct WindowsD3d11Renderer {
     adapter_name: String,
     last_present: i32,
     present_sync_interval: u32,
+    present_mode: PresentMode,
+    present_budget_ms: Option<f64>,
+    present_over_budget_count: u64,
+    present_busy_count: u64,
+    last_present_flags: u32,
     frame_latency_waitable_object: HANDLE,
     frame_latency_wait_generation: u64,
     frame_latency_ready_permits: u32,
@@ -824,6 +864,16 @@ impl WindowsD3d11Renderer {
             adapter_name,
             last_present: 0,
             present_sync_interval: 1,
+            present_mode: PresentMode::from_qa_environment(
+                std::env::var("STEAM_BRIDGE_QA_OVERLAY").as_deref() == Ok("1"),
+                std::env::var("STEAM_BRIDGE_QA_PRESENT_MODE")
+                    .ok()
+                    .as_deref(),
+            ),
+            present_budget_ms: None,
+            present_over_budget_count: 0,
+            present_busy_count: 0,
+            last_present_flags: 0,
             frame_latency_waitable_object: HANDLE::default(),
             frame_latency_wait_generation: 0,
             frame_latency_ready_permits: 0,
@@ -874,6 +924,9 @@ impl WindowsD3d11Renderer {
         };
         if attach_swap_chain {
             renderer.attach_swap_chain(hwnd)?;
+        }
+        if renderer.present_mode != PresentMode::Standard {
+            renderer.request_frame_timer_resolution();
         }
         Ok(renderer)
     }
@@ -1520,6 +1573,8 @@ impl WindowsD3d11Renderer {
             presentation_rect,
         )?;
         replacement.set_present_sync_interval(present_sync_interval);
+        replacement.present_mode = self.present_mode;
+        replacement.present_budget_ms = self.present_budget_ms;
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
         self.context.ClearState();
@@ -1537,6 +1592,8 @@ impl WindowsD3d11Renderer {
             Err(error) => {
                 if let Ok(mut restored) = Self::new(hwnd, width, height) {
                     restored.set_present_sync_interval(present_sync_interval);
+                    restored.present_mode = self.present_mode;
+                    restored.present_budget_ms = self.present_budget_ms;
                     *self = restored;
                 }
                 Err(error)
@@ -1664,16 +1721,21 @@ impl WindowsD3d11Renderer {
         // Steam's Present hook synchronously stall Electron's message thread:
         // the fallback is timer-paced and submits without waiting. Windowed
         // flip-model composition remains owned by DWM.
-        let (present_sync_interval, present_flags) = if self.frame_latency_wait_bypassed {
-            (0, DXGI_PRESENT_DO_NOT_WAIT)
-        } else {
-            (self.present_sync_interval, DXGI_PRESENT(0))
-        };
+        let (present_sync_interval, present_flags) = self
+            .present_mode
+            .parameters(self.present_sync_interval, self.frame_latency_wait_bypassed);
+        self.last_present_flags = present_flags.0;
         let present_started_at = Instant::now();
         let result = swap_chain.Present(present_sync_interval, present_flags);
         let present_duration_ms = present_started_at.elapsed().as_secs_f64() * 1_000.0;
         self.last_present_duration_ms = present_duration_ms;
         self.max_present_duration_ms = self.max_present_duration_ms.max(present_duration_ms);
+        if self
+            .present_budget_ms
+            .is_some_and(|budget| present_duration_ms > budget)
+        {
+            self.present_over_budget_count = self.present_over_budget_count.saturating_add(1);
+        }
         if present_duration_ms >= 25.0 {
             self.present_over_25_ms_count = self.present_over_25_ms_count.saturating_add(1);
         }
@@ -1685,6 +1747,7 @@ impl WindowsD3d11Renderer {
         }
         self.last_present = result.0;
         if result == DXGI_ERROR_WAS_STILL_DRAWING {
+            self.present_busy_count = self.present_busy_count.saturating_add(1);
             self.frame_latency_not_ready_count =
                 self.frame_latency_not_ready_count.saturating_add(1);
             return Ok(None);
@@ -1784,7 +1847,30 @@ impl WindowsD3d11Renderer {
     }
 
     pub fn present_sync_interval(&self) -> u32 {
-        self.present_sync_interval
+        self.present_mode
+            .parameters(self.present_sync_interval, self.frame_latency_wait_bypassed)
+            .0
+    }
+
+    pub fn set_present_frame_rate(&mut self, frame_rate: Option<f64>) {
+        self.present_budget_ms = frame_rate
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .map(|value| 1_000.0 / value);
+    }
+
+    pub fn present_busy(&self) -> bool {
+        self.last_present == DXGI_ERROR_WAS_STILL_DRAWING.0
+    }
+
+    pub fn present_diagnostics(&self) -> serde_json::Value {
+        serde_json::json!({
+            "mode": self.present_mode.as_str(),
+            "lastFlags": self.last_present_flags,
+            "lastResult": self.last_present,
+            "budgetMs": self.present_budget_ms,
+            "overBudgetCount": self.present_over_budget_count,
+            "busyCount": self.present_busy_count,
+        })
     }
 
     pub fn frame_latency_waitable(&self) -> bool {
@@ -1842,11 +1928,15 @@ impl WindowsD3d11Renderer {
         }
         self.frame_latency_wait_bypassed = true;
         self.frame_latency_ready_permits = 0;
+        self.request_frame_timer_resolution();
+        true
+    }
+
+    fn request_frame_timer_resolution(&mut self) {
         if !self.fallback_timer_resolution_requested {
             self.fallback_timer_resolution_requested = true;
             self.fallback_timer_resolution_active = unsafe { timeBeginPeriod(1) == TIMERR_NOERROR };
         }
-        true
     }
 
     pub fn frame_latency_wait_bypassed(&self) -> bool {
@@ -2498,8 +2588,54 @@ fn intersect_rect(
 mod tests {
     use super::{
         frame_statistics_counter_delta, is_device_lost_error, is_shared_texture_adapter_open_error,
-        present_sync_interval_for_frame_rate,
+        present_sync_interval_for_frame_rate, PresentMode,
     };
+
+    #[test]
+    fn nonblocking_present_modes_require_explicit_qa_opt_in() {
+        assert_eq!(
+            PresentMode::from_qa_environment(false, Some("nonblocking-vsync")),
+            PresentMode::Standard
+        );
+        assert_eq!(
+            PresentMode::from_qa_environment(true, None),
+            PresentMode::Standard
+        );
+        assert_eq!(
+            PresentMode::from_qa_environment(true, Some("typo")),
+            PresentMode::Standard
+        );
+        assert_eq!(
+            PresentMode::from_qa_environment(true, Some("nonblocking-vsync")),
+            PresentMode::NonblockingVsync
+        );
+        assert_eq!(
+            PresentMode::from_qa_environment(true, Some("nonblocking-immediate")),
+            PresentMode::NonblockingImmediate
+        );
+    }
+
+    #[test]
+    fn nonblocking_present_flags_do_not_depend_on_a_readiness_timeout() {
+        let parameters = |mode: PresentMode, interval, bypassed| {
+            let (sync, flags) = mode.parameters(interval, bypassed);
+            (sync, flags.0)
+        };
+        assert_eq!(parameters(PresentMode::Standard, 1, false), (1, 0));
+        assert_eq!(parameters(PresentMode::NonblockingVsync, 1, false), (1, 8));
+        assert_eq!(parameters(PresentMode::NonblockingVsync, 2, false), (2, 8));
+        assert_eq!(
+            parameters(PresentMode::NonblockingImmediate, 1, false),
+            (0, 8)
+        );
+        for mode in [
+            PresentMode::Standard,
+            PresentMode::NonblockingVsync,
+            PresentMode::NonblockingImmediate,
+        ] {
+            assert_eq!(parameters(mode, 1, true), (0, 8));
+        }
+    }
 
     #[test]
     fn classifies_recoverable_dxgi_device_loss_codes() {

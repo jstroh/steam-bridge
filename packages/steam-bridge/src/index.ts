@@ -1853,6 +1853,12 @@ export interface NativeOverlaySessionSnapshot {
   nativeFrameWaitTimeoutCount?: number;
   /** The Windows presenter rejected async DXGI waits and is using bounded polling. */
   nativeFrameWaitFallback?: boolean;
+  windowsPresentDiagnosticMode?: "standard" | "nonblocking-vsync" | "nonblocking-immediate";
+  nativePresentRetryCount?: number;
+  inputDispatchCount?: number;
+  lastInputDispatchDelayMs?: number;
+  maxInputDispatchDelayMs?: number;
+  inputDispatchOverBudgetCount?: number;
   /** Current target presentation rate. */
   frameRate: number;
   /** Display-rate target requested by the application. */
@@ -10255,6 +10261,23 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     || usesStandaloneLinuxHost
     || usesLinuxApplicationHost;
   const usesWindowsStandaloneHost = process.platform === "win32" && !usesNativeHostView;
+  const requestedPresentDiagnosticMode = usesWindowsStandaloneHost
+    && backend === "windows-d3d11"
+    && process.env.STEAM_BRIDGE_QA_OVERLAY === "1"
+    ? process.env.STEAM_BRIDGE_QA_PRESENT_MODE
+    : undefined;
+  const windowsPresentDiagnosticMode: "standard" | "nonblocking-vsync" | "nonblocking-immediate" = requestedPresentDiagnosticMode === "nonblocking-vsync"
+    || requestedPresentDiagnosticMode === "nonblocking-immediate"
+    ? requestedPresentDiagnosticMode
+    : "standard";
+  const nonblockingPresentDiagnostic = windowsPresentDiagnosticMode !== "standard";
+  if (nonblockingPresentDiagnostic && (
+    typeof native().pumpNativeOverlayHostInput !== "function"
+    || typeof native().pumpNativeOverlayHostFrame !== "function"
+    || typeof native().isNativeOverlayHostPresentBusy !== "function"
+  )) {
+    throw new Error("Windows presentation diagnostics require the matching diagnostic native addon.");
+  }
   const usesAttachedLinuxHost =
     process.platform === "linux" && Boolean(options.nativeWindowHandle) && !usesStandaloneLinuxHost;
   const shouldHideNativeHostOnOverlayDeactivate = (): boolean => {
@@ -10344,6 +10367,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let nativeFrameWaitEpoch = 0;
   let nativeFrameWaitUnavailable = false;
   let nativeFrameWaitTimeoutCount = 0;
+  let nativePresentRetryAt: number | undefined;
+  let nativePresentRetryCount = 0;
+  let inputDispatchCount = 0;
+  let lastInputDispatchDelayMs: number | undefined;
+  let maxInputDispatchDelayMs: number | undefined;
+  let inputDispatchOverBudgetCount = 0;
   let restoreFocusTimer: NodeJS.Timeout | undefined;
   let hideNativeHostTimer: NodeJS.Timeout | undefined;
   let standaloneLinuxHostRemapTimer: NodeJS.Timeout | undefined;
@@ -10429,7 +10458,24 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       syncContinuousPresent();
       try {
         const binding = native();
-        binding.pumpNativeOverlayProbeWindow();
+        if (nonblockingPresentDiagnostic) {
+          binding.pumpNativeOverlayHostInput!();
+          dispatchNativeInputEvents();
+          if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+            return;
+          }
+          if (nativePresentRetryAt === undefined || performance.now() >= nativePresentRetryAt) {
+            binding.pumpNativeOverlayHostFrame!();
+            if (binding.isNativeOverlayHostPresentBusy!()) {
+              nativePresentRetryCount += 1;
+              nativePresentRetryAt = performance.now() + windowsNativeFrameFallbackIntervalMs();
+            } else {
+              nativePresentRetryAt = undefined;
+            }
+          }
+        } else {
+          binding.pumpNativeOverlayProbeWindow();
+        }
         if (
           usesWindowsStandaloneHost
           && binding.isNativeOverlayHostFrameLatencyWaitBypassed?.() === true
@@ -10569,6 +10615,14 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       pumpDurationOver25MsCount,
       nativeFrameWaitTimeoutCount,
       nativeFrameWaitFallback: nativeFrameWaitUnavailable,
+      ...(usesWindowsStandaloneHost ? {
+        windowsPresentDiagnosticMode,
+        nativePresentRetryCount,
+        inputDispatchCount,
+        lastInputDispatchDelayMs,
+        maxInputDispatchDelayMs,
+        inputDispatchOverBudgetCount,
+      } : {}),
       lastError,
       nativeSurfaceLeaseGeneration: surfaceLease?.generation,
       nativeSurfaceOwner,
@@ -10613,6 +10667,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     nativeFramePending = false;
     nativeFrameWaitEpoch += 1;
     nativeFrameWaitInFlight = false;
+    nativePresentRetryAt = undefined;
     nativeHostUnavailableReason = undefined;
     macOverlayEnvironment = undefined;
 
@@ -11600,6 +11655,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   }
 
   function presentFrameDrivenUpload(): void {
+    if (nativePresentRetryAt !== undefined) {
+      schedulePumpTimer();
+      return;
+    }
     if (!usesWindowsStandaloneHost) {
       // Linux GLX imports and CPU uploads must finish and present before the
       // producer recycles its frame. Keep their established synchronous pump.
@@ -11655,6 +11714,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       || !usesWindowsStandaloneHost
       || !nativeFramePending
       || nativeFrameWaitUnavailable
+      || nativePresentRetryAt !== undefined
     ) {
       return false;
     }
@@ -11768,6 +11828,22 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       clearImmediate(pumpImmediate);
       pumpImmediate = undefined;
     }
+    if (nativePresentRetryAt !== undefined) {
+      pumpTimer = setTimeout(() => {
+        pumpTimer = undefined;
+        if (closed || !ownsNativeOverlaySurface(surfaceLease)) {
+          return;
+        }
+        try {
+          pump();
+        } catch {
+          return;
+        }
+        schedulePumpTimer();
+      }, Math.max(1, nativePresentRetryAt - performance.now()));
+      pumpTimer.unref?.();
+      return;
+    }
     if (
       nativeFramePending
       && usesWindowsStandaloneHost
@@ -11829,6 +11905,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         return;
       }
       if (nativeFramePending && usesWindowsStandaloneHost) {
+        if (nativePresentRetryAt !== undefined) {
+          schedulePumpTimer();
+          return;
+        }
         // Wait off the Electron main/message-pump thread and wake this
         // presenter as soon as DXGI releases a flip-queue slot. Old native
         // binaries retain the short nonblocking polling fallback.
@@ -11847,14 +11927,16 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       // that runtime state needs the same immediate wake-up or Windows timer
       // jitter is added to Steam's hooked Present and drops below high-refresh
       // display rates after live mode transitions.
-      if (displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable) {
+      if (displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable
+        && windowsPresentDiagnosticMode !== "nonblocking-immediate") {
         pumpImmediate = setImmediate(runScheduledPump);
         pumpImmediate.unref?.();
       } else {
         const completedAt = performance.now();
         const cadenceIntervalMs = backend === "macos-metal" && continuousPresentApplied === true
           ? Math.max(pumpIntervalMs, 1000 / 30)
-          : usesWindowsStandaloneHost && nativeFrameWaitUnavailable
+          : usesWindowsStandaloneHost && (nativeFrameWaitUnavailable
+            || windowsPresentDiagnosticMode === "nonblocking-immediate")
             ? windowsNativeFrameFallbackIntervalMs()
             : pumpIntervalMs;
         const cadenceDeadline = (scheduledDueAt ?? pumpStartedAt) + cadenceIntervalMs;
@@ -13152,6 +13234,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         continue;
       }
       try {
+        const delayMs = Math.max(0, Date.now() - event.capturedAtMs);
+        inputDispatchCount += 1;
+        lastInputDispatchDelayMs = delayMs;
+        maxInputDispatchDelayMs = Math.max(maxInputDispatchDelayMs ?? 0, delayMs);
+        if (frameRate > 0 && delayMs > 1000 / frameRate) {
+          inputDispatchOverBudgetCount += 1;
+        }
         options.onInputEvent(event);
       } catch (error) {
         lastError = error;

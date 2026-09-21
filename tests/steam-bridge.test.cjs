@@ -1296,7 +1296,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
   assert.match(
     bridgeSource,
-    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
+    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\s*&& windowsPresentDiagnosticMode !== "nonblocking-immediate"\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
   );
   assert.match(d3dSource, /D3D11_QUERY_EVENT/);
   assert.match(d3dSource, /D3D11_ASYNC_GETDATA_DONOTFLUSH/);
@@ -25684,6 +25684,135 @@ test("native overlay session dispatches captured close input before a terminal n
   assert.deepEqual(receivedInputEvents.map((event) => event.kind), ["close"]);
   assert.equal(session.isOpen(), false);
   assert.equal(session.snapshot().closeReason, "error");
+});
+
+function createPresentDiagnosticTestNative(t, mode, overrides = {}) {
+  const previousMode = process.env.STEAM_BRIDGE_QA_PRESENT_MODE;
+  const previousQa = process.env.STEAM_BRIDGE_QA_OVERLAY;
+  process.env.STEAM_BRIDGE_QA_OVERLAY = "1";
+  process.env.STEAM_BRIDGE_QA_PRESENT_MODE = mode;
+  t.after(() => {
+    if (previousMode === undefined) delete process.env.STEAM_BRIDGE_QA_PRESENT_MODE;
+    else process.env.STEAM_BRIDGE_QA_PRESENT_MODE = previousMode;
+    if (previousQa === undefined) delete process.env.STEAM_BRIDGE_QA_OVERLAY;
+    else process.env.STEAM_BRIDGE_QA_OVERLAY = previousQa;
+    clearSteamBridgeCache();
+  });
+  setProcessPlatformForTest(t, "win32");
+  const { fake, pumpedSources } = createFrameDrivenPumpTestNative();
+  fake.pumpNativeOverlayHostInput = () => {};
+  fake.pumpNativeOverlayHostFrame = fake.pumpNativeOverlayProbeWindow.bind(fake);
+  fake.isNativeOverlayHostPresentBusy = () => false;
+  Object.assign(fake, overrides);
+  return { fake, pumpedSources };
+}
+
+test("Windows present diagnostic rejects an older addon and remains opt-in", (t) => {
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync");
+  delete fake.pumpNativeOverlayHostInput;
+  const steam = loadSteamWithFakeNative(fake);
+  assert.throws(() => steam.overlay.startNativeOverlaySession(), /matching diagnostic native addon/);
+  process.env.STEAM_BRIDGE_QA_OVERLAY = "0";
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => session.close());
+  assert.equal(session.snapshot().windowsPresentDiagnosticMode, "standard");
+});
+
+test("Windows present diagnostic dispatches input before a still-blocking native frame and reports the stall", async (t) => {
+  let enabled = false;
+  const order = [];
+  let events = [];
+  const waitArray = new Int32Array(new SharedArrayBuffer(4));
+  const input = () => ({ kind: "mouseMove", capturedAtMs: Date.now(), x: 1, y: 1, clientWidth: 10, clientHeight: 10 });
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync", {
+    pumpNativeOverlayHostInput() { if (enabled) { order.push("capture"); events.push(input()); } },
+    pumpNativeOverlayHostFrame() {
+      if (!enabled) return;
+      order.push("present-start");
+      const duringPresent = input();
+      Atomics.wait(waitArray, 0, 0, 20);
+      events.push(duringPresent);
+      order.push("present-end");
+    },
+    isNativeOverlayHostFramePending: () => false,
+    waitForNativeOverlayHostFrameReady() { throw new Error("ready queue must not enter async wait"); },
+    drainNativeOverlayHostInputEventsJson() { const result = JSON.stringify(events); events = []; return result; },
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ frameRate: 100, pumpIntervalMs: 10000, onInputEvent: () => order.push("dispatch") });
+  t.after(() => { enabled = false; session.close(); });
+  enabled = true;
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(order, ["capture", "dispatch", "present-start", "present-end", "dispatch"]);
+  const snapshot = session.snapshot();
+  assert.ok(snapshot.lastPumpDurationMs >= 19, "a driver/hook ignoring nonblocking policy remains an observed stall");
+  assert.ok(snapshot.maxInputDispatchDelayMs >= 19, "input arriving during a stall is not claimed fixed");
+  assert.equal(snapshot.inputDispatchCount, 2);
+  assert.equal(snapshot.inputDispatchOverBudgetCount, 1);
+  assert.equal(snapshot.nativeFrameWaitTimeoutCount, 0);
+  assert.equal(snapshot.nativeFrameWaitFallback, false);
+});
+
+test("Windows present diagnostic busy retries yield even with an always-ready waitable and keep the newest frame", async (t) => {
+  let clock = 0;
+  t.mock.method(performance, "now", () => clock);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let busy = false;
+  let waits = 0;
+  const { fake, pumpedSources } = createPresentDiagnosticTestNative(t, "nonblocking-vsync", {
+    isNativeOverlayHostPresentBusy: () => busy,
+    isNativeOverlayHostFramePending: () => busy,
+    waitForNativeOverlayHostFrameReady() { waits += 1; return Promise.resolve(true); },
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ frameRate: 100, pumpIntervalMs: 10 });
+  t.after(() => session.close());
+  pumpedSources.length = 0;
+  busy = true;
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(pumpedSources, [1]);
+  for (const value of [2, 3, 4]) {
+    session.updateFrame({ data: Buffer.from([value, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.deepEqual(pumpedSources, [1]);
+  clock = 8;
+  t.mock.timers.tick(8);
+  assert.deepEqual(pumpedSources, [1]);
+  clock = 9;
+  t.mock.timers.tick(1);
+  assert.deepEqual(pumpedSources, [1, 4]);
+  assert.equal(waits, 0);
+  assert.equal(session.snapshot().nativePresentRetryCount, 2);
+  busy = false;
+  clock = 18;
+  t.mock.timers.tick(9);
+  assert.deepEqual(pumpedSources, [1, 4, 4]);
+  assert.equal(session.snapshot().nativeFrameWaitFallback, false);
+  session.close();
+  clock = 100;
+  t.mock.timers.tick(82);
+  assert.equal(pumpedSources.length, 3, "close cancels pending retries");
+});
+
+test("Windows present diagnostic stops before presenting when input closes the session", async (t) => {
+  let events = [];
+  let frameCalls = 0;
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-immediate", {
+    pumpNativeOverlayHostFrame() { frameCalls += 1; },
+    drainNativeOverlayHostInputEventsJson() { const result = JSON.stringify(events); events = []; return result; },
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000, onInputEvent: () => session.close() });
+  t.after(() => session.close());
+  frameCalls = 0;
+  events.push({ kind: "close", capturedAtMs: Date.now(), clientWidth: 10, clientHeight: 10 });
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(frameCalls, 0);
+  assert.equal(session.isOpen(), false);
 });
 
 function createFrameDrivenPumpTestNative() {

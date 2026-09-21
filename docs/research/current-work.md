@@ -1,6 +1,37 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-21
+
+### 2026-09-21 opt-in Windows nonblocking presentation diagnostic
+
+Active work isolates successful-but-slow Present calls with a ready DXGI queue.
+Default presentation is unchanged. Two QA modes request nonblocking submission,
+separate normal pre-presentation input dispatch and defer busy retries without
+spinning. Frame-budget and collected-input dispatch telemetry expose remaining
+stalls; producer ownership and two-slot bounds stay unchanged. Failure injection
+intentionally reports residual blocking when the mock ignores the flags.
+See [the runbook](windows-present-diagnostic.md) for scope and limitations.
+
+Validation: 449 JavaScript/TypeScript passes (two existing Windows skips),
+69 native passes (one hardware-only test ignored), API/platform audits, native
+format/check and Windows cleanup self-test. The consumer passes 627 tests
+(six existing Windows skips), lint and typecheck. The smoke runtime is pinned to
+stable Electron 44.4.3 to satisfy the current compatibility gate.
+
+The protected 92-file consumer diagnostic loads the optimized addon under Smart
+App Control and a Limited task on Windows 11 / AMD RX 7700S / 60 Hz / 125% DPI.
+Its settled standard and nonblocking-VSync windows both measured median paint
+60 and native presentation 59.9 FPS with zero new target-budget Present or input
+dispatch overruns. Immediate mode also reached those FPS medians but recorded
+five new over-budget Presents: it remains a negative diagnostic comparison.
+The same VSync run visibly opened/closed the ordinary Steam overlay and entered/
+left fullscreen. Its later minimize/restore check was interrupted by the test
+task's ten-minute deadline; do not count it as complete transition/shutdown proof.
+Full logs remain private. No settings, security policy, shaders, installed game,
+npm package or Steam release changed. Exact NVIDIA 100 Hz causality and the full
+release matrix remain unqualified. Final cleanup, source commit/push and exact
+CI verification are the remaining local handoff steps.
+
 
 ### 2026-09-03 developer documentation rewrite
 

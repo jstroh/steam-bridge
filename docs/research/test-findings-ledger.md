@@ -66,6 +66,30 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
+### WIN-PRESENT-READY-BLOCKING-001 — DIAGNOSTIC ONLY
+
+A single-session production capture has a 100 Hz target and approximately 58
+native presents per second, with most sampled successful Present calls near
+16.5 ms, zero not-ready events and no readiness fallback. The wait exists before
+the first source texture. The opt-in experiment covers this bypassed guard path
+and forwards collected input before the normal presentation transaction. Local
+failure injection proves retry bounding and dispatch order, not GPU behavior.
+When a mock ignores the flags, the stall and mid-call input delay remain reported.
+Protected exact consumer diagnostic testing on Windows 11 / AMD RX 7700S /
+60 Hz / 125% DPI passed settled standard (five samples) and nonblocking-VSync
+(nine samples) at 60 paint / 59.9 native FPS median with no new frame-budget
+Present or input-dispatch overruns. The immediate comparison retained those FPS
+medians but added five over-budget Presents across three samples, so it is not
+an improvement claim. The new cumulative metric catches stalls that last-call
+snapshots miss. VSync ordinary-overlay open/close and fullscreen/restore were
+visible; later minimize/restore and clean shutdown were interrupted by the
+Limited task's ten-minute limit, not accepted as a complete live matrix.
+Security policy and display settings were unchanged. Affected-device causality
+is open. **Repeat only when** presenter policy,
+input dispatch, retry scheduling, native addon bytes, runtime, driver or display
+changes, or an affected-device candidate becomes available. See
+[the diagnostic runbook](windows-present-diagnostic.md).
+
 | ID | Status | Finding | Repeat only when | Evidence |
 | --- | --- | --- | --- | --- |
 | `WIN-D3D11-INITIAL-ADAPTER-001` | `OPEN` | Production Sentry group `FOV4-STEAM-B` records `D3D11CreateDevice` returning `E_FAIL` during initial native-host creation on a hybrid Intel/NVIDIA Windows machine. Initial creation previously tried only the preferred high-performance adapter, although the later shared-texture path already searches the resource-owning and enumerated adapters. The active source tries the preferred hardware adapter first, each remaining enumerated hardware adapter once, and the default hardware adapter last, while excluding explicit software adapters and preserving ordered failure diagnostics. | Repeat when initial D3D renderer creation, DXGI adapter enumeration/preference, swap-chain attachment, first shared-texture adapter reconciliation, or Electron/GPU versions change, or when an immutable configured-consumer candidate is available. Require initial host creation, first shared-texture import on the owning adapter, healthy presentation, zero device loss, and no software renderer before closing the Sentry group. | [Initial adapter checkpoint](current-work.md#2026-08-27-windows-initial-d3d11-adapter-fallback), [D3D renderer](../../crates/native/src/windows_d3d11.rs) |

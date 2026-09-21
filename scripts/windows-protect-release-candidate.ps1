@@ -4,6 +4,7 @@ param(
   [ValidateSet("Apply", "Audit")]
   [string]$Mode = "Audit",
   [string]$EvidencePath = "",
+  [string]$ExecutableName = "SteamBridgeSmoke.exe",
   [switch]$SelfTest
 )
 
@@ -325,7 +326,13 @@ if ($CandidateDirectory.TrimEnd("\") -eq $candidateRoot) {
   throw "Candidate directory must not be a volume root."
 }
 if (
-  -not (Test-Path -LiteralPath (Join-Path $CandidateDirectory "SteamBridgeSmoke.exe") -PathType Leaf) -or
+  [System.IO.Path]::GetFileName($ExecutableName) -cne $ExecutableName -or
+  [System.IO.Path]::GetExtension($ExecutableName) -ine ".exe"
+) {
+  throw "ExecutableName must be a single .exe filename."
+}
+if (
+  -not (Test-Path -LiteralPath (Join-Path $CandidateDirectory $ExecutableName) -PathType Leaf) -or
   -not (Test-Path -LiteralPath (Join-Path $CandidateDirectory "resources") -PathType Container)
 ) {
   throw "Candidate directory does not have the packaged Windows smoke shape."

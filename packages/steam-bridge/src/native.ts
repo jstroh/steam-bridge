@@ -1833,6 +1833,9 @@ export interface NativeBinding {
     fullScreen?: boolean
   ): void;
   pumpNativeOverlayProbeWindow(): void;
+  pumpNativeOverlayHostInput(): void;
+  pumpNativeOverlayHostFrame(): void;
+  isNativeOverlayHostPresentBusy(): boolean;
   pumpNativeOverlayHostView(): void;
   isNativeOverlayHostFramePending(): boolean;
   isNativeOverlayHostFrameLatencyWaitBypassed(): boolean;

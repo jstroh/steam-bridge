@@ -2367,6 +2367,7 @@ mod windows {
             let display_refresh_rate =
                 window_display_diagnostics(surface.hwnd).and_then(|display| display.refresh_rate);
             if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                renderer.set_present_frame_rate(target_frame_rate);
                 renderer.set_present_sync_interval(
                     windows_d3d11::present_sync_interval_for_frame_rate(
                         display_refresh_rate,
@@ -2686,8 +2687,18 @@ mod windows {
             .expect("Steam overlay native surface lock poisoned")
             .as_ref()
             .map(|surface| surface.hwnd);
+        pump_input();
+        pump_frame_for_window(hwnd)
+    }
+
+    pub fn pump_input() {
+        let hwnd = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .map(|surface| surface.hwnd);
         let Some(hwnd) = hwnd else {
-            return Ok(());
+            return;
         };
 
         unsafe {
@@ -2696,11 +2707,22 @@ mod windows {
             // able to repaint the retained frame while the user is dragging.
             pump_messages(hwnd);
         }
+    }
 
+    pub fn pump_frame() -> Result<(), Error> {
+        let hwnd = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .map(|surface| surface.hwnd);
+        pump_frame_for_window(hwnd)
+    }
+
+    fn pump_frame_for_window(hwnd: Option<HWND>) -> Result<(), Error> {
         let mut guard = SURFACE
             .lock()
             .expect("Steam overlay native surface lock poisoned");
-        let Some(surface) = guard.as_mut().filter(|surface| surface.hwnd == hwnd) else {
+        let Some(surface) = guard.as_mut().filter(|surface| Some(surface.hwnd) == hwnd) else {
             return Ok(());
         };
 
@@ -2748,6 +2770,19 @@ mod windows {
                         WindowsSurfaceRenderer::D3d11 { renderer, .. }
                             if renderer.has_source() || surface.source_frame.is_some()
                     )
+            })
+    }
+
+    pub fn present_busy() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| {
+                matches!(
+                    &surface.renderer,
+                    WindowsSurfaceRenderer::D3d11 { renderer, .. } if renderer.present_busy()
+                )
             })
     }
 
@@ -3724,6 +3759,7 @@ mod windows {
                 "frameLatencyFallbackTimerResolutionMs": if renderer.fallback_timer_resolution_active() { Some(1) } else { None },
                 "maximumFrameLatency": 2,
                 "presentSyncInterval": renderer.present_sync_interval(),
+                "presentDiagnostics": renderer.present_diagnostics(),
                 "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),
                 "timing": {
                     "asyncFrameLatencyReadyCount": renderer.async_frame_latency_ready_count(),

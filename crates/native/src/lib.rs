@@ -1196,6 +1196,28 @@ pub fn pump_native_overlay_host_view() -> Result<(), Error> {
     native_surface::pump()
 }
 
+#[napi(js_name = "pumpNativeOverlayHostInput")]
+pub fn pump_native_overlay_host_input() {
+    #[cfg(target_os = "windows")]
+    native_surface::pump_input();
+}
+
+#[napi(js_name = "pumpNativeOverlayHostFrame")]
+pub fn pump_native_overlay_host_frame() -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    return native_surface::pump_frame();
+    #[cfg(not(target_os = "windows"))]
+    Ok(())
+}
+
+#[napi(js_name = "isNativeOverlayHostPresentBusy")]
+pub fn is_native_overlay_host_present_busy() -> bool {
+    #[cfg(target_os = "windows")]
+    return native_surface::present_busy();
+    #[cfg(not(target_os = "windows"))]
+    false
+}
+
 #[napi(js_name = "isNativeOverlayHostFramePending")]
 pub fn is_native_overlay_host_frame_pending() -> bool {
     #[cfg(target_os = "windows")]

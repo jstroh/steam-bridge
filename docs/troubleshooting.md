@@ -27,6 +27,11 @@ Do not copy a workaround from a different platform or runtime generation without
 checking whether it applies. The [platform policy](../README.md#platform-targets)
 and [window model](electron.md#choose-the-window-model) are deliberate.
 
+For Windows calls that remain inside `Present` despite a ready DXGI queue, the
+[opt-in presentation diagnostic](research/windows-present-diagnostic.md)
+compares explicit nonblocking policies without changing the production default.
+It requires the matching diagnostic addon and is not a hardware-qualified fix.
+
 ## Input problems
 
 Inspect `actions.getDiagnostics()` on demand for lifecycle, controller count,
