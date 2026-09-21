@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-08-28
+Last reviewed: 2026-09-21
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -66,7 +66,25 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
-### WIN-NAPI-RECONCILIATION-001 — OPEN, BUILD-TOOL BLOCKER
+### WIN-CANDIDATE-SAC-048-001 — ENVIRONMENT BLOCKER
+
+Exact `v0.4.8` source/tag CI and Release `35591699047` pass, including all
+prebuilds and canonical Windows package/native-load gates. Its addon and PDB
+verify locally. An isolated actual-game consumer contains the exact canonical
+tarball bytes, with 92 write-protected files. Smart App Control blocks its
+unsigned executable before startup (Code Integrity 3033/3077); executable
+SHA-256 is `192745D336A54D8E2C1766FE8E64F985DC5068CC6104DDDA5B0E967E336276C2`.
+No gameplay or fresh-frame proof exists. The launch task is removed, no
+candidate/debug listener remains, Windows Steam survives and the candidate
+fingerprint/ACLs remain unchanged. A non-target Mac IPC helper auto-respawns;
+its isolation prerequisite is also still open. The exact-file Microsoft form is
+prepared, not submitted: CAPTCHA/final submission await action-time confirmation.
+**Repeat only when** that exact executable has a relevant new trust determination
+and the non-target Steam prerequisite is resolved. Preserve the original bytes,
+normal user profile and security policy; never substitute an old launcher or
+receipt. See [the checkpoint](current-work.md#2026-09-21-release-048-build-tool-correction).
+
+### WIN-NAPI-RECONCILIATION-001 — SETTLED WORKFLOW, UPSTREAM CLI OPEN
 
 The exact `v0.4.7` Windows Release run `35587260806` successfully compiled Rust's
 optimized target, then `@napi-rs/cli` 3.9.0 spent 120 seconds failing to acquire
@@ -80,7 +98,11 @@ That dependency experiment is reverted. The Windows workflow now builds with Car
 repository development helper, and hash-verifies the copy of its exact DLL to
 the canonical `.node` name before the unchanged symbol and package gates.
 The local direct-Cargo addon loads 1,155 exports and matches its exact PDB;
-version resources read 0.4.8. Exact Windows CI preflight is still required. **Repeat
+version resources read 0.4.8. Exact source `9bb8e8e` passes CI `35590843959` and
+manual Release `35590843324`, including all native prebuilds and the canonical
+Windows tarball/ASAR/native-load audit. Its downloaded Windows addon also loads
+locally with matching PDB. This settles the direct-Cargo workflow path, not the
+CLI's upstream failure or actual-game qualification. **Repeat
 only when** the CLI/runner inputs change or a demonstrated transient external
 condition clears. Do not retry unchanged inputs, delete locks blindly, disable
 host protections, move `v0.4.7` or publish partial artifacts. See

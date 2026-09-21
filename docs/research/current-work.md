@@ -46,13 +46,54 @@ Full local `npm test` passes 467 JavaScript tests (two platform skips) and 77
 native tests (two hardware-only cases ignored), including the new workflow gate.
 The dependency graph is restored exactly to the prior CLI 3.9.0 baseline;
 clean installation/audit, focused workflow tests, platform/API/format gates,
-workflow YAML parsing and whitespace checks pass. Next: commit/push and a fresh
-exact-main CI/manual Release preflight before creating `v0.4.8`.
-That tag does not exist yet; partial failed-run artifacts are not qualified.
+workflow YAML parsing and whitespace checks pass. Implementation
+`9bb8e8e3640f8ef8bdec4a14ffc908b6b7da9c4d` is committed and pushed.
+[CI 35590843959](https://github.com/jstroh/steam-bridge/actions/runs/35590843959)
+and [manual Release 35590843324](https://github.com/jstroh/steam-bridge/actions/runs/35590843324)
+pass every applicable gate, including all three native prebuilds and Windows
+canonical tarball/ASAR/native-load audits. Independently downloaded Windows
+preflight bytes load 1,155 exports locally and match PDB debug ID
+`432e64f4-de54-4aaa-82b7-b56371735eff-1`; addon SHA-256 is
+`3CEC9EBCAF687C50CF85304CB860E06844FA00E09630F49108EE5B2E769D183D`.
+This settles the workflow repair, not gameplay or a driver cause.
+
+Immutable `v0.4.8` now points to that exact commit. Its
+[CI 35591699073](https://github.com/jstroh/steam-bridge/actions/runs/35591699073)
+passes; [tag Release 35591699047](https://github.com/jstroh/steam-bridge/actions/runs/35591699047)
+also passes all prebuilds and the Windows package gate. The tag-built Windows
+addon loads 1,155 exports locally and matches PDB debug ID
+`77e663a6-12e5-47b9-affe-8f9a2f3c6037-1`; its SHA-256 is
+`6F8C4E21862C231955C7B6A5450AE03E5EC6521EC89712BD5215BEF8F72256B3`.
+The retained canonical tarball verifies with SHA-256
+`032027203ed97ef7a0ff5a6af6dfc2b835dede34120104967a710c6eb8865645`;
+the retained bundle and candidate binding also verify. A normal non-linked
+tarball install is packaged in an isolated consumer QA checkout. Its ASAR has
+the correct version, no private QA/environment/key files, and exact matching
+Windows addon/Valve runtime bytes. All 92 deployed files are write-protected.
+
+The Limited launch is blocked before game startup by Smart App Control
+(state 1); Code Integrity events 3033/3077 identify the unsigned consumer
+executable. Its SHA-256 is
+`192745D336A54D8E2C1766FE8E64F985DC5068CC6104DDDA5B0E967E336276C2`.
+No game window, telemetry or gameplay pass was obtained. The temporary task is
+removed, no candidate/debug listener remains, the original Windows Steam
+process survives, and all 92 candidate files plus ACLs verify unchanged.
+A non-target Mac Steam IPC helper respawns under its existing launchd job;
+resolve that prerequisite before a later isolated live run, without repeatedly
+killing it or silently changing persistent startup configuration.
+
+The authorized Microsoft exact-file reputation-review form is prepared in the
+operator's browser; CAPTCHA and final Submit await action-time confirmation.
+It is not submitted or approved. Next: complete that boundary, retain the exact
+determination and run fresh protected standalone proof on these bytes. Do not
+disable policy, replace the blocked launcher, fabricate a receipt, publish npm,
+or change the consumer's public dependency before qualification. No
+local/preflight/previous-release artifact may substitute for tag-candidate bytes.
+Partial failed-run artifacts are not qualified.
 The consumer's telemetry implementation is clean/pushed; its next public version
 must still wait for a qualified published Bridge package. No consumer credentials
-are put in this public repository. No Windows live candidate was launched and no
-installed game or Steam depot was changed during this release attempt.
+are put in this public repository. No installed game, normal user profile or
+Steam depot was changed during this release attempt.
 
 ### 2026-09-21 release 0.4.7 preparation
 
