@@ -2,12 +2,47 @@
 
 Last reviewed: 2026-09-21
 
+### 2026-09-21 release 0.4.8 build-tool correction
+
+Immutable `v0.4.7` is rejected and remains unpublished. Its exact CI passed, and
+macOS/Linux prebuilds passed, but Windows Release `35587260806` failed after Rust
+successfully finished its optimized build in 3m24s. `@napi-rs/cli` 3.9.0 then
+timed out after 120 seconds acquiring its filesystem-reconciliation lock, with
+repeated metadata-retirement warnings. The package gate could not run. Do not
+rerun unchanged inputs, move the tag, reuse partial artifacts as a proved package,
+or bypass any publication gate.
+
+The replacement is `0.4.8`, retaining the reviewed runtime repair and advancing
+only the build CLI to exact 3.10.4 plus aligned package/lock versions. Upstream
+[3512](https://github.com/napi-rs/napi-rs/issues/3512),
+[3521](https://github.com/napi-rs/napi-rs/pull/3521) and
+[3530](https://github.com/napi-rs/napi-rs/pull/3530) document fixes in the failing
+Windows identity/metadata reconciliation subsystem. The new CLI retains the
+Node 22.13 development floor. Installation and dependency audit pass with zero
+findings. Full local `npm test` again passes 466 JavaScript tests (two platform
+skips) and 77 native tests (two hardware cases ignored), plus platform/API/format
+and whitespace gates. This is build tooling, not another presentation/shader change.
+
+Next: finish local checks, commit/push and run exact-main CI plus a manual Release
+preflight before creating `v0.4.8`. Neither that tag nor its artifacts exist yet.
+The consumer's telemetry implementation is clean/pushed; its next public version
+must still wait for a qualified published Bridge package. No consumer credentials
+are put in this public repository. No Windows live candidate was launched and no
+installed game or Steam depot was changed during this release attempt.
+
 ### 2026-09-21 release 0.4.7 preparation
 
 The maintainer requested new releases after the reviewed presentation repair.
 The diagnostic branch through `67e58a3` is fast-forwarded into `main` and
-the root, package and lock versions advance together to `0.4.7`. Registry latest
-remains `0.4.6`; `v0.4.7` does not yet exist. No candidate is published.
+the root, package and lock versions advance together to `0.4.7`. Immutable
+`v0.4.7` now points to `e914b5c706bbb0b343fed891071773e32958d984`, including the
+fence-wait repair below. Its source [CI 35586795943](https://github.com/jstroh/steam-bridge/actions/runs/35586795943)
+passes every platform, package, Node-runtime and security job. Exact tag
+[Release 35587260806](https://github.com/jstroh/steam-bridge/actions/runs/35587260806)
+failed in Windows build-tool reconciliation after native compilation, while
+[CI 35587260846](https://github.com/jstroh/steam-bridge/actions/runs/35587260846)
+passed. Registry latest remains `0.4.6`; no new package or stable GitHub Release
+is published. Never move or reuse this tag. The replacement is recorded above.
 
 This release changes native bytes and needs fresh exact-tag prebuilds, matching
 symbols, package audit and protected standalone-consumer proof. Do not reuse the
@@ -36,9 +71,8 @@ The npm publisher, candidate/live-proof verification and runtime code are unchan
 Release-boundary correction `67b08327a90d4c941949e04e970abe029d40f471` is committed
 and pushed. [CI 35584117221](https://github.com/jstroh/steam-bridge/actions/runs/35584117221)
 passes all three platforms, full package smoke, four Node runtimes and dependency
-security. No immutable candidate tag or publication exists yet. A new report
-arrived before tagging; assess its distinct copy-completion failure below before
-claiming the pending presentation repair covers it. Retain exact release artifacts
+security. A new report arrived before tagging and led to the independently tested
+copy-completion repair below; it is not an affected-device success claim. Retain exact release artifacts
 and complete live proof before publishing or advancing the public dependency.
 
 The versioned source passes 465 JavaScript tests (two platform skips), 70 native
@@ -96,7 +130,8 @@ changes test measurement only, not runtime logic. Next: verify exact-source CI, 
 candidate bytes and protected actual-game proof. This fixes the reproduced
 notification/sentinel bugs, not a proven driver cause on the reporter's device.
 Shader probe/fallback did not restore fresh delivery in the supplied capture;
-the affected incident remains empirically open. No release has been tagged.
+the affected incident remains empirically open. The immutable candidate tag and
+active release runs are recorded above; qualification and publication are pending.
 
 ### 2026-09-21 Windows presentation review corrections
 

@@ -66,6 +66,20 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
+### WIN-NAPI-RECONCILIATION-001 — OPEN, BUILD-TOOL BLOCKER
+
+The exact `v0.4.7` Windows Release run `35587260806` successfully compiled Rust's
+optimized target, then `@napi-rs/cli` 3.9.0 spent 120 seconds failing to acquire
+its filesystem-reconciliation lock and repeatedly preserved supposedly replaced
+candidate metadata. Source/tag CI and macOS/Linux prebuilds passed; Windows
+package assembly did not run. Upstream issues/changes 3512, 3521 and 3530 cover
+Windows identity-probe and metadata-only reconciliation failures. The replacement
+candidate pins CLI 3.10.4; exact Windows preflight is still required. **Repeat
+only when** the CLI/runner inputs change or a demonstrated transient external
+condition clears. Do not retry unchanged inputs, delete locks blindly, disable
+host protections, move `v0.4.7` or publish partial artifacts. See
+[the checkpoint](current-work.md#2026-09-21-release-048-build-tool-correction).
+
 ### WIN-COPY-COMPLETION-FOCUS-001 — OPEN
 
 A complete 38-record Windows 11 / RTX 3050 laptop / 60 Hz report records healthy

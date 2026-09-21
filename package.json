@@ -1,7 +1,7 @@
 {
   "name": "steam-bridge-monorepo",
   "private": true,
-  "version": "0.4.7",
+  "version": "0.4.8",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -58,7 +58,7 @@
     "@electron/asar": "4.3.0",
     "@electron/packager": "^20.3.0",
     "@emnapi/runtime": "1.11.3",
-    "@napi-rs/cli": "3.9.0",
+    "@napi-rs/cli": "3.10.4",
     "@sentry/cli": "3.7.0",
     "electron-builder": "26.15.3",
     "tar": "7.5.22",
