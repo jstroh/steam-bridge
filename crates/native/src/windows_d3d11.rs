@@ -472,6 +472,7 @@ enum PresentMode {
 impl PresentMode {
     fn from_qa_environment(enabled: bool, value: Option<&str>) -> Self {
         match (enabled, value) {
+            (false, _) | (true, None) => Self::NonblockingVsync,
             (true, Some("nonblocking-vsync")) => Self::NonblockingVsync,
             (true, Some("nonblocking-immediate")) => Self::NonblockingImmediate,
             _ => Self::Standard,
@@ -2592,14 +2593,22 @@ mod tests {
     };
 
     #[test]
-    fn nonblocking_present_modes_require_explicit_qa_opt_in() {
+    fn nonblocking_vsync_is_default_and_legacy_comparisons_require_qa() {
         assert_eq!(
-            PresentMode::from_qa_environment(false, Some("nonblocking-vsync")),
+            PresentMode::from_qa_environment(false, Some("standard")),
+            PresentMode::NonblockingVsync
+        );
+        assert_eq!(
+            PresentMode::from_qa_environment(true, Some("standard")),
             PresentMode::Standard
         );
         assert_eq!(
+            PresentMode::from_qa_environment(false, Some("nonblocking-vsync")),
+            PresentMode::NonblockingVsync
+        );
+        assert_eq!(
             PresentMode::from_qa_environment(true, None),
-            PresentMode::Standard
+            PresentMode::NonblockingVsync
         );
         assert_eq!(
             PresentMode::from_qa_environment(true, Some("typo")),

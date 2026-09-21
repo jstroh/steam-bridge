@@ -1,3 +1,4 @@
+import { LatestSharedTextureQueue } from "./shared-texture-queue";
 import {
   electronConfigureSteamOverlay as electronConfigureSteamOverlayImpl,
   electronEnableSteamOverlay as electronEnableSteamOverlayImpl,
@@ -1859,6 +1860,7 @@ export interface NativeOverlaySessionSnapshot {
   lastInputDispatchDelayMs?: number;
   maxInputDispatchDelayMs?: number;
   inputDispatchOverBudgetCount?: number;
+  sharedTextureQueue?: ReturnType<LatestSharedTextureQueue["snapshot"]>;
   /** Current target presentation rate. */
   frameRate: number;
   /** Display-rate target requested by the application. */
@@ -1958,7 +1960,8 @@ export interface NativeOverlaySession extends CallbackHandle {
    * thread. Native presentation is queued immediately after accepted D3D
    * submission. A resolved Promise always means callers may safely release
    * Electron's pooled producer texture. `false` means bounded backpressure
-   * rejected the frame before native submission. A rejected
+   * rejected or superseded the frame before native submission. Windows keeps
+   * one copy active and only the newest unsubmitted frame pending. A rejected
    * NativeOverlaySharedTextureCopyError explicitly reports whether release is
    * safe. When producerReleaseSafe is false, retain the exact producer without
    * releasing it for the remainder of the application process, then terminate
@@ -10269,6 +10272,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const windowsPresentDiagnosticMode: "standard" | "nonblocking-vsync" | "nonblocking-immediate" = requestedPresentDiagnosticMode === "nonblocking-vsync"
     || requestedPresentDiagnosticMode === "nonblocking-immediate"
     ? requestedPresentDiagnosticMode
+    : requestedPresentDiagnosticMode === undefined
+      && usesWindowsStandaloneHost && backend === "windows-d3d11"
+      && typeof native().pumpNativeOverlayHostInput === "function"
+      && typeof native().pumpNativeOverlayHostFrame === "function"
+      && typeof native().isNativeOverlayHostPresentBusy === "function"
+      ? "nonblocking-vsync"
     : "standard";
   const nonblockingPresentDiagnostic = windowsPresentDiagnosticMode !== "standard";
   if (nonblockingPresentDiagnostic && (
@@ -10369,6 +10378,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let nativeFrameWaitTimeoutCount = 0;
   let nativePresentRetryAt: number | undefined;
   let nativePresentRetryCount = 0;
+  const sharedTextureQueue = usesWindowsStandaloneHost && backend === "windows-d3d11"
+    ? new LatestSharedTextureQueue() : undefined;
   let inputDispatchCount = 0;
   let lastInputDispatchDelayMs: number | undefined;
   let maxInputDispatchDelayMs: number | undefined;
@@ -10622,6 +10633,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         lastInputDispatchDelayMs,
         maxInputDispatchDelayMs,
         inputDispatchOverBudgetCount,
+        sharedTextureQueue: sharedTextureQueue?.snapshot(),
       } : {}),
       lastError,
       nativeSurfaceLeaseGeneration: surfaceLease?.generation,
@@ -10663,6 +10675,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       fullScreenRequested = false;
     }
     closed = true;
+    sharedTextureQueue?.close();
     closeReason = reason;
     nativeFramePending = false;
     nativeFrameWaitEpoch += 1;
@@ -10886,65 +10899,68 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         return true;
       });
     }
-    const updateStartedAt = performance.now();
-    let completion: Promise<boolean>;
-    let acceptedSubmission = false;
-    try {
-      completion = new Promise<boolean>((resolve, reject) => {
-        const accepted = beginCopy.call(
-          binding,
-          texture.handle as Buffer,
-          width,
-          height,
-          contentRect.x,
-          contentRect.y,
-          contentRect.width,
-          contentRect.height,
-          presentationRect.x,
-          presentationRect.y,
-          presentationRect.width,
-          presentationRect.height,
-          (result) => {
-            try {
-              resolve(normalizeNativeSharedTextureCopyCompletion(result));
-            } catch (error) {
-              reject(error);
+    const handle = Buffer.from(texture.handle);
+    const submit = (fullCopy: boolean): Promise<boolean> => {
+      if (closed || !ownsNativeOverlaySurface(surfaceLease) || shouldHoldWindowsSharedTexture()) {
+        return Promise.resolve(false);
+      }
+      const damage = fullCopy ? presentationRect : contentRect;
+      const updateStartedAt = performance.now();
+      let completion: Promise<boolean>;
+      let acceptedSubmission = false;
+      try {
+        completion = new Promise<boolean>((resolve, reject) => {
+          const accepted = beginCopy.call(
+            binding,
+            handle,
+            width,
+            height,
+            damage.x,
+            damage.y,
+            damage.width,
+            damage.height,
+            presentationRect.x,
+            presentationRect.y,
+            presentationRect.width,
+            presentationRect.height,
+            (result) => {
+              try {
+                resolve(normalizeNativeSharedTextureCopyCompletion(result));
+              } catch (error) {
+                reject(error);
+              }
             }
+          );
+          if (!accepted) {
+            resolve(false);
+          } else {
+            acceptedSubmission = true;
           }
-        );
-        if (!accepted) {
-          resolve(false);
-        } else {
-          acceptedSubmission = true;
-        }
-      });
-      // This legacy diagnostic measures time spent synchronously inside the
-      // JavaScript/native submission boundary. Fence completion is deliberately
-      // asynchronous and is reported separately by nativeHostDiagnostics under
-      // sharedTextureCopy, so do not fold the Promise lifetime into this value.
-      recordSharedTextureUpdateDuration(updateStartedAt);
-    } catch (error) {
-      recordSharedTextureUpdateDuration(updateStartedAt);
-      throw error;
-    }
-    if (acceptedSubmission) {
-      // Copy and draw share the same immediate context, so the draw is ordered
-      // behind the submitted copy without waiting for a JavaScript fence
-      // callback. The returned Promise still retains the Electron producer
-      // until native completion is authoritative.
-      presentFrameDrivenUpload();
-    }
-    return Promise.resolve(completion)
-      .then((accepted) => {
-        if (accepted) {
-          return true;
-        }
-        sharedTextureDropCount += 1;
-        return false;
-      })
-      .catch((error) => {
+        });
+        // This legacy diagnostic measures time spent synchronously inside the
+        // JavaScript/native submission boundary. Fence completion is deliberately
+        // asynchronous and is reported separately by nativeHostDiagnostics under
+        // sharedTextureCopy, so do not fold the Promise lifetime into this value.
+        recordSharedTextureUpdateDuration(updateStartedAt);
+      } catch (error) {
+        recordSharedTextureUpdateDuration(updateStartedAt);
+        throw error;
+      }
+      if (acceptedSubmission) {
+        // Copy and draw share the same immediate context, so the draw is ordered
+        // behind the submitted copy without waiting for a JavaScript fence
+        // callback. The returned Promise still retains the Electron producer
+        // until native completion is authoritative.
+        presentFrameDrivenUpload();
+      }
+      return completion.catch((error) => {
         throw asNativeOverlaySharedTextureCopyError(error, false);
       });
+    };
+    return (sharedTextureQueue ? sharedTextureQueue.enqueue(submit) : submit(false)).then(accepted => {
+      if (!accepted) sharedTextureDropCount += 1;
+      return accepted;
+    });
   };
 
   const setCursorHidden = (hidden: boolean): void => {
@@ -11042,6 +11058,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         overlayActive = event.active;
         if (usesWindowsStandaloneHost) {
           if (event.active) {
+            sharedTextureQueue?.discardPending();
             windowsOverlayReturnBoundaryObserved = false;
             windowsOverlayHandoffPending = true;
             windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;

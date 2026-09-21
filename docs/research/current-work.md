@@ -2,6 +2,52 @@
 
 Last reviewed: 2026-09-21
 
+### 2026-09-21 Windows whole-frame latency repair follow-up
+
+The active user request is an implementation repair after re-reading the separate
+single-session high-refresh and four-session integrated-GPU reports. The cursor
+is only a visible indicator; neither cursor rendering nor world shaders change.
+The earlier diagnostic below is now the comparison baseline, not the new default.
+
+The working repair makes nonblocking VSync and pre-presentation input dispatch
+the matching Windows addon's default, keeping explicit QA standard/immediate
+comparisons and older-addon compatibility. Windows asynchronous textures now
+retain one submitted producer plus only the newest pending producer. Superseded
+pending calls resolve false without native submission. Active calls still wait
+for the authoritative fence; close/overlay/error paths discard only pending work.
+A skipped frame forces a complete viewport copy to avoid missing dirty regions.
+The native two-copy ceiling and maximum frame latency two remain unchanged;
+there is no adaptive refresh cap, background cap, new presentation thread or
+security-policy change. Queue telemetry measures receipt-to-submission delay,
+not physical input-to-photon latency.
+
+Two new integration tests failed on the prior source before integration. The
+current full local gate passes 456 JavaScript tests (two platform skips) and
+69 native tests (one hardware-only ignored), plus API and format checks. A
+deterministic four-100-Hz-producer contention model with a shared 5 ms service
+completes 199 frames under both policies; p95 completion age falls from 40 to
+30 ms with the newest-frame policy. This is a controlled model, not GPU proof.
+The optimized addon and matching protected consumer were exercised on Windows 11 /
+AMD RX 7700S / 60 Hz / 125% DPI without weakening Smart App Control. A no-QA-flag
+run proves the new default is active and passes three activity-selected settled
+samples at median 60 paint / 59.9 native FPS, eight dispatched inputs and zero new
+Present/input budget overruns. Fullscreen, maximize and minimize/restore recover;
+the latter activates the existing readiness fallback, and transient FPS/input
+delays remain in the full evidence. A separate same-byte QA run opens/closes the
+ordinary Friends overlay at 59.9 native FPS and recovers 60 paint / 59.9 native
+FPS afterward without device loss or copy timeout. Both exit cleanly, and all 92
+protected runtime files retain their manifest hashes. The protection audit passes,
+the temporary task/debugging port are removed, and the original Steam process is
+retained. All 68 built Bridge files and two consumer main files byte-match the
+tested ASAR. No edge-drag resize,
+affected-device or four-actual-client hardware proof is claimed.
+
+Consumer tests pass 627 cases with six existing platform skips, plus lint and
+typecheck. Bridge platform/API, native format/check and Windows package-cleanup
+self-test pass. Final review/commit/push and exact-commit cross-platform CI remain
+in progress; full package smoke uses Linux CI under the recorded Windows host
+restriction. No production release or perfect fix is claimed.
+
 ### 2026-09-21 opt-in Windows nonblocking presentation diagnostic
 
 Active work isolates successful-but-slow Present calls with a ready DXGI queue.

@@ -28,9 +28,10 @@ checking whether it applies. The [platform policy](../README.md#platform-targets
 and [window model](electron.md#choose-the-window-model) are deliberate.
 
 For Windows calls that remain inside `Present` despite a ready DXGI queue, the
-[opt-in presentation diagnostic](research/windows-present-diagnostic.md)
-compares explicit nonblocking policies without changing the production default.
-It requires the matching diagnostic addon and is not a hardware-qualified fix.
+[presentation repair runbook](research/windows-present-diagnostic.md) documents
+the unreleased matching addon's nonblocking-VSync default, newest-pending texture
+policy, and explicit QA comparisons. Older addons retain their compatibility
+path. This source is not a published package or an affected-hardware-qualified fix.
 
 ## Input problems
 

@@ -240,7 +240,7 @@ safety:
 | Result | What it means | What to do with that producer |
 | --- | --- | --- |
 | Resolves `true` | Accepted copy completed safely | Release it once |
-| Resolves `false` | Rejected before submission, such as bounded backpressure | Release it once; keep the previous displayed frame, do not retry this handle |
+| Resolves `false` | Rejected or superseded before submission, such as bounded backpressure | Release it once; do not retry this handle |
 | Typed rejection with `producerReleaseSafe: true` | Failure proven release-safe | Release it once; handle the error |
 | Typed rejection with `producerReleaseSafe: false` | Native use may still be in flight | Quarantine without release and terminate/relaunch |
 | Unknown/unclassified error | No proven release boundary | Fail closed; do not assume it is safe |

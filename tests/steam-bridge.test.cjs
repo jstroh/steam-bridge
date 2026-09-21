@@ -25707,7 +25707,7 @@ function createPresentDiagnosticTestNative(t, mode, overrides = {}) {
   return { fake, pumpedSources };
 }
 
-test("Windows present diagnostic rejects an older addon and remains opt-in", (t) => {
+test("older Windows addons retain standard presentation and reject explicit nonblocking opt-in", (t) => {
   const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync");
   delete fake.pumpNativeOverlayHostInput;
   const steam = loadSteamWithFakeNative(fake);
@@ -25716,6 +25716,17 @@ test("Windows present diagnostic rejects an older addon and remains opt-in", (t)
   const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
   t.after(() => session.close());
   assert.equal(session.snapshot().windowsPresentDiagnosticMode, "standard");
+});
+
+test("matching Windows addons default to nonblocking VSync without enabling QA", t => {
+  const { fake } = createPresentDiagnosticTestNative(t, "standard");
+  delete process.env.STEAM_BRIDGE_QA_OVERLAY;
+  delete process.env.STEAM_BRIDGE_QA_PRESENT_MODE;
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => session.close());
+  assert.equal(session.snapshot().windowsPresentDiagnosticMode, "nonblocking-vsync");
+  assert.equal(process.env.STEAM_BRIDGE_QA_OVERLAY, undefined);
 });
 
 test("Windows present diagnostic dispatches input before a still-blocking native frame and reports the stall", async (t) => {
@@ -26047,6 +26058,164 @@ test("Windows frame-driven pump coalesces to the newest retained source", async 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(session.snapshot().pumpCount, initialPumpCount + 1);
   assert.deepEqual(pumpedSources, [2]);
+});
+
+test("four-client copy contention keeps throughput while reducing completed-frame age", async t => {
+  const { LatestSharedTextureQueue } = require(distFile("shared-texture-queue.js"));
+  async function simulate(latest) {
+    let clock = 0;
+    const jobs = [];
+    const inFlight = [0, 0, 0, 0];
+    const queues = Array.from({ length: 4 }, () => new LatestSharedTextureQueue(() => clock));
+    const ages = [];
+    let due = 0;
+    const submit = (client, receivedAt) => new Promise(resolve => {
+      jobs.push({ client, receivedAt, resolve });
+      inFlight[client]++;
+      if (jobs.length === 1) due = clock + 5;
+    });
+    for (clock = 0; clock <= 1040; clock++) {
+      if (jobs.length && clock >= due) {
+        const job = jobs.shift();
+        inFlight[job.client]--;
+        if (clock < 1000) ages.push(clock - job.receivedAt);
+        due = clock + 5;
+        job.resolve(true);
+        await Promise.resolve();
+      }
+      if (clock < 1000 && clock % 10 === 0) {
+        for (let client = 0; client < 4; client++) {
+          const receivedAt = clock;
+          if (latest) void queues[client].enqueue(() => submit(client, receivedAt));
+          else if (inFlight[client] < 2) void submit(client, receivedAt);
+          assert.ok(inFlight[client] <= 2);
+          const snapshot = queues[client].snapshot();
+          assert.ok(snapshot.inFlight + snapshot.pending <= 2);
+        }
+      }
+    }
+    queues.forEach(queue => queue.close());
+    ages.sort((a, b) => a - b);
+    return { frames: ages.length, p95AgeMs: ages[Math.floor(ages.length * 0.95)] };
+  }
+  const fifo = await simulate(false);
+  const latest = await simulate(true);
+  t.diagnostic(JSON.stringify({ model: "four 100 Hz producers sharing a 5 ms serial GPU service", fifo, latest }));
+  assert.ok(latest.frames >= fifo.frames * 0.95, JSON.stringify({ fifo, latest }));
+  assert.ok(latest.p95AgeMs < fifo.p95AgeMs * 0.8, JSON.stringify({ fifo, latest }));
+});
+
+test("latest texture queue cancels pending work on failure without releasing its active producer early", async () => {
+  const { LatestSharedTextureQueue } = require(distFile("shared-texture-queue.js"));
+  const queue = new LatestSharedTextureQueue();
+  let rejectCopy;
+  const failure = new Error("GPU fence failed");
+  const first = queue.enqueue(() => new Promise((_resolve, reject) => { rejectCopy = reject; }));
+  const rejected = assert.rejects(first, error => error === failure);
+  let submitted = false;
+  const pending = queue.enqueue(() => { submitted = true; return Promise.resolve(true); });
+  rejectCopy(failure);
+  await rejected;
+  assert.equal(await pending, false);
+  assert.equal(submitted, false);
+  assert.equal(queue.snapshot().failed, true);
+  queue.close();
+  assert.equal(await queue.enqueue(() => { throw Error("closed queue submitted"); }), false);
+});
+
+test("latest texture queue preserves full damage after rejected or explicitly discarded frames", async () => {
+  const { LatestSharedTextureQueue } = require(distFile("shared-texture-queue.js"));
+  const queue = new LatestSharedTextureQueue();
+  const fullCopies = [];
+  assert.equal(await queue.enqueue(full => { fullCopies.push(full); return Promise.resolve(false); }), false);
+  assert.equal(await queue.enqueue(full => { fullCopies.push(full); return Promise.resolve(true); }), true);
+  queue.discardPending();
+  assert.equal(await queue.enqueue(full => { fullCopies.push(full); return Promise.resolve(true); }), true);
+  assert.deepEqual(fullCopies, [false, true, true]);
+  await assert.rejects(queue.enqueue(() => { throw Error("submission failed"); }), /submission failed/);
+  assert.equal(queue.snapshot().inFlight, 0);
+  queue.close();
+});
+
+test("Windows overlay activation discards queued source frames but leaves submitted copies fenced", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const callbacks = [];
+  fake.beginNativeOverlayHostSharedTextureCopy = (_handle, ...args) => { callbacks.push(args.pop()); return true; };
+  const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); steam.shutdown(); clearSteamBridgeCache(); });
+  const frame = { handle: Buffer.alloc(8, 1), width: 1, height: 1 };
+  const first = session.updateSharedTextureAsync(frame);
+  let settled = false;
+  first.then(() => { settled = true; });
+  const pending = session.updateSharedTextureAsync(frame);
+  fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
+  assert.equal(await pending, false);
+  assert.equal(settled, false);
+  callbacks[0]([{ accepted: true }]);
+  assert.equal(await first, true);
+  assert.equal(callbacks.length, 1);
+  assert.equal(session.snapshot().sharedTextureQueue.cancelled, 1);
+});
+
+test("Windows shared-texture pressure submits the newest retained frame instead of a stale FIFO", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const submissions = [];
+  fake.beginNativeOverlayHostSharedTextureCopy = (handle, ...args) => {
+    if (submissions.length >= 2) return false;
+    const complete = args.pop();
+    submissions.push({ id: handle[0], args, complete });
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = id => ({ handle: Buffer.alloc(8, id), width: 8, height: 8, contentRect: { x: id, y: 0, width: 1, height: 1 } });
+  const first = session.updateSharedTextureAsync(frame(1));
+  let firstSettled = false;
+  first.then(() => { firstSettled = true; });
+  const obsolete = session.updateSharedTextureAsync(frame(2));
+  const latestMetadata = frame(3);
+  const latest = session.updateSharedTextureAsync(latestMetadata);
+  latestMetadata.handle.fill(9);
+  latestMetadata.width = 99;
+  assert.deepEqual(submissions.map(value => value.id), [1]);
+  assert.equal(await obsolete, false);
+  assert.equal(firstSettled, false, "never release an in-flight producer to make room");
+  assert.equal(session.snapshot().sharedTextureQueue.pending, 1);
+  submissions[0].complete([{ accepted: true }]);
+  assert.equal(await first, true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(submissions.map(value => value.id), [1, 3]);
+  assert.deepEqual(submissions[1].args.slice(0, 6), [8, 8, 0, 0, 8, 8], "coalesced damage requires a full current viewport copy");
+  submissions[1].complete([{ accepted: true }]);
+  assert.equal(await latest, true);
+  assert.equal(session.snapshot().sharedTextureQueue.replaced, 1);
+});
+
+test("Windows shared-texture close releases only unsubmitted pending work", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const callbacks = [];
+  fake.beginNativeOverlayHostSharedTextureCopy = (_handle, ...args) => { callbacks.push(args.pop()); return true; };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = { handle: Buffer.alloc(8, 1), width: 1, height: 1 };
+  const first = session.updateSharedTextureAsync(frame);
+  let settled = false;
+  first.then(() => { settled = true; });
+  const pending = session.updateSharedTextureAsync(frame);
+  session.close();
+  assert.equal(callbacks.length, 1);
+  assert.equal(await pending, false);
+  assert.equal(settled, false);
+  assert.equal(callbacks.length, 1);
+  callbacks[0]([{ accepted: true }]);
+  assert.equal(await first, true);
 });
 
 test("Windows asynchronous shared-texture submission pumps at acceptance but retains the producer until completion", async (t) => {

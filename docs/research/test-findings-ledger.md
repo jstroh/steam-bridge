@@ -66,7 +66,7 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
-### WIN-PRESENT-READY-BLOCKING-001 — DIAGNOSTIC ONLY
+### WIN-PRESENT-READY-BLOCKING-001 — OPEN, UNRELEASED REPAIR
 
 A single-session production capture has a 100 Hz target and approximately 58
 native presents per second, with most sampled successful Present calls near
@@ -91,8 +91,42 @@ transitions remain reported; these paths are not nonblocking-input proof.
 Mouse-driven edge sizing was not established by the automation and remains
 unqualified. Immediate and final VSync graceful exits completed with code zero;
 all 92 protected runtime files retained their manifest hashes after cleanup.
-Security policy and display settings were unchanged. Affected-device causality
-is open. **Repeat only when** presenter policy,
+Security policy and display settings were unchanged.
+
+The follow-up repair defaults matching Windows addons to nonblocking VSync and
+pre-presentation input dispatch; explicit QA comparisons remain available. A
+separate four-session integrated-GPU report has copy-worker dispatch/completion
+spikes and full admission queues, not sustained shader work exceeding a frame
+budget. Its attachment is truncated: 26 complete native records, not all 54
+advertised records, are available. The complete client-performance attachment
+also contains slow intervals with short measured CPU work. These observations
+justify investigating shared presentation/copy scheduling, but do not identify
+one driver-level root cause or prove the shader innocent in every build.
+
+Windows now retains one submitted producer and only the newest unsubmitted
+producer. Supersession, close and overlay discard only pending work; active
+producer fences and unsafe-error quarantine remain authoritative. A deterministic
+four-100-Hz-producer/shared-5-ms-service model completes 199 frames under both
+policies and reduces p95 completion age from 40 to 30 ms. This is a freshness
+model, not physical GPU or four-game-client qualification.
+
+The rebuilt protected consumer on the same AMD/60-Hz host selects the new native
+and session mode without a QA flag. Three preselected settled gameplay samples
+measure median 60 paint / 59.9 native FPS, last-call Presents 0.21-0.47 ms, eight
+dispatched inputs and zero new Present/input budget overruns. Fullscreen,
+maximize and minimize/restore recover visibly. Minimize/restore triggers the
+existing readiness-timeout fallback; transition-window FPS and input delays
+remain in the unfiltered evidence, not counted as steady-state success.
+The first run exits cleanly with code zero. A separate same-byte QA-mode run
+visibly opens/closes the ordinary Friends overlay, sustains 59.9 native FPS
+during source suppression, and recovers 60 paint / 59.9 native FPS afterward
+with the handoff flag cleared and no copy timeout/device loss. Its first overlay
+request was correctly rejected while not foreground, then accepted after native
+activation. Post-overlay page-rAF measures 60.002 FPS, not native-frame proof.
+Both runs exit zero; all 92 runtime file hashes remain unchanged.
+Affected-device causality and
+single-active-copy high-refresh/integrated-GPU throughput remain open.
+**Repeat only when** presenter policy,
 input dispatch, retry scheduling, native addon bytes, runtime, driver or display
 changes, or an affected-device candidate becomes available. See
 [the diagnostic runbook](windows-present-diagnostic.md).
