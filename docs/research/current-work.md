@@ -2,6 +2,34 @@
 
 Last reviewed: 2026-09-21
 
+### 2026-09-21 release 0.4.7 preparation
+
+The maintainer requested new releases after the reviewed presentation repair.
+The diagnostic branch through `67e58a3` is fast-forwarded into local `main` and
+the root, package and lock versions advance together to `0.4.7`. Registry latest
+remains `0.4.6`; `v0.4.7` does not yet exist. No candidate is published.
+
+This release changes native bytes and needs fresh exact-tag prebuilds, matching
+symbols, package audit and protected standalone-consumer proof. Do not reuse the
+`0.4.6` binaries, runtime approval or prior live receipts. The established unsigned
+Windows/reputation-review route is authorized for the consuming release; no
+security policy or proof gate may be bypassed. Existing local symbol-upload
+credentials authenticate, but adding them to the required GitHub release secret
+awaits explicit approval. No credential values were read into agent output.
+
+Next: validate/version/commit the exact source, verify main CI, then create the
+immutable candidate tag after the symbol-upload configuration is ready. Retain
+the exact artifacts and complete live proof before publishing the audited npm
+tarball and advancing the consumer to the new public dependency.
+
+The versioned source passes 465 JavaScript tests (two platform skips), 70 native
+tests (one hardware-only ignored), platform/API/format/whitespace gates and a
+zero-finding dependency audit. One separate local `native:check` is environment-
+blocked: Application Control refused Cargo's development build-script executable
+with OS error 4551 before it ran. Keep security policy unchanged and require the
+normal Windows CI compilation gate. Full package smoke remains a Linux CI gate
+under the known native-Windows fixture restriction.
+
 ### 2026-09-21 Windows presentation review corrections
 
 The user requested deeper review and fixes. Review anchor `7e2eff6` includes the

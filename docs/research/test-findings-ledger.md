@@ -66,6 +66,18 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
+### WIN-DEV-BUILDSCRIPT-CONTROL-001 — ENVIRONMENT BLOCKER
+
+During versioned `0.4.7` source preparation, local `native:check` could not execute
+Cargo's development `build-script-build` helper: Windows Application Control
+returned OS error 4551 before execution. The full native test gate separately
+passed 70 tests with one interactive-hardware skip, and JavaScript/type checks
+passed. This is a host trust block, not a Rust compilation diagnostic. Do not
+rename, relocate or alter the blocked executable to evade the policy. Require
+the normal exact-source Windows CI compile gate and retain fresh release-byte
+qualification separately. **Repeat only when** the host trust decision or
+legitimate compiler/build inputs change; do not weaken security settings.
+
 ### WIN-PRESENT-READY-BLOCKING-001 — OPEN, UNRELEASED REPAIR
 
 A single-session production capture has a 100 Hz target and approximately 58
