@@ -496,6 +496,10 @@ impl PresentMode {
             (sync_interval, DXGI_PRESENT(0))
         }
     }
+
+    fn needs_frame_timer_resolution(self, bypassed: bool, busy: bool) -> bool {
+        bypassed || busy || self == Self::NonblockingImmediate
+    }
 }
 
 pub struct WindowsD3d11Renderer {
@@ -926,7 +930,7 @@ impl WindowsD3d11Renderer {
         if attach_swap_chain {
             renderer.attach_swap_chain(hwnd)?;
         }
-        if renderer.present_mode != PresentMode::Standard {
+        if renderer.present_mode == PresentMode::NonblockingImmediate {
             renderer.request_frame_timer_resolution();
         }
         Ok(renderer)
@@ -1748,6 +1752,10 @@ impl WindowsD3d11Renderer {
         }
         self.last_present = result.0;
         if result == DXGI_ERROR_WAS_STILL_DRAWING {
+            self.request_frame_timer_resolution();
+            if !self.frame_latency_wait_bypassed {
+                self.frame_latency_ready_permits = 1;
+            }
             self.present_busy_count = self.present_busy_count.saturating_add(1);
             self.frame_latency_not_ready_count =
                 self.frame_latency_not_ready_count.saturating_add(1);
@@ -1803,6 +1811,14 @@ impl WindowsD3d11Renderer {
                 self.last_frame_statistics_present_count = Some(statistics.PresentCount);
                 self.last_frame_statistics_refresh_count = Some(statistics.PresentRefreshCount);
             }
+        }
+        if self
+            .present_mode
+            .needs_frame_timer_resolution(self.frame_latency_wait_bypassed, false)
+        {
+            self.request_frame_timer_resolution();
+        } else {
+            self.release_frame_timer_resolution();
         }
         Ok(Some(result.0))
     }
@@ -1938,6 +1954,16 @@ impl WindowsD3d11Renderer {
             self.fallback_timer_resolution_requested = true;
             self.fallback_timer_resolution_active = unsafe { timeBeginPeriod(1) == TIMERR_NOERROR };
         }
+    }
+
+    fn release_frame_timer_resolution(&mut self) {
+        if self.fallback_timer_resolution_active {
+            unsafe {
+                let _ = timeEndPeriod(1);
+            }
+            self.fallback_timer_resolution_active = false;
+        }
+        self.fallback_timer_resolution_requested = false;
     }
 
     pub fn frame_latency_wait_bypassed(&self) -> bool {
@@ -2173,12 +2199,7 @@ impl WindowsD3d11Renderer {
 
 impl Drop for WindowsD3d11Renderer {
     fn drop(&mut self) {
-        if self.fallback_timer_resolution_active {
-            unsafe {
-                let _ = timeEndPeriod(1);
-            }
-            self.fallback_timer_resolution_active = false;
-        }
+        self.release_frame_timer_resolution();
         if !self.frame_latency_waitable_object.is_invalid() {
             unsafe {
                 let _ = CloseHandle(self.frame_latency_waitable_object);
@@ -2644,6 +2665,18 @@ mod tests {
         ] {
             assert_eq!(parameters(mode, 1, true), (0, 8));
         }
+    }
+
+    #[test]
+    fn high_resolution_timers_only_cover_timer_paced_presentation() {
+        for mode in [PresentMode::Standard, PresentMode::NonblockingVsync] {
+            assert!(!mode.needs_frame_timer_resolution(false, false));
+            assert!(mode.needs_frame_timer_resolution(false, true));
+            assert!(mode.needs_frame_timer_resolution(true, false));
+            assert!(mode.needs_frame_timer_resolution(true, true));
+            assert!(!mode.needs_frame_timer_resolution(false, false));
+        }
+        assert!(PresentMode::NonblockingImmediate.needs_frame_timer_resolution(false, false));
     }
 
     #[test]

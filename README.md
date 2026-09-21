@@ -122,7 +122,8 @@ renderer requests. Do not add a second polling loop.
 **Windows textures have an ownership contract.** Prefer
 `host.updateSharedTextureAsync(descriptor)`. A resolved promise permits
 release of that event's Electron producer; `false` means the frame was rejected
-or superseded before submission, not that it should be retried. If a
+before submission, not that it should be retried. Two asynchronous copies may
+remain in flight; rejected frames are never replayed later. If a
 `NativeOverlaySharedTextureCopyError` reports `producerReleaseSafe: false`,
 retain the exact producer without `texture.release()` for the
 remainder of the application process, then terminate and relaunch. Closing the

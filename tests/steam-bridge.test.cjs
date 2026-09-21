@@ -26060,13 +26060,86 @@ test("Windows frame-driven pump coalesces to the newest retained source", async 
   assert.deepEqual(pumpedSources, [2]);
 });
 
-test("four-client copy contention keeps throughput while reducing completed-frame age", async t => {
-  const { LatestSharedTextureQueue } = require(distFile("shared-texture-queue.js"));
+test("Windows copy admission preserves pipelined 100 Hz throughput with delayed completion", async () => {
+  const { SharedTextureCopyAdmission } = require(distFile("shared-texture-queue.js"));
+  async function simulate(latest, delay) {
+    let clock = 0;
+    let completed = 0;
+    const jobs = [];
+    const queue = new SharedTextureCopyAdmission();
+    const submit = () => new Promise(resolve => jobs.push({ due: clock + delay, resolve }));
+    for (clock = 0; clock < 1000; clock++) {
+      for (let index = jobs.length - 1; index >= 0; index--) {
+        if (jobs[index].due <= clock) {
+          const [job] = jobs.splice(index, 1);
+          completed++;
+          job.resolve(true);
+        }
+      }
+      await Promise.resolve();
+      if (clock % 10 === 0) {
+        if (latest) void queue.enqueue(submit);
+        else if (jobs.length < 2) void submit();
+      }
+      await Promise.resolve();
+      assert.ok(jobs.length <= 2);
+    }
+    queue.close();
+    for (const job of jobs) job.resolve(true);
+    await Promise.resolve();
+    return completed;
+  }
+  for (const delay of [1, 9, 12, 16]) {
+    assert.equal(await simulate(true, delay), await simulate(false, delay), `completion delay ${delay} ms`);
+  }
+});
+
+test("Windows copy admission preserves mixed synchronous and asynchronous update order", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const submissions = [];
+  const completions = [];
+  fake.beginNativeOverlayHostSharedTextureCopy = (handle, ...args) => {
+    submissions.push(handle[0]); completions.push(args.pop()); return true;
+  };
+  fake.updateNativeOverlayHostSharedTexture = handle => submissions.push(handle[0]);
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = id => ({ handle: Buffer.alloc(8, id), width: 1, height: 1 });
+  const first = session.updateSharedTextureAsync(frame(1));
+  const second = session.updateSharedTextureAsync(frame(2));
+  session.updateSharedTexture(frame(3));
+  assert.deepEqual(submissions, [1, 2, 3]);
+  completions[1]([{ accepted: true }]);
+  completions[0]([{ accepted: true }]);
+  assert.equal(await first, true);
+  assert.equal(await second, true);
+  assert.deepEqual(submissions, [1, 2, 3]);
+});
+
+test("Windows default presentation does not acquire lifetime high-resolution timers", () => {
+  const source = readSourceFile("crates", "native", "src", "windows_d3d11.rs");
+  assert.doesNotMatch(source, /if renderer\.present_mode != PresentMode::Standard \{\s*renderer\.request_frame_timer_resolution/u);
+  assert.match(source, /if renderer\.present_mode == PresentMode::NonblockingImmediate \{/u);
+  assert.match(source, /self\.release_frame_timer_resolution\(\)/u);
+});
+
+test("Windows busy Present preserves its consumed readiness permit for the bounded retry", () => {
+  const source = readSourceFile("crates", "native", "src", "windows_d3d11.rs");
+  const busyStart = source.indexOf("if result == DXGI_ERROR_WAS_STILL_DRAWING {");
+  const busyBranch = source.slice(busyStart, source.indexOf("return Ok(None);", busyStart));
+  assert.match(busyBranch, /if !self\.frame_latency_wait_bypassed \{\s*self\.frame_latency_ready_permits = 1;/u);
+  assert.match(busyBranch, /self\.request_frame_timer_resolution\(\)/u);
+});
+
+test("four-client copy admission preserves bounded native throughput and frame age", async t => {
+  const { SharedTextureCopyAdmission } = require(distFile("shared-texture-queue.js"));
   async function simulate(latest) {
     let clock = 0;
     const jobs = [];
     const inFlight = [0, 0, 0, 0];
-    const queues = Array.from({ length: 4 }, () => new LatestSharedTextureQueue(() => clock));
+    const queues = Array.from({ length: 4 }, () => new SharedTextureCopyAdmission());
     const ages = [];
     let due = 0;
     const submit = (client, receivedAt) => new Promise(resolve => {
@@ -26101,35 +26174,39 @@ test("four-client copy contention keeps throughput while reducing completed-fram
   const fifo = await simulate(false);
   const latest = await simulate(true);
   t.diagnostic(JSON.stringify({ model: "four 100 Hz producers sharing a 5 ms serial GPU service", fifo, latest }));
-  assert.ok(latest.frames >= fifo.frames * 0.95, JSON.stringify({ fifo, latest }));
-  assert.ok(latest.p95AgeMs < fifo.p95AgeMs * 0.8, JSON.stringify({ fifo, latest }));
+  assert.deepEqual(latest, fifo);
 });
 
-test("latest texture queue cancels pending work on failure without releasing its active producer early", async () => {
-  const { LatestSharedTextureQueue } = require(distFile("shared-texture-queue.js"));
-  const queue = new LatestSharedTextureQueue();
+test("copy admission failure does not release another active producer early", async () => {
+  const { SharedTextureCopyAdmission } = require(distFile("shared-texture-queue.js"));
+  const queue = new SharedTextureCopyAdmission();
   let rejectCopy;
   const failure = new Error("GPU fence failed");
   const first = queue.enqueue(() => new Promise((_resolve, reject) => { rejectCopy = reject; }));
   const rejected = assert.rejects(first, error => error === failure);
-  let submitted = false;
-  const pending = queue.enqueue(() => { submitted = true; return Promise.resolve(true); });
+  let completeSecond;
+  let secondSettled = false;
+  const second = queue.enqueue(() => new Promise(resolve => { completeSecond = resolve; }));
+  second.then(() => { secondSettled = true; });
   rejectCopy(failure);
   await rejected;
-  assert.equal(await pending, false);
-  assert.equal(submitted, false);
+  assert.equal(secondSettled, false);
+  assert.equal(queue.snapshot().inFlight, 1);
   assert.equal(queue.snapshot().failed, true);
   queue.close();
   assert.equal(await queue.enqueue(() => { throw Error("closed queue submitted"); }), false);
+  completeSecond(true);
+  assert.equal(await second, true);
+  assert.equal(queue.snapshot().inFlight, 0);
 });
 
-test("latest texture queue preserves full damage after rejected or explicitly discarded frames", async () => {
-  const { LatestSharedTextureQueue } = require(distFile("shared-texture-queue.js"));
-  const queue = new LatestSharedTextureQueue();
+test("copy admission preserves full damage after rejected or explicitly invalidated frames", async () => {
+  const { SharedTextureCopyAdmission } = require(distFile("shared-texture-queue.js"));
+  const queue = new SharedTextureCopyAdmission();
   const fullCopies = [];
   assert.equal(await queue.enqueue(full => { fullCopies.push(full); return Promise.resolve(false); }), false);
   assert.equal(await queue.enqueue(full => { fullCopies.push(full); return Promise.resolve(true); }), true);
-  queue.discardPending();
+  queue.invalidateDamage();
   assert.equal(await queue.enqueue(full => { fullCopies.push(full); return Promise.resolve(true); }), true);
   assert.deepEqual(fullCopies, [false, true, true]);
   await assert.rejects(queue.enqueue(() => { throw Error("submission failed"); }), /submission failed/);
@@ -26137,7 +26214,7 @@ test("latest texture queue preserves full damage after rejected or explicitly di
   queue.close();
 });
 
-test("Windows overlay activation discards queued source frames but leaves submitted copies fenced", async t => {
+test("Windows overlay activation rejects new frames but leaves both submitted copies fenced", async t => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   const callbacks = [];
@@ -26150,22 +26227,23 @@ test("Windows overlay activation discards queued source frames but leaves submit
   const first = session.updateSharedTextureAsync(frame);
   let settled = false;
   first.then(() => { settled = true; });
-  const pending = session.updateSharedTextureAsync(frame);
+  const second = session.updateSharedTextureAsync(frame);
   fake.callbacks.get(steam.SteamCallback.GameOverlayActivated)({ active: true });
-  assert.equal(await pending, false);
+  assert.equal(await session.updateSharedTextureAsync(frame), false);
   assert.equal(settled, false);
   callbacks[0]([{ accepted: true }]);
   assert.equal(await first, true);
-  assert.equal(callbacks.length, 1);
-  assert.equal(session.snapshot().sharedTextureQueue.cancelled, 1);
+  assert.equal(callbacks.length, 2);
+  assert.equal(session.snapshot().sharedTextureQueue.inFlight, 1);
+  callbacks[1]([{ accepted: true }]);
+  assert.equal(await second, true);
 });
 
-test("Windows shared-texture pressure submits the newest retained frame instead of a stale FIFO", async (t) => {
+test("Windows shared-texture pressure rejects overflow without replay and restores full damage", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   const submissions = [];
   fake.beginNativeOverlayHostSharedTextureCopy = (handle, ...args) => {
-    if (submissions.length >= 2) return false;
     const complete = args.pop();
     submissions.push({ id: handle[0], args, complete });
     return true;
@@ -26177,26 +26255,74 @@ test("Windows shared-texture pressure submits the newest retained frame instead 
   const first = session.updateSharedTextureAsync(frame(1));
   let firstSettled = false;
   first.then(() => { firstSettled = true; });
-  const obsolete = session.updateSharedTextureAsync(frame(2));
-  const latestMetadata = frame(3);
-  const latest = session.updateSharedTextureAsync(latestMetadata);
-  latestMetadata.handle.fill(9);
-  latestMetadata.width = 99;
-  assert.deepEqual(submissions.map(value => value.id), [1]);
-  assert.equal(await obsolete, false);
+  const second = session.updateSharedTextureAsync(frame(2));
+  assert.equal(await session.updateSharedTextureAsync(frame(3)), false);
+  assert.deepEqual(submissions.map(value => value.id), [1, 2]);
   assert.equal(firstSettled, false, "never release an in-flight producer to make room");
-  assert.equal(session.snapshot().sharedTextureQueue.pending, 1);
+  assert.equal(session.snapshot().sharedTextureQueue.pending, 0);
+  assert.equal(session.snapshot().sharedTextureQueue.inFlight, 2);
   submissions[0].complete([{ accepted: true }]);
   assert.equal(await first, true);
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(submissions.map(value => value.id), [1, 3]);
-  assert.deepEqual(submissions[1].args.slice(0, 6), [8, 8, 0, 0, 8, 8], "coalesced damage requires a full current viewport copy");
-  submissions[1].complete([{ accepted: true }]);
+  assert.deepEqual(submissions.map(value => value.id), [1, 2]);
+  const latest = session.updateSharedTextureAsync(frame(4));
+  assert.deepEqual(submissions.map(value => value.id), [1, 2, 4]);
+  assert.deepEqual(submissions[2].args.slice(0, 6), [8, 8, 0, 0, 8, 8], "dropped damage requires a full current viewport copy");
+  submissions[2].complete([{ accepted: true }]);
   assert.equal(await latest, true);
-  assert.equal(session.snapshot().sharedTextureQueue.replaced, 1);
+  submissions[1].complete([{ accepted: true }]);
+  assert.equal(await second, true);
+  assert.equal(session.snapshot().sharedTextureQueue.rejected, 1);
+  assert.equal(session.snapshot().sharedTextureQueue.policy, "bounded-two-copy-admission");
 });
 
-test("Windows shared-texture close releases only unsubmitted pending work", async (t) => {
+test("Windows native admission rejection restores damage before another same-turn submission", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const submissions = [];
+  let complete;
+  fake.beginNativeOverlayHostSharedTextureCopy = (_handle, ...args) => {
+    complete = args.pop();
+    submissions.push(args);
+    return submissions.length !== 1;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = id => ({ handle: Buffer.alloc(8, id), width: 8, height: 8,
+    contentRect: { x: id, y: 0, width: 1, height: 1 } });
+  const dropped = session.updateSharedTextureAsync(frame(1));
+  const accepted = session.updateSharedTextureAsync(frame(2));
+  complete([{ accepted: true }]);
+  assert.equal(await dropped, false);
+  assert.equal(await accepted, true);
+  assert.deepEqual(submissions[1].slice(0, 6), [8, 8, 0, 0, 8, 8]);
+});
+
+test("Windows synchronous compatibility restores damage after async admission drops", async t => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const completions = [];
+  const copies = [];
+  fake.beginNativeOverlayHostSharedTextureCopy = (_handle, ...args) => {
+    completions.push(args.pop()); return true;
+  };
+  fake.updateNativeOverlayHostSharedTexture = (_handle, ...args) => copies.push(args);
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => { session.close(); clearSteamBridgeCache(); });
+  const frame = id => ({ handle: Buffer.alloc(8, id), width: 8, height: 8,
+    contentRect: { x: id, y: 0, width: 1, height: 1 } });
+  const first = session.updateSharedTextureAsync(frame(1));
+  const second = session.updateSharedTextureAsync(frame(2));
+  assert.equal(await session.updateSharedTextureAsync(frame(3)), false);
+  session.updateSharedTexture(frame(4));
+  assert.deepEqual(copies[0].slice(0, 6), [8, 8, 0, 0, 8, 8]);
+  completions.forEach(complete => complete([{ accepted: true }]));
+  await Promise.all([first, second]);
+});
+
+test("Windows shared-texture close retains both submitted producers until completion", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   const callbacks = [];
@@ -26208,14 +26334,15 @@ test("Windows shared-texture close releases only unsubmitted pending work", asyn
   const first = session.updateSharedTextureAsync(frame);
   let settled = false;
   first.then(() => { settled = true; });
-  const pending = session.updateSharedTextureAsync(frame);
+  const second = session.updateSharedTextureAsync(frame);
   session.close();
-  assert.equal(callbacks.length, 1);
-  assert.equal(await pending, false);
+  assert.equal(callbacks.length, 2);
   assert.equal(settled, false);
-  assert.equal(callbacks.length, 1);
   callbacks[0]([{ accepted: true }]);
   assert.equal(await first, true);
+  callbacks[1]([{ accepted: true }]);
+  assert.equal(await second, true);
+  assert.equal(session.snapshot().sharedTextureQueue.inFlight, 0);
 });
 
 test("Windows asynchronous shared-texture submission pumps at acceptance but retains the producer until completion", async (t) => {

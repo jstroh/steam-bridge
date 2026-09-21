@@ -29,18 +29,24 @@ A busy return retains the dirty source and does not advance the presented-frame
 counter. The session schedules one retry deadline using the existing bounded
 Windows fallback cadence. New uploads may replace the retained source but cannot
 postpone this deadline or spin through an always-ready waitable object.
-Immediate-mode retained-frame/overlay work stays timer-paced. Nonblocking
-renderers request a one-millisecond timer period for their lifetime and release
-it on destruction. Native copy fences, two-copy admission, swap-chain buffers
-and maximum frame latency two are unchanged.
+Immediate-mode retained-frame/overlay work stays timer-paced. A busy Present
+preserves its consumed readiness permit for the retry: a rejected submission
+must not wait for a new flip-completion signal that might never arrive.
+The healthy standard/VSync path does not request high-resolution timers. Busy
+retries acquire a one-millisecond period and release it after presentation
+recovers. The existing readiness fallback and explicit immediate diagnostic
+retain it while timer-paced; destruction balances any remaining request.
+Native copy fences, the two-copy ceiling, swap-chain buffers and maximum frame
+latency two are unchanged.
 
-The Windows JavaScript boundary submits one producer at a time and retains only
-the newest unsubmitted producer. Replaced pending promises resolve false without
-native use, allowing prompt release back to Electron's finite texture pool.
-Active producers remain retained until authoritative native completion. Overlay,
-close and failure discard only unsubmitted work; unsafe submitted failures still
+The Windows JavaScript boundary permits two asynchronous copies in flight and
+rejects overflow immediately without retaining any unsubmitted frame. It never
+replays older work after a newer synchronous or bitmap update. Active producers
+remain retained until authoritative native completion, including across close,
+overlay activation and another copy's failure. Unsafe submitted failures still
 require process-lifetime quarantine. A skipped source forces the next accepted
-viewport copy to be complete so coalescing cannot lose intermediate dirty regions.
+viewport copy to be complete, including a synchronous compatibility update.
+Native rejection invalidates damage immediately, before another same-turn call.
 No background FPS cap, shader change or cursor-specific workaround is included.
 
 Win32 modal move/resize and window-message repaint paths remain intact. The
@@ -57,20 +63,24 @@ snapshots include mode, retry count, input-dispatch count, latest/maximum dispat
 delay and dispatches exceeding the target-frame budget. Input delay starts at
 native event collection, not physical device polling; it is not input-to-photon
 latency. Present duration snapshots are last-call samples, not full histograms.
-`sharedTextureQueue` reports the one-active/one-pending bounds, replacements,
-cancellations and receipt-to-submission delay, not GPU execution time.
+`sharedTextureQueue` keeps its diagnostic field name and reports policy
+`bounded-two-copy-admission`, in-flight count, submission attempts, pre-submission
+rejections and failure state. Compatibility fields for pending work, replacement,
+cancellation and queue delay remain zero; there is no deferred submission queue.
 
-The unit harness exercises an always-ready/busy producer, newest-frame
-coalescing, cancellation, older-addon rejection and close during pre-dispatch.
+The unit harness exercises an always-ready/busy producer, two-copy admission,
+overflow/damage recovery, mixed update ordering, out-of-order completions,
+older-addon rejection and close during pre-dispatch.
 It also deliberately sleeps inside the mocked native frame call despite the
 nonblocking policy. That test must report the residual stall and delayed
 mid-call input, rather than assume the flags fix a driver.
 
-A deterministic four-producer 100 Hz contention model with a shared 5 ms copy
-service completes 199 frames under both policies while p95 completion age drops
-from 40 to 30 ms. That model demonstrates freshness under controlled contention,
-not actual GPU throughput or a four-game-client hardware result. Single-active
-copy throughput still needs high-refresh and integrated-GPU qualification.
+The rejected single-active implementation improved frame age in a serial-service
+model but regressed pipelining: a 100 Hz producer with 16 ms asynchronous
+completion completed 62 frames versus the baseline's 99 in one second. Restored
+two-copy admission matches that baseline and the four-producer shared-5-ms-service
+model (199 frames, p95 age 40 ms). These models are regression coverage, not GPU
+measurements or affected-device qualification.
 
 Compare modes in separate runs on the same exact binary, client content,
 display, GPU and driver. Keep warm-up separate. Collect at least three settled

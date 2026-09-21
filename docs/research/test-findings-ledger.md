@@ -97,18 +97,23 @@ The follow-up repair defaults matching Windows addons to nonblocking VSync and
 pre-presentation input dispatch; explicit QA comparisons remain available. A
 separate four-session integrated-GPU report has copy-worker dispatch/completion
 spikes and full admission queues, not sustained shader work exceeding a frame
-budget. Its attachment is truncated: 26 complete native records, not all 54
-advertised records, are available. The complete client-performance attachment
+budget. The initial paste contained 26 complete native records; the review
+retrieved all 54 original records across four sessions, and all 30 records from
+the separate single-session report. The complete client-performance attachment
 also contains slow intervals with short measured CPU work. These observations
 justify investigating shared presentation/copy scheduling, but do not identify
 one driver-level root cause or prove the shader innocent in every build.
 
-Windows now retains one submitted producer and only the newest unsubmitted
-producer. Supersession, close and overlay discard only pending work; active
-producer fences and unsafe-error quarantine remain authoritative. A deterministic
-four-100-Hz-producer/shared-5-ms-service model completes 199 frames under both
-policies and reduces p95 completion age from 40 to 30 ms. This is a freshness
-model, not physical GPU or four-game-client qualification.
+The first repair retained one submitted and one pending producer. Its serial
+service model improved frame age, but the deeper review reproduced a pipelined
+throughput regression (62 versus 99 completions in one second at 100 Hz and
+16 ms completion latency), plus stale replay after a synchronous update. That
+policy is superseded by two in-flight copies with no deferred submissions.
+Overflow invalidates damage immediately; both submitted producers remain fenced
+through close, overlay and failure. Timer resolution is now scoped to busy,
+fallback and explicit immediate operation. A rejected busy Present retains its
+consumed readiness permit rather than waiting for an unpromised new signal.
+These deterministic/source checks do not constitute new physical GPU proof.
 
 The rebuilt protected consumer on the same AMD/60-Hz host selects the new native
 and session mode without a QA flag. Three preselected settled gameplay samples
@@ -124,8 +129,9 @@ with the handoff flag cleared and no copy timeout/device loss. Its first overlay
 request was correctly rejected while not foreground, then accepted after native
 activation. Post-overlay page-rAF measures 60.002 FPS, not native-frame proof.
 Both runs exit zero; all 92 runtime file hashes remain unchanged.
-Affected-device causality and
-single-active-copy high-refresh/integrated-GPU throughput remain open.
+The preceding live evidence belongs to the earlier single-active candidate,
+not the corrected source. Affected-device causality and corrected-candidate
+high-refresh/integrated-GPU throughput remain open.
 **Repeat only when** presenter policy,
 input dispatch, retry scheduling, native addon bytes, runtime, driver or display
 changes, or an affected-device candidate becomes available. See

@@ -2,57 +2,55 @@
 
 Last reviewed: 2026-09-21
 
-### 2026-09-21 Windows whole-frame latency repair follow-up
+### 2026-09-21 Windows presentation review corrections
 
-The active user request is an implementation repair after re-reading the separate
-single-session high-refresh and four-session integrated-GPU reports. The cursor
-is only a visible indicator; neither cursor rendering nor world shaders change.
-The earlier diagnostic below is now the comparison baseline, not the new default.
+The user requested deeper review and fixes. Review anchor `7e2eff6` includes the
+earlier `50a51c3` repair. Both original reports are now complete: 30 native records
+for one session and 54 for four sessions. They support investigating frame
+delivery, not a cursor-only patch or a shader rollback.
 
-The working repair makes nonblocking VSync and pre-presentation input dispatch
-the matching Windows addon's default, keeping explicit QA standard/immediate
-comparisons and older-addon compatibility. Windows asynchronous textures now
-retain one submitted producer plus only the newest pending producer. Superseded
-pending calls resolve false without native submission. Active calls still wait
-for the authoritative fence; close/overlay/error paths discard only pending work.
-A skipped frame forces a complete viewport copy to avoid missing dirty regions.
-The native two-copy ceiling and maximum frame latency two remain unchanged;
-there is no adaptive refresh cap, background cap, new presentation thread or
-security-policy change. Queue telemetry measures receipt-to-submission delay,
-not physical input-to-photon latency.
+Three new regression checks failed before the corrections: pipelined throughput,
+mixed sync/async update order and default lifetime timer resolution. The
+single-active/newest-pending policy is removed. Two asynchronous copies can now
+be submitted immediately; overflow resolves false without retention or replay.
+Both active producers remain fenced through close, overlay and another copy's
+failure. Skipped damage forces a full viewport copy, including synchronous
+compatibility updates. A same-turn native-rejection damage test also failed
+before its focused correction and now passes.
 
-Two new integration tests failed on the prior source before integration. The
-current full local gate passes 456 JavaScript tests (two platform skips) and
-69 native tests (one hardware-only ignored), plus API and format checks. A
-deterministic four-100-Hz-producer contention model with a shared 5 ms service
-completes 199 frames under both policies; p95 completion age falls from 40 to
-30 ms with the newest-frame policy. This is a controlled model, not GPU proof.
-The optimized addon and matching protected consumer were exercised on Windows 11 /
-AMD RX 7700S / 60 Hz / 125% DPI without weakening Smart App Control. A no-QA-flag
-run proves the new default is active and passes three activity-selected settled
-samples at median 60 paint / 59.9 native FPS, eight dispatched inputs and zero new
-Present/input budget overruns. Fullscreen, maximize and minimize/restore recover;
-the latter activates the existing readiness fallback, and transient FPS/input
-delays remain in the full evidence. A separate same-byte QA run opens/closes the
-ordinary Friends overlay at 59.9 native FPS and recovers 60 paint / 59.9 native
-FPS afterward without device loss or copy timeout. Both exit cleanly, and all 92
-protected runtime files retain their manifest hashes. The protection audit passes,
-the temporary task/debugging port are removed, and the original Steam process is
-retained. All 68 built Bridge files and two consumer main files byte-match the
-tested ASAR. No edge-drag resize,
-affected-device or four-actual-client hardware proof is claimed.
+Healthy VSync no longer acquires lifetime one-millisecond timers. Busy retries
+request the period and release it on recovery; fallback and explicit immediate
+diagnostics retain it while timer-paced. Busy Present restores its consumed
+readiness permit so bounded retries do not depend on an unpromised new signal.
+The nonblocking default, pre-frame input dispatch, old-addon compatibility,
+native two-copy ceiling and maximum frame latency two remain. No shader, cursor,
+adaptive cap, presentation thread or security policy changes are included.
 
-Consumer tests pass 627 cases with six existing platform skips, plus lint and
-typecheck. Bridge platform/API, native format/check and Windows package-cleanup
-self-test pass. Implementation commit
-`50a51c3e3284228ce82884fc1156653560ee16c8` is pushed and passed every job in
-[CI 35567419174](https://github.com/jstroh/steam-bridge/actions/runs/35567419174):
-Windows x64, macOS arm64, Linux x64, full package smoke, Node 18/20/22/24 and
-dependency security. The consumer telemetry commit is also pushed. The bounded
-source repair, protected candidate and local regression handoff are complete.
-Next is affected integrated-GPU/multi-client and high-refresh qualification of
-these exact runtime bytes, followed by the normal explicit release gates.
-Do not infer a production release, a perfect fix, or affected-device proof.
+The 100 Hz/16 ms pipelined model now matches the baseline's 99 completions rather
+than 62. The shared-5-ms-service/four-producer model matches the baseline's 199
+completions and 40 ms p95 age; the former 30 ms freshness claim is superseded.
+These are deterministic regression models, not affected-GPU measurements.
+
+The full local suite passes 462 JavaScript tests (two platform skips) and 70
+native tests (one hardware-only ignored), with platform/API audits, native
+formatting/compilation and whitespace checks. The optimized Windows addon builds;
+its SHA-256 is `1BE056378BFB92B190C84AFB4286809E4562B04754C42931A325410DCE4DE916`.
+The consumer passes 643 tests (six skips), lint and typecheck. Its repeated
+diagnostics microbenchmark measures 0.1574 ms cold observation, 0.00077 ms warmed
+p95, and 0.66-2.06 ms worker dispatch; this is not gameplay or zero-overhead proof.
+Exact-commit CI and the full Linux package smoke are pending under the existing
+native-Windows package-smoke restriction. The
+consumer formatter identifies the corrected admission policy and its offline
+summarizer now rejects failed/out-of-bounds source health and duplicate/unordered
+samples, while disclosing actual sync intervals and readiness fallback.
+
+Earlier protected AMD/60-Hz overlay/window-transition passes and the later
+telemetry capture's input-dispatch overrun remain recorded in the ledger and
+consumer runbook. Their exact bytes differ from this correction; they are not
+new-candidate proof. Next: commit/push the reviewed source slice and verify CI.
+A matching protected-candidate live run and affected high-refresh/
+multi-client qualification remain explicit release gates. No publication or
+installed-game mutation is authorized by this source repair.
 
 ### 2026-09-21 opt-in Windows nonblocking presentation diagnostic
 

@@ -1,4 +1,4 @@
-import { LatestSharedTextureQueue } from "./shared-texture-queue";
+import { SharedTextureCopyAdmission } from "./shared-texture-queue";
 import {
   electronConfigureSteamOverlay as electronConfigureSteamOverlayImpl,
   electronEnableSteamOverlay as electronEnableSteamOverlayImpl,
@@ -1860,7 +1860,7 @@ export interface NativeOverlaySessionSnapshot {
   lastInputDispatchDelayMs?: number;
   maxInputDispatchDelayMs?: number;
   inputDispatchOverBudgetCount?: number;
-  sharedTextureQueue?: ReturnType<LatestSharedTextureQueue["snapshot"]>;
+  sharedTextureQueue?: ReturnType<SharedTextureCopyAdmission["snapshot"]>;
   /** Current target presentation rate. */
   frameRate: number;
   /** Display-rate target requested by the application. */
@@ -1960,8 +1960,8 @@ export interface NativeOverlaySession extends CallbackHandle {
    * thread. Native presentation is queued immediately after accepted D3D
    * submission. A resolved Promise always means callers may safely release
    * Electron's pooled producer texture. `false` means bounded backpressure
-   * rejected or superseded the frame before native submission. Windows keeps
-   * one copy active and only the newest unsubmitted frame pending. A rejected
+   * rejected the frame before native submission. Windows permits two copies
+   * in flight and never queues unsubmitted frames for later replay. A rejected
    * NativeOverlaySharedTextureCopyError explicitly reports whether release is
    * safe. When producerReleaseSafe is false, retain the exact producer without
    * releasing it for the remainder of the application process, then terminate
@@ -10379,7 +10379,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let nativePresentRetryAt: number | undefined;
   let nativePresentRetryCount = 0;
   const sharedTextureQueue = usesWindowsStandaloneHost && backend === "windows-d3d11"
-    ? new LatestSharedTextureQueue() : undefined;
+    ? new SharedTextureCopyAdmission() : undefined;
   let inputDispatchCount = 0;
   let lastInputDispatchDelayMs: number | undefined;
   let maxInputDispatchDelayMs: number | undefined;
@@ -10787,6 +10787,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       if (typeof update !== "function") {
         throw new Error("The loaded Steam Bridge native payload does not support Electron shared textures.");
       }
+      const damage = sharedTextureQueue?.takeFullCopyRequired() ? presentationRect : contentRect;
       const updateStartedAt = performance.now();
       try {
         update.call(
@@ -10794,16 +10795,17 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
           texture.handle,
           width,
           height,
-          contentRect.x,
-          contentRect.y,
-          contentRect.width,
-          contentRect.height,
+          damage.x,
+          damage.y,
+          damage.width,
+          damage.height,
           presentationRect.x,
           presentationRect.y,
           presentationRect.width,
           presentationRect.height
         );
       } catch (error) {
+        sharedTextureQueue?.invalidateDamage();
         throw asNativeOverlaySharedTextureCopyError(error, false);
       } finally {
         recordSharedTextureUpdateDuration(updateStartedAt);
@@ -10899,7 +10901,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         return true;
       });
     }
-    const handle = Buffer.from(texture.handle);
+    const handle = texture.handle;
     const submit = (fullCopy: boolean): Promise<boolean> => {
       if (closed || !ownsNativeOverlaySurface(surfaceLease) || shouldHoldWindowsSharedTexture()) {
         return Promise.resolve(false);
@@ -10945,6 +10947,9 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       } catch (error) {
         recordSharedTextureUpdateDuration(updateStartedAt);
         throw error;
+      }
+      if (!acceptedSubmission) {
+        sharedTextureQueue?.invalidateDamage();
       }
       if (acceptedSubmission) {
         // Copy and draw share the same immediate context, so the draw is ordered
@@ -11058,7 +11063,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         overlayActive = event.active;
         if (usesWindowsStandaloneHost) {
           if (event.active) {
-            sharedTextureQueue?.discardPending();
+            sharedTextureQueue?.invalidateDamage();
             windowsOverlayReturnBoundaryObserved = false;
             windowsOverlayHandoffPending = true;
             windowsOverlayHandoffFallbackAt = Number.POSITIVE_INFINITY;
