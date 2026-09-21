@@ -84,6 +84,13 @@ an improvement claim. The new cumulative metric catches stalls that last-call
 snapshots miss. VSync ordinary-overlay open/close and fullscreen/restore were
 visible; later minimize/restore and clean shutdown were interrupted by the
 Limited task's ten-minute limit, not accepted as a complete live matrix.
+The same-byte focused retest completed native maximize/restore and minimize/
+restore, recovering the 1280x720 viewport, 60 Hz target, 60 paint / 57 native FPS
+and zero device losses. Seven collected-input overruns around window/menu
+transitions remain reported; these paths are not nonblocking-input proof.
+Mouse-driven edge sizing was not established by the automation and remains
+unqualified. Immediate and final VSync graceful exits completed with code zero;
+all 92 protected runtime files retained their manifest hashes after cleanup.
 Security policy and display settings were unchanged. Affected-device causality
 is open. **Repeat only when** presenter policy,
 input dispatch, retry scheduling, native addon bytes, runtime, driver or display

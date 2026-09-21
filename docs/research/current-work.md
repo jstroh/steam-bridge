@@ -27,10 +27,23 @@ five new over-budget Presents: it remains a negative diagnostic comparison.
 The same VSync run visibly opened/closed the ordinary Steam overlay and entered/
 left fullscreen. Its later minimize/restore check was interrupted by the test
 task's ten-minute deadline; do not count it as complete transition/shutdown proof.
+A separate same-byte VSync run completed native maximize/restore and minimize/
+restore. After restore it retained the 1280x720 logical viewport, 60 Hz target,
+60 paint / 57 native FPS and zero device losses; the page-rAF probe measured
+60.002 FPS. Seven input-dispatch budget overruns accumulated around native
+window/menu transitions and remain visible, not relabeled as a steady-input pass.
+Mouse-driven edge sizing did not establish a changed size through the automation
+surface and is unqualified. Immediate and final VSync graceful exits returned
+code zero. Cleanup removed the temporary task, closed the debugging port,
+retained the original Steam process and verified all 92 protected files unchanged.
 Full logs remain private. No settings, security policy, shaders, installed game,
 npm package or Steam release changed. Exact NVIDIA 100 Hz causality and the full
-release matrix remain unqualified. Final cleanup, source commit/push and exact
-CI verification are the remaining local handoff steps.
+release matrix remain unqualified. Both source branches are committed and pushed.
+Initial CI passed all three platform jobs, package smoke and all four supported
+Node runtimes; its dependency gate exposed pre-existing js-yaml 4.3.1 advisory
+GHSA-2883-xcg3-v3hh. The compatible development-only lock update to 4.3.2 passes
+the full local suite and a zero-finding audit, without rebuilding the candidate.
+Exact follow-up CI verification remains the handoff step.
 
 
 ### 2026-09-03 developer documentation rewrite
