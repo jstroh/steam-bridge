@@ -37,7 +37,8 @@ Native compile, format, API/platform checks, release-verifier self-tests,
 zero-finding dependency audit and whitespace checks pass. A stale source-shape
 assertion was updated to require suspension before the existing minimized early
 return. Public troubleshooting no longer describes the rejected pending queue.
-Root/package/lock versions prepare 0.4.9; no tag or publication is claimed.
+Root/package/lock versions agree on 0.4.9. Immutable tag `v0.4.9` is bound to
+`3617f9c2b44f23e3bb724dd2d4db91affd220b5f`; it must never move.
 
 Review commit `7fe0956f8dfec6628c75117ef99a0fc551f8db71` is pushed and passes
 [CI 35809427411](https://github.com/jstroh/steam-bridge/actions/runs/35809427411)
@@ -52,12 +53,62 @@ other API-loaded markers fail. The receipt retains the original raw log hash,
 size and a closed classification/count, never the IDs; logs are not filtered.
 The positive test fails before this change and passes after it, and malformed
 raw logs plus rehashed invalid receipt metadata are rejected. Runtime logging
-and the already-reviewed native code are unchanged. Complete exact-source CI,
-then create the new immutable tag and build its three-platform artifacts,
-qualify the fresh protected actual-game candidate (including resize/minimum),
-publish via the gated workflow, and submit exact project-owned Windows bytes
-to Microsoft. Do not substitute the older cleared executable's reputation for
-new-addon clearance, or publish using the diagnostic/older candidate receipts.
+and the already-reviewed native code are unchanged.
+
+Exact-source [CI 35811077112](https://github.com/jstroh/steam-bridge/actions/runs/35811077112),
+[tag CI 35811140546](https://github.com/jstroh/steam-bridge/actions/runs/35811140546)
+and [tag Release 35811140547](https://github.com/jstroh/steam-bridge/actions/runs/35811140547)
+pass every applicable gate. The exact Windows addon loads 1,155 exports and
+matches PDB debug ID `e595e9f2-62b6-4d8d-98a6-06abb5825944-1`.
+Addon SHA-256 is `274736865b3b1814c5d5694cdcda9f4029c217601cf23fdd61b5712e4ad35139`.
+The canonical tarball is 10,794,421 bytes with SHA-256
+`da7dcf71b75303116472555ddb5d2bb2a81dcd92a01ff5a464d466bf1d3e8d58`.
+The retained Windows example archive hash is
+`e8947b35054c0668d1cacbd9f2f24ee12bb5f02909227971c626d9617247c567`;
+its 160-file content fingerprint is
+`5b5c1290e89aa63f79f634e16fc9833b078c59c98fbf99c5df8a0c2dfc633214`.
+
+The normal tarball install is packaged into a fresh isolated actual-game QA
+consumer. All 92 files are protected and unchanged before/after its Limited run
+under Smart App Control state 1. Startup/authentication, actual gameplay,
+File/Edit/View menus, pointer movement, title drag, real edge resizing and exact
+640x480 minimum, 1280x720 logical restoration, maximize/minimize/fullscreen,
+focus return, ordinary Friends overlay and clean exit pass. Native keyboard
+sizing supplies expansion because the UI tool forbids drag endpoints outside
+the current screenshot bounds. Final outer dimensions differ from the starting
+dimensions by minus/plus one physical pixel at 250% DPI; logical size and position
+are restored. This is not an exact physical-size restoration claim.
+
+Schema-7 receipt semantic SHA-256 is
+`81130a1fe797da1c7ca55ac99e2e2d0a255ba0417066af2b96bba972296cbbb5`;
+file SHA-256 is `59d0a8caf92bb3d8a60ded62d6beb4d316c5c807e427712c49bc2cb091d47843`.
+Its 504 game samples have median paint/fresh/native cadence 60/59.9/59.9 FPS;
+81 overlay samples have 59.9-FPS native median. There are 29,498 completed copies,
+maximum depth two, 14 slow copies within the unchanged bounded transition
+allowance, and zero copy timeouts, failures, saturation drops, early signals or
+device losses. One JavaScript readiness timeout selects the existing fallback;
+native readiness-timeout count is zero. Modal/transition delays remain in the
+raw evidence. The complete stderr is classified as exactly the approved two
+startup banners, not filtered. Exit is zero; no candidate process, debug listener
+or temporary task remains, the original Windows Steam process survives and the
+non-target Mac helper is restored. No display/security setting was changed.
+
+The operator completed Microsoft's CAPTCHA and submitted only the exact
+project-owned Windows addon. Status at submission is Submitted/Pending; no
+malware detection or clearance is claimed for these bytes. Identifiers and raw
+logs remain private. The prior consumer executable's clearance is not reused.
+
+The candidate/live receipt reverify together. The sanitized compressed proof is
+configured in `npm-production`. [Publish 35813312140](https://github.com/jstroh/steam-bridge/actions/runs/35813312140)
+is dispatched from the exact tag and waiting for the configured human deployment
+approval, which the maintainer has been asked to perform. GitHub draft release
+`394272328` retains all six exact assets, including the matching PDB outside npm.
+Every GitHub asset size and SHA-256 digest matches its retained local file; the
+addon/PDB pairing re-verifies. Publication is not yet claimed. After approval,
+verify npm provenance/integrity and the registry's
+exact tarball, make the GitHub release stable, verify all asset digests, and
+delete only the release-scoped proof secret. Original affected hardware remains
+unqualified; no Steam depot or normal game install was modified.
 
 ### 2026-09-22 cleared candidate live check and event reuse correction
 

@@ -66,7 +66,7 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
-### WIN-RELEASE-REVIEW-049-001 — SOURCE FIXED, LIVE QUALIFICATION OPEN
+### WIN-RELEASE-REVIEW-049-001 — EXACT CANDIDATE QUALIFIED LOCALLY
 
 Release review exposes a stale busy-Present result being used as current retry
 state across paused native presentation. A separate retry flag and suspension
@@ -77,10 +77,21 @@ slow or unavailable fresh textures, and enforces the actual two-copy ceiling in
 both raw logs and sanitized receipts; failing-before fixtures prove both gaps.
 **Repeat only when** these paths change or the new exact candidate is available
 for focus/minimize/restore, resizing/minimum, overlay and pacing qualification.
-The stricter receipt is not a gameplay pass. The maintainer approved the exact
+The maintainer approved the exact
 ordered pair of informational SDK startup banners after reviewing their text.
 The receipt retains raw-byte hashes and closed classification without IDs;
 duplicates and every unexpected line still fail. Never filter the original logs.
+Exact immutable `v0.4.9` now passes tag CI, all prebuilds, package/native-load
+audits and protected actual-game qualification under enabled Smart App Control.
+The four-case receipt proves startup/gameplay, native menus/title/edge resizing,
+exact 640x480 minimum and 1280x720 logical restoration, maximize/minimize,
+fullscreen/focus, ordinary Friends overlay and exit zero. There are 504 game
+and 81 overlay samples with 60/59.9/59.9 game paint/fresh/native medians and
+59.9 overlay present median. Copy depth stays two; 29,498 copies have zero
+timeouts, failures, admission drops, early signals or device losses. Fourteen
+slow copies and one JavaScript readiness fallback remain reported. All candidate
+files/ACLs are unchanged; temporary tasks/processes are gone and Steam isolation
+is restored. This is local AMD/60-Hz proof, not affected-NVIDIA closure.
 See [the review checkpoint](current-work.md#2026-09-22-full-release-diff-review-and-049-preparation).
 
 ### WIN-FENCE-EVENT-REUSE-001 — SETTLED LOCALLY, RELEASE QUALIFICATION OPEN
