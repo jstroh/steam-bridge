@@ -94,9 +94,12 @@ or temporary task remains, the original Windows Steam process survives and the
 non-target Mac helper is restored. No display/security setting was changed.
 
 The operator completed Microsoft's CAPTCHA and submitted only the exact
-project-owned Windows addon. Status at submission is Submitted/Pending; no
-malware detection or clearance is claimed for these bytes. Identifiers and raw
-logs remain private. The prior consumer executable's clearance is not reused.
+project-owned Windows addon. Microsoft subsequently determined Not malware and
+its analyst confirmed that the incorrect Smart App Control block was remediated.
+This clears the exact addon SHA-256 above despite the stale In-progress header;
+no further header change is required. This is not Authenticode signing or approval
+of a different build or consuming executable. Identifiers and raw logs remain
+private. The prior consumer executable's clearance is not reused.
 
 After the maintainer's deployment approval,
 [Publish 35813312140](https://github.com/jstroh/steam-bridge/actions/runs/35813312140)
@@ -116,8 +119,12 @@ outside npm. Every public asset size and SHA-256 digest matches its retained
 local file. GitHub latest and npm latest both resolve to 0.4.9. Only the temporary
 `STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` environment secret was deleted,
 and its absence was verified; the retained receipt remains available with the
-release. Microsoft review is still pending at the last check. Original affected
-hardware remains unqualified; no Steam depot or normal game install was modified.
+release. The GitHub release notes now reflect Microsoft's completed clearance;
+no tag, npm package or release asset bytes changed. Publication-record commit
+`2c028c103bbe6fce2349d234b5f4181a58dbc4f2` passes all jobs in
+[CI 35818563051](https://github.com/jstroh/steam-bridge/actions/runs/35818563051).
+Original affected hardware remains unqualified; no Steam depot or normal game
+install was modified.
 
 ### 2026-09-22 cleared candidate live check and event reuse correction
 

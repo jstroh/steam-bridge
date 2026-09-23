@@ -96,8 +96,12 @@ The approved trusted-publisher run `35813312140` succeeds. Registry tarball,
 all 89 installed files, signature and tag/commit-bound provenance verify; the
 stable GitHub release retains all six exact assets and both latest pointers
 resolve to 0.4.9. The temporary environment proof secret is removed and verified
-absent. Microsoft received the exact owned Windows addon; clearance remains
-unclaimed. No consumer deployment or Steam depot promotion is part of this release.
+absent. Microsoft determined the exact owned Windows addon is Not malware and
+its analyst confirmed remediation of the incorrect Smart App Control block.
+That clearance is complete despite the stale In-progress header and is limited
+to the submitted addon hash; it is not signing or a consuming-executable review.
+Release notes reflect this result without changing the tag, package or asset
+bytes. No consumer deployment or Steam depot promotion is part of this release.
 See [the review checkpoint](current-work.md#2026-09-22-full-release-diff-review-and-049-preparation).
 
 ### WIN-FENCE-EVENT-REUSE-001 — SETTLED LOCALLY, RELEASE QUALIFICATION OPEN
