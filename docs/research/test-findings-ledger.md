@@ -66,7 +66,7 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
-### WIN-RELEASE-REVIEW-049-001 — EXACT CANDIDATE QUALIFIED LOCALLY
+### WIN-RELEASE-REVIEW-049-001 — QUALIFIED LOCALLY AND PUBLISHED
 
 Release review exposes a stale busy-Present result being used as current retry
 state across paused native presentation. A separate retry flag and suspension
@@ -75,8 +75,8 @@ A real headless D3D11 regression fails before the repair and passes after it.
 Release receipt schema 7 additionally rejects a healthy paint/Present trace with
 slow or unavailable fresh textures, and enforces the actual two-copy ceiling in
 both raw logs and sanitized receipts; failing-before fixtures prove both gaps.
-**Repeat only when** these paths change or the new exact candidate is available
-for focus/minimize/restore, resizing/minimum, overlay and pacing qualification.
+**Repeat only when** these paths or candidate bytes change, or affected hardware
+becomes available for its distinct focus, fresh-frame and high-refresh retest.
 The maintainer approved the exact
 ordered pair of informational SDK startup banners after reviewing their text.
 The receipt retains raw-byte hashes and closed classification without IDs;
@@ -92,6 +92,12 @@ timeouts, failures, admission drops, early signals or device losses. Fourteen
 slow copies and one JavaScript readiness fallback remain reported. All candidate
 files/ACLs are unchanged; temporary tasks/processes are gone and Steam isolation
 is restored. This is local AMD/60-Hz proof, not affected-NVIDIA closure.
+The approved trusted-publisher run `35813312140` succeeds. Registry tarball,
+all 89 installed files, signature and tag/commit-bound provenance verify; the
+stable GitHub release retains all six exact assets and both latest pointers
+resolve to 0.4.9. The temporary environment proof secret is removed and verified
+absent. Microsoft received the exact owned Windows addon; clearance remains
+unclaimed. No consumer deployment or Steam depot promotion is part of this release.
 See [the review checkpoint](current-work.md#2026-09-22-full-release-diff-review-and-049-preparation).
 
 ### WIN-FENCE-EVENT-REUSE-001 — SETTLED LOCALLY, RELEASE QUALIFICATION OPEN

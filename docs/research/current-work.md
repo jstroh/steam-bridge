@@ -8,8 +8,8 @@ The maintainer requests review, commit/push, GitHub/npm publication and Microsof
 submission. The review covers the complete `v0.4.6..6fdfea9` delta: presentation,
 copy admission/completion and ownership, input dispatch, diagnostics, public
 documentation, dependency/toolchain changes and release boundaries. Exact-head
-CI `35808005563` is green. Registry/GitHub stable remain 0.4.6; neither 0.4.7 nor
-0.4.8 is published, and neither immutable tag may move.
+CI `35808005563` is green. Registry/GitHub stable are now 0.4.9, as verified
+below. Neither 0.4.7 nor 0.4.8 is published, and neither immutable tag may move.
 
 Review found two independent qualification gaps: the receipt accepted paint and
 repeated Present cadence without checking fresh texture delivery, and retained
@@ -26,7 +26,7 @@ a new attempt or suspension; idle/hidden/minimized/device-lost paths balance the
 timer request while preserving diagnostic history and a retained readiness
 permit. A focused hardware-backed regression fails before the repair and passes
 afterward, covering repeated suspension and reacquisition. Actual-game transitions
-on the next immutable bytes are still required; this is not affected-device proof.
+on the immutable 0.4.9 bytes subsequently pass below; this is not affected-device proof.
 
 Full tests pass 468 JavaScript tests (two platform skips) and 79 native tests
 (three hardware-only cases ignored by default; all three also pass explicitly
@@ -98,17 +98,26 @@ project-owned Windows addon. Status at submission is Submitted/Pending; no
 malware detection or clearance is claimed for these bytes. Identifiers and raw
 logs remain private. The prior consumer executable's clearance is not reused.
 
-The candidate/live receipt reverify together. The sanitized compressed proof is
-configured in `npm-production`. [Publish 35813312140](https://github.com/jstroh/steam-bridge/actions/runs/35813312140)
-is dispatched from the exact tag and waiting for the configured human deployment
-approval, which the maintainer has been asked to perform. GitHub draft release
-`394272328` retains all six exact assets, including the matching PDB outside npm.
-Every GitHub asset size and SHA-256 digest matches its retained local file; the
-addon/PDB pairing re-verifies. Publication is not yet claimed. After approval,
-verify npm provenance/integrity and the registry's
-exact tarball, make the GitHub release stable, verify all asset digests, and
-delete only the release-scoped proof secret. Original affected hardware remains
-unqualified; no Steam depot or normal game install was modified.
+After the maintainer's deployment approval,
+[Publish 35813312140](https://github.com/jstroh/steam-bridge/actions/runs/35813312140)
+successfully publishes the exact tag's canonical bytes through `npm-production`.
+An independent registry download matches the 10,794,421-byte tarball and SHA-256
+above; the publishable-candidate verifier accepts it with the unchanged retained
+bundle, audit and live receipt. All 89 files from a normal registry install match
+the canonical package byte-for-byte, including all three addons and six Valve
+runtime libraries. CommonJS and ESM root imports/version checks pass.
+`npm audit signatures` verifies its registry signature and provenance attestation;
+the decoded SLSA statement binds `refs/tags/v0.4.9`, commit
+`3617f9c2b44f23e3bb724dd2d4db91affd220b5f`, and this exact publisher run.
+
+The stable [GitHub release](https://github.com/jstroh/steam-bridge/releases/tag/v0.4.9)
+(`394272328`) is public with all six original assets, including the matching PDB
+outside npm. Every public asset size and SHA-256 digest matches its retained
+local file. GitHub latest and npm latest both resolve to 0.4.9. Only the temporary
+`STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` environment secret was deleted,
+and its absence was verified; the retained receipt remains available with the
+release. Microsoft review is still pending at the last check. Original affected
+hardware remains unqualified; no Steam depot or normal game install was modified.
 
 ### 2026-09-22 cleared candidate live check and event reuse correction
 
