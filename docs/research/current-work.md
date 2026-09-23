@@ -39,11 +39,21 @@ assertion was updated to require suspension before the existing minimized early
 return. Public troubleshooting no longer describes the rejected pending queue.
 Root/package/lock versions prepare 0.4.9; no tag or publication is claimed.
 
-The strict empty-stderr rule still blocks the two retained informational Valve
-SDK banners. The maintainer has been asked whether to allow only those exact
-formats with raw-log hash retention and fail-closed rejection of every other
-line; no allowance is implemented or assumed. Complete review/CI, resolve that
-decision before an immutable tag, then build exact three-platform artifacts,
+Review commit `7fe0956f8dfec6628c75117ef99a0fc551f8db71` is pushed and passes
+[CI 35809427411](https://github.com/jstroh/steam-bridge/actions/runs/35809427411)
+and [preflight Release 35809437242](https://github.com/jstroh/steam-bridge/actions/runs/35809437242),
+including all three prebuilds and the Windows package gate.
+
+After seeing both exact stderr messages, the maintainer approved continuing with
+the narrow allowance. Schema 7 accepts only empty stderr or one complete ordered
+pair of those exact Valve minidump startup formats, allowing LF/CRLF and one
+optional final newline. Duplicates, extra lines, wrong spacing, invalid IDs and
+other API-loaded markers fail. The receipt retains the original raw log hash,
+size and a closed classification/count, never the IDs; logs are not filtered.
+The positive test fails before this change and passes after it, and malformed
+raw logs plus rehashed invalid receipt metadata are rejected. Runtime logging
+and the already-reviewed native code are unchanged. Complete exact-source CI,
+then create the new immutable tag and build its three-platform artifacts,
 qualify the fresh protected actual-game candidate (including resize/minimum),
 publish via the gated workflow, and submit exact project-owned Windows bytes
 to Microsoft. Do not substitute the older cleared executable's reputation for

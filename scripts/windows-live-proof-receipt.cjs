@@ -33,6 +33,10 @@ const MIN_ASYNC_SHARED_TEXTURE_SATURATION_DROP_ALLOWANCE = 16;
 const MAX_ASYNC_SHARED_TEXTURE_SATURATION_DROP_RATIO = 0.005;
 const MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE = 8;
 const MAX_ASYNC_SHARED_TEXTURE_SLOW_RATIO = 0.001;
+const STDERR_POLICY = "empty-or-valve-minidump-startup-v1";
+const VALVE_STDERR_BASE_BYTES = Buffer.byteLength(
+  "Setting breakpad minidump AppID = \nSteamInternal_SetMinidumpSteamID:  Caching Steam ID:   [API loaded no]"
+);
 const WINDOWS_RUNTIME_FILES = Object.freeze([
   "steam_bridge_native.win32-x64-msvc.node",
   "steam_api64.dll",
@@ -292,7 +296,7 @@ function validateStandaloneEvidence(evidence, candidateBinding, evidenceRoot) {
   assert.equal(evidence.qa.steamClientStable, true);
   const stdoutArtifact = readEvidenceFile(evidenceRoot, evidence.logs.stdout, "standalone stdout");
   const stderrArtifact = readEvidenceFile(evidenceRoot, evidence.logs.stderr, "standalone stderr");
-  assert.equal(stderrArtifact.bytes.toString("utf8").trim(), "", "Standalone run wrote to stderr.");
+  const stderr = inspectStderr(stderrArtifact.bytes);
   const runtime = inspectRuntimeLog(stdoutArtifact.bytes.toString("utf8"));
   return {
     generatedAt: evidence.generatedAt,
@@ -301,9 +305,19 @@ function validateStandaloneEvidence(evidence, candidateBinding, evidenceRoot) {
     runtime,
     artifacts: {
       stdout: { bytes: stdoutArtifact.bytes.length, sha256: sha256(stdoutArtifact.bytes) },
-      stderr: { bytes: stderrArtifact.bytes.length, sha256: sha256(stderrArtifact.bytes) }
+      stderr
     }
   };
+}
+
+function inspectStderr(bytes) {
+  const summary = { bytes: bytes.length, sha256: sha256(bytes) };
+  if (bytes.length === 0) {
+    return { ...summary, classification: "empty", startupMessageCount: 0 };
+  }
+  const match = /^Setting breakpad minidump AppID = ([1-9][0-9]{0,9})\r?\nSteamInternal_SetMinidumpSteamID:  Caching Steam ID:  [1-9][0-9]{16} \[API loaded no\](?:\r?\n)?(?![\s\S])/u.exec(bytes.toString("utf8"));
+  assert.ok(match && Number(match[1]) <= 0xffffffff, "Standalone stderr contains unexpected output.");
+  return { ...summary, classification: "valve-minidump-startup", startupMessageCount: 2 };
 }
 
 function inspectRuntimeLog(stdout) {
@@ -578,6 +592,7 @@ function assembleLiveProofReceipt(candidateBinding, profiles, generatedAt, sameS
       manualVisualQaRequired: true,
       ordinaryOverlayQaMenuRequired: true,
       purchaseAuthorizationAllowed: false,
+      stderrPolicy: STDERR_POLICY,
       fpsPhases: ["game", "overlay"],
       minimumFpsSamplesPerPhase: 3,
       maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
@@ -641,6 +656,7 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     manualVisualQaRequired: true,
     ordinaryOverlayQaMenuRequired: true,
     purchaseAuthorizationAllowed: false,
+    stderrPolicy: STDERR_POLICY,
     fpsPhases: ["game", "overlay"],
     minimumFpsSamplesPerPhase: 3,
     maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
@@ -865,13 +881,23 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   );
   assertExactKeys(profile.artifacts, ["stderr", "stdout"], "live-proof artifacts");
   for (const name of ["stdout", "stderr"]) {
-    assertExactKeys(profile.artifacts[name], ["bytes", "sha256"], "live-proof " + name);
+    assertExactKeys(profile.artifacts[name], name === "stderr"
+      ? ["bytes", "sha256", "classification", "startupMessageCount"] : ["bytes", "sha256"], "live-proof " + name);
     assert.match(profile.artifacts[name].sha256, /^[a-f0-9]{64}$/);
     assert.ok(Number.isSafeInteger(profile.artifacts[name].bytes));
   }
   assert.ok(profile.artifacts.stdout.bytes > 0);
-  assert.equal(profile.artifacts.stderr.bytes, 0);
-  assert.equal(profile.artifacts.stderr.sha256, sha256(Buffer.alloc(0)));
+  const stderr = profile.artifacts.stderr;
+  if (stderr.classification === "empty") {
+    assert.equal(stderr.bytes, 0);
+    assert.equal(stderr.sha256, sha256(Buffer.alloc(0)));
+    assert.equal(stderr.startupMessageCount, 0);
+  } else {
+    assert.equal(stderr.classification, "valve-minidump-startup");
+    assert.equal(stderr.startupMessageCount, 2);
+    assert.ok(stderr.bytes >= VALVE_STDERR_BASE_BYTES + 18 && stderr.bytes <= VALVE_STDERR_BASE_BYTES + 30);
+    assert.notEqual(stderr.sha256, sha256(Buffer.alloc(0)));
+  }
 }
 
 function createSelfTestProfile(candidateBinding, index = 0) {
@@ -934,7 +960,7 @@ function createSelfTestProfile(candidateBinding, index = 0) {
     },
     artifacts: {
       stdout: { bytes: 200, sha256: "6".repeat(64) },
-      stderr: { bytes: 0, sha256: sha256(Buffer.alloc(0)) }
+      stderr: inspectStderr(Buffer.alloc(0))
     },
     manualChecks,
     qa: {
@@ -1233,6 +1259,50 @@ function runGeneratorSelfTest() {
       candidateBinding
     );
     assert.equal(generatedReceipt.profiles[0].runtime.targetUnsynchronizedSampleCount, 1);
+    const syntheticAccount = "1234567890" + "1234567";
+    const startupLines = [
+      "Setting breakpad minidump AppID = 480",
+      "SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  " + syntheticAccount + " [API loaded no]"
+    ];
+    for (const newline of ["\n", "\r\n"]) {
+      for (const suffix of ["", newline]) {
+        const stderr = startupLines.join(newline) + suffix;
+        fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), stderr);
+        const accepted = validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding);
+        assert.deepEqual(accepted.profiles[0].artifacts.stderr, {
+          bytes: Buffer.byteLength(stderr), sha256: sha256(Buffer.from(stderr)),
+          classification: "valve-minidump-startup", startupMessageCount: 2
+        });
+        assert.ok(!JSON.stringify(accepted).includes(syntheticAccount), "Receipt must not contain the raw account ID.");
+        for (const mutate of [
+          value => { value.classification = "other"; },
+          value => { value.bytes = 0; },
+          value => { value.bytes = VALVE_STDERR_BASE_BYTES + 31; },
+          value => { value.startupMessageCount = 3; },
+          value => { value.sha256 = sha256(Buffer.alloc(0)); },
+          value => { value.accountId = syntheticAccount; }
+        ]) {
+          const invalidProfile = structuredClone(accepted.profiles[0]);
+          mutate(invalidProfile.artifacts.stderr);
+          assert.throws(() => validateLiveProofReceipt(assembleLiveProofReceipt(
+            candidateBinding, [invalidProfile], "2026-07-21T00:00:00.000Z", true
+          ), candidateBinding));
+        }
+      }
+    }
+    const startup = startupLines.join("\n");
+    for (const stderr of [
+      "\n", startupLines[0], startupLines[1], [...startupLines].reverse().join("\n"),
+      startup + "\n" + startup, startup + "\nwarning", "warning\n" + startup,
+      startup + "\n\n", startup + "\0", startup.replace("480", "4294967296"),
+      startup.replace("480", "0"), startup.replace("[API loaded no]", "[API loaded yes]"),
+      startup.replace(syntheticAccount, syntheticAccount + "0"), startup.replace(syntheticAccount, "0".repeat(17)),
+      startup.replace("  Caching", " Caching")
+    ]) {
+      fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), stderr);
+      assert.throws(() => generateLiveProofReceipt(options), /stderr/);
+    }
+    fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), "");
     for (const freshFps of [0, 4.6, null, "59.9"]) {
       fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout.replaceAll(
         '"sharedTextureFps":59.9', '"sharedTextureFps":' + JSON.stringify(freshFps)

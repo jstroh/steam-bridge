@@ -128,7 +128,7 @@ The generator requires all four exact cases (`standalone-startup`,
 `standalone-window-transitions`, `standalone-steam-overlay`, and
 `standalone-frame-pacing`), including one ordinary Friends-overlay activation.
 It rejects a linked or mismatched consumer install, open DevTools, checkout or
-subscription authorization, popup/child fallback, stderr, crashes, unhealthy
+subscription authorization, popup/child fallback, unexpected stderr, crashes, unhealthy
 presentation, and incomplete manual checks. It fingerprints the candidate and
 the installed consumer runtime again after the live run. The retired attached
 matrix scripts intentionally fail and must never be substituted for this proof.

@@ -139,6 +139,11 @@ Receipt schema 7 separately requires fresh shared-texture delivery at 95% of the
 display target during gameplay and enforces the two-copy limit in both raw logs
 and the sanitized receipt. Paint or repeated native Presents alone cannot prove
 fresh content. Earlier receipt schemas cannot qualify this candidate.
+The stderr policy accepts an empty log or exactly one ordered pair of Valve's
+minidump App ID and cached Steam ID startup banners (`[API loaded no]`). Every
+other line, duplicate or malformed banner fails. Retain the raw log privately;
+the public receipt records its original hash, byte size and closed classification,
+never the IDs. Do not filter the log before generating the receipt.
 
 Do not substitute a development checkout, linked package, attached matrix, or a
 receipt from different bytes.

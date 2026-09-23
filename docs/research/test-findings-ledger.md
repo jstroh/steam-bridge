@@ -77,9 +77,11 @@ slow or unavailable fresh textures, and enforces the actual two-copy ceiling in
 both raw logs and sanitized receipts; failing-before fixtures prove both gaps.
 **Repeat only when** these paths change or the new exact candidate is available
 for focus/minimize/restore, resizing/minimum, overlay and pacing qualification.
-The stricter receipt is not a gameplay pass. The two informational SDK stderr
-lines remain an unresolved acceptance-policy decision, not silently filtered
-evidence. See [the review checkpoint](current-work.md#2026-09-22-full-release-diff-review-and-049-preparation).
+The stricter receipt is not a gameplay pass. The maintainer approved the exact
+ordered pair of informational SDK startup banners after reviewing their text.
+The receipt retains raw-byte hashes and closed classification without IDs;
+duplicates and every unexpected line still fail. Never filter the original logs.
+See [the review checkpoint](current-work.md#2026-09-22-full-release-diff-review-and-049-preparation).
 
 ### WIN-FENCE-EVENT-REUSE-001 — SETTLED LOCALLY, RELEASE QUALIFICATION OPEN
 
