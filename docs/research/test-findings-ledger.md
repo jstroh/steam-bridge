@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-09-21
+Last reviewed: 2026-09-22
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -66,7 +66,23 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
-### WIN-CANDIDATE-SAC-048-001 — ENVIRONMENT BLOCKER
+### WIN-FENCE-EVENT-REUSE-001 — OPEN, SOURCE CORRECTION TESTED
+
+A protected actual-game run of `v0.4.8` sustains 59.9-FPS median paint/fresh/native
+delivery at 60 Hz with no copy timeout, device loss or admission drop, but reports
+17,247 early event signals in 27,094 completed copies. An unconsumed auto-reset
+event notification can survive the completed-fence fast path or polling fallback
+and repeatedly select polling on later copies. Clear the reused event before
+registering the next target, never after registration or during pending waits.
+A real Win32 event test fails without the reset and passes with it; it also
+proves an immediate new notification is retained. Invalid reset uses the existing
+bounded fallback. **Repeat only when** the event-registration/wait path changes
+or the corrected native bytes are available for a same-route live comparison.
+Unit/hardware checks alone do not prove the gameplay counter cascade is gone.
+Do not publish the old tag as if it contains the correction or weaken producer
+ownership, slot limits or publication checks. See [the checkpoint](current-work.md#2026-09-22-cleared-candidate-live-check-and-event-reuse-correction).
+
+### WIN-CANDIDATE-SAC-048-001 — TRUST BLOCKER SUPERSEDED, QUALIFICATION OPEN
 
 Exact `v0.4.8` source/tag CI and Release `35591699047` pass, including all
 prebuilds and canonical Windows package/native-load gates. Its addon and PDB
@@ -78,7 +94,13 @@ No gameplay or fresh-frame proof exists. The launch task is removed, no
 candidate/debug listener remains, Windows Steam survives and the candidate
 fingerprint/ACLs remain unchanged. A non-target Mac IPC helper auto-respawns;
 its isolation prerequisite is also still open. The exact-file Microsoft form is
-prepared, not submitted: CAPTCHA/final submission await action-time confirmation.
+submitted by the operator. The analyst later confirms the incorrect Smart App
+Control block is remediated despite the In-progress header. The unchanged
+executable successfully starts under enabled policy and reaches actual gameplay
+after Steam's separate connection outage clears. The non-target helper is
+temporarily removed from its current launchd domain for the isolated test and
+then restored; its persistent configuration is unchanged. The focused run and
+remaining resize/receipt/event-reuse work are recorded in the checkpoint above.
 **Repeat only when** that exact executable has a relevant new trust determination
 and the non-target Steam prerequisite is resolved. Preserve the original bytes,
 normal user profile and security policy; never substitute an old launcher or

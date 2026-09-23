@@ -88,3 +88,25 @@ Next: exact-source CI, immutable candidate packaging and protected actual-game
 focus/overlay/transition tests. An affected-device retest remains necessary to
 close the reported incident. Never label this defensive repair a demonstrated
 driver fix or publish a stale candidate/receipt.
+
+## Live follow-up: reused event notifications
+
+The cleared `v0.4.8` candidate reaches real gameplay on an AMD Windows system at
+60 Hz. Across 460 gameplay samples, median paint, fresh texture and native
+presentation are all 59.9 FPS. Copy timeouts, submission failures, saturation
+drops and device losses remain zero. However, 27,094 completed copies accumulate
+17,247 early event signals, exposing avoidable repeated fallback to polling.
+
+An auto-reset event only consumes its signal when a wait succeeds. If completion
+is instead observed through the fence-value fast path or polling, the old signal
+can remain in the slot. Registering a new target without clearing it can select
+polling again, leaving the new notification to repeat the cycle. Microsoft's
+[ResetEvent contract](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-resetevent)
+allows clearing that state. The correction resets once before the first new
+registration, never afterward; reset failure uses the existing bounded fallback.
+The authoritative fence still owns every completion decision.
+
+A real Win32 event-reuse regression fails before the change and passes afterward,
+including immediate new-notification preservation. Hardware checks also pass;
+the corrected native bytes still need a same-route live retest. This finding is
+not evidence that the affected laptop's original incident is fully resolved.

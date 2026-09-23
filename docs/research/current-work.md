@@ -1,6 +1,51 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-21
+Last reviewed: 2026-09-22
+
+### 2026-09-22 cleared candidate live check and event reuse correction
+
+Microsoft's analyst comment confirms the submitted consumer executable's Smart
+App Control block was incorrect and remediated; the page header still says
+In progress. The exact executable hash below and all 92 protected files remain
+unchanged. The candidate now starts with policy state 1. An initial diagnostic
+attempt encountered Steam connection-server Bad Gateway failures and an auth-ticket
+timeout. After Steam reconnected, the unchanged application authenticated and
+entered the actual game without any authentication-code change.
+
+The focused Windows AMD/60-Hz/250%-DPI live run has 571 samples, including 460
+gameplay samples (canvas present, game phase, not minimized, 60-Hz target, with
+transitions retained). Median paint, fresh texture and native-present rates are
+all 59.9 FPS. Movement, focus return, ordinary Friends-overlay open/Escape-close,
+fullscreen/restore, maximize/restore, minimize/restore and title drag were
+observed. There are 27,094 completed copies, maximum depth two, zero saturation
+drops, submission failures, 500-ms copy timeouts or device losses, and 19 slow
+copies. Edge dragging did not establish a changed size; resize/minimum-size proof
+is not complete. Raw stderr retains two Valve SDK minidump information banners;
+the strict publication receipt is not claimed. Exit is zero, the original window
+geometry is restored, all candidate bytes/ACLs match, no test process/debug
+listener/task remains, and the temporarily stopped non-target Steam helper is
+restored without changing its persistent configuration. Evidence remains private.
+
+The new counters reveal 17,247 early event signals and 9,054 ten-millisecond
+event waits, with zero completed-after-timeout recoveries or event failures.
+Auto-reset events can retain an unconsumed previous-copy notification when the
+authoritative fence fast path or polling fallback finishes first. A stale signal
+then selects polling while the newly registered notification can seed the next
+copy again. The worker now clears the reused event only immediately before its
+first new registration; no pending current-copy registration is reset. Reset
+failure follows the existing bounded polling fallback. A real Win32 event-reuse
+regression fails before the reset and passes after it; immediate new signals and
+invalid-handle failure are covered. Full npm tests, 79 native tests (two ignored
+hardware cases), API/platform/format and whitespace checks pass. Both hardware
+cases pass in three additional test invocations; their noisy
+interleaved measurements are not a gameplay or zero-overhead claim.
+
+Next: build and test the corrected native bytes on a separate source-linked
+diagnostic candidate, review the complete slice, commit/push and verify CI.
+The cleared `v0.4.8` candidate is immutable and remains unpublished; this new
+native change needs a higher candidate version and new exact-byte qualification
+before publication. No release gate, security policy, shader or consumer runtime
+code changes are part of this follow-up.
 
 ### 2026-09-21 release 0.4.8 build-tool correction
 
@@ -71,7 +116,7 @@ tarball install is packaged in an isolated consumer QA checkout. Its ASAR has
 the correct version, no private QA/environment/key files, and exact matching
 Windows addon/Valve runtime bytes. All 92 deployed files are write-protected.
 
-The Limited launch is blocked before game startup by Smart App Control
+The initial Limited launch was blocked before game startup by Smart App Control
 (state 1); Code Integrity events 3033/3077 identify the unsigned consumer
 executable. Its SHA-256 is
 `192745D336A54D8E2C1766FE8E64F985DC5068CC6104DDDA5B0E967E336276C2`.
@@ -82,10 +127,9 @@ A non-target Mac Steam IPC helper respawns under its existing launchd job;
 resolve that prerequisite before a later isolated live run, without repeatedly
 killing it or silently changing persistent startup configuration.
 
-The authorized Microsoft exact-file reputation-review form is prepared in the
-operator's browser; CAPTCHA and final Submit await action-time confirmation.
-It is not submitted or approved. Next: complete that boundary, retain the exact
-determination and run fresh protected standalone proof on these bytes. Do not
+The operator completed the authorized Microsoft exact-file submission. Its
+analyst remediation and subsequent focused live result are recorded above.
+That supersedes the initial trust blocker, not the remaining release proof. Do not
 disable policy, replace the blocked launcher, fabricate a receipt, publish npm,
 or change the consumer's public dependency before qualification. No
 local/preflight/previous-release artifact may substitute for tag-candidate bytes.

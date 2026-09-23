@@ -38,7 +38,9 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOERROR};
-use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess, WaitForSingleObjectEx};
+use windows::Win32::System::Threading::{
+    CreateEventW, GetCurrentProcess, ResetEvent, WaitForSingleObjectEx,
+};
 
 const FRAME_LATENCY_WAIT_POLL_MS: u32 = 0;
 const SHARED_TEXTURE_COPY_SLOW_MS: u128 = 50;
@@ -159,6 +161,13 @@ fn shared_texture_fence_complete(value: u64, expected: u64) -> Result<bool, Stri
     }
 }
 
+fn register_shared_texture_copy_fence_event(
+    event: HANDLE,
+    register: impl FnOnce() -> bool,
+) -> bool {
+    unsafe { ResetEvent(event) }.is_ok() && register()
+}
+
 fn poll_shared_texture_copy_fence(
     fence_value: u64,
     use_event_wait: &mut bool,
@@ -255,10 +264,14 @@ impl SharedTextureCopyWaitHandle {
                         || unsafe {
                             if !event_registration_attempted {
                                 event_registration_attempted = true;
-                                if fence
-                                    .SetEventOnCompletion(*fence_value, self.slot.event)
-                                    .is_err()
-                                {
+                                if !register_shared_texture_copy_fence_event(
+                                    self.slot.event,
+                                    || {
+                                        fence
+                                            .SetEventOnCompletion(*fence_value, self.slot.event)
+                                            .is_ok()
+                                    },
+                                ) {
                                     return WAIT_FAILED;
                                 }
                             }
@@ -2275,10 +2288,11 @@ impl Drop for WindowsD3d11Renderer {
 #[cfg(test)]
 mod shared_texture_copy_slot_tests {
     use super::{
-        poll_shared_texture_copy_fence, shared_texture_copy_completion_mode_name,
-        try_candidates_in_order, try_reserve_shared_texture_copy_slot, SharedTextureCopyCompletion,
-        SharedTextureCopySlot, SharedTextureCopyTelemetry, SharedTextureCopyWaitHandle,
-        SharedTextureFenceWaitTelemetry, WindowsD3d11Renderer, SHARED_TEXTURE_COPY_SLOT_COUNT,
+        poll_shared_texture_copy_fence, register_shared_texture_copy_fence_event,
+        shared_texture_copy_completion_mode_name, try_candidates_in_order,
+        try_reserve_shared_texture_copy_slot, SharedTextureCopyCompletion, SharedTextureCopySlot,
+        SharedTextureCopyTelemetry, SharedTextureCopyWaitHandle, SharedTextureFenceWaitTelemetry,
+        WindowsD3d11Renderer, SHARED_TEXTURE_COPY_SLOT_COUNT,
     };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -2292,7 +2306,44 @@ mod shared_texture_copy_slot_tests {
         D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
     };
     use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
-    use windows::Win32::System::Threading::WaitForSingleObjectEx;
+    use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObjectEx};
+
+    #[test]
+    fn reused_fence_event_clears_old_notifications_without_losing_new_ones() {
+        let slot = SharedTextureCopySlot {
+            event: unsafe { CreateEventW(None, false, false, None) }.unwrap(),
+            query: None,
+            in_flight: AtomicBool::new(false),
+        };
+        for _ in 0..128 {
+            unsafe { SetEvent(slot.event) }.unwrap();
+            let mut cleared_before_registration = false;
+            assert!(register_shared_texture_copy_fence_event(slot.event, || {
+                cleared_before_registration =
+                    unsafe { WaitForSingleObjectEx(slot.event, 0, false) } == WAIT_TIMEOUT;
+                unsafe { SetEvent(slot.event) }.unwrap();
+                true
+            }));
+            assert!(cleared_before_registration);
+            assert_eq!(
+                unsafe { WaitForSingleObjectEx(slot.event, 0, false) },
+                WAIT_OBJECT_0
+            );
+        }
+    }
+
+    #[test]
+    fn failed_fence_event_reset_does_not_register_an_unusable_handle() {
+        let mut registered = false;
+        assert!(!register_shared_texture_copy_fence_event(
+            HANDLE::default(),
+            || {
+                registered = true;
+                true
+            }
+        ));
+        assert!(!registered);
+    }
 
     #[test]
     fn completed_fence_recovers_a_missing_event_notification() {
@@ -2582,7 +2633,12 @@ mod shared_texture_copy_slot_tests {
                             || {
                                 if !registered {
                                     registered = true;
-                                    fence.SetEventOnCompletion(value, repaired_event).unwrap();
+                                    assert!(register_shared_texture_copy_fence_event(
+                                        repaired_event,
+                                        || fence
+                                            .SetEventOnCompletion(value, repaired_event)
+                                            .is_ok()
+                                    ));
                                 }
                                 WaitForSingleObjectEx(repaired_event, 10, false)
                             },
