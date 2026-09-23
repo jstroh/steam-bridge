@@ -14,8 +14,8 @@ const {
 } = require("./windows-release-candidate-fingerprint.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 6;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v6";
+const RECEIPT_SCHEMA_VERSION = 7;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v7";
 const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
 const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
 const EVIDENCE_SCHEMA_VERSION = 1;
@@ -28,7 +28,7 @@ const MAX_PACING_SAMPLE_INTERVAL_MS = 2000;
 const MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT = 3;
 const TARGET_DISPLAY_TOLERANCE_HZ = 1;
 const EXPECTED_SHARED_TEXTURE_COMPLETION_MODE = "d3d11-fence-async";
-const MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT = 4;
+const MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT = 2;
 const MIN_ASYNC_SHARED_TEXTURE_SATURATION_DROP_ALLOWANCE = 16;
 const MAX_ASYNC_SHARED_TEXTURE_SATURATION_DROP_RATIO = 0.005;
 const MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE = 8;
@@ -352,8 +352,8 @@ function inspectRuntimeLog(stdout) {
     assert.equal(copy.rendererSaturationDropCount, 0);
     assert.ok(copy.inFlight <= copy.maxInFlight);
     assert.ok(copy.rendererInFlight <= copy.rendererMaxInFlight);
-    assert.ok(copy.maxInFlight <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT);
-    assert.ok(copy.rendererMaxInFlight <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT);
+    assert.ok(copy.maxInFlight <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT, "Standalone process exceeded the two-copy limit.");
+    assert.ok(copy.rendererMaxInFlight <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT, "Standalone renderer exceeded the two-copy limit.");
     assert.ok(
       copy.completedCount >= previousSharedTextureCopyCompletedCount,
       "Standalone asynchronous shared-texture completed count regressed."
@@ -477,6 +477,7 @@ function inspectRuntimeLog(stdout) {
     targetFps: Math.round(targetFps),
     gameSampleCount: gameSamples.length,
     gameMedianPaintFpsTenths: gameMetrics.medianPaintFpsTenths,
+    gameMedianSharedTextureFpsTenths: gameMetrics.medianSharedTextureFpsTenths,
     gameMedianPresentFpsTenths: gameMetrics.medianPresentFpsTenths,
     overlaySampleCount: overlaySamples.length,
     overlayMedianPaintFpsTenths: overlayMetrics.medianPaintFpsTenths,
@@ -503,12 +504,20 @@ function summarizePacingPhase(samples, label, requirePaintAtTarget) {
   const targetFps = median(samples.map((sample) => sample.targetFps));
   const medianPaintFps = median(samples.map((sample) => sample.gameSurface.paintFps));
   const medianPresentFps = median(samples.map((sample) => sample.nativePresenter.presentFps));
+  let medianSharedTextureFps;
   if (requirePaintAtTarget) {
     assert.ok(medianPaintFps >= targetFps * 0.95, label + " median game-surface FPS is below 95% of target.");
+    for (const sample of samples) {
+      assert.ok(Number.isFinite(sample.gameSurface.sharedTextureFps) && sample.gameSurface.sharedTextureFps >= 0,
+        label + " fresh-texture FPS is missing or invalid.");
+    }
+    medianSharedTextureFps = median(samples.map((sample) => sample.gameSurface.sharedTextureFps));
+    assert.ok(medianSharedTextureFps >= targetFps * 0.95, label + " median fresh-texture FPS is below 95% of target.");
   }
   assert.ok(medianPresentFps >= targetFps * 0.95, label + " median native-present FPS is below 95% of target.");
   return {
     medianPaintFpsTenths: Math.round(medianPaintFps * 10),
+    ...(requirePaintAtTarget ? { medianSharedTextureFpsTenths: Math.round(medianSharedTextureFps * 10) } : {}),
     medianPresentFpsTenths: Math.round(medianPresentFps * 10)
   };
 }
@@ -576,6 +585,8 @@ function assembleLiveProofReceipt(candidateBinding, profiles, generatedAt, sameS
       maximumTargetUnsynchronizedSampleCount: MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT,
       targetDisplayToleranceHz: TARGET_DISPLAY_TOLERANCE_HZ,
       minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
+      minimumGameMedianSharedTexturePercentOfDisplayTarget: 95,
+      maximumSharedTextureCopiesInFlight: MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT,
       minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
       profileCount: PROFILE_CONTRACTS.length,
       caseCount: TOTAL_CASE_COUNT,
@@ -637,6 +648,8 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     maximumTargetUnsynchronizedSampleCount: MAX_TARGET_UNSYNCHRONIZED_SAMPLE_COUNT,
     targetDisplayToleranceHz: TARGET_DISPLAY_TOLERANCE_HZ,
     minimumGameMedianPaintAndPresentPercentOfDisplayTarget: 95,
+    minimumGameMedianSharedTexturePercentOfDisplayTarget: 95,
+    maximumSharedTextureCopiesInFlight: MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT,
     minimumOverlayMedianPresentPercentOfDisplayTarget: 95,
     profileCount: PROFILE_CONTRACTS.length,
     caseCount: TOTAL_CASE_COUNT,
@@ -742,6 +755,7 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
       "frameLatencyWaitTimeoutCount",
       "frameLatencyWaitable",
       "gameMedianPaintFpsTenths",
+      "gameMedianSharedTextureFpsTenths",
       "gameMedianPresentFpsTenths",
       "gameSampleCount",
       "hostStyle",
@@ -795,6 +809,9 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
     assert.ok(Number.isSafeInteger(profile.runtime[key]) && profile.runtime[key] >= 0);
   }
   assert.equal(profile.runtime.sharedTextureCopyFatalTimeoutCount, 0);
+  for (const key of ["sharedTextureCopyMaxInFlight", "sharedTextureCopyRendererMaxInFlight"]) {
+    assert.ok(profile.runtime[key] <= MAX_ASYNC_SHARED_TEXTURE_COPY_IN_FLIGHT, "Receipt exceeded the two-copy limit.");
+  }
   assert.equal(profile.runtime.sharedTextureCopyRendererSaturationDropCount, 0);
   assert.ok(
     profile.runtime.sharedTextureCopySaturationDropCount <=
@@ -832,6 +849,7 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   assert.ok(profile.runtime.overlaySampleCount >= 3);
   for (const key of [
     "gameMedianPaintFpsTenths",
+    "gameMedianSharedTextureFpsTenths",
     "gameMedianPresentFpsTenths",
     "overlayMedianPaintFpsTenths",
     "overlayMedianPresentFpsTenths"
@@ -839,6 +857,7 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
     assert.ok(Number.isSafeInteger(profile.runtime[key]) && profile.runtime[key] >= 0);
   }
   assert.ok(profile.runtime.gameMedianPaintFpsTenths >= profile.runtime.targetFps * 9.5);
+  assert.ok(profile.runtime.gameMedianSharedTextureFpsTenths >= profile.runtime.targetFps * 9.5, "Receipt fresh-texture FPS is below 95% of target.");
   assert.ok(profile.runtime.gameMedianPresentFpsTenths >= profile.runtime.targetFps * 9.5);
   assert.ok(profile.runtime.overlayMedianPresentFpsTenths >= profile.runtime.targetFps * 9.5);
   assert.ok(
@@ -892,6 +911,7 @@ function createSelfTestProfile(candidateBinding, index = 0) {
       targetFps: 60,
       gameSampleCount: 3,
       gameMedianPaintFpsTenths: 599,
+      gameMedianSharedTextureFpsTenths: 599,
       gameMedianPresentFpsTenths: 599,
       overlaySampleCount: 3,
       overlayMedianPaintFpsTenths: 598,
@@ -1010,6 +1030,20 @@ function selfTest() {
       candidateBinding
     )
   );
+  for (const key of ["sharedTextureCopyMaxInFlight", "sharedTextureCopyRendererMaxInFlight"]) {
+    const excessiveDepthProfile = structuredClone(profile);
+    excessiveDepthProfile.runtime[key] = 3;
+    assert.throws(() => validateLiveProofReceipt(assembleLiveProofReceipt(
+      candidateBinding, [excessiveDepthProfile], "2026-07-21T00:00:00.000Z", true
+    ), candidateBinding), /two-copy/, key);
+  }
+  for (const freshFpsTenths of [0, 46, 569, null, "599"]) {
+    const staleProfile = structuredClone(profile);
+    staleProfile.runtime.gameMedianSharedTextureFpsTenths = freshFpsTenths;
+    assert.throws(() => validateLiveProofReceipt(assembleLiveProofReceipt(
+      candidateBinding, [staleProfile], "2026-07-21T00:00:00.000Z", true
+    ), candidateBinding));
+  }
   runGeneratorSelfTest();
 }
 
@@ -1081,7 +1115,7 @@ function runGeneratorSelfTest() {
       phase: "game",
       display: { hz: 60 },
       targetFps: 60,
-      gameSurface: { paintFps: 59.9 },
+      gameSurface: { paintFps: 59.9, sharedTextureFps: 59.9 },
       nativePresenter: {
         presentFps: 59.9,
         frameLatencyWaitable: true,
@@ -1143,7 +1177,7 @@ function runGeneratorSelfTest() {
           ...sample,
           phase: "overlay",
           overlayActive: true,
-          gameSurface: { ...sample.gameSurface, paintFps: 0 }
+          gameSurface: { ...sample.gameSurface, paintFps: 0, sharedTextureFps: 0 }
         },
         303 + index
       )
@@ -1199,6 +1233,19 @@ function runGeneratorSelfTest() {
       candidateBinding
     );
     assert.equal(generatedReceipt.profiles[0].runtime.targetUnsynchronizedSampleCount, 1);
+    for (const freshFps of [0, 4.6, null, "59.9"]) {
+      fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout.replaceAll(
+        '"sharedTextureFps":59.9', '"sharedTextureFps":' + JSON.stringify(freshFps)
+      ));
+      assert.throws(() => generateLiveProofReceipt(options), /fresh-texture/);
+    }
+    for (const key of ["maxInFlight", "rendererMaxInFlight"]) {
+      fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout.replaceAll(
+        '"' + key + '":2', '"' + key + '":3'
+      ));
+      assert.throws(() => generateLiveProofReceipt(options), /two-copy/);
+    }
+    fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout);
     const slowOverlaySample = {
       ...sample,
       phase: "overlay",

@@ -593,6 +593,7 @@ pub struct WindowsD3d11Renderer {
     present_budget_ms: Option<f64>,
     present_over_budget_count: u64,
     present_busy_count: u64,
+    present_retry_pending: bool,
     last_present_flags: u32,
     frame_latency_waitable_object: HANDLE,
     frame_latency_wait_generation: u64,
@@ -943,6 +944,7 @@ impl WindowsD3d11Renderer {
             present_budget_ms: None,
             present_over_budget_count: 0,
             present_busy_count: 0,
+            present_retry_pending: false,
             last_present_flags: 0,
             frame_latency_waitable_object: HANDLE::default(),
             frame_latency_wait_generation: 0,
@@ -1673,6 +1675,7 @@ impl WindowsD3d11Renderer {
     }
 
     pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<Option<i32>, String> {
+        self.present_retry_pending = false;
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
         let render_started_at = Instant::now();
@@ -1818,6 +1821,7 @@ impl WindowsD3d11Renderer {
         }
         self.last_present = result.0;
         if result == DXGI_ERROR_WAS_STILL_DRAWING {
+            self.present_retry_pending = true;
             self.request_frame_timer_resolution();
             if !self.frame_latency_wait_bypassed {
                 self.frame_latency_ready_permits = 1;
@@ -1942,7 +1946,12 @@ impl WindowsD3d11Renderer {
     }
 
     pub fn present_busy(&self) -> bool {
-        self.last_present == DXGI_ERROR_WAS_STILL_DRAWING.0
+        self.present_retry_pending
+    }
+
+    pub fn suspend_presentation(&mut self) {
+        self.present_retry_pending = false;
+        self.release_frame_timer_resolution();
     }
 
     pub fn present_diagnostics(&self) -> serde_json::Value {
@@ -2519,6 +2528,37 @@ mod shared_texture_copy_slot_tests {
                 || result
             )
             .is_err());
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an interactive Windows D3D11 hardware device"]
+    fn paused_presentation_releases_busy_retry_without_losing_diagnostics() {
+        unsafe {
+            let mut renderer =
+                WindowsD3d11Renderer::new_with_adapter(std::ptr::null_mut(), 64, 64, None, false)
+                    .expect("headless D3D11 renderer should initialize");
+            renderer.last_present = windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING.0;
+            renderer.request_frame_timer_resolution();
+            assert!(
+                !renderer.present_busy(),
+                "an idle renderer must not inherit a historical busy result"
+            );
+            renderer.present_retry_pending = true;
+            renderer.frame_latency_ready_permits = 1;
+            assert!(renderer.present_busy());
+            renderer.suspend_presentation();
+            renderer.suspend_presentation();
+            assert!(!renderer.present_busy());
+            assert!(!renderer.fallback_timer_resolution_requested());
+            assert!(!renderer.fallback_timer_resolution_active());
+            assert_eq!(renderer.frame_latency_ready_permits, 1);
+            assert_eq!(
+                renderer.last_present,
+                windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING.0
+            );
+            renderer.request_frame_timer_resolution();
+            assert!(renderer.fallback_timer_resolution_requested());
         }
     }
 

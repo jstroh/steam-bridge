@@ -222,10 +222,10 @@ Review the run and change a field to `true` only when that exact check passed.
 The receipt generator independently parses the logs and rejects missing
 standalone identity, any parent HWND, missing Steam active/inactive lifecycle,
 missing QA-menu activation, missing resize/minimize/fullscreen transitions,
-less than 95% of the current display target for median game paint/native-
-present FPS or active-overlay native-present FPS using at least three qualified
+less than 95% of the current display target for median game paint/fresh-texture/
+native-present FPS or active-overlay native-present FPS using at least three qualified
 samples per phase, more than three cumulative frame-latency waits, device loss,
-recovery, slow shared-texture copies, stderr, crashes, or a linked/reparse/
+recovery, copy depth above two, excessive slow shared-texture copies, stderr, crashes, or a linked/reparse/
 mismatched consumer package. Qualified pacing samples have intervals of at most
 two seconds and a target within 1 Hz of the current display. At most three
 otherwise-valid target/display transition samples may be excluded, covering

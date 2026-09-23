@@ -29,8 +29,8 @@ and [window model](electron.md#choose-the-window-model) are deliberate.
 
 For Windows calls that remain inside `Present` despite a ready DXGI queue, the
 [presentation repair runbook](research/windows-present-diagnostic.md) documents
-the unreleased matching addon's nonblocking-VSync default, newest-pending texture
-policy, and explicit QA comparisons. Older addons retain their compatibility
+the unreleased matching addon's nonblocking-VSync default, bounded two-copy
+admission, and explicit QA comparisons. Older addons retain their compatibility
 path. This source is not a published package or an affected-hardware-qualified fix.
 
 ## Input problems

@@ -2734,6 +2734,9 @@ mod windows {
             if surface.visible && (present_after_modal_loop || surface_needs_render(surface)) {
                 render_surface(surface)
             } else {
+                if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                    renderer.suspend_presentation();
+                }
                 Ok(())
             }
         };
@@ -3521,6 +3524,9 @@ mod windows {
 
     unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
         if IsIconic(surface.hwnd) != 0 {
+            if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                renderer.suspend_presentation();
+            }
             return Ok(());
         }
         let mut rect: RECT = mem::zeroed();
@@ -3551,6 +3557,7 @@ mod windows {
                 ..
             } => {
                 if *device_lost {
+                    renderer.suspend_presentation();
                     surface.source_frame_dirty = true;
                     return Ok(());
                 }

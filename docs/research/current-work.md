@@ -2,6 +2,53 @@
 
 Last reviewed: 2026-09-22
 
+### 2026-09-22 full release-diff review and 0.4.9 preparation
+
+The maintainer requests review, commit/push, GitHub/npm publication and Microsoft
+submission. The review covers the complete `v0.4.6..6fdfea9` delta: presentation,
+copy admission/completion and ownership, input dispatch, diagnostics, public
+documentation, dependency/toolchain changes and release boundaries. Exact-head
+CI `35808005563` is green. Registry/GitHub stable remain 0.4.6; neither 0.4.7 nor
+0.4.8 is published, and neither immutable tag may move.
+
+Review found two independent qualification gaps: the receipt accepted paint and
+repeated Present cadence without checking fresh texture delivery, and retained
+the retired four-copy ceiling (without enforcing even that ceiling in the
+sanitized receipt validator). Failing-before regressions demonstrate both.
+Schema 7 now requires median game shared-texture delivery at 95% of the display
+target, rejects missing/invalid fresh rates and depth above two in raw evidence
+and sanitized receipts, and still allows zero fresh frames while Steam owns the
+overlay. It does not change runtime instrumentation or relax any pacing gate.
+
+Current busy-retry state was also derived from a historical Present result,
+remaining true across paused native paths. It now has its own flag, cleared on
+a new attempt or suspension; idle/hidden/minimized/device-lost paths balance the
+timer request while preserving diagnostic history and a retained readiness
+permit. A focused hardware-backed regression fails before the repair and passes
+afterward, covering repeated suspension and reacquisition. Actual-game transitions
+on the next immutable bytes are still required; this is not affected-device proof.
+
+Full tests pass 468 JavaScript tests (two platform skips) and 79 native tests
+(three hardware-only cases ignored by default; all three also pass explicitly
+in a sequential hardware run). Its copy benchmark is diagnostic only: old/new
+means 280.436/313.100 us and p95 322.7/627.0 us do not support a performance-win
+or zero-overhead claim. The new runtime change does not modify the fence waiter.
+Native compile, format, API/platform checks, release-verifier self-tests,
+zero-finding dependency audit and whitespace checks pass. A stale source-shape
+assertion was updated to require suspension before the existing minimized early
+return. Public troubleshooting no longer describes the rejected pending queue.
+Root/package/lock versions prepare 0.4.9; no tag or publication is claimed.
+
+The strict empty-stderr rule still blocks the two retained informational Valve
+SDK banners. The maintainer has been asked whether to allow only those exact
+formats with raw-log hash retention and fail-closed rejection of every other
+line; no allowance is implemented or assumed. Complete review/CI, resolve that
+decision before an immutable tag, then build exact three-platform artifacts,
+qualify the fresh protected actual-game candidate (including resize/minimum),
+publish via the gated workflow, and submit exact project-owned Windows bytes
+to Microsoft. Do not substitute the older cleared executable's reputation for
+new-addon clearance, or publish using the diagnostic/older candidate receipts.
+
 ### 2026-09-22 cleared candidate live check and event reuse correction
 
 Microsoft's analyst comment confirms the submitted consumer executable's Smart

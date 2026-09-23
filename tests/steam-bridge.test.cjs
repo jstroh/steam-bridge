@@ -1436,7 +1436,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /let import_detected_device_loss = import_result/);
   assert.match(source, /if import_detected_device_loss \{/);
   assert.match(source, /if recovering_device \|\| import_detected_device_loss \{/);
-  assert.match(source, /if IsIconic\(surface\.hwnd\) != 0 \{\s*return Ok\(\(\)\);/);
+  assert.match(source, /if IsIconic\(surface\.hwnd\) != 0 \{\s*if let WindowsSurfaceRenderer::D3d11 \{ renderer, \.\. \} = &mut surface\.renderer \{\s*renderer\.suspend_presentation\(\);\s*\}\s*return Ok\(\(\)\);/);
   assert.match(source, /minimized: \(message == WM_SIZE && wparam == SIZE_MINIMIZED as usize\)/);
   assert.match(d3dSource, /0X887A0005/);
   assert.match(d3dSource, /0X887A0006/);
@@ -26166,6 +26166,18 @@ test("Windows busy Present preserves its consumed readiness permit for the bound
   const busyBranch = source.slice(busyStart, source.indexOf("return Ok(None);", busyStart));
   assert.match(busyBranch, /if !self\.frame_latency_wait_bypassed \{\s*self\.frame_latency_ready_permits = 1;/u);
   assert.match(busyBranch, /self\.request_frame_timer_resolution\(\)/u);
+  assert.match(busyBranch, /self\.present_retry_pending = true/u);
+});
+
+test("Windows inactive presentation clears current retry state without erasing the last Present result", () => {
+  const source = readSourceFile("crates", "native", "src", "windows_d3d11.rs");
+  const surface = readSourceFile("crates", "native", "src", "native_surface.rs");
+  const pause = source.slice(source.indexOf("pub fn suspend_presentation"), source.indexOf("pub fn present_diagnostics"));
+  assert.match(pause, /self\.present_retry_pending = false/u);
+  assert.match(pause, /self\.release_frame_timer_resolution\(\)/u);
+  assert.doesNotMatch(pause, /last_present\s*=/u);
+  assert.match(surface, /if IsIconic\(surface\.hwnd\) != 0 \{[\s\S]*?renderer\.suspend_presentation\(\)/u);
+  assert.match(surface, /if surface\.visible &&[\s\S]*?render_surface\(surface\)[\s\S]*?else \{[\s\S]*?renderer\.suspend_presentation\(\)/u);
 });
 
 test("four-client copy admission preserves bounded native throughput and frame age", async t => {

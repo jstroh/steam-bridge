@@ -36,6 +36,9 @@ The healthy standard/VSync path does not request high-resolution timers. Busy
 retries acquire a one-millisecond period and release it after presentation
 recovers. The existing readiness fallback and explicit immediate diagnostic
 retain it while timer-paced; destruction balances any remaining request.
+An idle, hidden, minimized or device-lost presentation path clears the current
+retry flag and releases the timer request without erasing the last Present
+result or its readiness permit. Diagnostic history alone must not arm retries.
 Native copy fences, the two-copy ceiling, swap-chain buffers and maximum frame
 latency two are unchanged.
 

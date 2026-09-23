@@ -135,6 +135,11 @@ candidate. The receipt must cover:
 - the ordinary Steam Friends overlay
 - frame pacing
 
+Receipt schema 7 separately requires fresh shared-texture delivery at 95% of the
+display target during gameplay and enforces the two-copy limit in both raw logs
+and the sanitized receipt. Paint or repeated native Presents alone cannot prove
+fresh content. Earlier receipt schemas cannot qualify this candidate.
+
 Do not substitute a development checkout, linked package, attached matrix, or a
 receipt from different bytes.
 
