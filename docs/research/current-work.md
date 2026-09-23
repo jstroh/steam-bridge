@@ -40,8 +40,32 @@ hardware cases), API/platform/format and whitespace checks pass. Both hardware
 cases pass in three additional test invocations; their noisy
 interleaved measurements are not a gameplay or zero-overhead claim.
 
-Next: build and test the corrected native bytes on a separate source-linked
-diagnostic candidate, review the complete slice, commit/push and verify CI.
+Correction `36afc879f9aed479b4ea1fede952c91516217198` is committed and pushed.
+A separate protected diagnostic copy changes only the native addon; the cleared
+launcher and ASAR remain byte-identical, and the original candidate is untouched.
+The source-linked addon SHA-256 is
+`CEE802DE82F2E395F9294CDD7C91CA31F9E8790697A39DEC01624520ED50333A`,
+with matching PDB debug ID `5f43c0fc-8d9b-4740-be37-7832677fc8a4-1`.
+Under enabled Smart App Control it authenticates and enters the game. Across
+172 gameplay samples and 10,239 completed copies, median paint/fresh/native rates
+are 60/59.9/59.9 FPS, with zero early events, slow copies, drops, copy timeouts,
+submission failures or device losses. Focus return passes. There are 8,966 normal
+ten-millisecond event-wait expirations and two completed-at-follow-up checks;
+neither counter implies a 500-ms copy timeout or a proven lost notification.
+Exit is zero, all 92 diagnostic files and ACLs remain unchanged, no candidate,
+debug listener or temporary task remains, and the Mac helper is restored.
+This locally settles the repeated-stale-signal regression, not the affected
+NVIDIA device or the entire release matrix.
+
+[CI 35807409692](https://github.com/jstroh/steam-bridge/actions/runs/35807409692)
+passes Windows/macOS/Linux and dependency security, but its package lane stops
+before smoke execution because npm's latest stable Electron advanced to 44.4.4.
+Only the smoke example and lockfile advance to that exact patch. Clean install,
+zero-finding dependency audit, latest-version check and full npm tests pass.
+The actual consumer/diagnostic runtime remains Electron 44.4.3; no game dependency
+or candidate bytes are silently updated. Next: commit this evidence/toolchain
+slice and verify exact CI, then prepare the higher immutable candidate and
+complete its remaining resize/minimum-size and strict receipt qualification.
 The cleared `v0.4.8` candidate is immutable and remains unpublished; this new
 native change needs a higher candidate version and new exact-byte qualification
 before publication. No release gate, security policy, shader or consumer runtime

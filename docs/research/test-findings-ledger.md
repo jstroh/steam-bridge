@@ -66,7 +66,7 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
-### WIN-FENCE-EVENT-REUSE-001 — OPEN, SOURCE CORRECTION TESTED
+### WIN-FENCE-EVENT-REUSE-001 — SETTLED LOCALLY, RELEASE QUALIFICATION OPEN
 
 A protected actual-game run of `v0.4.8` sustains 59.9-FPS median paint/fresh/native
 delivery at 60 Hz with no copy timeout, device loss or admission drop, but reports
@@ -78,7 +78,13 @@ A real Win32 event test fails without the reset and passes with it; it also
 proves an immediate new notification is retained. Invalid reset uses the existing
 bounded fallback. **Repeat only when** the event-registration/wait path changes
 or the corrected native bytes are available for a same-route live comparison.
-Unit/hardware checks alone do not prove the gameplay counter cascade is gone.
+The source-linked protected diagnostic changes only the addon and keeps the
+cleared launcher/ASAR intact. Its 10,239 completed copies have zero early signals,
+slow copies, admission drops, 500-ms copy timeouts or device losses; median
+paint/fresh/native delivery is 60/59.9/59.9 FPS across 172 gameplay samples.
+Focus return and clean exit pass; the diagnostic fingerprint and ACLs match and
+temporary processes/tasks are gone. This settles the cascade on the local AMD
+host, not affected NVIDIA hardware or exact higher-version release bytes.
 Do not publish the old tag as if it contains the correction or weaken producer
 ownership, slot limits or publication checks. See [the checkpoint](current-work.md#2026-09-22-cleared-candidate-live-check-and-event-reuse-correction).
 

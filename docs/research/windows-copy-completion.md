@@ -107,6 +107,10 @@ registration, never afterward; reset failure uses the existing bounded fallback.
 The authoritative fence still owns every completion decision.
 
 A real Win32 event-reuse regression fails before the change and passes afterward,
-including immediate new-notification preservation. Hardware checks also pass;
-the corrected native bytes still need a same-route live retest. This finding is
-not evidence that the affected laptop's original incident is fully resolved.
+including immediate new-notification preservation. Hardware checks also pass.
+The separate source-linked live retest changes only the native addon, preserving
+the cleared launcher and ASAR. It completes 10,239 copies with zero early signals,
+slow copies, drops, copy timeouts, submission failures or device losses. Median
+paint/fresh/native rates are 60/59.9/59.9 FPS across 172 gameplay samples; focus
+return and clean exit pass. This closes the local stale-signal regression, not
+the affected laptop's original incident or the exact next release's qualification.
