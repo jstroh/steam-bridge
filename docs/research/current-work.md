@@ -53,6 +53,13 @@ The TypeScript `NativeBinding` interface was diffed against napi-generated
 declarations: all 1,153 functions match by name, arity, parameter type and
 optionality. All 210 native callback IDs match the SDK constants or offsets.
 
+Windows delivers characters outside the Basic Multilingual Plane as two
+UTF-16 surrogate `WM_CHAR` messages, and the Electron forwarder sent each half
+as its own `char` event. An Electron 44.4.5 probe under Xvfb showed that each
+lone surrogate inserts U+FFFD replacement characters (one emoji became six),
+while one full code point inserts the emoji. The forwarder now pairs surrogates
+before dispatch; see `WINDOWS-NATIVE-CHAR-SURROGATE-001`.
+
 The macOS native launcher compiled into consumer apps no longer executes an
 arbitrary `--steam-bridge-launch-target` or applies arbitrary env-file variables
 (the Steam entitlements honour `DYLD_*`). Targets must resolve inside the

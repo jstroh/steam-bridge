@@ -31907,6 +31907,19 @@ test("native input forwarder covers keys, pointer scaling, capture, focus, and l
     type: "keyDown", keyCode: "W", modifiers: [], isAutoRepeat: false
   });
   assert.equal(webFocusCount, 1, "the first active edge focuses Electron once");
+  const sentBeforeText = sent.length;
+  assert.equal(input.forward({ ...base, kind: "char", wparam: 0xd83d }), true);
+  assert.equal(sent.length, sentBeforeText, "a high surrogate waits for its pair");
+  input.forward({ ...base, kind: "char", wparam: 0xde00 });
+  assert.deepEqual(sent.at(-1), { type: "char", keyCode: "\u{1f600}", modifiers: [] },
+    "Windows UTF-16 WM_CHAR pairs reach Chromium as one code point");
+  input.forward({ ...base, kind: "char", wparam: 0x1f600 });
+  assert.deepEqual(sent.at(-1), { type: "char", keyCode: "\u{1f600}", modifiers: [] });
+  assert.equal(input.forward({ ...base, kind: "char", wparam: 0xde00 }), false, "an unpaired low surrogate is rejected");
+  input.forward({ ...base, kind: "char", wparam: 0xd83d });
+  input.forward({ ...base, kind: "char", wparam: 0x61 });
+  assert.deepEqual(sent.at(-1), { type: "char", keyCode: "a", modifiers: [] }, "an unpaired high surrogate is dropped");
+  assert.equal(sent.length, sentBeforeText + 3);
   input.forward({ ...base, kind: "leftMouseDown", x: 400, y: 150, wparam: 1 });
   assert.deepEqual(sent.at(-1), {
     type: "mouseDown", button: "left", x: 133, y: 100, clickCount: 1, modifiers: []
