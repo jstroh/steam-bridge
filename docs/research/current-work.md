@@ -34,6 +34,12 @@ calls are each bounded by their timeouts and a hung bus stops at the first
 timeout, and networking batch-receive errors require corrupted Steam message
 structs while every message is still released.
 
+The branch's first CI run failed only `check:electron:latest`: upstream stable
+Electron moved from 44.4.4 to 44.4.5, which fails the same gate on `main`. The
+smoke example, Windows ASAR fixture (derived from it) and lockfile now pin
+44.4.5, regenerated with npm 11. Any release candidate from this branch needs
+fresh live qualification on 44.4.5; earlier 44.4.4 evidence does not carry over.
+
 Next: remaining native minor items, the configured-consumer naming question,
 the rest of the module-by-module review, and exact-head CI.
 
