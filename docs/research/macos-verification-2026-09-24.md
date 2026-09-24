@@ -143,14 +143,40 @@ startup (214 in the health snapshot). `npm run macos:steam-client-health`
 passed, with only the existing low-limit warnings. The earlier 251/256 failure
 was a snapshot taken during startup, not a steady state.
 
-The full `core` matrix was not run in this session: the agent's permission
-policy blocked launching it. Launcher qualification through Steam-launched
-env-file shortcuts therefore remains open.
+## Follow-up: Live `core` Matrix (partial)
+
+After the maintainer allowed it, `npm run macos:overlay-matrix -- --skip-package`
+ran the default `core` suite with App ID `480` at `f8b8ac2d`, under
+`caffeinate`. Steam health passed at the default file limit (211/256). The
+matrix upserted its stable shortcut, and each case wrote only allowed keys
+(`SteamAppId`, `SteamGameId`, `SteamOverlayGameId`, `STEAM_BRIDGE_*`) to the
+launcher env file.
+
+| Case | Result | Notes |
+| --- | --- | --- |
+| `00-presenter-ready` | passed | Steam launch, `STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER=1` with its target marker, presenter ready and parked, `macos-metal` backend, no overlay activation |
+| `01a-web-direct` | failed (environment) | Steam launch and launcher markers as above; overlay activated with one target for App ID `480`. Close proof failed: `screencapture` could not create an image, and `osascript` was not allowed to send the Escape keystroke (error 1002), so no inactive callback or post-close park was observed |
+| remaining 26 `core` cases | not run | the matrix stops at the first failed case |
+
+`npm run macos:overlay-matrix:summarize -- --artifact-root <root>` failed on
+the `01a` close/park evidence and the 26 missing cases. No smoke processes
+remained afterwards.
+
+This proves that Steam-launched shortcuts using
+`--steam-bridge-launch-env-file` start through the hardened launcher. The
+launcher passes the allowed env-file variables through, and the app reaches
+presenter readiness and overlay activation. The failure matches
+`MAC-AUTOMATION-001`: the process driving the test (this time a local agent
+host, not SSH) lacks macOS Screen & System Audio Recording and Accessibility
+permission. It is not a product result. Full launcher qualification
+across the suite, including close/back-to-app, remains open.
 
 ## Before Rerunning
 
-With Steam started normally and logged on, confirm
-`npm run macos:steam-client-health` passes after startup settles. Then run
-`npm run macos:overlay-matrix -- --skip-package` (or without `--skip-package`
-to repackage) for the default `core` suite with App ID `480`, and
-`npm run macos:overlay-matrix:summarize`.
+Grant Screen & System Audio Recording and Accessibility in System Settings to
+the application that runs the matrix (the terminal or agent host), then restart
+that host. With Steam started normally and
+`npm run macos:steam-client-health` passing after startup settles, rerun
+`npm run macos:overlay-matrix -- --skip-package` for the default `core` suite
+with App ID `480`, then `npm run macos:overlay-matrix:summarize`. Do not rerun
+before the grants change; `01a` will fail the same way.

@@ -67,9 +67,12 @@ package root export, which lacks it, so every suite stopped at its environment
 gate. The gate now loads the `./steamworks` entry. `npm pack --json` consumers
 also assumed npm 10/11's array output; npm 12 keys it by package name. After
 the fixes, all checks pass on npm 12 (476 JS, 44 native tests), and preflight
-and Steam client health pass at the default launchd file limit (no `sudo`). The
-live `core` matrix is still unrun; see the
-[2026-09-24 macOS verification](macos-verification-2026-09-24.md).
+and Steam client health pass at the default launchd file limit (no `sudo`). A
+live `core` matrix run at `f8b8ac2d` showed Steam-launched env-file shortcuts
+start through the hardened launcher (`00-presenter-ready` passed). `01a` then
+failed close proof because the local automation host lacks Screen Recording
+and Accessibility grants, so 26 cases are unrun. Next: grant them and rerun;
+see the [2026-09-24 macOS verification](macos-verification-2026-09-24.md).
 
 Committed research notes, tests and examples no longer name the configured
 consumer product, its repositories, crash/report tracker identifiers, private
