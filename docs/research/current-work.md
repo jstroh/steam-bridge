@@ -60,13 +60,15 @@ launcher's directory tree and env-file names are limited to the Steam app-ID
 variables and `STEAM_BRIDGE_*` except `STEAM_BRIDGE_NATIVE_PATH`; see
 `MAC-LAUNCHER-ARGUMENT-CONFINEMENT-001`.
 
-A native Apple Silicon run at `149e6e1e` passed every repository check
-(474 JS, 44 native tests) and confirmed the packaged launcher's confinement. It
-could not run the live matrix: `scripts/macos-overlay-matrix.sh` reads
-`getMacOverlayEnvironment` from the package root export, which no longer
-has it, so every suite stops at its environment gate. Steam was also at the
-inherited `launchctl maxfiles` limit. `example:package:mac` also fails on
-npm 12's `npm pack --json` shape. Both defects are unfixed; see the
+A native Apple Silicon run confirmed the packaged launcher's confinement and
+found two harness defects, now fixed with failing-before tests.
+`scripts/macos-overlay-matrix.sh` read `getMacOverlayEnvironment` from the
+package root export, which lacks it, so every suite stopped at its environment
+gate. The gate now loads the `./steamworks` entry. `npm pack --json` consumers
+also assumed npm 10/11's array output; npm 12 keys it by package name. After
+the fixes, all checks pass on npm 12 (476 JS, 44 native tests), and preflight
+and Steam client health pass at the default launchd file limit (no `sudo`). The
+live `core` matrix is still unrun; see the
 [2026-09-24 macOS verification](macos-verification-2026-09-24.md).
 
 Committed research notes, tests and examples no longer name the configured

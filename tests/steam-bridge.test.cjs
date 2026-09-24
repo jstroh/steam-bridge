@@ -4489,6 +4489,22 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(linkScript, /mtimeMs/);
 });
 
+test("macOS overlay matrix reads the overlay environment from a module that exports it", () => {
+  const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
+  const requires = [
+    ...matrixScript.matchAll(/const steamBridge = require\(path\.join\(repoRoot, ((?:"[^"]+"(?:, )?)+)\)\);/g)
+  ];
+  assert.equal(requires.length, 2);
+  assert.equal((matrixScript.match(/steamBridge\.getMacOverlayEnvironment\?\.\(\)/g) || []).length, 2);
+  for (const [, segments] of requires) {
+    const modulePath = path.join(repoRoot, ...JSON.parse(`[${segments}]`));
+    assert.equal(require.resolve(modulePath), distFile("index.js"));
+  }
+  const steamworks = loadSteamWithFakeNative({});
+  assert.equal(typeof steamworks.getMacOverlayEnvironment, "function");
+  assert.equal(typeof require(path.join(repoRoot, "packages", "steam-bridge")).getMacOverlayEnvironment, "undefined");
+});
+
 test("macOS Steam launcher confines launch targets and env-file variables", (t) => {
   if (process.platform === "win32") {
     t.skip("the POSIX launcher is not compiled on Windows");
@@ -4627,6 +4643,20 @@ test("example packager prefers the current host build over a stale target-native
   assert.equal(currentHostSources.get("steam_bridge_native.darwin-arm64.node"), localNativePath);
   assert.equal(crossTargetSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
   assert.equal(assembledReleaseSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
+});
+
+test("npm pack JSON output is read in both the array and name-keyed shapes", () => {
+  const { readNpmPackEntries } = require(path.join(repoRoot, "scripts", "npm-pack-output.cjs"));
+  const entry = { id: "steam-bridge@1.0.0", filename: "steam-bridge-1.0.0.tgz" };
+
+  assert.deepEqual(readNpmPackEntries(JSON.stringify([entry])), [entry]);
+  assert.deepEqual(readNpmPackEntries(JSON.stringify({ "steam-bridge": entry })), [entry]);
+  assert.deepEqual(readNpmPackEntries("null"), []);
+  for (const script of ["package-electron-example.cjs", "smoke-package.cjs", "windows-electron-builder-asar-gate.cjs"]) {
+    const source = fs.readFileSync(path.join(repoRoot, "scripts", script), "utf8");
+    assert.match(source, /readNpmPackEntries\(result\.stdout\)\[0\]/, script);
+    assert.doesNotMatch(source, /JSON\.parse\(result\.stdout\)/, script);
+  }
 });
 
 test("example packager accepts only an exact SHA-pinned package tarball", (t) => {

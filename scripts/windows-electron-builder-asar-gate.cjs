@@ -9,6 +9,7 @@ const { spawnSync } = require("node:child_process");
 const asar = require("@electron/asar");
 const { Arch, Platform, build } = require("electron-builder");
 const tar = require("tar");
+const { readNpmPackEntries } = require("./npm-pack-output.cjs");
 const {
   WINDOWS_RUNTIME_FILES,
   assertMatchingRuntimeFiles,
@@ -353,7 +354,7 @@ function packSteamBridge(packDir) {
   const result = run("npm", ["pack", "--json", "--pack-destination", packDir], packageRoot, {
     encoding: "utf8"
   });
-  const metadata = JSON.parse(result.stdout)[0];
+  const metadata = readNpmPackEntries(result.stdout)[0];
   if (!metadata?.filename) {
     throw new Error("npm pack did not return a steam-bridge tarball.");
   }

@@ -1563,7 +1563,7 @@ const waitSeconds = Number(process.argv[3] || "0");
 
 function readEnvironment() {
   try {
-    const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge"));
+    const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge", "dist", "index.js"));
     return steamBridge.getMacOverlayEnvironment?.();
   } catch (error) {
     console.error(`Failed to read macOS overlay environment: ${error && error.message ? error.message : error}`);
@@ -1649,7 +1649,7 @@ const expected = process.argv[3] || "";
 
 let environment;
 try {
-  const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge"));
+  const steamBridge = require(path.join(repoRoot, "packages", "steam-bridge", "dist", "index.js"));
   environment = steamBridge.getMacOverlayEnvironment?.();
 } catch (error) {
   console.error(`Failed to read macOS overlay environment: ${error && error.message ? error.message : error}`);

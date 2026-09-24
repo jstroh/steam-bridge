@@ -4,6 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const { packager } = require("@electron/packager");
+const { readNpmPackEntries } = require("./npm-pack-output.cjs");
 const {
   assertMatchingNativeBindingManifests,
   createNativeBindingManifest
@@ -164,8 +165,7 @@ function packSteamBridge(packDir) {
   const result = run("npm", ["pack", "--json", "--pack-destination", packDir], packageRoot, {
     encoding: "utf8"
   });
-  const packed = JSON.parse(result.stdout);
-  const filename = packed[0]?.filename;
+  const filename = readNpmPackEntries(result.stdout)[0]?.filename;
   if (!filename) {
     throw new Error("npm pack did not return a steam-bridge tarball.");
   }

@@ -72,14 +72,11 @@ stopped with no leftover processes.
 No shortcut was written and no smoke case was launched. Per-case matrix
 results: none. No purchases were attempted.
 
-Raising the launchd `maxfiles` soft limit requires root (`sudo` was not
-available non-interactively). Steam launched with `open -a Steam` inherits the
-256 soft limit, and the matrix's own Steam restart uses the same session, so
-the health gate would still fail even with Defect 2 fixed. The gate is behaving
-as documented in `docs/research/macos-overlay-notes.md`; this is a local
-environment blocker, not a product result.
+This first health check was taken about ten seconds into Steam startup. See the
+follow-up below: raising the limit is neither required nor an acceptable
+precondition, because users run Steam with the default launchd limit.
 
-## Defects Found (not fixed here)
+## Defects Found (fixed in the follow-up)
 
 1. **Example packager rejects npm 12 `npm pack --json` output.**
    `scripts/package-electron-example.cjs` `packSteamBridge()` reads
@@ -122,9 +119,38 @@ environment blocker, not a product result.
   branch or Electron 44.4.5.
 - Nothing here changes the Linux, Deck or Windows open items.
 
+## Follow-up: Fixes and Rerun
+
+Both defects are fixed on the branch:
+
+- `scripts/npm-pack-output.cjs` reads `npm pack --json` output in either the
+  array shape (npm 10/11) or the name-keyed shape (npm 12). The example
+  packager, `smoke-package.cjs` and the Windows ASAR gate all use it.
+- Both matrix environment-gate heredocs now load
+  `packages/steam-bridge/dist/index.js` (the `./steamworks` entry).
+
+Two new JS tests fail against the previous scripts and pass now. With the
+fixes, on the default npm 12.0.2 toolchain: `npm test` passed 476/476 JS and
+44/44 native tests; `native:fmt`, `native:check`, `api:check`,
+`check:platform`, `package:smoke`, the matrix self-test and
+`example:package:mac` passed. `npm run macos:overlay-matrix:preflight` passed
+(`screenLocked=false`, `displayAsleep=false`).
+
+Steam file limit: users cannot be assumed to have `sudo`, so the launchd
+`maxfiles` soft limit was left at its default 256. With Steam started normally
+through `open -a Steam`, it held about 201-209 numbered descriptors after
+startup (214 in the health snapshot). `npm run macos:steam-client-health`
+passed, with only the existing low-limit warnings. The earlier 251/256 failure
+was a snapshot taken during startup, not a steady state.
+
+The full `core` matrix was not run in this session: the agent's permission
+policy blocked launching it. Launcher qualification through Steam-launched
+env-file shortcuts therefore remains open.
+
 ## Before Rerunning
 
-Fix or work around Defects 1 and 2. Raise the launchd `maxfiles` soft limit
-(for example `sudo launchctl limit maxfiles 65536 unlimited`, then start Steam
-fresh), confirm `npm run macos:steam-client-health` passes, then run the
-default `core` matrix with App ID `480`.
+With Steam started normally and logged on, confirm
+`npm run macos:steam-client-health` passes after startup settles. Then run
+`npm run macos:overlay-matrix -- --skip-package` (or without `--skip-package`
+to repackage) for the default `core` suite with App ID `480`, and
+`npm run macos:overlay-matrix:summarize`.
