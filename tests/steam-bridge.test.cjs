@@ -4489,6 +4489,66 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(linkScript, /mtimeMs/);
 });
 
+test("macOS Steam launcher confines launch targets and env-file variables", (t) => {
+  if (process.platform === "win32") {
+    t.skip("the POSIX launcher is not compiled on Windows");
+    return;
+  }
+  const compiler = childProcess.spawnSync("cc", ["--version"], { encoding: "utf8" });
+  if (compiler.error || compiler.status !== 0) {
+    t.skip("no C compiler is available");
+    return;
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-launcher-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bundleDirectory = path.join(root, "Game.app", "Contents", "MacOS");
+  fs.mkdirSync(bundleDirectory, { recursive: true });
+  const launcher = path.join(bundleDirectory, "Game");
+  const built = childProcess.spawnSync(
+    "cc",
+    ["-Wall", "-Wextra", "-Werror", "-O2", "-o", launcher,
+      path.join(repoRoot, "packages", "steam-bridge", "templates", "macos-steam-env-launcher.c")],
+    { encoding: "utf8" }
+  );
+  assert.equal(built.status, 0, built.stderr);
+  fs.writeFileSync(
+    path.join(bundleDirectory, "Game.electron"),
+    '#!/bin/sh\necho "ran:$SteamAppId:$STEAM_BRIDGE_SMOKE_AUTORUN:${DYLD_INSERT_LIBRARIES:-}:$*"\n',
+    { mode: 0o755 }
+  );
+  const outside = path.join(root, "outside.sh");
+  fs.writeFileSync(outside, "#!/bin/sh\necho outside-ran\n", { mode: 0o755 });
+  fs.symlinkSync(outside, path.join(bundleDirectory, "escape"));
+  const envFile = (name, content) => {
+    const file = path.join(root, name);
+    fs.writeFileSync(file, content);
+    return file;
+  };
+  const launch = (...args) => childProcess.spawnSync(launcher, args, { cwd: bundleDirectory, encoding: "utf8" });
+
+  let result = launch("--steam-bridge-launch-env-file", envFile("ok.env", "SteamAppId=480\nSTEAM_BRIDGE_SMOKE_AUTORUN=1\n"), "arg");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "ran:480:1::arg");
+
+  for (const forbidden of ["DYLD_INSERT_LIBRARIES=/tmp/x.dylib", "ELECTRON_RUN_AS_NODE=1", "NODE_OPTIONS=--require=/tmp/x.js", "STEAM_BRIDGE_NATIVE_PATH=/tmp/x.node"]) {
+    result = launch(`--steam-bridge-launch-env-file=${envFile("forbidden.env", `${forbidden}\n`)}`);
+    assert.equal(result.status, 2, forbidden);
+    assert.equal(result.stdout, "", forbidden);
+    assert.match(result.stderr, /may not set/);
+  }
+
+  for (const target of [outside, path.join(bundleDirectory, "escape"), "/bin/sh"]) {
+    result = launch(`--steam-bridge-launch-target=${target}`, "-c", "echo escaped");
+    assert.equal(result.status, 2, target);
+    assert.equal(result.stdout, "", target);
+    assert.match(result.stderr, /must be an executable inside the launcher directory/);
+  }
+
+  result = launch("--steam-bridge-launch-target", path.join(bundleDirectory, "Game.electron"), "inside");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "ran::::inside");
+});
+
 test("native test runner preserves platform runtime-library lookup", () => {
   const {
     parseTarget,

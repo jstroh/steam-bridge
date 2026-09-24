@@ -33,6 +33,27 @@ static char *copy_executable_path(const char *path) {
   return copy_string(path);
 }
 
+static void resolve_launcher_path(const char *argv0, char launcher_path[PATH_MAX]) {
+  if (realpath(argv0, launcher_path) == NULL) {
+    if (strchr(argv0, '/')) {
+      if (snprintf(launcher_path, PATH_MAX, "%s", argv0) >= (int)PATH_MAX) {
+        fprintf(stderr, "Launcher path is too long: %s\n", argv0);
+        exit(2);
+      }
+    } else if (getcwd(launcher_path, PATH_MAX) == NULL) {
+      perror("getcwd");
+      exit(2);
+    } else {
+      size_t used = strlen(launcher_path);
+      if (snprintf(launcher_path + used, PATH_MAX - used, "/%s", argv0) >=
+          (int)(PATH_MAX - used)) {
+        fprintf(stderr, "Launcher path is too long: %s\n", argv0);
+        exit(2);
+      }
+    }
+  }
+}
+
 static char *default_target_for_launcher(const char *argv0) {
   char launcher_path[PATH_MAX];
   char directory[PATH_MAX];
@@ -41,25 +62,7 @@ static char *default_target_for_launcher(const char *argv0) {
   const char *base_name;
   char *resolved_target;
 
-  if (realpath(argv0, launcher_path) == NULL) {
-    if (strchr(argv0, '/')) {
-      if (snprintf(launcher_path, sizeof(launcher_path), "%s", argv0) >= (int)sizeof(launcher_path)) {
-        fprintf(stderr, "Launcher path is too long: %s\n", argv0);
-        exit(2);
-      }
-    } else if (getcwd(launcher_path, sizeof(launcher_path)) == NULL) {
-      perror("getcwd");
-      exit(2);
-    } else {
-      size_t used = strlen(launcher_path);
-      if (snprintf(launcher_path + used, sizeof(launcher_path) - used, "/%s", argv0) >=
-          (int)(sizeof(launcher_path) - used)) {
-        fprintf(stderr, "Launcher path is too long: %s\n", argv0);
-        exit(2);
-      }
-    }
-  }
-
+  resolve_launcher_path(argv0, launcher_path);
   last_slash = strrchr(launcher_path, '/');
   if (!last_slash) {
     fprintf(stderr, "Cannot resolve launcher directory from: %s\n", launcher_path);
@@ -118,6 +121,51 @@ static char *default_target_for_launcher(const char *argv0) {
     base_name
   );
   exit(2);
+}
+
+static char *confined_explicit_target(const char *argv0, const char *requested) {
+  char launcher_path[PATH_MAX];
+  char directory[PATH_MAX];
+  char resolved_directory[PATH_MAX];
+  char resolved_target[PATH_MAX];
+  const char *last_slash;
+  size_t directory_length;
+
+  resolve_launcher_path(argv0, launcher_path);
+  last_slash = strrchr(launcher_path, '/');
+  if (!last_slash || (size_t)(last_slash - launcher_path) >= sizeof(directory)) {
+    fprintf(stderr, "Cannot resolve launcher directory from: %s\n", launcher_path);
+    exit(2);
+  }
+  memcpy(directory, launcher_path, (size_t)(last_slash - launcher_path));
+  directory[last_slash - launcher_path] = '\0';
+  if (realpath(directory[0] ? directory : "/", resolved_directory) == NULL ||
+      realpath(requested, resolved_target) == NULL) {
+    fprintf(stderr, "Cannot resolve launch target %s: %s\n", requested, strerror(errno));
+    exit(2);
+  }
+  directory_length = strlen(resolved_directory);
+  if (strncmp(resolved_target, resolved_directory, directory_length) != 0 ||
+      resolved_target[directory_length] != '/' || access(resolved_target, X_OK) != 0) {
+    fprintf(
+      stderr,
+      "Launch target %s must be an executable inside the launcher directory %s\n",
+      requested,
+      resolved_directory
+    );
+    exit(2);
+  }
+  return copy_string(resolved_target);
+}
+
+static int is_allowed_env_file_name(const char *name) {
+  if (strcmp(name, "SteamAppId") == 0 || strcmp(name, "SteamGameId") == 0 ||
+      strcmp(name, "SteamOverlayGameId") == 0) {
+    return 1;
+  }
+  return strncmp(name, "STEAM_BRIDGE_", strlen("STEAM_BRIDGE_")) == 0 &&
+    strcmp(name, "STEAM_BRIDGE_NATIVE_PATH") != 0 &&
+    strncmp(name, "STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER", strlen("STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER")) != 0;
 }
 
 static const char *read_option_value(int argc, char **argv, int *index, const char *name) {
@@ -203,6 +251,11 @@ static void read_env_file(const char *path) {
         exit(2);
       }
     }
+    if (!is_allowed_env_file_name(line)) {
+      fprintf(stderr, "Launcher env file may not set %s at %s:%lu\n", line, path, line_number);
+      fclose(file);
+      exit(2);
+    }
     if (setenv(line, value, 1) != 0) {
       fprintf(stderr, "Failed to set %s from %s:%lu: %s\n", line, path, line_number, strerror(errno));
       fclose(file);
@@ -220,6 +273,7 @@ static void read_env_file(const char *path) {
 
 int main(int argc, char **argv) {
   char *target = NULL;
+  const char *requested_target = NULL;
   const char *app_id = NULL;
   const char *overlay_game_id = NULL;
   const char *env_file = NULL;
@@ -236,8 +290,7 @@ int main(int argc, char **argv) {
 
     value = read_option_value(argc, argv, &index, "--steam-bridge-launch-target");
     if (value) {
-      free(target);
-      target = copy_string(value);
+      requested_target = value;
       continue;
     }
 
@@ -269,9 +322,8 @@ int main(int argc, char **argv) {
     child_argv[child_argc++] = argv[index];
   }
 
-  if (!target) {
-    target = default_target_for_launcher(argv[0]);
-  }
+  target = requested_target ? confined_explicit_target(argv[0], requested_target)
+                           : default_target_for_launcher(argv[0]);
 
   read_env_file(env_file);
   set_required_env("SteamAppId", app_id);

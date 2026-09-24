@@ -53,6 +53,13 @@ The TypeScript `NativeBinding` interface was diffed against napi-generated
 declarations: all 1,153 functions match by name, arity, parameter type and
 optionality. All 210 native callback IDs match the SDK constants or offsets.
 
+The macOS native launcher compiled into consumer apps no longer executes an
+arbitrary `--steam-bridge-launch-target` or applies arbitrary env-file variables
+(the Steam entitlements honour `DYLD_*`). Targets must resolve inside the
+launcher's directory tree and env-file names are limited to the Steam app-ID
+variables and `STEAM_BRIDGE_*` except `STEAM_BRIDGE_NATIVE_PATH`; see
+`MAC-LAUNCHER-ARGUMENT-CONFINEMENT-001`.
+
 Next: the configured-consumer naming question, the rest of the module-by-module
 review, and exact-head CI.
 
