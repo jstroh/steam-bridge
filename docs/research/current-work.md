@@ -68,11 +68,12 @@ gate. The gate now loads the `./steamworks` entry. `npm pack --json` consumers
 also assumed npm 10/11's array output; npm 12 keys it by package name. After
 the fixes, all checks pass on npm 12 (476 JS, 44 native tests), and preflight
 and Steam client health pass at the default launchd file limit (no `sudo`). A
-live `core` matrix run at `f8b8ac2d` showed Steam-launched env-file shortcuts
-start through the hardened launcher (`00-presenter-ready` passed). `01a` then
-failed close proof because the local automation host lacks Screen Recording
-and Accessibility grants, so 26 cases are unrun. Next: grant them and rerun;
-see the [2026-09-24 macOS verification](macos-verification-2026-09-24.md).
+first live run stopped at `01a` because the automation host (VSCodium, which
+hosts this terminal session) lacked Screen Recording and Accessibility grants.
+After those were granted, the full `core` matrix at `44b035aa` passed 37/37
+with App ID `480`, every case launched through Steam and the hardened launcher,
+so `MAC-LAUNCHER-ARGUMENT-CONFINEMENT-001` is settled; see the
+[2026-09-24 macOS verification](macos-verification-2026-09-24.md).
 
 Committed research notes, tests and examples no longer name the configured
 consumer product, its repositories, crash/report tracker identifiers, private

@@ -171,12 +171,40 @@ host, not SSH) lacks macOS Screen & System Audio Recording and Accessibility
 permission. It is not a product result. Full launcher qualification
 across the suite, including close/back-to-app, remains open.
 
+## Follow-up: Full Live `core` Matrix (passed)
+
+The session in this report runs inside the VSCodium integrated terminal, so
+macOS attributes TCC to VSCodium, not the Claude app. After Screen & System
+Audio Recording and Accessibility were granted to VSCodium and it was
+restarted, `AXIsProcessTrusted()` returned `true` and `screencapture`
+succeeded. With Steam started normally (health passed at 212/256) and preflight
+green, `npm run macos:overlay-matrix -- --skip-package` ran the default `core`
+suite with App ID `480` at `44b035aa` (code identical to `f8b8ac2d`):
+
+- **37/37 cases passed**; the built-in summary and a separate
+  `npm run macos:overlay-matrix:summarize -- --artifact-root <root>` both
+  reported `summary passed: cases=37`.
+- Every case log shows `steamLaunch=true` and
+  `STEAM_BRIDGE_MACOS_NATIVE_LAUNCHER=1`, so every case started through the
+  Steam shortcut, the hardened launcher and its allowed-keys env file.
+- 33 cases activated, closed and parked the overlay with idle-stable presenter
+  state on the `macos-metal` backend. Presenter-ready, both passive toasts and
+  checkout-prepare correctly did not activate a modal overlay.
+- Coverage: direct and `openAndWait` web/store/Friends/dialog, duplicate-open
+  guard, passive achievement toasts, synthetic checkout approval and prepare,
+  all eleven managed Shift+Tab shortcut targets, and profile, players,
+  community, stats, achievements and user chat routes, both direct and
+  `openAndWait`.
+- No crash reports were copied and no smoke processes remained.
+
+This settles `MAC-LAUNCHER-ARGUMENT-CONFINEMENT-001`: Steam-launched shortcuts
+using `--steam-bridge-launch-env-file` start and qualify with the hardened
+launcher. It does not cover the `full`/`persistent` suites, display profiles,
+FPS or configured-product checkout.
+
 ## Before Rerunning
 
-Grant Screen & System Audio Recording and Accessibility in System Settings to
-the application that runs the matrix (the terminal or agent host), then restart
-that host. With Steam started normally and
-`npm run macos:steam-client-health` passing after startup settles, rerun
-`npm run macos:overlay-matrix -- --skip-package` for the default `core` suite
-with App ID `480`, then `npm run macos:overlay-matrix:summarize`. Do not rerun
-before the grants change; `01a` will fail the same way.
+Repeat only when launcher option parsing, env-file handling, entitlements or
+harness env keys change. Grant Screen & System Audio Recording and
+Accessibility to the application at the top of the process chain that runs the
+matrix, and restart it before rerunning.
