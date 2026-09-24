@@ -170,7 +170,7 @@ jobs:
           if ($bundleArchives.Count -ne 1) {
             throw "Expected exactly one retained Windows bundle archive, found $($bundleArchives.Count)."
           }
-          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -eq "v0.1.6") {
+          if ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF_NAME -eq "v0.1.6") {
             node scripts/publish-release-candidate.cjs `
               --tarball $tarballs[0].FullName `
               --bundle-archive $bundleArchives[0].FullName `
@@ -179,14 +179,14 @@ jobs:
               --previous-live-proof-receipt "documentation-only-previous\windows-live-proof-receipt.json" `
               --previous-release-tag v0.1.4 `
               --require-publishable `
-              --release-tag "${{ github.ref_name }}"
-          } elseif ("${{ github.event_name }}" -eq "push") {
+              --release-tag $env:GITHUB_REF_NAME
+          } elseif ($env:GITHUB_EVENT_NAME -eq "push") {
             node scripts/publish-release-candidate.cjs `
               --tarball $tarballs[0].FullName `
               --bundle-archive $bundleArchives[0].FullName `
               --audit-manifest "dist\windows-electron-builder-asar\steam-bridge-windows-package-audit.json" `
               --require-publishable `
-              --release-tag "${{ github.ref_name }}"
+              --release-tag $env:GITHUB_REF_NAME
           } else {
             node scripts/publish-release-candidate.cjs `
               --tarball $tarballs[0].FullName `

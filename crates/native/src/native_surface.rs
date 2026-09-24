@@ -8725,7 +8725,11 @@ mod linux {
                 let shift = key.state & xlib::ShiftMask != 0;
                 let control = key.state & xlib::ControlMask != 0;
                 let alt = key.state & xlib::Mod1Mask != 0;
-                let key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 0);
+                let mut key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 0);
+                if key.state & xlib::Mod2Mask != 0 && keypad_keysym_depends_on_num_lock(key_symbol)
+                {
+                    key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 1);
+                }
                 let virtual_key = virtual_key_from_keysym(key_symbol);
                 let (client_width, client_height, minimized) = linux_client_state(surface);
                 let lparam = if alt { 0x2000_0000 } else { 0 };
@@ -8754,7 +8758,13 @@ mod linux {
 
                 if event_type == xlib::KeyPress {
                     let character_symbol =
-                        (surface.xlib.XLookupKeysym)(&mut key, if shift { 1 } else { 0 });
+                        if keypad_keysym_depends_on_num_lock((surface.xlib.XLookupKeysym)(
+                            &mut key, 0,
+                        )) {
+                            key_symbol
+                        } else {
+                            (surface.xlib.XLookupKeysym)(&mut key, if shift { 1 } else { 0 })
+                        };
                     if let Some(character) = character_from_keysym(character_symbol) {
                         push_linux_input_event(LinuxInputEvent {
                             kind: "char",
@@ -8973,16 +8983,67 @@ mod linux {
             keysym::XK_Insert => 0x2D,
             keysym::XK_Delete => 0x2E,
             keysym::XK_F1..=keysym::XK_F24 => 0x70 + u64::from(symbol - keysym::XK_F1),
+            keysym::XK_Pause => 0x13,
+            keysym::XK_Caps_Lock => 0x14,
+            keysym::XK_Print => 0x2C,
+            keysym::XK_Super_L => 0x5B,
+            keysym::XK_Super_R => 0x5C,
+            keysym::XK_Menu => 0x5D,
+            keysym::XK_Num_Lock => 0x90,
+            keysym::XK_Scroll_Lock => 0x91,
+            keysym::XK_KP_Enter => 0x0D,
+            keysym::XK_KP_Begin => 0x0C,
+            keysym::XK_KP_Prior => 0x21,
+            keysym::XK_KP_Next => 0x22,
+            keysym::XK_KP_End => 0x23,
+            keysym::XK_KP_Home => 0x24,
+            keysym::XK_KP_Left => 0x25,
+            keysym::XK_KP_Up => 0x26,
+            keysym::XK_KP_Right => 0x27,
+            keysym::XK_KP_Down => 0x28,
+            keysym::XK_KP_Insert => 0x2D,
+            keysym::XK_KP_Delete => 0x2E,
+            keysym::XK_KP_0..=keysym::XK_KP_9 => 0x60 + u64::from(symbol - keysym::XK_KP_0),
+            keysym::XK_KP_Multiply => 0x6A,
+            keysym::XK_KP_Add => 0x6B,
+            keysym::XK_KP_Separator => 0x6C,
+            keysym::XK_KP_Subtract => 0x6D,
+            keysym::XK_KP_Decimal => 0x6E,
+            keysym::XK_KP_Divide => 0x6F,
+            keysym::XK_semicolon => 0xBA,
+            keysym::XK_equal => 0xBB,
+            keysym::XK_comma => 0xBC,
+            keysym::XK_minus => 0xBD,
+            keysym::XK_period => 0xBE,
+            keysym::XK_slash => 0xBF,
+            keysym::XK_grave => 0xC0,
+            keysym::XK_bracketleft => 0xDB,
+            keysym::XK_backslash => 0xDC,
+            keysym::XK_bracketright => 0xDD,
+            keysym::XK_apostrophe => 0xDE,
+            keysym::XK_less | keysym::XK_greater => 0xE2,
             0x61..=0x7A => u64::from(symbol - 0x61 + 0x41),
             0x41..=0x5A | 0x30..=0x39 => u64::from(symbol),
-            0x20..=0x7E => u64::from(symbol),
             _ => 0,
         }
     }
 
+    fn keypad_keysym_depends_on_num_lock(symbol: xlib::KeySym) -> bool {
+        matches!(symbol as c_uint, keysym::XK_KP_Home..=keysym::XK_KP_Delete)
+    }
+
     fn character_from_keysym(symbol: xlib::KeySym) -> Option<u32> {
         let symbol = symbol as u32;
-        (0x20..=0x7E).contains(&symbol).then_some(symbol)
+        match symbol {
+            0x20..=0x7E => Some(symbol),
+            keysym::XK_KP_0..=keysym::XK_KP_9 => Some(u32::from(b'0') + symbol - keysym::XK_KP_0),
+            keysym::XK_KP_Multiply => Some(u32::from(b'*')),
+            keysym::XK_KP_Add => Some(u32::from(b'+')),
+            keysym::XK_KP_Subtract => Some(u32::from(b'-')),
+            keysym::XK_KP_Decimal => Some(u32::from(b'.')),
+            keysym::XK_KP_Divide => Some(u32::from(b'/')),
+            _ => None,
+        }
     }
 
     fn linux_now_ms() -> u64 {
@@ -10503,7 +10564,87 @@ void main() {
 
     #[cfg(test)]
     mod tests {
-        use super::{supports_dri3_pixmap_modifier, CHROMIUM_NO_DRM_MODIFIER};
+        use super::{
+            character_from_keysym, keypad_keysym_depends_on_num_lock, keysym,
+            supports_dri3_pixmap_modifier, virtual_key_from_keysym, xlib, CHROMIUM_NO_DRM_MODIFIER,
+        };
+
+        fn vk(symbol: std::os::raw::c_uint) -> u64 {
+            virtual_key_from_keysym(symbol as xlib::KeySym)
+        }
+
+        #[test]
+        fn punctuation_keysyms_map_to_windows_oem_virtual_keys() {
+            assert_eq!(vk(keysym::XK_semicolon), 0xBA);
+            assert_eq!(vk(keysym::XK_equal), 0xBB);
+            assert_eq!(vk(keysym::XK_comma), 0xBC);
+            assert_eq!(vk(keysym::XK_minus), 0xBD);
+            assert_eq!(vk(keysym::XK_period), 0xBE);
+            assert_eq!(vk(keysym::XK_slash), 0xBF);
+            assert_eq!(vk(keysym::XK_grave), 0xC0);
+            assert_eq!(vk(keysym::XK_bracketleft), 0xDB);
+            assert_eq!(vk(keysym::XK_backslash), 0xDC);
+            assert_eq!(vk(keysym::XK_bracketright), 0xDD);
+            assert_eq!(vk(keysym::XK_apostrophe), 0xDE);
+            assert_eq!(vk(keysym::XK_less), 0xE2);
+        }
+
+        #[test]
+        fn printable_keysyms_never_alias_navigation_or_function_keys() {
+            for symbol in 0x20..=0x7E {
+                let key = vk(symbol);
+                let letter_or_digit = (0x30..=0x39).contains(&symbol)
+                    || (0x41..=0x5A).contains(&symbol)
+                    || (0x61..=0x7A).contains(&symbol);
+                if symbol == keysym::XK_space {
+                    assert_eq!(key, 0x20);
+                } else if !letter_or_digit {
+                    assert!(
+                        key == 0 || key >= 0xBA,
+                        "keysym {symbol:#x} mapped to non-OEM virtual key {key:#x}"
+                    );
+                }
+            }
+            assert_eq!(vk(keysym::XK_a), 0x41);
+            assert_eq!(vk(keysym::XK_Z), 0x5A);
+            assert_eq!(vk(keysym::XK_7), 0x37);
+        }
+
+        #[test]
+        fn keypad_and_lock_keysyms_map_to_windows_virtual_keys() {
+            assert_eq!(vk(keysym::XK_KP_0), 0x60);
+            assert_eq!(vk(keysym::XK_KP_9), 0x69);
+            assert_eq!(vk(keysym::XK_KP_Multiply), 0x6A);
+            assert_eq!(vk(keysym::XK_KP_Add), 0x6B);
+            assert_eq!(vk(keysym::XK_KP_Subtract), 0x6D);
+            assert_eq!(vk(keysym::XK_KP_Decimal), 0x6E);
+            assert_eq!(vk(keysym::XK_KP_Divide), 0x6F);
+            assert_eq!(vk(keysym::XK_KP_Enter), 0x0D);
+            assert_eq!(vk(keysym::XK_KP_Home), 0x24);
+            assert_eq!(vk(keysym::XK_KP_Delete), 0x2E);
+            assert_eq!(vk(keysym::XK_Caps_Lock), 0x14);
+            assert_eq!(vk(keysym::XK_Num_Lock), 0x90);
+            assert!(keypad_keysym_depends_on_num_lock(
+                keysym::XK_KP_Home as xlib::KeySym
+            ));
+            assert!(keypad_keysym_depends_on_num_lock(
+                keysym::XK_KP_Delete as xlib::KeySym
+            ));
+            assert!(!keypad_keysym_depends_on_num_lock(
+                keysym::XK_KP_Divide as xlib::KeySym
+            ));
+        }
+
+        #[test]
+        fn keypad_keysyms_produce_text_characters() {
+            let ch = |symbol: std::os::raw::c_uint| character_from_keysym(symbol as xlib::KeySym);
+            assert_eq!(ch(keysym::XK_KP_0), Some(u32::from(b'0')));
+            assert_eq!(ch(keysym::XK_KP_9), Some(u32::from(b'9')));
+            assert_eq!(ch(keysym::XK_KP_Decimal), Some(u32::from(b'.')));
+            assert_eq!(ch(keysym::XK_KP_Divide), Some(u32::from(b'/')));
+            assert_eq!(ch(keysym::XK_KP_Home), None);
+            assert_eq!(ch(keysym::XK_period), Some(u32::from(b'.')));
+        }
 
         #[test]
         fn dri3_pixmap_import_accepts_linear_and_unspecified_modifiers() {

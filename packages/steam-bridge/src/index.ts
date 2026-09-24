@@ -31136,8 +31136,15 @@ function parseSteamWebApiResponse<T>(
   return text as T;
 }
 
+function isValidSteamInitAppId(appId: unknown): appId is number {
+  return typeof appId === "number" && Number.isInteger(appId) && appId > 0 && appId <= 0xffff_ffff;
+}
+
 function normalizeInitOptions(options?: InitOptions | number | null): Required<InitOptions> {
   if (typeof options === "number") {
+    if (!isValidSteamInitAppId(options)) {
+      throw new Error("Steam Bridge init requires a positive integer appId");
+    }
     return {
       appId: options,
       callbackIntervalMs: normalizeCallbackIntervalMs(
@@ -31148,7 +31155,7 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
 
   if (options == null) {
     const appId = Number(process.env.SteamAppId ?? process.env.SteamAppID ?? process.env.STEAM_APP_ID);
-    if (!Number.isInteger(appId) || appId <= 0) {
+    if (!isValidSteamInitAppId(appId)) {
       throw new Error("Steam Bridge init requires an appId or STEAM_APP_ID/SteamAppId environment variable");
     }
     return {
@@ -31159,7 +31166,7 @@ function normalizeInitOptions(options?: InitOptions | number | null): Required<I
     };
   }
 
-  if (!Number.isInteger(options.appId) || options.appId <= 0) {
+  if (!isValidSteamInitAppId(options.appId)) {
     throw new Error("Steam Bridge init requires a positive integer appId");
   }
 

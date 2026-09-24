@@ -56,6 +56,25 @@ test("Windows release policy audits unsigned candidates without an external sign
   );
 });
 
+test("workflows keep least-privilege tokens and never interpolate refs into shell scripts", () => {
+  const ciWorkflow = readSourceFile(".github", "workflows", "ci.yml");
+  const releaseWorkflow = readSourceFile(".github", "workflows", "release.yml");
+  const publishWorkflow = readSourceFile(".github", "workflows", "publish.yml");
+
+  assert.match(ciWorkflow, /^permissions:\n {2}contents: read\n/mu);
+  for (const workflow of [ciWorkflow, releaseWorkflow, publishWorkflow]) {
+    const runBlocks = [...workflow.matchAll(/^(\s*)(?:- )?run: \|\n((?:\1 {2,}.*\n|\s*\n)*)/gmu)].map((match) => match[2]);
+    const inlineRuns = [...workflow.matchAll(/^\s*(?:- )?run: (?!\|)(.*)$/gmu)].map((match) => match[1]);
+    for (const script of [...runBlocks, ...inlineRuns]) {
+      assert.doesNotMatch(
+        script,
+        /\$\{\{\s*(?:github\.(?:ref_name|head_ref|event\.)|inputs\.)/u,
+        "workflow scripts must read refs and inputs from environment variables"
+      );
+    }
+  }
+});
+
 test("Public releases retain matching native symbols without consumer crash-service credentials", () => {
   const workflow = readSourceFile(".github", "workflows", "release.yml");
   const publisher = readSourceFile(".github", "workflows", "publish.yml");
@@ -6507,6 +6526,38 @@ test("idempotent initSafe preserves JavaScript-owned native resources", (t) => {
 
 test("init rejects missing app IDs with an actionable error", (t) => {
   const restoreEnv = setSteamEnv();
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    restoreEnv();
+    clearSteamBridgeCache();
+  });
+
+  assert.throws(() => steam.init(), /requires an appId or STEAM_APP_ID/);
+  assert.equal(fake.calls.some((call) => call.method === "init"), false);
+});
+
+test("init rejects invalid numeric and object app IDs before touching native Steam", (t) => {
+  const restoreEnv = setSteamEnv();
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    restoreEnv();
+    clearSteamBridgeCache();
+  });
+
+  for (const appId of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0x1_0000_0000]) {
+    assert.throws(() => steam.init(appId), /requires a positive integer appId/);
+    assert.throws(() => steam.init({ appId }), /requires a positive integer appId/);
+  }
+  assert.throws(() => steam.init({ appId: "480" }), /requires a positive integer appId/);
+  assert.equal(fake.calls.some((call) => call.method === "init"), false);
+});
+
+test("init rejects out-of-range environment app IDs", (t) => {
+  const restoreEnv = setSteamEnv({ STEAM_APP_ID: "4294967296" });
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
 

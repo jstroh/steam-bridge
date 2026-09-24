@@ -1,6 +1,41 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-22
+Last reviewed: 2026-09-24
+
+### 2026-09-24 whole-codebase review corrections
+
+The maintainer requested a deep review of the whole repository and fixes for
+every confirmed finding, on branch `claude/fervent-gauss-17k8a8` from `7beb49e`.
+The first correction slice changes source behavior only where a failing-before
+test or exact source trace proves the defect:
+
+- Linux native-host keyboard input passed printable X11 keysyms through as
+  Windows virtual keys. Electron therefore received `.`/`-`/`,`/`'` as
+  Delete/Insert/PrintScreen/Right, `[`/`\`/`]`/`` ` `` as Super/Super/Menu/numpad
+  zero, and dropped `;`/`=`/`/`. Punctuation now uses the Windows OEM keys the
+  Electron dispatcher already expects; keypad, lock, Pause, Print, Super and
+  Menu keys map to their Windows keys; Num Lock selects the keypad digit level;
+  keypad digits/operators produce text. Native unit tests cover the mapping.
+  Live Linux/Deck keyboard proof is open under `LINUX-NATIVE-KEYBOARD-VK-001`.
+- Steam callback, warning and networking-debug dispatch no longer runs user
+  callbacks while holding the registry mutex. A callback that created or dropped
+  a registration deadlocked before; the new native test hangs against the old
+  dispatcher and passes now. A registration removed mid-dispatch is skipped.
+- Numeric, environment and object `init` app IDs share one validator: a
+  positive integer no greater than `0xffffffff`. The numeric form previously
+  forwarded `NaN`, negatives, fractions and out-of-range values to N-API.
+- `ci.yml` now defaults every job to `contents: read`; the Release PowerShell
+  step reads the event and tag from `$env:` instead of interpolating
+  `github.ref_name`. A source test rejects ref/input interpolation in workflow
+  scripts. The documentation-only `v0.1.6` path is intentionally retained.
+
+Re-analysis withdrew two review candidates without code changes: KWin `qdbus`
+calls are each bounded by their timeouts and a hung bus stops at the first
+timeout, and networking batch-receive errors require corrupted Steam message
+structs while every message is still released.
+
+Next: remaining native minor items, the configured-consumer naming question,
+the rest of the module-by-module review, and exact-head CI.
 
 ### 2026-09-22 full release-diff review and 0.4.9 preparation
 
