@@ -40,8 +40,21 @@ smoke example, Windows ASAR fixture (derived from it) and lockfile now pin
 44.4.5, regenerated with npm 11. Any release candidate from this branch needs
 fresh live qualification on 44.4.5; earlier 44.4.4 evidence does not carry over.
 
-Next: remaining native minor items, the configured-consumer naming question,
-the rest of the module-by-module review, and exact-head CI.
+Later slices on the same branch: CPU overlay frames reuse their retained
+buffer on Linux and Windows instead of allocating per frame; `init` rewrites the
+Steam app-ID environment only when it differs; `build.rs` gates its Windows-only
+helper; the legacy-layout CLI is committed executable. The Linux X11 host now
+enables XKB detectable auto-repeat and flags repeated presses (an Xvfb/XTest
+hold reproduced 17 release/press pairs before), and derives text through
+`XLookupString` and `libxkbcommon` so Caps Lock, Num Lock and non-ASCII keysyms
+produce the right characters. Linux CI reruns native tests under Xvfb with
+`STEAM_BRIDGE_REQUIRE_X11_TESTS=1` so the X11 keyboard test cannot silently skip.
+The TypeScript `NativeBinding` interface was diffed against napi-generated
+declarations: all 1,153 functions match by name, arity, parameter type and
+optionality. All 210 native callback IDs match the SDK constants or offsets.
+
+Next: the configured-consumer naming question, the rest of the module-by-module
+review, and exact-head CI.
 
 ### 2026-09-22 full release-diff review and 0.4.9 preparation
 

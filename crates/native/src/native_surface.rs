@@ -7014,6 +7014,8 @@ mod linux {
         shared_texture_import_failure_count: u64,
         dri3_dma_buf_importer: Option<Dri3DmaBufImporter>,
         frame_draw_count: u64,
+        detectable_auto_repeat: bool,
+        pressed_keycodes: [u64; 4],
     }
 
     #[derive(Clone, Serialize)]
@@ -8017,6 +8019,7 @@ mod linux {
                         "bytes": frame.data.len(),
                     })),
                     "sourceFrameDirty": surface.source_frame_dirty,
+                    "detectableAutoRepeat": surface.detectable_auto_repeat,
                     "frameUploadCount": surface.frame_upload_count,
                     "sharedTextureImportCount": surface.shared_texture_import_count,
                     "sharedTextureImportFailureCount": surface.shared_texture_import_failure_count,
@@ -8138,6 +8141,13 @@ mod linux {
                 "Failed to open X11 display for Linux native overlay probe",
             ));
         }
+        let mut detectable_auto_repeat_supported: c_int = 0;
+        (xlib.XkbSetDetectableAutoRepeat)(
+            display,
+            xlib::True,
+            &mut detectable_auto_repeat_supported,
+        );
+        let detectable_auto_repeat = detectable_auto_repeat_supported != 0;
         if managed_host && !application_host {
             let Some(xfixes) = xfixes.as_ref() else {
                 (xlib.XCloseDisplay)(display);
@@ -8515,6 +8525,8 @@ mod linux {
             shared_texture_import_failure_count: 0,
             dri3_dma_buf_importer: None,
             frame_draw_count: 0,
+            detectable_auto_repeat,
+            pressed_keycodes: [0; 4],
         })
     }
 
@@ -8754,7 +8766,13 @@ mod linux {
                 }
                 let virtual_key = virtual_key_from_keysym(key_symbol);
                 let (client_width, client_height, minimized) = linux_client_state(surface);
-                let lparam = if alt { 0x2000_0000 } else { 0 };
+                let repeat = record_key_transition(
+                    &mut surface.pressed_keycodes,
+                    key.keycode,
+                    event_type == xlib::KeyPress,
+                );
+                let lparam =
+                    if alt { 0x2000_0000 } else { 0 } | if repeat { 0x4000_0000 } else { 0 };
                 push_linux_input_event(LinuxInputEvent {
                     kind: if event_type == xlib::KeyPress {
                         "keyDown"
@@ -8779,15 +8797,7 @@ mod linux {
                 });
 
                 if event_type == xlib::KeyPress {
-                    let character_symbol =
-                        if keypad_keysym_depends_on_num_lock((surface.xlib.XLookupKeysym)(
-                            &mut key, 0,
-                        )) {
-                            key_symbol
-                        } else {
-                            (surface.xlib.XLookupKeysym)(&mut key, if shift { 1 } else { 0 })
-                        };
-                    if let Some(character) = character_from_keysym(character_symbol) {
+                    if let Some(character) = key_press_character(&surface.xlib, &mut key) {
                         push_linux_input_event(LinuxInputEvent {
                             kind: "char",
                             captured_at_ms: linux_now_ms(),
@@ -8812,6 +8822,7 @@ mod linux {
             xlib::FocusIn | xlib::FocusOut => {
                 let focus = event.focus_change;
                 if focus.window == surface.window {
+                    surface.pressed_keycodes = [0; 4];
                     let (client_width, client_height, minimized) = linux_client_state(surface);
                     push_linux_input_event(LinuxInputEvent {
                         kind: if event_type == xlib::FocusIn {
@@ -9050,22 +9061,70 @@ mod linux {
         }
     }
 
+    fn record_key_transition(pressed: &mut [u64; 4], keycode: c_uint, press: bool) -> bool {
+        let index = (keycode as usize / 64) & 3;
+        let bit = 1u64 << (keycode % 64);
+        let was_pressed = pressed[index] & bit != 0;
+        if press {
+            pressed[index] |= bit;
+        } else {
+            pressed[index] &= !bit;
+        }
+        press && was_pressed
+    }
+
     fn keypad_keysym_depends_on_num_lock(symbol: xlib::KeySym) -> bool {
         matches!(symbol as c_uint, keysym::XK_KP_Home..=keysym::XK_KP_Delete)
     }
 
+    unsafe fn key_press_character(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> Option<u32> {
+        let mut text = [0 as c_char; 8];
+        let mut symbol: xlib::KeySym = 0;
+        (xlib.XLookupString)(
+            key,
+            text.as_mut_ptr(),
+            text.len() as c_int,
+            &mut symbol,
+            ptr::null_mut(),
+        );
+        character_from_keysym(symbol)
+    }
+
     fn character_from_keysym(symbol: xlib::KeySym) -> Option<u32> {
-        let symbol = symbol as u32;
-        match symbol {
-            0x20..=0x7E => Some(symbol),
-            keysym::XK_KP_0..=keysym::XK_KP_9 => Some(u32::from(b'0') + symbol - keysym::XK_KP_0),
-            keysym::XK_KP_Multiply => Some(u32::from(b'*')),
-            keysym::XK_KP_Add => Some(u32::from(b'+')),
-            keysym::XK_KP_Subtract => Some(u32::from(b'-')),
-            keysym::XK_KP_Decimal => Some(u32::from(b'.')),
-            keysym::XK_KP_Divide => Some(u32::from(b'/')),
-            _ => None,
-        }
+        let Ok(symbol) = u32::try_from(symbol) else {
+            return None;
+        };
+        let character = match symbol {
+            0x20..=0x7E | 0xA0..=0xFF => symbol,
+            0x0100_0000..=0x0110_FFFF => symbol - 0x0100_0000,
+            keysym::XK_KP_0..=keysym::XK_KP_9 => u32::from(b'0') + symbol - keysym::XK_KP_0,
+            keysym::XK_KP_Multiply => u32::from(b'*'),
+            keysym::XK_KP_Add => u32::from(b'+'),
+            keysym::XK_KP_Subtract => u32::from(b'-'),
+            keysym::XK_KP_Decimal => u32::from(b'.'),
+            keysym::XK_KP_Divide => u32::from(b'/'),
+            _ => xkb_keysym_to_utf32(symbol)?,
+        };
+        (!(character < 0x20 || (0x7F..=0x9F).contains(&character)))
+            .then_some(character)
+            .filter(|character| char::from_u32(*character).is_some())
+    }
+
+    fn xkb_keysym_to_utf32(symbol: u32) -> Option<u32> {
+        type KeysymToUtf32 = unsafe extern "C" fn(u32) -> u32;
+        static XKB_KEYSYM_TO_UTF32: std::sync::OnceLock<Option<(Library, KeysymToUtf32)>> =
+            std::sync::OnceLock::new();
+        let (_, convert) = XKB_KEYSYM_TO_UTF32
+            .get_or_init(|| unsafe {
+                let library = Library::new("libxkbcommon.so.0").ok()?;
+                let convert = *library
+                    .get::<KeysymToUtf32>(b"xkb_keysym_to_utf32\0")
+                    .ok()?;
+                Some((library, convert))
+            })
+            .as_ref()?;
+        let character = unsafe { convert(symbol) };
+        (character != 0).then_some(character)
     }
 
     fn linux_now_ms() -> u64 {
@@ -10587,9 +10646,84 @@ void main() {
     #[cfg(test)]
     mod tests {
         use super::{
-            character_from_keysym, keypad_keysym_depends_on_num_lock, keysym,
-            supports_dri3_pixmap_modifier, virtual_key_from_keysym, xlib, CHROMIUM_NO_DRM_MODIFIER,
+            character_from_keysym, key_press_character, keypad_keysym_depends_on_num_lock, keysym,
+            record_key_transition, supports_dri3_pixmap_modifier, virtual_key_from_keysym, xlib,
+            CHROMIUM_NO_DRM_MODIFIER,
         };
+        use std::ptr;
+
+        #[test]
+        fn held_keys_report_repeats_until_release() {
+            let mut pressed = [0u64; 4];
+            assert!(!record_key_transition(&mut pressed, 38, true));
+            assert!(record_key_transition(&mut pressed, 38, true));
+            assert!(record_key_transition(&mut pressed, 38, true));
+            assert!(!record_key_transition(&mut pressed, 39, true));
+            assert!(!record_key_transition(&mut pressed, 38, false));
+            assert!(!record_key_transition(&mut pressed, 38, true));
+            assert!(!record_key_transition(&mut pressed, 255, true));
+            assert!(record_key_transition(&mut pressed, 255, true));
+            assert!(!record_key_transition(&mut pressed, 255, false));
+            assert!(record_key_transition(&mut pressed, 39, true));
+        }
+
+        #[test]
+        fn keysym_text_covers_latin1_and_unicode_and_rejects_controls() {
+            let ch = |symbol: u64| character_from_keysym(symbol as xlib::KeySym);
+            assert_eq!(ch(0xE9), Some(0xE9));
+            assert_eq!(ch(0xDF), Some(0xDF));
+            assert_eq!(ch(0x0100_0430), Some(0x430));
+            assert_eq!(ch(0x0101_F600), Some(0x1F600));
+            assert_eq!(ch(0x0100_0080), None);
+            assert_eq!(ch(0x0100_D800), None);
+            assert_eq!(ch(u64::from(keysym::XK_Return)), None);
+            assert_eq!(ch(u64::from(keysym::XK_BackSpace)), None);
+            assert_eq!(ch(u64::from(keysym::XK_Tab)), None);
+            assert_eq!(ch(u64::from(keysym::XK_Escape)), None);
+            assert_eq!(ch(0xFE51), None);
+            if unsafe { libloading::Library::new("libxkbcommon.so.0") }.is_ok() {
+                assert_eq!(ch(0x06C1), Some(0x430));
+                assert_eq!(ch(0x07E1), Some(0x3B1));
+                assert_eq!(ch(0x20AC), Some(0x20AC));
+            }
+        }
+
+        #[test]
+        fn x11_key_text_honours_caps_lock_shift_and_num_lock() {
+            let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
+            let Ok(xlib) = xlib::Xlib::open() else {
+                assert!(!require_display, "Xlib is unavailable");
+                return;
+            };
+            let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+            if display.is_null() {
+                assert!(!require_display, "no X11 display is available");
+                return;
+            }
+            let lookup = |symbol: std::os::raw::c_uint, state: std::os::raw::c_uint| unsafe {
+                let mut key: xlib::XKeyEvent = std::mem::zeroed();
+                key.type_ = xlib::KeyPress;
+                key.display = display;
+                key.keycode = (xlib.XKeysymToKeycode)(display, xlib::KeySym::from(symbol)).into();
+                key.state = state;
+                key_press_character(&xlib, &mut key)
+            };
+            assert_eq!(lookup(keysym::XK_a, 0), Some(u32::from(b'a')));
+            assert_eq!(lookup(keysym::XK_a, xlib::ShiftMask), Some(u32::from(b'A')));
+            assert_eq!(lookup(keysym::XK_a, xlib::LockMask), Some(u32::from(b'A')));
+            assert_eq!(lookup(keysym::XK_1, xlib::LockMask), Some(u32::from(b'1')));
+            assert_eq!(
+                lookup(keysym::XK_KP_Home, xlib::Mod2Mask),
+                Some(u32::from(b'7'))
+            );
+            assert_eq!(lookup(keysym::XK_KP_Home, 0), None);
+            let mut supported = 0;
+            unsafe {
+                (xlib.XkbSetDetectableAutoRepeat)(display, xlib::True, &mut supported);
+                (xlib.XCloseDisplay)(display);
+            }
+            assert_ne!(supported, 0);
+        }
 
         fn vk(symbol: std::os::raw::c_uint) -> u64 {
             virtual_key_from_keysym(symbol as xlib::KeySym)
