@@ -10689,6 +10689,132 @@ void main() {
         }
 
         #[test]
+        fn x11_probe_window_reports_punctuation_text_and_held_key_repeats() {
+            use std::time::{Duration, Instant};
+            let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
+            let (Ok(xlib), Ok(xtest)) = (xlib::Xlib::open(), x11_dl::xtest::Xf86vmode::open())
+            else {
+                assert!(!require_display, "Xlib or XTest is unavailable");
+                return;
+            };
+            let control = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+            if control.is_null() {
+                assert!(!require_display, "no X11 display is available");
+                return;
+            }
+            super::open(
+                Some("Steam Bridge keyboard test".to_owned()),
+                Some(320),
+                Some(240),
+                None,
+                None,
+            )
+            .expect("open the X11 probe window");
+            let window = super::SURFACE
+                .lock()
+                .unwrap()
+                .as_ref()
+                .expect("probe surface")
+                .window;
+            let mut events: Vec<serde_json::Value> = Vec::new();
+            let mut collect = |milliseconds: u64, events: &mut Vec<serde_json::Value>| {
+                let deadline = Instant::now() + Duration::from_millis(milliseconds);
+                while Instant::now() < deadline {
+                    super::pump().expect("pump the X11 probe window");
+                    let drained: Vec<serde_json::Value> =
+                        serde_json::from_str(&super::drain_input_events_json()).unwrap();
+                    events.extend(drained);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            };
+            unsafe {
+                let mut attributes: xlib::XWindowAttributes = std::mem::zeroed();
+                let deadline = Instant::now() + Duration::from_secs(2);
+                loop {
+                    collect(20, &mut events);
+                    (xlib.XGetWindowAttributes)(control, window, &mut attributes);
+                    if attributes.map_state == xlib::IsViewable || Instant::now() > deadline {
+                        break;
+                    }
+                }
+                assert_eq!(attributes.map_state, xlib::IsViewable);
+                let (mut root_x, mut root_y, mut child) = (0, 0, 0);
+                (xlib.XTranslateCoordinates)(
+                    control,
+                    window,
+                    attributes.root,
+                    attributes.width / 2,
+                    attributes.height / 2,
+                    &mut root_x,
+                    &mut root_y,
+                    &mut child,
+                );
+                (xtest.XTestFakeMotionEvent)(control, -1, root_x, root_y, 0);
+                (xlib.XSync)(control, xlib::False);
+            }
+            collect(100, &mut events);
+            events.clear();
+
+            let key_code = |symbol: std::os::raw::c_uint| unsafe {
+                std::os::raw::c_uint::from((xlib.XKeysymToKeycode)(
+                    control,
+                    xlib::KeySym::from(symbol),
+                ))
+            };
+            let fake_key = |code: std::os::raw::c_uint, press: bool| unsafe {
+                (xtest.XTestFakeKeyEvent)(control, code, i32::from(press), 0);
+                (xlib.XSync)(control, xlib::False);
+            };
+            let of_kind = |events: &[serde_json::Value], kind: &str, wparam: u64| {
+                events
+                    .iter()
+                    .filter(|event| event["kind"] == kind && event["wparam"] == wparam)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            const REPEAT: i64 = 0x4000_0000;
+
+            let period = key_code(keysym::XK_period);
+            fake_key(period, true);
+            fake_key(period, false);
+            collect(150, &mut events);
+            let downs = of_kind(&events, "keyDown", 0xBE);
+            assert_eq!(downs.len(), 1, "{events:?}");
+            assert_eq!(downs[0]["lparam"].as_i64().unwrap() & REPEAT, 0);
+            assert_eq!(
+                of_kind(&events, "char", u64::from(b'.')).len(),
+                1,
+                "{events:?}"
+            );
+            assert_eq!(of_kind(&events, "keyUp", 0xBE).len(), 1, "{events:?}");
+            assert!(of_kind(&events, "keyDown", 0x2E).is_empty(), "{events:?}");
+
+            events.clear();
+            let letter = key_code(keysym::XK_a);
+            fake_key(letter, true);
+            collect(1300, &mut events);
+            fake_key(letter, false);
+            collect(150, &mut events);
+            let downs = of_kind(&events, "keyDown", 0x41);
+            assert!(downs.len() >= 3, "expected auto-repeat: {events:?}");
+            assert_eq!(downs[0]["lparam"].as_i64().unwrap() & REPEAT, 0);
+            assert!(downs[1..]
+                .iter()
+                .all(|event| event["lparam"].as_i64().unwrap() & REPEAT != 0));
+            assert_eq!(of_kind(&events, "keyUp", 0x41).len(), 1, "{events:?}");
+            assert_eq!(
+                of_kind(&events, "char", u64::from(b'a')).len(),
+                downs.len(),
+                "{events:?}"
+            );
+
+            super::close();
+            unsafe {
+                (xlib.XCloseDisplay)(control);
+            }
+        }
+
+        #[test]
         fn x11_key_text_honours_caps_lock_shift_and_num_lock() {
             let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
             let Ok(xlib) = xlib::Xlib::open() else {
