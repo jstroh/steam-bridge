@@ -2869,11 +2869,22 @@ mod windows {
         }
 
         with_surface(|surface| {
-            surface.source_frame = Some(FrameUpload {
-                width,
-                height,
-                data: buffer[..expected_len].to_vec(),
-            });
+            let pixels = &buffer[..expected_len];
+            match surface.source_frame.as_mut() {
+                Some(frame) => {
+                    frame.width = width;
+                    frame.height = height;
+                    frame.data.clear();
+                    frame.data.extend_from_slice(pixels);
+                }
+                None => {
+                    surface.source_frame = Some(FrameUpload {
+                        width,
+                        height,
+                        data: pixels.to_vec(),
+                    });
+                }
+            }
             surface.source_frame_dirty = true;
         })
     }
@@ -7691,11 +7702,22 @@ mod linux {
         }
 
         with_surface(|surface| {
-            surface.source_frame = Some(LinuxFrameUpload {
-                width: width as c_int,
-                height: height as c_int,
-                data: buffer[..expected_len].to_vec(),
-            });
+            let pixels = &buffer[..expected_len];
+            match surface.source_frame.as_mut() {
+                Some(frame) => {
+                    frame.width = width as c_int;
+                    frame.height = height as c_int;
+                    frame.data.clear();
+                    frame.data.extend_from_slice(pixels);
+                }
+                None => {
+                    surface.source_frame = Some(LinuxFrameUpload {
+                        width: width as c_int,
+                        height: height as c_int,
+                        data: pixels.to_vec(),
+                    });
+                }
+            }
             surface.source_frame_dirty = true;
         })
     }

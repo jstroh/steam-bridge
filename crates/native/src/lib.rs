@@ -347,8 +347,12 @@ pub fn init(app_id: u32) -> Result<(), Error> {
         shutdown_all_locked();
     }
 
-    std::env::set_var("SteamAppId", app_id.to_string());
-    std::env::set_var("SteamGameId", app_id.to_string());
+    let app_id_text = app_id.to_string();
+    for name in ["SteamAppId", "SteamGameId"] {
+        if std::env::var_os(name).as_deref() != Some(std::ffi::OsStr::new(&app_id_text)) {
+            std::env::set_var(name, &app_id_text);
+        }
+    }
 
     let mut err_msg: sys::SteamErrMsg = [0; 1024];
     let result = unsafe { sys::SteamAPI_InitFlat(&mut err_msg) };
