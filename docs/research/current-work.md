@@ -60,8 +60,14 @@ launcher's directory tree and env-file names are limited to the Steam app-ID
 variables and `STEAM_BRIDGE_*` except `STEAM_BRIDGE_NATIVE_PATH`; see
 `MAC-LAUNCHER-ARGUMENT-CONFINEMENT-001`.
 
-Next: the configured-consumer naming question, the rest of the module-by-module
-review, and exact-head CI.
+Committed research notes, tests and examples no longer name the configured
+consumer product, its repositories, crash/report tracker identifiers, private
+app/shortcut identifiers or the maintainer's local account paths; they use
+generic `consumer`/`CONSUMER-*` placeholders. Two POSIX smoke self-tests still
+embed a Steam `userdata` directory number and a shortcut app ID whose origin
+(synthetic or real) the maintainer should confirm.
+
+Next: the rest of the module-by-module review and exact-head CI.
 
 ### 2026-09-22 full release-diff review and 0.4.9 preparation
 
@@ -654,7 +660,7 @@ The `0.4.6` candidate versions the reviewed bundled Steam Input correction at
 `ade02c6`. The published package changes only the public layout generator,
 validator CLI, generated TypeScript/JavaScript, tests, and documentation. It
 retains every native addon and Valve runtime-library byte from published
-`0.4.5`; no native source changed. FOV4 Steam requires this version so a clean
+`0.4.5`; no native source changed. The consumer requires this version so a clean
 registry install can reproduce and validate the analog-movement layouts and
 the physical Steam Deck D-pad mapping committed by the shell.
 
@@ -670,7 +676,7 @@ The retained addon SHA-256 values are
 Electron `44.1.1` replaced `44.0.0` as npm's latest stable release before this
 candidate. The smoke example and lockfile therefore advance to `44.1.1` for the
 existing latest-version compatibility gate. This is a test/toolchain update and
-does not change the Electron version packaged by FOV4.
+does not change the Electron version packaged by the consumer.
 
 The package smoke runner now prevents a PowerShell 7 parent module path from
 being inherited by Windows PowerShell 5.1. This keeps the existing ACL
@@ -702,7 +708,7 @@ The TypeScript build and typecheck, platform and API audits, native formatting
 and compilation, 445 JavaScript/TypeScript tests with two expected Windows
 symlink-privilege skips, 67 native tests with one hardware-only test ignored,
 package smoke, and diff check pass. The `0.4.6` candidate above versions this
-non-native correction for publication and later FOV4 Steam adoption.
+non-native correction for publication and later consumer adoption.
 
 ### 2026-08-30 v0.4.5 release handoff
 
@@ -733,7 +739,7 @@ Microsoft Security Intelligence submission
 `b362782e-6d40-4467-8dab-4cdba80ed9a1` received those exact Windows addon
 bytes on 2026-08-30 for Smart App Control reputation review. Its initial
 status is only `Submitted`; no clean determination, signature, Sentry PDB
-upload, npm publication, or FOV4 package/release was claimed at that stage. The
+upload, npm publication, or the consumer package/release was claimed at that stage. The
 addon was unsigned; the external signing route was later rejected and removed.
 
 The product owner explicitly waived waiting for the Microsoft determination and
@@ -762,7 +768,7 @@ addon was unsigned.
 
 ### 2026-08-30 Windows native crash symbol retention
 
-Production Sentry group `FOV4-STEAM-1C` contains a native Node/V8 worker fatal
+Production Sentry group `CONSUMER-CRASH-1C` contains a native Node/V8 worker fatal
 from the Steam Bridge process but cannot resolve Bridge frames because release
 `0.4.4` discarded its compiler PDB after signing. The current Rust release
 profile already emits a usable PDB, and Sentry CLI proves that a freshly built
@@ -772,7 +778,7 @@ artifact handling, not compilation or runtime behavior.
 The release workflow verifies the exact addon/PDB pair after the native build,
 retains the PDB as a CI-only artifact outside the runtime-artifact
 assembly namespace, verifies it again against the final addon,
-and uploads only the PDB to the existing FOV4 Steam Sentry project on immutable
+and uploads only the PDB to the existing consumer Sentry project on immutable
 tags. The PDB does not enter the npm package or any consumer depot. A missing
 Sentry token, missing PDB, mismatched debug identifier, or failed upload stops
 the tag release. The verifier rejected a stale local addon paired with the new
@@ -788,14 +794,14 @@ applies to the next immutable Bridge release and later.
 
 ### 2026-08-28 post-0.4.4 ownership and release enforcement
 
-The public `0.4.4` package and FOV4 Steam `0.1.24` release exposed two gaps in
+The public `0.4.4` package and consumer `0.1.24` release exposed two gaps in
 the otherwise reviewed Windows path. First, the last-resort synchronous D3D11
 compatibility method could throw after `CopySubresourceRegion` without marking
 Electron's pooled producer as release-unsafe. Steam Bridge now converts native
 synchronous submission failures into `NativeOverlaySharedTextureCopyError`
 with `producerReleaseSafe: false`, and its asynchronous compatibility fallback
 always returns a rejecting promise rather than throwing before a promise exists.
-FOV4 additionally treats that typed outcome and the two legacy query timeout or
+The consumer additionally treats that typed outcome and the two legacy query timeout or
 `GetData` errors as process-restart conditions. The exact producer remains
 quarantined until process exit on every post-submit failure path.
 
@@ -812,16 +818,16 @@ These corrections are reviewed source changes after `0.4.4`; they are not yet
 published. The full JavaScript/TypeScript suite, 67 native tests with the one
 interactive hardware case intentionally ignored, API and platform audits, Rust
 format and compile checks, package smoke, candidate-protection self-tests, and
-diff checks pass. No current FOV4 or npm release bytes were rebuilt or changed.
+diff checks pass. No current consumer or npm release bytes were rebuilt or changed.
 After Electron `44.0.0` became the latest stable release, the repository's
 latest-version CI gate required the smoke example and lockfile to advance from
 `43.4.1`. The `0.4.6` checkpoint records the subsequent `44.1.1` smoke-runtime
 update. These are example/toolchain compatibility updates only; they do not
-change Steam Bridge's public API or the Electron version packaged by FOV4.
+change Steam Bridge's public API or the Electron version packaged by the consumer.
 
 ### 2026-08-27 Windows initial D3D11 adapter fallback
 
-Production Sentry group `FOV4-STEAM-B` contains Windows native-host startup
+Production Sentry group `CONSUMER-CRASH-B` contains Windows native-host startup
 failures where `D3D11CreateDevice` returns `E_FAIL` on a hybrid-GPU machine.
 The shared-texture import path already searches the adapter that owns
 Electron's texture and then every enumerated adapter, but the initial visible
@@ -843,7 +849,7 @@ expected Windows symlink-privilege skips. The protected Windows host blocked a
 newly compiled Rust test executable before it could run, without weakening the
 policy; the exact Rust source had already passed 67 tests with its one
 interactive-hardware test intentionally ignored before the version-only release
-edits. Steam Bridge `0.4.4` is published on npm and is packaged in public FOV4
+edits. Steam Bridge `0.4.4` is published on npm and is packaged in public consumer
 Steam `0.1.24` BuildID `25003217`. The affected hybrid-GPU startup remains open
 until that machine proves startup and first-texture adapter reconciliation.
 
@@ -853,7 +859,7 @@ A full rendering-path review found that the public asynchronous Windows
 shared-texture contract described every settled promise as safe for releasing
 Electron's pooled producer. That was not true for terminal failures after
 `CopySubresourceRegion`, including an unrecoverable fence signal failure,
-event-query polling error, fatal timeout, or device removal. FOV4 already
+event-query polling error, fatal timeout, or device removal. The consumer already
 retained failed producers until its application process exited and relaunched,
 but a generic caller following the public documentation could recycle a texture
 while native GPU use remained unproven.
@@ -923,7 +929,7 @@ created a real D3D11 device, submitted a real texture copy and event query,
 polled it on another thread while serializing a main-thread context operation,
 completed successfully, and released its slot exactly once. Rust compilation,
 formatting, Clippy, all native tests, and the complete JavaScript/TypeScript
-suite pass. A source-linked FOV4 launch on the protected development PC was
+suite pass. A source-linked consumer launch on the protected development PC was
 correctly blocked by Smart App Control because the newly built local addon is
 unsigned; security policy was not weakened. An exact trusted package or an
 unprotected QA host is still required for actual-game proof, and the affected
@@ -931,7 +937,7 @@ R5 220 remains the decisive production retest before this report is closed.
 
 ### 2026-08-24 Electron shutdown repaint repair
 
-Production Sentry group `FOV4-STEAM-1J` maps its minified Steam Bridge frame
+Production Sentry group `CONSUMER-CRASH-1J` maps its minified Steam Bridge frame
 exactly to the one-shot `did-finish-load` repaint installed by
 `electronConfigureSteamOverlay`. The affected app had already closed its only
 window and entered `before-quit`; the late callback then called
@@ -942,11 +948,11 @@ WebContents before dispatch, treats Electron's exact destroyed-object error as
 the check/use race, and continues to surface every unrelated repaint error.
 Focused coverage proves both pre-destroyed states, the destruction race, and
 unexpected-error propagation. The repair shipped in Steam Bridge `0.4.1` and is
-present in public FOV4 Steam `0.1.24` through Steam Bridge `0.4.4`.
+present in public consumer `0.1.24` through Steam Bridge `0.4.4`.
 
 ### 2026-08-24 Windows shared-texture stall containment
 
-Bugdesk group `E-E9CC12EE32` contains two Windows renderer-hang terminations
+Consumer bug-report group `CONSUMER-REPORT-1` contains two Windows renderer-hang terminations
 from the same 240 Hz system. Both attached telemetry streams show healthy
 hardware acceleration and native presentation but hundreds of D3D11 copy waits
 over 500 ms, copy completion and dispatcher delays approaching one to one and a
@@ -981,7 +987,7 @@ copies, maximum in-flight depth two, 13 pre-submission saturation drops, zero
 copy timeouts/fatal timeouts/submission failures, zero CPU uploads, and no
 device loss. The direct source-linked launch could not activate the Steam
 overlay, so it is not overlay qualification. The exact 240 Hz affected system
-still needs an immutable-package retest before the Bugdesk regression is
+still needs an immutable-package retest before the bug-report regression is
 empirically closed.
 
 ### 2026-08-23 Windows constrained menu-geometry repair
@@ -1080,7 +1086,7 @@ state is reused before Electron performs its required contextBridge copy.
 An idle connected Steam controller does not claim `lastInput`; only active
 digital state/edges or analog input beyond the drift threshold changes prompt
 ownership.
-Client-PX has a dual-boundary adapter in its own checkout: new shells consume
+The consumer client has a dual-boundary adapter in its own checkout: new shells consume
 the version-2 semantic state without controller tables or per-frame remapping,
 while old 0.3 shells and ordinary browser Gamepad input remain supported. This
 source now passes the package, TypeScript, native, API, and Electron performance
@@ -1109,7 +1115,7 @@ without an explicit release request.
 
 Three independent production reports now say the Windows 10 game does not
 open, but those exits occur before the configured consumer can create a window
-or accept a Bugdesk report. The published `0.3.38` Windows addon provided one
+or accept a consumer bug report. The published `0.3.38` Windows addon provided one
 concrete loader-level cause: its PE import table directly required eight
 per-monitor-DPI exports that Microsoft added in Windows 10 version 1607. On
 Windows 10 1507/1511, the OS loader therefore rejects the complete native addon
@@ -1400,7 +1406,7 @@ same 165 Hz actual-game and ordinary-overlay proof before publication.
 The maintainer first authorized an emergency Windows production release without
 an npm publication. The configured consumer embedded the exact reviewed source
 and optimized Windows addon under `steam-bridge` `0.3.24` dependency metadata;
-fov4-steam `0.1.3` then passed the Windows package gate and went live in merged
+consumer `0.1.3` then passed the Windows package gate and went live in merged
 Steam BuildID `24681882`. The maintainer subsequently authorized publishing the
 tested repair. Because immutable tag `v0.3.24` predates the final fallback
 scheduler fix, the exact production-tested source is now the `0.3.25` candidate.
@@ -1449,7 +1455,7 @@ policy, Steam API coverage, native formatting/check, all release/package-gate
 self-tests, 428 JavaScript/TypeScript tests (426 passes and two expected Windows
 symlink-permission skips), 53 Rust tests, and the isolated packed-package smoke
 under stable Electron 43.3.0. The configured consumer is green for 366 tests,
-targeted ESLint, syntax checking, and TypeScript compilation. The full FOV4
+targeted ESLint, syntax checking, and TypeScript compilation. The full consumer
 lint command still traverses pre-existing generated QA/site artifacts with
 unrelated findings; the two changed source/test files are clean.
 
@@ -1600,7 +1606,7 @@ Windows symlink-permission skips), 51 Rust tests, supported-platform checks,
 formatting, native checks, API audit, package smoke, npm/RustSec audit, and
 exact Electron/native-load verification for all 1,148 methods under stable
 Electron 43.3.0. The exact audited package installed into the configured
-Fantasy Online 2 consumer and passed actual-game startup, native menus, visible
+configured consumer and passed actual-game startup, native menus, visible
 cursor, title drag, resize and exact 640x480 minimum, 1280x720 restoration,
 maximize, minimize, focus return, fullscreen restoration, rounded corners,
 ordinary Friends overlay alignment and close, and clean shutdown at 125% DPI.
@@ -1672,7 +1678,7 @@ The release passed 417/417 JavaScript/TypeScript tests, 49/49 Rust tests,
 supported-platform checks, formatting, native checks, API audit, package smoke,
 npm audit, and exact Electron/native-load verification for all 1,146 methods
 under stable Electron 43.3.0. The protected exact candidate installed into the
-configured Fantasy Online 2 consumer passed startup chrome, native menus,
+configured consumer passed startup chrome, native menus,
 visible cursor, actual-game login and movement, title drag, resize and exact
 640x480 minimum, 1280x720 restoration, maximize, minimize, focus return,
 fullscreen restoration, rounded corners, ordinary Friends overlay alignment
@@ -1747,7 +1753,7 @@ The release passed 400/400 JavaScript/TypeScript tests, 49/49 Rust tests,
 supported-platform checks, formatting, native checks, API audit, package smoke,
 npm audit, and exact Electron/native-load verification for all 1,146 methods
 under stable Electron 43.3.0. The protected exact candidate installed into the
-configured Fantasy Online 2 consumer passed startup chrome, native menus,
+configured consumer passed startup chrome, native menus,
 cursor behavior, actual-game login, sustained W/A/S/D movement, title drag,
 resize and exact 640x480 minimum, maximize, minimize, focus return, fullscreen
 restoration, rounded corners, ordinary Friends overlay alignment and close, and
@@ -1974,7 +1980,7 @@ The protected candidate passed 379/379 JavaScript tests, 38/38 Rust tests,
 supported-platform checks, formatting, native checks, API audit, build,
 package smoke, npm audit, and npm dry-run. The native-load gate proved all
 1,144 methods under stable Electron 43.3.0. The exact candidate installed into
-the configured Fantasy Online 2 consumer passed startup chrome, native menus,
+the configured consumer passed startup chrome, native menus,
 visible cursor, server selection, actual-game login, active W/A/S/D movement,
 title drag, resize and exact 640x480 minimum, maximize, minimize, focus return,
 fullscreen restoration, rounded corners, ordinary Friends overlay alignment
@@ -2002,7 +2008,7 @@ driver-default sentinels are rejected so consumers retain their Electron
 fallback. Managed Electron overlay cadence also prefers the native Windows rate
 when available.
 
-Focused local proof used the Fantasy Online 2 actual game through stable
+Focused local proof used the configured consumer's actual game through stable
 Electron 43.3.0 and the source-linked release native module on the AMD Radeon RX
 7700S. A 20-second held-movement window at 60 Hz measured renderer rAF
 59.994-60.006 FPS with no interval above 25 ms; paint averaged 59.995 FPS and
@@ -2085,7 +2091,7 @@ The protected candidate passed 379/379 JavaScript tests, 37/37 Rust tests,
 supported-platform checks, formatting, native checks, API audit, build,
 package smoke, npm audit, and npm dry-run. The native-load gate proved all
 1,144 methods under stable Electron 43.2.0. Two exact-candidate runs in the
-configured Fantasy Online 2 consumer and actual Steam client covered startup
+configured consumer and actual Steam client covered startup
 chrome, native menus and visible game cursor, title drag, resizing and exact
 640x480 minimum, maximize/minimize/focus/fullscreen restoration, rounded
 corners, ordinary Friends overlay alignment/open/close, and clean shutdown. At
@@ -2147,7 +2153,7 @@ The protected candidate passed 377/377 JavaScript tests, 37/37 Rust tests,
 supported-platform checks, formatting, native checks, API audit, build,
 package smoke, and npm dry-run. The native-load gate proved all 1,144 methods
 under stable Electron 43.2.0. Two exact-candidate runs in the configured
-Fantasy Online 2 consumer and actual Steam client covered startup chrome,
+configured consumer and actual Steam client covered startup chrome,
 native menus and visible game cursor, title drag, resizing and exact 640x480
 minimum, maximize/minimize/focus/fullscreen restoration, rounded corners,
 ordinary Friends overlay alignment/open/close, modal-transition blocking, and
@@ -2286,7 +2292,7 @@ The Windows live-proof receipt semantic SHA-256 is
 The GitHub Release carries the canonical npm tarball, full Windows bundle,
 package audit, stable-Electron native-load result, and live-proof receipt.
 
-The candidate-bound pass used the actual configured Fantasy Online 2 game,
+The candidate-bound pass used the actual configured consumer game,
 actual Steam client, stable Electron 43.2.0, physical native addon, ordinary
 Friends overlay, and no DevTools. It covered startup chrome, native menus and
 cursor, title drag, resize, exact 640x480 minimum client size,
@@ -2428,10 +2434,10 @@ test gates plus native formatting. The machine was restored to 1920x1200 at
 60 Hz and the recommended 125% scale. This source-linked repair is not a new
 package or release candidate.
 
-### 2026-08-02 configured-consumer Bugdesk and external-link checkpoint
+### 2026-08-02 configured-consumer bug-report and external-link checkpoint
 
 A review of the configured consumer's Steam-tagged player reports found two
-additional shell-integration defects. Bugdesk's native HTML choice popups were
+additional shell-integration defects. The bug-report dialog's native HTML choice popups were
 created outside the offscreen renderer surface, so the report type, severity,
 and category controls could not be selected through the standalone native game
 host. The client now paints those choices as keyboard-accessible listboxes
@@ -2464,7 +2470,7 @@ this host.
 The diagnostic review also removed per-keystroke renderer logging from the
 shell's optional FPS mode; it could capture chat or login input and was not
 needed for cadence evidence. The configured shell passes 339/339 tests, ESLint,
-and TypeScript. The client passes TypeScript, the focused Bugdesk,
+and TypeScript. The client passes TypeScript, the focused bug-report,
 native-bridge, Build-share, and Welcome-link smokes, and a 632-module production
 Vite build. Steam Bridge passes its full 376/376 JavaScript and 37/37 Rust
 tests, supported-platform, native formatting/check, API audit, packed-package
@@ -2871,7 +2877,7 @@ green. Never authorize a purchase, and never run lock, sleep, display-sleep,
 or permission-reset cases.
 
 The isolated configured-product candidate now contains the then-current
-client-px main. A real subscription checkout remained active for more
+consumer-client main. A real subscription checkout remained active for more
 than eleven minutes, crossing both the client's five-minute uncertainty
 boundary and the consumer shell's retired ten-minute active-correlation
 deadline. The client correctly became fail-closed/unconfirmed at five minutes;
@@ -3169,17 +3175,17 @@ and fresh release-candidate artifacts.
 
 The current releasable macOS app is the signed, notarized, and stapled stable
 Electron 43.2.0 bundle at
-`/Users/jeromystroh/fov4-steam/dist/mac/mac-arm64/Fantasy Online 2.app`. Its
-product source is FOV4 `2372f1e` with Steam Bridge `5885d35`; subsequent FOV4
+`~/consumer/dist/mac/mac-arm64/Consumer.app`. Its
+product source is consumer commit `2372f1e` with Steam Bridge `5885d35`; subsequent consumer
 commits through `d52f994` are documentation/client-contract work and do not
 mutate that packaged candidate. The focused actual-game and baseline receipt at
-`/Users/jeromystroh/.codex-qa/receipts/macos-focused-actual-game-b88fbce-08`
+`~/.codex-qa/receipts/macos-focused-actual-game-b88fbce-08`
 is green. The known Chromium post-restore half-rate signature remains the one
 explicit product-owner exception described below; every other release gate
 remains strict.
 
 The first final-pass root at
-`/Users/jeromystroh/.codex-qa/receipts/macos-final-b88fbce-02` retained a clean,
+`~/.codex-qa/receipts/macos-final-b88fbce-02` retained a clean,
 aligned, full-coverage child/parent composite while exposing a macOS synthetic
 input limitation: in two consecutive, separately synthesized opposing title
 drags, AppKit intermittently accepted either the first or second mouse-down but
@@ -3195,7 +3201,7 @@ The independently proven slow-title-drag repair remains: use one login-session
 `CGEventSource`, allow the existing bounded mouse-down latch interval, and make
 the first timed title movement cross an eight-point AppKit/WindowServer drag
 hysteresis before continuing at the requested cadence. Exact focused receipt
-`/Users/jeromystroh/.codex-qa/receipts/macos-focused-title-drag-slow-working-14`
+`~/.codex-qa/receipts/macos-focused-title-drag-slow-working-14`
 observed the requested `140x70` movement across 73 healthy pair samples with
 pointer restoration and clean shutdown. Steam Bridge unit tests and macOS
 Swift typechecking cover the retained minimal helper delta.
@@ -3268,7 +3274,7 @@ the configured append-only app log received no records from that launch.
 `fps_unavailable` with empty native telemetry. The run was terminated, the
 exact candidate was closed, and an independent live inventory proved the Mac
 returned to its saved 3456x2234/120 Hz mode. The product candidate was not
-changed. FOV4 now requires a fresh, structurally valid
+changed. The consumer now requires a fresh, structurally valid
 `[steam-attached-host-fps]` record after launch and before the first profile
 case; failure is the distinct `telemetry_unavailable` precondition. Never run
 or diagnose the remaining matrix against a stale log.
@@ -3298,11 +3304,11 @@ one exact supplemental closure receipt.
 
 The current exact signed, notarized, stapled, and Gatekeeper-accepted app is
 RC85 at
-`/private/tmp/fov4-macos-rc-browser-display-link-85/output/mac-arm64/Fantasy Online 2.app`.
+`/private/tmp/consumer-macos-rc-browser-display-link-85/output/mac-arm64/Consumer.app`.
 Its sorted-tree fingerprint is
 `826a3605dae51ca40f413f7f7d5868bafe5253b333853c031dc8074e2639d73b`
 (607 entries, 352338184 bytes). Focused receipt
-`/private/tmp/fov4-macos-qa-rc85-low-retina-simple-fullscreen-01` is green for
+`/private/tmp/consumer-macos-qa-rc85-low-retina-simple-fullscreen-01` is green for
 the application-owned simple-fullscreen repair, semantic maximized-state
 restoration, exact work-area recovery, renderer focus, candidate cleanup,
 Steam survival, display restoration, and zero crashes.
@@ -3320,13 +3326,13 @@ offset could make an off-screen target reachable; child/parent pairing,
 pointer cleanup, candidate cleanup, display restoration, Steam survival, and
 zero crashes remained green.
 
-FOV4 commit `694636d` makes gesture staging optionally consume the temporary
+The consumer commit `694636d` makes gesture staging optionally consume the temporary
 mode's logical dimensions and reserves the contract's full 140-point right and
 70-point downward travel. The corrected live-transition frame is
 `(128,60,900,600)`. External driver hash
 `6d7731ba32c009bb50c61a6d1a6758e9daf2f97e4e9c3e9feec1976b8ddc5c17`
 passed the complete focused case at
-`/private/tmp/fov4-macos-qa-rc85-scale1-display-live-clamp-01`: physical title
+`/private/tmp/consumer-macos-qa-rc85-scale1-display-live-clamp-01`: physical title
 move and corner resize, passive and active scale transitions, exact child
 alignment, visual health, target-rate presentation, cleanup, exact desktop
 restoration, Steam survival, and all crash categories passed. RC85 itself was
@@ -3348,7 +3354,7 @@ bounded frame/filter dimensions and point-pixel scale, never a window ID,
 title, pixels, or account data.
 
 Focused receipt
-`/private/tmp/fov4-macos-qa-rc85-scale1-overlay-max-contract-05` passed the
+`/private/tmp/consumer-macos-qa-rc85-scale1-overlay-max-contract-05` passed the
 complete affected path on unchanged RC85: physical move/resize, zoom and exact
 restore, minimize/restore, focus transitions, simple-fullscreen transitions,
 continuous active-overlay visual coverage, exact child alignment, cleanup,
@@ -3393,13 +3399,13 @@ closed path, not a repair.
 RC88 tested the remaining optional desktop matcher by disabling
 `SingleVideoFrameRateThrottling` before readiness. Exact signed, notarized,
 stapled focused receipt
-`/private/tmp/fov4-macos-qa-rc88-single-video-pacing-01` failed identically:
+`/private/tmp/consumer-macos-qa-rc88-single-video-pacing-01` failed identically:
 the transition and following independent baseline were both exactly 30 FPS.
 Its retained trace recorded 1,286 display-link callbacks, 108 skipped-vsync
 events, and preferred factors `[1,1,1,2]`; the post-restore and baseline probes
 skipped essentially every other callback. Cleanup restored mode 54/120 Hz,
 Steam survived, and all crash categories remained zero. The matcher override
-is a closed path and has been removed from FOV4.
+is a closed path and has been removed from the consumer.
 
 Chromium 150 source matches the trace: `ExternalBeginFrameSourceMac` stores and
 applies `vsync_subsampling_factor_` on every callback, while its same-display
@@ -3416,8 +3422,8 @@ Exact signed/notarized/stapled RC89 fingerprint
 `cb1d53b7631ba74444b0d06eaac6d905351e5be91acdbb5894620d4b3a4c5b98`
 tested that change with test-only Electron `44.0.0-alpha.7` / Chromium
 152.0.7969.0. Focused receipts
-`/private/tmp/fov4-macos-qa-rc89-electron44-pacing-01` and
-`/private/tmp/fov4-macos-qa-rc89-electron44-pacing-02` both passed the exact
+`/private/tmp/consumer-macos-qa-rc89-electron44-pacing-01` and
+`/private/tmp/consumer-macos-qa-rc89-electron44-pacing-02` both passed the exact
 reduced prefix. Their transition traces retained factors `[1,1]` with zero
 skipped display-link callbacks, restored renderer samples stayed approximately
 60 FPS, and presentation feedback measured 59.334 and 57.693 FPS. Both restored
@@ -3426,11 +3432,11 @@ repeatable A/B result validates the M152 repair while preserving Steam Bridge's
 browser-only CADisplayLink ownership.
 
 Electron 44 alpha was a historical isolation dependency only. Do not run or
-ship alpha, beta, nightly, or any other prerelease Electron again. FOV4 has
+ship alpha, beta, nightly, or any other prerelease Electron again. The consumer has
 returned to stable Electron 43.2.0. Chromium commit
 `b43494c23fc0af79df367767396e3e216bd91e97` remains the upstream repair, but
 the product owner explicitly accepted the isolated Chromium post-refresh
-cadence defect for the current release instead of waiting indefinitely. FOV4's
+cadence defect for the current release instead of waiting indefinitely. The consumer's
 schema-v2 final lane permits one explicit
 `--allow-known-upstream-cadence-defect` exception only for stable Electron
 43.2.0, `display-pacing-transition`, `fps_below_display_rate`, the retained
@@ -3447,7 +3453,7 @@ The same-day Chromium M150 branch head
 query in `SetPreferredInterval` and `GetSupportedFrameIntervals`, so no current
 Electron 43-compatible Chromium backport exists.
 
-FOV4 now owns a durable `--promotion-gate` mode instead of relying on an
+The consumer now owns a durable `--promotion-gate` mode instead of relying on an
 ignored RC-number-specific focused wrapper. It hard-selects the exact
 `warm-relaunch` / `display-pacing-transition` / `fps-baseline` prefix at the
 same-resolution fixed-60 profile, requires the shipped App ID and 95% cadence
@@ -3463,7 +3469,7 @@ cannot authorize another prerelease run or a release. The historical RC80 contro
 is explicitly non-reusable; HID inactivity is no longer authorization and
 lock-capable sleep remains permanently outside QA and release.
 
-Live gate receipt `/private/tmp/fov4-macos-qa-rc89-promotion-gate-02` passed on
+Live gate receipt `/private/tmp/consumer-macos-qa-rc89-promotion-gate-02` passed on
 the already-qualified test-only RC89 bundle and self-identifies as
 `run.mode=promotion`. It recorded 60.006/59.994/59.962 FPS renderer samples and
 59.669 FPS PID-pinned presentation feedback after restore, approximately 60 FPS
@@ -3473,7 +3479,7 @@ does not promote Electron 44 alpha to a release dependency. That receipt
 predates the executable channel split and retains its historical mode label.
 
 Focused preflight receipt
-`/private/tmp/fov4-macos-qa-rc89-promotion-dependency-reject-03` proves the
+`/private/tmp/consumer-macos-qa-rc89-promotion-dependency-reject-03` proves the
 hardened release boundary against unchanged RC89. It binds bundle SHA-256
 `cb1d53b7631ba74444b0d06eaac6d905351e5be91acdbb5894620d4b3a4c5b98`
 to Electron `44.0.0-alpha.7`, records channel `alpha` and
@@ -3482,7 +3488,7 @@ to Electron `44.0.0-alpha.7`, records channel `alpha` and
 reached display mutation or game launch.
 
 The affected current qualification lane then passed live on unchanged RC89 at
-`/private/tmp/fov4-macos-qa-rc89-qualification-gate-01`. Its canonical receipt
+`/private/tmp/consumer-macos-qa-rc89-qualification-gate-01`. Its canonical receipt
 labels the run `qualification`, retains the exact RC89 bundle hash, classifies
 Electron `44.0.0-alpha.7` as `alpha` and non-releasable, and closes every
 selected case. Post-restore renderer samples measured 60.000/60.002/59.984 FPS;
@@ -3526,7 +3532,7 @@ child is not a remedy for Chromium renderer cadence. Fixed-rate release samples
 must remain between 95% and 108% of nominal so duplicate clocks or silent timer
 starvation cannot pass.
 
-RC40 receipt `/private/tmp/fov4-macos-qa-rc40-focused-44` first exposed the
+RC40 receipt `/private/tmp/consumer-macos-qa-rc40-focused-44` first exposed the
 120 -> 60 -> 120 defect. Its restored Chromium surface initially presented at
 60.995 FPS with 177 of 362 attempted frames dropped and later recovered only
 to 95.139 FPS, below the 114 FPS release floor. RC40 also showed an unhealthy
@@ -3597,7 +3603,7 @@ candidate. Lock-capable display/full-system sleep tests are excluded below.
 
 RC77 is the first exact actual-game candidate containing the selected policy.
 Its immutable app root is
-`/private/tmp/fov4-macos-rc-browser-display-link-77/output/mac-arm64/Fantasy Online 2.app`
+`/private/tmp/consumer-macos-rc-browser-display-link-77/output/mac-arm64/Consumer.app`
 and its sorted-tree fingerprint is
 `74566f3c33cbe87d85a8069a5c65cc212a1b5f1c03ca9b56a3ab2ba5695f9bd4`
 (607 entries, 352274998 bytes). Deep strict code-signing, Developer-ID team and
@@ -3612,14 +3618,14 @@ Steam Bridge now exposes an explicit `enableMacosBrowserDisplayLink` Electron
 startup option. It defaults off, is eligible only on Darwin with macOS 14+ and
 Chromium 150+, merges the browser-only enable and GPU-then-browser disable
 before readiness, makes identical repeated configuration idempotent, and
-rejects a conflicting locked decision. FOV4 alone opts in on Darwin before
+rejects a conflicting locked decision. The consumer alone opts in on Darwin before
 readiness. Live exact-process inspection proved the expected enable/disable on
 the candidate's GPU, utility, and renderer children and proved neither feature
 was embedded in the Steam shortcut. Do not move this app-specific rollout into
 a global Steam launcher or silently enable it for every Bridge consumer.
 
 The first focused receipt,
-`/private/tmp/fov4-macos-qa-rc77-app-optin-pacing-01`, proved warm relaunch,
+`/private/tmp/consumer-macos-qa-rc77-app-optin-pacing-01`, proved warm relaunch,
 120 -> 60 -> 120 transition recovery, and canonical overlay pacing. Restored
 scheduler samples were 119.501/119.667/119.663 FPS with 119.670 FPS Chromium
 presentation feedback; overlay-active presentation feedback was 120.001 FPS.
@@ -3634,7 +3640,7 @@ threshold.
 The corrected driver is retained independently of the immutable app with hash
 `c47901f5581cb77fad7fe0b9b7649455277daeb881db616a30f8481c8db7be61`.
 Its focused rerun at
-`/private/tmp/fov4-macos-qa-rc77-overlay-lifecycle-harness-c479-02` passed open,
+`/private/tmp/consumer-macos-qa-rc77-overlay-lifecycle-harness-c479-02` passed open,
 duplicate suppression, Escape close, exact active/inactive callbacks, the same
 attached child, 187 continuous visual frames, passive restoration, cleanup,
 Steam survival, exact display restoration, and zero crashes. Focused preflight
@@ -3646,7 +3652,7 @@ handoff after Steam had been stopped and the VDF had been changed. That attempt
 is intentionally retained as failed; it was not relabeled. Steam's updater
 descendants later completed and left the live shortcut exactly bound to RC77.
 The verified recovery receipt is
-`/private/tmp/fov4-macos-rc-browser-display-link-77/shortcut-binding-02-post-update-recovery/summary.json`;
+`/private/tmp/consumer-macos-rc-browser-display-link-77/shortcut-binding-02-post-update-recovery/summary.json`;
 the timestamped rollback backup still exactly names RC76. Future binders must
 treat the updater's process handoff as a distinct recovery state and verify the
 post-update live VDF plus a healthy Steam instance rather than assuming the
@@ -3654,7 +3660,7 @@ first relaunch PID remains Steam. Repeated blind restarts or claiming the
 interrupted transaction passed are closed operational paths.
 
 The unchanged RC77 native-Spaces diagnostic subsequently passed at
-`/private/tmp/fov4-macos-qa-rc77-native-spaces-harness-c479-03`: both
+`/private/tmp/consumer-macos-qa-rc77-native-spaces-harness-c479-03`: both
 transitions retained the same attached child, exact restored `1280x720`
 content geometry and corners, 340 transition frames contained no unavailable,
 blank, purple, chrome-covering, or full-window flash, and cleanup found no
@@ -3663,7 +3669,7 @@ crash. Do not rerun this unchanged case during repair.
 Two focused RC77 recovery cases found real defects. Killing only Chromium's GPU
 child reinitialized Chromium in 118 ms, but PX correctly treated
 `graphics_context_lost` as terminal because its WebGL resources were invalid.
-The owner is FOV4's shell: perform one cooldown-bounded page reload and obtain a
+The owner is the consumer's shell: perform one cooldown-bounded page reload and obtain a
 fresh Steam auth ticket automatically; never attempt to reuse the lost PX
 context. The recovery marker may retain only bounded character-slot and server
 routing integers needed to return to the same game; it must never retain a
@@ -3723,7 +3729,7 @@ failure makes exactly one automatic attempt, presents the ordinary manual error,
 and cannot reload or retry in a loop. Its source gate passes 253/253 tests,
 typecheck, and lint. The exact signed, notarized, stapled, and
 Gatekeeper-accepted RC80 bundle is
-`/private/tmp/fov4-macos-rc-browser-display-link-80/output/mac-arm64/Fantasy Online 2.app`.
+`/private/tmp/consumer-macos-rc-browser-display-link-80/output/mac-arm64/Consumer.app`.
 Its sorted-tree fingerprint is
 `13a2e73695b656c9ea1b0f1cb1595bf5de9af20411ac2fae38eb2c9756fcfb71`
 (607 entries, 352293464 bytes). The app ASAR is
@@ -3766,14 +3772,14 @@ and `f9e4e6e8ddc249a299b0a30506268947d5816eb63acfdd6157c5552a1be86edd`.
 The refusal-only sleep-controller tombstone is installed at hash
 `db9ea0b0768d737a902ba221f09434a136533d0bb1ca357847e9692ace6cd3bb`.
 A separate owner-executable-only final controller is installed at
-`/private/tmp/fov4-macos-rc-browser-display-link-80/run-final-safe.sh`, hash
+`/private/tmp/consumer-macos-rc-browser-display-link-80/run-final-safe.sh`, hash
 `c6f86e0149ae486a8bab6431aa56d73cded2f07fcc241496e9a4d3e5ee5a231e`.
 It pins the exact driver, all three live helpers, the fingerprint helper, and
 RC80 bundle fingerprint before any Steam or desktop action; it then invokes
 only the 25-case/five-profile final lane. Its explicit no-acknowledgement test
 created no artifact or log. The controller contains no sleep or lock action.
 
-The post-retirement static release audit is green. FOV4 passes 254/254 tests,
+The post-retirement static release audit is green. The consumer passes 254/254 tests,
 typecheck, and lint. Steam Bridge passes its complete `npm test` gate with
 347/347 unit tests, Electron/version and binary-VDF checks, Windows release
 self-tests, build, and typecheck; API coverage, supported-target policy,
@@ -3902,13 +3908,13 @@ temporary read-only probes were removed after recording this result.
 After the operator explicitly authorized disconnection, Parsec was terminated;
 the post-disconnect HID clock then advanced continuously. The corrected
 `shortcut-binding-03` receipt is green at
-`/private/tmp/fov4-macos-rc-browser-display-link-80/shortcut-binding-03` for
+`/private/tmp/consumer-macos-rc-browser-display-link-80/shortcut-binding-03` for
 candidate `13a2e73695b656c9ea1b0f1cb1595bf5de9af20411ac2fae38eb2c9756fcfb71`,
-Steam PID 14026, internal shortcut app ID 3632367583, and shortcut game ID
-15600899976069120000.
+its Steam PID, internal shortcut app ID, and shortcut game ID
+(recorded privately).
 
 The exact focused receipt
-`/private/tmp/fov4-macos-qa-rc80-gpu-recovery-01` is green. It proves the same
+`/private/tmp/consumer-macos-qa-rc80-gpu-recovery-01` is green. It proves the same
 app process and attached child survived a real GPU-child replacement, automatic
 shell reload occurred without driving Play, the actual production game surface
 returned, and the window restored exactly. At a 120 Hz display, renderer probes
@@ -3922,7 +3928,7 @@ summary SHA-256 is
 `3983eb317936ab7d4c06c4d21572dfbdd29b333cac3a4f913acf233ae3e6178d`.
 
 The first 25-case/five-profile final attempt is retained as failed at
-`/private/tmp/fov4-macos-qa-rc80-final-actual-game-01`. Its complete 120 Hz
+`/private/tmp/consumer-macos-qa-rc80-final-actual-game-01`. Its complete 120 Hz
 profile passed 25/25, then `display-live-transition` failed on the 60 Hz
 profile because the QA harness created a second application-scoped
 CoreGraphics owner. The inner owner observed its requested 120 Hz and restored
@@ -3935,7 +3941,7 @@ The display helper now keeps one application-scoped owner for each profile and
 accepts atomic, sequence- and token-checked mode requests from its supervised
 child. The app driver uses that channel for both temporary transitions and
 restoration. Focused receipt
-`/private/tmp/fov4-macos-qa-rc80-display-control-60-01` is green for the exact
+`/private/tmp/consumer-macos-qa-rc80-display-control-60-01` is green for the exact
 unchanged RC80 bundle: all four acknowledgements proved 60 -> 120 -> 60 both
 passively and with Steam active, the same attached child remained aligned,
 overlay presentation reached 118.3 FPS at 120 Hz and 58.9 FPS after restoring
@@ -3947,7 +3953,7 @@ The new driver and helper hashes are respectively
 `c0da58e2c7d3dae04d7673849b75833dcca7496e313ec3967ac59e9d5ffee680`
 and `0b42359e71b719533d2354b6fb49e7852f275355f37e37ba7cc56b9bc02aa5af`.
 The only other affected case, `display-pacing-transition` at 60 Hz, is green at
-`/private/tmp/fov4-macos-qa-rc80-display-control-pacing-60-01`: renderer
+`/private/tmp/consumer-macos-qa-rc80-display-control-pacing-60-01`: renderer
 cadence was 60.000 FPS before transition and 60.001/60.000 FPS after restore,
 Chromium presentation feedback after restore was 60.000 FPS, cleanup and exact
 display restore passed, every crash category was zero, and Steam survived. Its
@@ -3957,7 +3963,7 @@ and `5c4f1913ee9c0665ecbae789f2cbdca2e96f168de9b0bcbcae0a03e05d5726e1`.
 Every case affected by the supervisor change is now individually green.
 
 The next clean final attempt is retained as failed at
-`/private/tmp/fov4-macos-qa-rc80-final-actual-game-02`. It completed the 120,
+`/private/tmp/consumer-macos-qa-rc80-final-actual-game-02`. It completed the 120,
 60, and 48 Hz profiles with 75/75 passes, then exposed a separate harness-only
 boundary error in low-Retina mode 7 (`1168x730`): gesture staging used a
 `900x650` window at `y=60`, so AppKit correctly clamped the requested 70-point
@@ -3965,7 +3971,7 @@ downward move to the remaining 20-41 points while the assertion required an
 impossible exact delta. The reversal also used the requested rather than
 actual first-leg displacement. An interim `900x540` staging frame left the
 full move physically achievable. Exact focused receipt
-`/private/tmp/fov4-macos-qa-rc80-low-retina-gesture-01` passed only the two
+`/private/tmp/consumer-macos-qa-rc80-low-retina-gesture-01` passed only the two
 affected cases: slow drag observed exact `140,70`, reversal observed exact
 `120,60` then `-120,-60` and returned `0,0`; both retained continuous child
 pairing, healthy pixels, exact baseline restore, and roughly 60 Hz attached
@@ -3976,7 +3982,7 @@ values are respectively
 and `0964e1c9bc78641d72b40885269ef8bf71e2d4e6c353c7db195a7bee178ab9c3`.
 
 Final attempt 03 is separately retained as failed at
-`/private/tmp/fov4-macos-qa-rc80-final-actual-game-03`. Its 120 Hz
+`/private/tmp/consumer-macos-qa-rc80-final-actual-game-03`. Its 120 Hz
 `display-live-transition` temporarily entered the same-resolution 60 Hz mode
 and proved exact `80,40/-80,-40` title motion, but the interim 540-point frame
 could shrink only 28 of the requested 60 points because the app's exact
@@ -3992,7 +3998,7 @@ Focused-retest every case sharing that staging helper, then run one new
 complete final receipt; do not continue any failed partial pass.
 
 The interrupted focused caller sweep is retained at
-`/private/tmp/fov4-macos-qa-rc80-staging-callers-01`. Low-Retina slow/fast/
+`/private/tmp/consumer-macos-qa-rc80-staging-callers-01`. Low-Retina slow/fast/
 reversal title movement plus right, bottom, and corner resize all emitted
 green case results with the 600-point staging frame. `resize-reversal` then
 failed only its post-gesture aspect endpoint: `1128x520` minus the exact
@@ -4000,7 +4006,7 @@ failed only its post-gesture aspect endpoint: `1128x520` minus the exact
 wider than 21:9 (2.333). The reversal input itself was not the failure. The
 wide endpoint now uses the exact 512-point minimum outer height, producing an
 `1128x480` game area (2.350) and a genuine wide branch. Focused unchanged-RC80
-receipt `/private/tmp/fov4-macos-qa-rc80-aspect-resize-reversal-01` passed
+receipt `/private/tmp/consumer-macos-qa-rc80-aspect-resize-reversal-01` passed
 exact reversal, both wide/tall branches, exact cleanup/display restoration,
 Steam survival, and zero crashes. Its manifest and summary SHA-256 values are
 respectively
@@ -4015,7 +4021,7 @@ Complete focused receipts for the remaining zoom and overlay-state callers,
 then run the one clean final receipt.
 
 The last interrupted focused pair is retained at
-`/private/tmp/fov4-macos-qa-rc80-staging-zoom-overlay-01`. `zoom-restore`
+`/private/tmp/consumer-macos-qa-rc80-staging-zoom-overlay-01`. `zoom-restore`
 emitted a green low-Retina case result. Initial `overlay-state-stress` then
 failed before gesture execution only because the three-decimal native visual
 helper reported `bottomEdgeOpaqueRatio=0.998` with a strong
@@ -4023,7 +4029,7 @@ helper reported `bottomEdgeOpaqueRatio=0.998` with a strong
 The contract now accepts the highest quantized value that still proves a
 non-rectangular edge (`<=0.998`) and continues to reject 0.999/1.000. Focused
 unchanged-RC80 receipt
-`/private/tmp/fov4-macos-qa-rc80-overlay-rounding-01` passed the complete
+`/private/tmp/consumer-macos-qa-rc80-overlay-rounding-01` passed the complete
 active-overlay move, resize, maximize, minimize, focus, and fullscreen stress,
 exact cleanup/display restoration, Steam survival, and zero crashes. Its
 manifest and summary SHA-256 values are respectively
@@ -4038,7 +4044,7 @@ Every affected case is individually green. Run one clean final receipt now;
 do not rerun focused cases already proved by these retained results.
 
 That clean final receipt is retained as failed at
-`/private/tmp/fov4-macos-qa-rc80-final-actual-game-04`. The complete 120 Hz
+`/private/tmp/consumer-macos-qa-rc80-final-actual-game-04`. The complete 120 Hz
 profile passed 25/25. On the 60 Hz profile, baseline/menu/input and the live
 60 -> 120 -> 60 display transition passed, but the isolated
 `display-pacing-transition` restored Chromium renderer and presentation
@@ -4050,7 +4056,7 @@ attached Metal child remained paired, aligned, error-free, configured for
 Bridge surface continuity are not the failing signals. Cleanup restored exact
 desktop mode 54/120 Hz, Steam survived, and the app was stopped without
 continuing unrelated cases. The earlier focused
-`fov4-macos-qa-rc80-display-control-pacing-60-01` pass therefore proves the
+`consumer-macos-qa-rc80-display-control-pacing-60-01` pass therefore proves the
 supervisor repair but does not close this newly observed nondeterministic
 Chromium half-rate state. Diagnose and retest only the affected pacing
 transition/baseline path until it is repeatably green; do not weaken the 95%
@@ -4061,14 +4067,14 @@ Focused prefix reduction proved that `warm-relaunch` plus the pacing transition
 is sufficient; menu, input, display-live, and overlay cases are not required.
 The receipt-hardened driver now traces the complete transition and retains only
 bounded causal counters. Receipt
-`/private/tmp/fov4-macos-qa-rc80-half-rate-causal-02` reproduced exact 30 FPS
+`/private/tmp/consumer-macos-qa-rc80-half-rate-causal-02` reproduced exact 30 FPS
 with 1,287 browser display-link callbacks, 106 skipped-vsync events, and the
 preferred subsampling sequence `[1,1,1,2]`; its post-restore and following
 baseline traces skipped essentially every other callback. No new
 `FrameIntervalDeciderResult` occurred during that failing transition, proving
 the final factor-two call reused a stale stored preferred interval rather than
 responding to a new content matcher. Temporary diagnostic receipt
-`/private/tmp/fov4-macos-qa-rc80-half-rate-input-nudge-03` then dispatched one
+`/private/tmp/consumer-macos-qa-rc80-half-rate-input-nudge-03` then dispatched one
 non-clicking CDP mouse move after restore. That forced two fresh interval-decider
 results, produced six factor-one preferences, zero skipped callbacks, and exact
 60 FPS renderer and Chromium presentation feedback through both the transition
@@ -4081,7 +4087,7 @@ do not ship synthetic input by default or disturb the healthy attached child.
 Signed, notarized, and stapled RC81 is the first app-owned recovery candidate,
 bundle SHA-256
 `d26cec5e945f7aca2400da8a614b382bd7b1ac3c8d975b56522c980d71a12734`.
-Focused receipt `/private/tmp/fov4-macos-qa-rc81-pacing-recovery-focused-01`
+Focused receipt `/private/tmp/consumer-macos-qa-rc81-pacing-recovery-focused-01`
 passed exact-candidate preflight, startup, actual-game identity, and warm
 relaunch, but again measured exact 30 FPS after the 120 -> 60 restore. Its
 transition trace recorded four interval-decider results and preferred factors
@@ -4095,7 +4101,7 @@ pointer; it must never move the OS cursor, click, focus the app, recreate the
 child, or broaden the retest beyond warm-relaunch/pacing/baseline.
 
 The retained failed display-sleep receipt is
-`/private/tmp/fov4-macos-qa-rc80-display-sleep-01`. It records
+`/private/tmp/consumer-macos-qa-rc80-display-sleep-01`. It records
 `window_state_mismatch` with no accepted sleep/wake/restore proof; cleanup,
 display restoration, candidate re-fingerprint, Steam survival, and zero crashes
 all passed. The attempt nevertheless invoked the macOS security lock screen and
@@ -4122,7 +4128,7 @@ Keep the macOS overlay as one `NSWindow` attached with AppKit's parent/child
 relationship to the Electron parent. A popup, companion, separately managed
 top-level surface, or fallback recreation is a closed path. Keep
 `BOverlayNeedsPresent()` disabled; it previously crashed Steam's injected
-renderer. Application-owned simple fullscreen remains FOV4 policy, while child
+renderer. Application-owned simple fullscreen remains the consumer policy, while child
 attachment, geometry, presentation lifecycle, and generic Electron focus
 restoration belong in Steam Bridge.
 
@@ -4131,7 +4137,7 @@ already-green route matrix:
 
 - Receipt 31 proved renderer focus both inside and after application-owned
   simple fullscreen, exact `1280x720` child/content geometry after exit,
-  rounded corners, exact restoration, and zero crashes. Its fixes defer FOV4's
+  rounded corners, exact restoration, and zero crashes. Its fixes defer the consumer's
   renderer focus until native menu dispatch returns and give Steam Bridge one
   coalesced next-turn geometry reconciliation after terminal macOS `resized`.
 - Receipt 32 exposed two separate defects during active minimize: the hidden
@@ -4245,7 +4251,7 @@ unchanged menu/canvas geometry. One immediate post-menu sample contained a
 single 333 ms transition stall and was rejected; the settled focused rerun is
 the applicable result.
 
-The 2026-07-28 client-px requalification found one native-pixmap compatibility
+The 2026-07-28 consumer-client requalification found one native-pixmap compatibility
 gap that page scheduling alone could not detect. Electron 43.2.0 supplied the
 standard linear dma-buf modifier as decimal string `0`; the native import guard
 rejected it, so presenter cadence advanced against a retained frame while DRI3
@@ -4295,7 +4301,7 @@ locks identity, order, uniqueness, assertion coverage, and frozen state.
 Retest only a scenario affected by a new edit. Run the complete Deck pass once
 all individual cases are green and immediately before a release candidate.
 The temporary CDP runner must then be restored from
-`/home/deck/fov4-qa/run-fov4-qa.sh.normal-20260723-012815`, and the final
+`/home/deck/consumer-qa/run-consumer-qa.sh.normal-20260723-012815`, and the final
 Steam-launched sanity check must prove port 9233 is unreachable. Keep Steam
 closed on every other platform while collecting overlay evidence.
 
@@ -4316,7 +4322,7 @@ The Windows audit found a different proof-layer gap: Steam Bridge's schema-v4
 `windows-live-proof-receipt.cjs` strongly binds the package, installed runtime,
 standalone D3D11 telemetry, manual checklist, and npm publication candidate,
 but its four coarse cases are not the consumer's canonical cross-platform
-37-CORE actual-game matrix. FOV4 now owns a separate explicit
+37-CORE actual-game matrix. The consumer now owns a separate explicit
 `windows-desktop` CDP lane and `scripts/windows-final-qa-receipt.mjs` auditor.
 It requires a Windows renderer, non-Deck attestation, local loopback, stable
 Electron, the exact ordered five-case CDP stream, all 37 ordered CORE rows with
@@ -4374,7 +4380,7 @@ presentation should be repaired with another popup or child-window experiment.
   or the renderer architecture materially changes. Its no-pixels result must
   never trigger a popup fallback.
 - The proven Windows production path is one visible standalone top-level native
-  D3D host which composites a hidden Electron offscreen renderer. FOV4 already
+  D3D host which composites a hidden Electron offscreen renderer. The consumer already
   uses `client.overlay.startNativeOverlaySession()` in `main/main.js` and creates
   its renderer `BrowserWindow` with `show: false`, `frame: false`, and offscreen
   shared-texture presentation.
@@ -4394,7 +4400,7 @@ presentation should be repaired with another popup or child-window experiment.
   Steam may consume the corresponding button-up event, leaving a nested native
   loop or corrupt input state. The popup and `WS_CHILD` alternatives remain
   closed and are not fallbacks for modal behavior.
-- Therefore test the actual FOV4 game-host path. Windows attached mode should
+- Therefore test the actual consumer game-host path. Windows attached mode should
   fail clearly rather than create any popup. During iteration, run only tests
   and live transitions affected by the current edit. Run the full cross-
   platform release matrix once after the implementation is stable and directly
@@ -4409,7 +4415,7 @@ describe today's package state.
 
 ### Historical Completed Goal
 
-Steam Bridge and the FOV4 port now use the proven standalone native-host
+Steam Bridge and the consumer port now use the proven standalone native-host
 architecture. The release permanently closes failed Windows attached
 popup/child paths, makes unsupported attached Windows use fail clearly,
 validates the actual game with change-scoped manual and automated QA,
@@ -4453,7 +4459,7 @@ minimum, maximize/restore, minimize/restore, fullscreen/restore, cursor and
 focus behavior, rounded corners, overlay alignment/close, and clean shutdown.
 DevTools stayed closed; no purchase or subscription was opened or authorized.
 
-The 2026-07-21 source-linked FOV4 Windows pass now exercises the actual game on
+The 2026-07-21 source-linked consumer Windows pass now exercises the actual game on
 the standalone native host rather than any attached presenter. A long modal
 resize first reproduced `DXGI_ERROR_DEVICE_REMOVED` from competing one-
 millisecond timer and `WM_SIZE` renders. Modal presentation is now coalesced at
@@ -4647,7 +4653,7 @@ Windows Store alias. The smoke harness now creates both shims and the rerun
 passes with `STEAM_BRIDGE_PYTHON` pointing at the local Python executable.
 
 Current Apple Silicon qualification uses the signed arm64 package on
-`jeromystroh@Jeromys-MacBook-Pro.local`. Metal host readiness, Steam
+the local Apple Silicon QA machine. Metal host readiness, Steam
 launch/injection, direct web activation, native window transitions, and frame
 pacing all pass. The 120.000 Hz Retina display (scale factor 2) measured
 120.004 FPS before activation, 118.676 FPS with the browser overlay active, and
@@ -4970,7 +4976,7 @@ assets were independently verified before and after trusted publication.
 
 ### Historical Consumer Evidence
 
-FOV4 commit `04769fd` (`Port native host to Steam Bridge 0.3.8`) is pushed to
+The consumer commit `04769fd` (`Port native host to Steam Bridge 0.3.8`) is pushed to
 `master`. Its manifest, lockfile, and ordinary non-link install resolve exact
 registry `steam-bridge@0.3.8` with the published integrity above. The final
 registry-backed actual-game smoke opened the ordinary Friends overlay at the
@@ -5097,7 +5103,7 @@ zero skips, the full cross-platform package smoke and exact Windows packaged
 native-load gate pass, tag workflow `29973234900` passes all release jobs, the
 candidate-bound actual-game receipt passes, all five public GitHub Release
 assets match retained local digests, the registry tarball is byte-identical to
-the audited candidate, and npm provenance is present. FOV4's exact registry
+the audited candidate, and npm provenance is present. The consumer's exact registry
 consumer passes 16/16 tests, ESLint, TypeScript, signature/attestation audit,
 and the focused post-publication actual-game smoke. The temporary release proof
 secret was deleted after publication.
@@ -5203,8 +5209,8 @@ Consumer gates on registry `0.2.14` passed:
 
 ### 2026-07-22 Windows actual-game exhaustive QA update
 
-An actual FOV4 game pass was run from
-`C:\Users\admin\source\fov4-steam` with Steam Bridge QA overlay and FPS
+An actual consumer game pass was run from
+`C:\Users\admin\source\consumer` with Steam Bridge QA overlay and FPS
 reporting enabled. Receipts live under
 `C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-20260722-205311`.
 
@@ -5221,7 +5227,7 @@ Steam-overlay-active presentation visually correct but paced around 130-133 FPS
 median on the 165 Hz display, below the 95% high-refresh pass threshold.
 
 A focused local-source repair retest then linked the unpublished Steam Bridge
-build into FOV4 and repeated only that failing 165 Hz Friends-overlay scenario.
+build into the consumer and repeated only that failing 165 Hz Friends-overlay scenario.
 Receipts live under
 `C:\Users\admin\steam-bridge-artifacts\fov-windows-overlay-165-focused-20260722-212404`.
 The display was switched from `1920x1200@60` to `1920x1200@165` for the retest
@@ -5255,7 +5261,7 @@ open/close boundaries; transition-contaminated all-sample medians are useful
 diagnostics, not the pass/fail number.
 
 The current fixes validated by the pass are Steam Bridge's Windows standalone
-display-synchronized immediate pump scheduling and FOV4's renderer display /
+display-synchronized immediate pump scheduling and the consumer's renderer display /
 `webContents.setFrameRate()` refresh pulses after live display or DPI changes.
 Going forward, if a QA item fails, fix and focused-retest only that item until
 it is green. Run the full exhaustive Windows actual-game pass only after every
@@ -5263,7 +5269,7 @@ known individual failure is green and immediately before a release decision.
 
 ### 2026-07-26 Windows Steam-modal capture finding
 
-A source-linked actual FOV4 checkout probe at the active 165 Hz display rate
+A source-linked actual consumer checkout probe at the active 165 Hz display rate
 resolved the ambiguity around window management while Steam's Windows overlay
 is visible. Native diagnostics reported `GetCapture()` as the exact standalone
 game-host HWND. During attempted title drag, right-edge resize, maximize,
@@ -5333,8 +5339,8 @@ without retaining or rendering an AST graph.
 ### 2026-08-04 macOS movement-pacing causal fix
 
 The periodic movement investigation separated two independent stalls. The first
-trusted `W` press could synchronously initialize Web Audio because client-px
-recognized only the React Native host as native. Client-px commit
+trusted `W` press could synchronously initialize Web Audio because consumer-client
+recognized only the React Native host as native. Consumer-client commit
 `d7b61b51` recognizes the Steam preload bridge too, so audio is activated before
 gameplay rather than on the first movement key.
 
@@ -5361,7 +5367,7 @@ the clean-child-only rebuild's single 59.1 ms interval remained within the
 bounded sporadic-event contract. Exact signed/notarized/stapled candidate
 `804ba18c0087889d8668defeb25bf6c5690d12227092f75b1cbf82f4be31ac27`
 then passed the affected four-case sweep at
-`/private/tmp/fov4-macos-qa-signed-affected-20260804-01`: movement measured
+`/private/tmp/consumer-macos-qa-signed-affected-20260804-01`: movement measured
 119.567 FPS with a 24.8 ms maximum and zero intervals over 25 ms; overlay
 open/close, overlay state stress, and overlay FPS also passed with the same
 child, exact geometry/corners, display-rate pacing, display restoration, Steam
@@ -5401,7 +5407,7 @@ Final attempt 02 passed the complete 120 Hz profile and reached the 60 Hz
 movement case before exposing a QA-observer interaction: the ordinary one-second
 native FPS sample and the 100 ms full overlay snapshot could intermittently
 produce the hitch they were measuring while the overlay was inactive. Either
-observer alone was green. FOV4 now returns from the high-resolution snapshot
+observer alone was green. The consumer now returns from the high-resolution snapshot
 timer while the Steam surface is inactive; active-overlay diagnostics are
 unchanged. Two ordinary-instrumentation 60 Hz movement receipts then passed at
 59.867 and 59.933 FPS, with zero intervals over 50 ms and no long tasks, and the
@@ -5417,7 +5423,7 @@ and again after the QA gate was corrected to require two consecutive complete
 static composites inside a bounded window. Persistent right/bottom insets,
 seams, title-chrome coverage, aspect loss, or square restored corners still fail.
 
-Final receipt `/private/tmp/fov4-macos-qa-final-130-20260804-04` is green:
+Final receipt `/private/tmp/consumer-macos-qa-final-130-20260804-04` is green:
 130/130 case executions, 26/26 in each of five public display profiles, zero
 failures/skips, no accepted exceptions, no app/Steam-overlay/Steam/graphics
 crashes, exact candidate close, Steam survival, and exact restoration to

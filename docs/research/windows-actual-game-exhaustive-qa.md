@@ -3,12 +3,12 @@
 Last updated: 2026-07-26
 
 This is the required Windows actual-game QA pass for the standalone native D3D
-host path used by FOV4. It exists so future compactions and release passes do
+host path used by the consumer. It exists so future compactions and release passes do
 not shrink "manual QA" back into a single overlay open.
 
 ## Scope
 
-This pass validates the shipped/registry-backed FOV4 integration with
+This pass validates the shipped/registry-backed consumer integration with
 `steam-bridge@0.3.8` or later. It does not validate retired attached presenters.
 Windows `WS_CHILD`, owned-popup, and unparented popup approaches are closed
 paths and must not be revived during this QA. Steam-owned host capture is also
@@ -17,7 +17,7 @@ messages.
 
 Use the actual game consumer, not the smoke app, for this pass:
 
-- FOV4 repo: `C:\Users\admin\source\fov4-steam`
+- The consumer repo: `C:\Users\admin\source\consumer`
 - Launch command: `npm run dev`
 - Required env:
   - `STEAM_BRIDGE_QA_OVERLAY=1`
@@ -181,7 +181,7 @@ owned-popup, or `WS_CHILD`; those paths remain permanently closed. External
 focus changes and externally initiated display-mode, refresh, resolution, and
 DPI transitions remain independent active-overlay tests.
 
-## 2026-07-22 actual FOV4 Windows pass
+## 2026-07-22 actual consumer Windows pass
 
 Artifact root:
 `C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-20260722-205311`
@@ -199,7 +199,7 @@ Static consumer gates passed before manual QA:
 - `npm.cmd run lint`: passing
 - `npm.cmd run typecheck`: passing
 
-Manual matrix covered against the actual `Fantasy Online 2` game window, not
+Manual matrix covered against the actual consumer game window, not
 the smoke app:
 
 - baseline launch at 225% Windows scale and 60 Hz;
@@ -261,10 +261,10 @@ Focused repair retest:
 
 - Artifact root:
   `C:\Users\admin\steam-bridge-artifacts\fov-windows-overlay-165-focused-20260722-212404`
-- Local unpublished Steam Bridge source was linked into FOV4.
+- Local unpublished Steam Bridge source was linked into the consumer.
 - The Windows display was switched from `1920x1200@60` to `1920x1200@165`
   for this targeted retest and restored to `1920x1200@60` afterward.
-- The real FOV4 game launched with `STEAM_BRIDGE_QA_OVERLAY=1`,
+- The real consumer game launched with `STEAM_BRIDGE_QA_OVERLAY=1`,
   `STEAM_BRIDGE_FPS_REPORT=1`, and
   `STEAM_BRIDGE_DEBUG_OVERLAY_SNAPSHOT=1`.
 - The View menu opened the ordinary Friends overlay through the opt-in QA
@@ -291,7 +291,7 @@ Result: green. This pass was run only after the individually failing 165 Hz
 overlay and 165 Hz game-surface pacing scenarios were fixed with focused
 retests.
 
-Manual matrix covered against the actual FOV4 game:
+Manual matrix covered against the actual consumer game:
 
 - actual-game launch, character selection, and entry into the world;
 - normal Steam overlay toast on startup;
@@ -344,7 +344,7 @@ Implementation fixes validated by this pass:
 - Steam Bridge Windows standalone display-synchronized pumping now schedules
   immediate work and relies on DXGI/Steam frame-latency gating instead of
   layering Windows timer jitter onto hooked `Present`.
-- FOV4 reasserts the hidden renderer display and `webContents.setFrameRate()`
+- The consumer reasserts the hidden renderer display and `webContents.setFrameRate()`
   after display/FPS changes, including delayed refresh pulses after live
   mode/scale transitions.
 

@@ -477,7 +477,7 @@ function createKWinLifecycleWindow(properties = {}) {
     fullScreen: false,
     opacity: 0,
     resize: false,
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     frameGeometry: { x: 0, y: 0, width: 100, height: 100 },
     clientGeometry: { x: 0, y: 0, width: 100, height: 100 },
     frameGeometryChanged: createKWinScriptSignal(),
@@ -11913,7 +11913,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const source = scriptedWindow({
     pid: 101,
     internalId: "source-windowed",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 720 },
     clientGeometry: { x: 1, y: 28, width: 1278, height: 691 }
@@ -12068,7 +12068,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const transferredSource = scriptedWindow({
     pid: 202,
     internalId: "source-focus-transferred",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12176,7 +12176,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const preOpaqueSource = scriptedWindow({
     pid: 212,
     internalId: "source-pre-opaque",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12221,7 +12221,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   // never become independent entries.
   const originallySkippedSource = scriptedWindow({
     internalId: "source-originally-skipped",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     skipSwitcher: true,
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
@@ -12240,7 +12240,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
 
   const ambiguousSource = scriptedWindow({
     internalId: "source-ambiguous-switcher",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12268,7 +12268,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
 
   const invalidRoleSource = scriptedWindow({
     internalId: "source-invalid-role-switcher",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12288,7 +12288,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const switcherWriteOrder = [];
   const orderedSource = scriptedWindow({
     internalId: "source-switcher-order",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12450,7 +12450,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const activeRemovalSource = scriptedWindow({
     pid: 303,
     internalId: "source-active-removal",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     resize: true,
     fullScreen: false,
     frameGeometry: { x: 20, y: 20, width: 900, height: 700 },
@@ -12535,7 +12535,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const intendedSource = scriptedWindow({
     pid: 404,
     internalId: "source-intended",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
     clientGeometry: { x: 1, y: 28, width: 998, height: 671 }
@@ -12570,7 +12570,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const fullscreenSource = scriptedWindow({
     pid: 202,
     internalId: "source-fullscreen",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12643,7 +12643,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const coldWindowedSource = scriptedWindow({
     pid: 505,
     internalId: "source-cold-windowed",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
     clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
@@ -12693,7 +12693,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const roundTripSource = scriptedWindow({
     pid: 606,
     internalId: "source-round-trip",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
     clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
@@ -12740,7 +12740,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
 
   const dragSeedSource = scriptedWindow({
     internalId: "source-drag-seed",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 20, y: 20, width: 1000, height: 700 },
     clientGeometry: { x: 21, y: 48, width: 998, height: 671 }
@@ -12781,7 +12781,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   // must still downgrade immediately, while a foreign instance must do nothing.
   const degradedSource = scriptedWindow({
     internalId: "source-explicit-degraded",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 10, y: 20, width: 1000, height: 700 },
     clientGeometry: { x: 10, y: 20, width: 1000, height: 700 }

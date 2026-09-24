@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 The supported Windows production design is one authoritative standalone native
 D3D game host. It is the visible application window, composites the offscreen
 Electron surface, owns its native chrome, and gives Steam one top-level
-swapchain to hook. FOV4 already uses this design through
+swapchain to hook. The consumer already uses this design through
 `startNativeOverlaySession()` and a hidden offscreen `BrowserWindow`.
 
 Windows attached mode is not a production path. Both of its attempted window
