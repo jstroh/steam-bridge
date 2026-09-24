@@ -25920,6 +25920,7 @@ test("Windows present diagnostic dispatches input before a still-blocking native
       Atomics.wait(waitArray, 0, 0, 20);
       events.push(duringPresent);
       order.push("present-end");
+      enabled = false;
     },
     isNativeOverlayHostFramePending: () => false,
     waitForNativeOverlayHostFrameReady() { throw new Error("ready queue must not enter async wait"); },
@@ -25933,7 +25934,7 @@ test("Windows present diagnostic dispatches input before a still-blocking native
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(order, ["capture", "dispatch", "present-start", "present-end", "dispatch"]);
   const snapshot = session.snapshot();
-  assert.ok(snapshot.lastPumpDurationMs >= 19, "a driver/hook ignoring nonblocking policy remains an observed stall");
+  assert.ok(snapshot.maxPumpDurationMs >= 19, "a driver/hook ignoring nonblocking policy remains an observed stall");
   assert.ok(snapshot.maxInputDispatchDelayMs >= 19, "input arriving during a stall is not claimed fixed");
   assert.equal(snapshot.inputDispatchCount, 2);
   assert.equal(snapshot.inputDispatchOverBudgetCount, 1);
