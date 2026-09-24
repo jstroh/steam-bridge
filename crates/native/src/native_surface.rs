@@ -7016,6 +7016,8 @@ mod linux {
         frame_draw_count: u64,
         detectable_auto_repeat: bool,
         pressed_keycodes: [u64; 4],
+        client_state_cache_active: bool,
+        client_state_cache: std::cell::Cell<Option<(i32, i32, bool)>>,
     }
 
     #[derive(Clone, Serialize)]
@@ -7185,9 +7187,21 @@ mod linux {
         unsafe {
             let mut configure_events = ConfigureNotifyCoalescer::default();
             let mut drawable_destroyed = false;
+            surface.client_state_cache.set(None);
+            surface.client_state_cache_active = true;
             while (surface.xlib_dispatch.pending)(surface.display) > 0 {
                 let mut event: xlib::XEvent = mem::MaybeUninit::uninit().assume_init();
                 (surface.xlib_dispatch.next_event)(surface.display, &mut event);
+                if matches!(
+                    event.get_type(),
+                    xlib::ConfigureNotify
+                        | xlib::MapNotify
+                        | xlib::UnmapNotify
+                        | xlib::ReparentNotify
+                        | xlib::DestroyNotify
+                ) {
+                    surface.client_state_cache.set(None);
+                }
                 if event.get_type() == xlib::DestroyNotify
                     && event.destroy_window.window == surface.window
                 {
@@ -7204,6 +7218,8 @@ mod linux {
                     record_linux_input_event(surface, &event);
                 }
             }
+            surface.client_state_cache_active = false;
+            surface.client_state_cache.set(None);
 
             if drawable_destroyed {
                 return Err(Error::from_reason(
@@ -8527,6 +8543,8 @@ mod linux {
             frame_draw_count: 0,
             detectable_auto_repeat,
             pressed_keycodes: [0; 4],
+            client_state_cache_active: false,
+            client_state_cache: std::cell::Cell::new(None),
         })
     }
 
@@ -8743,7 +8761,11 @@ mod linux {
                         surface,
                         kind,
                         event_type,
-                        button.state,
+                        pointer_state_after_button(
+                            button.state,
+                            button.button,
+                            event_type == xlib::ButtonPress,
+                        ),
                         button.x,
                         button.y,
                         (kind == "mouseWheel").then_some(delta_x.unwrap_or(0)),
@@ -8923,6 +8945,9 @@ mod linux {
     }
 
     unsafe fn linux_client_state(surface: &NativeSurface) -> (i32, i32, bool) {
+        if let Some(state) = surface.client_state_cache.get() {
+            return state;
+        }
         let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
         if (surface.xlib.XGetWindowAttributes)(surface.display, surface.window, &mut attributes)
             == 0
@@ -8933,11 +8958,15 @@ mod linux {
                 false,
             );
         }
-        (
+        let state = (
             attributes.width.max(1),
             attributes.height.max(1),
             attributes.map_state != xlib::IsViewable,
-        )
+        );
+        if surface.client_state_cache_active {
+            surface.client_state_cache.set(Some(state));
+        }
+        state
     }
 
     fn record_linux_window_changed(
@@ -8980,6 +9009,20 @@ mod linux {
         }
         if events.len() > 256 {
             events.remove(0);
+        }
+    }
+
+    fn pointer_state_after_button(state: c_uint, button: c_uint, press: bool) -> c_uint {
+        let mask = match button {
+            1 => xlib::Button1Mask,
+            2 => xlib::Button2Mask,
+            3 => xlib::Button3Mask,
+            _ => return state,
+        };
+        if press {
+            state | mask
+        } else {
+            state & !mask
         }
     }
 
@@ -10647,10 +10690,42 @@ void main() {
     mod tests {
         use super::{
             character_from_keysym, key_press_character, keypad_keysym_depends_on_num_lock, keysym,
-            record_key_transition, supports_dri3_pixmap_modifier, virtual_key_from_keysym, xlib,
-            CHROMIUM_NO_DRM_MODIFIER,
+            pointer_state_after_button, record_key_transition, supports_dri3_pixmap_modifier,
+            virtual_key_from_keysym, windows_mouse_key_state, xlib, CHROMIUM_NO_DRM_MODIFIER,
         };
         use std::ptr;
+
+        #[test]
+        fn button_state_reports_windows_style_post_event_masks() {
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(0, 1, true)),
+                0x01
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(xlib::Button1Mask, 1, false)),
+                0
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(0, 3, true)),
+                0x02
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(0, 2, true)),
+                0x10
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(
+                    xlib::Button1Mask | xlib::ShiftMask,
+                    3,
+                    true
+                )),
+                0x01 | 0x02 | 0x04
+            );
+            assert_eq!(
+                pointer_state_after_button(xlib::Button1Mask, 4, true),
+                xlib::Button1Mask
+            );
+        }
 
         #[test]
         fn held_keys_report_repeats_until_release() {
@@ -10689,7 +10764,7 @@ void main() {
         }
 
         #[test]
-        fn x11_probe_window_reports_punctuation_text_and_held_key_repeats() {
+        fn x11_probe_window_reports_keyboard_and_pointer_edges() {
             use std::time::{Duration, Instant};
             let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
             let (Ok(xlib), Ok(xtest)) = (xlib::Xlib::open(), x11_dl::xtest::Xf86vmode::open())
@@ -10807,6 +10882,20 @@ void main() {
                 downs.len(),
                 "{events:?}"
             );
+
+            events.clear();
+            unsafe {
+                (xtest.XTestFakeButtonEvent)(control, 1, 1, 0);
+                (xtest.XTestFakeButtonEvent)(control, 1, 0, 0);
+                (xlib.XSync)(control, xlib::False);
+            }
+            collect(100, &mut events);
+            assert_eq!(
+                of_kind(&events, "leftMouseDown", 0x01).len(),
+                1,
+                "{events:?}"
+            );
+            assert_eq!(of_kind(&events, "leftMouseUp", 0).len(), 1, "{events:?}");
 
             super::close();
             unsafe {

@@ -67,6 +67,16 @@ generic `consumer`/`CONSUMER-*` placeholders. Two POSIX smoke self-tests still
 embed a Steam `userdata` directory number and a shortcut app ID whose origin
 (synthetic or real) the maintainer should confirm.
 
+An end-to-end native test now opens the real Linux X11/GLX probe host under
+Xvfb, injects XTest keys and buttons, and asserts the emitted events. It also
+exposed two host issues that are now fixed: mouse `wparam` button state was the
+X11 pre-event mask (presses reported no button, releases the released one)
+instead of the Windows post-event mask the other platform reports, and every
+input event made a synchronous `XGetWindowAttributes` round trip. Client
+geometry is now cached for one pump batch and dropped on configure, map, unmap,
+reparent or destroy events; 200 queued motion events fell from about 11-13 ms
+to 1.2-2.3 ms per pump under Xvfb (diagnostic measurement, not live Deck proof).
+
 Next: the rest of the module-by-module review and exact-head CI.
 
 ### 2026-09-22 full release-diff review and 0.4.9 preparation
