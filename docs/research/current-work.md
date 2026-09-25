@@ -101,8 +101,19 @@ green. See `WIN-ELECTRON-4445-LOCAL-001` for what it covers:
 
 Mouse edge, corner and title drags also pass, including the clamp to the
 logical minimum, and the host followed a live 125%-to-250% display change.
-Not covered: Steam-client launch (the direct launch still loaded Steam's
-overlay), a signed candidate, a display matrix, and receipts. For automation:
+
+On 2026-09-25 the published-`0.4.9` QA build was also launched through the
+Steam client from a non-Steam shortcut. It passed game entry, backend agreement
+in every report, the QA-menu and Shift+Tab overlay open with Escape close, F11
+and restore, focus away and back, and an Alt+F4 exit with code 0. Two
+behaviours were observed; details are in the ledger row:
+
+- Each Friends activation also raised Steam's desktop client windows. This is
+  probably a shortcut-harness artifact.
+- The intentional 5-second `windowsSharedTextureResumeDelayMs` hold freezes
+  the game image after every overlay close.
+
+Not covered: a signed candidate, a display matrix, and receipts. For automation:
 an elevated foreground utility makes UIPI silently drop injected input, so
 check the foreground owner and the host's message counters before trusting
 a `SendInput` result. The public example passes a direct App ID `480` smoke,
@@ -142,8 +153,12 @@ and every message is still released.
 ## Open before release
 
 1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
-   signed candidate, a Steam-client launch, the display matrix and both
-   receipts. The local pass above, including emoji and non-BMP text, is green.
+   signed candidate launched through Steam, the display matrix and both
+   receipts. The local pass above, including emoji and non-BMP text and a
+   local Steam-client shortcut launch, is green. Maintainer question: is a
+   5-second frozen frame after every overlay close an acceptable default for
+   `windowsSharedTextureResumeDelayMs`, or should it be measured down on this
+   Steam client?
    The consumer now pins Electron 44.4.5, which needs a new Windows runtime
    epoch before release.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
@@ -182,4 +197,17 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 - Windows 11 x64 at `727bf77`: `npm test` 476 tests (473 pass, 3 skipped),
   81 native tests passing with 3 hardware-only tests ignored, the local
   Electron 44.4.5 live pass above, and the example's direct App ID `480`
-  smoke.
+  smoke. On 2026-09-25 at `6b43256`: `npm test` again 476 tests (473 pass, 3
+  skipped) and 82 native tests, plus the Steam-client shortcut launch.
+- WSL2 Ubuntu 26.04.1 LTS on the same laptop at `6b43256`, with Node 22.23.3
+  and Rust 1.98.1, from a Linux-filesystem clone with LF line endings. These
+  are routine checks only; WSL gives no live Steam overlay proof.
+  - Passed: `npm ci`, `check:platform`, `native:build`, `native:fmt`,
+    `native:check`, `api:check`, `package:smoke`, `git diff --check`, and the
+    native tests under Xvfb with `STEAM_BRIDGE_REQUIRE_X11_TESTS=1`.
+  - `npm test` passes 476/476 JavaScript and 57/57 Rust tests with `DISPLAY`
+    unset, as in CI. Under WSLg's own XWayland display,
+    `x11_probe_window_reports_keyboard_and_pointer_edges` runs without the
+    Xvfb requirement and fails its XTest button-click assertion. The keyboard
+    assertions before it pass, and the same test passes under Xvfb, so run
+    Linux native tests under Xvfb on WSLg.
