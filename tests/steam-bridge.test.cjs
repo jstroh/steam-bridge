@@ -26322,6 +26322,34 @@ test("Windows dedicated copy device option is forwarded once only when defined",
   }
 });
 
+test("Windows dedicated copy and frame-wait recovery fields are no-ops off Windows", async (t) => {
+  for (const platform of ["linux", "darwin"]) {
+    setProcessPlatformForTest(t, platform);
+    const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+    const fake = createRecoverableFrameWaitNative(state);
+    const steam = loadSteamWithFakeNative(fake);
+    steam.init(480);
+    const session = steam.overlay.startNativeOverlaySession({
+      pumpIntervalMs: 10000,
+      windowsDedicatedCopyDevice: true
+    });
+    session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+    session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostDedicatedCopyDevice"),
+      [],
+      `${platform} must not forward the Windows copy device option`
+    );
+    const snapshot = session.snapshot();
+    assert.equal("windowsDedicatedCopyDevice" in snapshot, false, platform);
+    assert.equal("nativeFrameWaitRecoveryCount" in snapshot, false, platform);
+    session.close();
+    clearSteamBridgeCache();
+  }
+});
+
 async function latchFrameWaitByTimeout(state, session, pumpFrame) {
   await pumpFrame();
   assert.equal(state.waitResolvers.length, 1);

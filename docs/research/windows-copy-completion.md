@@ -84,7 +84,7 @@ the adapter topology:
   `GetContainingOutput` fails for a discrete-GPU swap chain, so the monitor
   lookup is what reports the cross-adapter present.
 
-The session snapshot adds `nativeFrameWaitRecoveryCount`, the number of times
+The Windows session snapshot adds `nativeFrameWaitRecoveryCount`, the number of times
 the JavaScript scheduler left its timeout fallback after the native waitable
 re-armed.
 

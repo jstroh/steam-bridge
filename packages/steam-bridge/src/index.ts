@@ -10674,8 +10674,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       pumpDurationOver25MsCount,
       nativeFrameWaitTimeoutCount,
       nativeFrameWaitFallback: nativeFrameWaitUnavailable,
-      nativeFrameWaitRecoveryCount,
       ...(usesWindowsStandaloneHost ? {
+        nativeFrameWaitRecoveryCount,
         windowsPresentDiagnosticMode,
         nativePresentRetryCount,
         inputDispatchCount,
