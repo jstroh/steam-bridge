@@ -1,6 +1,6 @@
 # Steam Input and renderer input
 
-[Documentation home](../README.md) · [Electron integration](electron.md) · [Packaging](packaging.md)
+[Documentation home](../README.md) · [Getting started](getting-started.md) · [Electron integration](electron.md) · [Steam Input](steam-input.md) · [Packaging](packaging.md) · [Troubleshooting](troubleshooting.md)
 
 Start by choosing what the game consumes. Steam actions, browser gamepads, and
 keyboard emulation solve different problems:

@@ -1,6 +1,6 @@
 # Packaging your game
 
-[Documentation home](../README.md) · [Electron integration](electron.md) · [Troubleshooting](troubleshooting.md)
+[Documentation home](../README.md) · [Getting started](getting-started.md) · [Electron integration](electron.md) · [Steam Input](steam-input.md) · [Packaging](packaging.md) · [Troubleshooting](troubleshooting.md)
 
 This guide is for an application that **consumes** Steam Bridge. Publishing
 the Steam Bridge npm package is a separate [maintainer procedure](../RELEASING.md).
@@ -50,7 +50,7 @@ after the sign operation. Do not silently overwrite another required hook.
 
 | Target | `afterPack` | `afterSign` |
 | --- | --- | --- |
-| Windows | No platform preparation | No platform verification |
+| Windows | No operation | No operation |
 | Linux | Prepares the Steam launcher and renamed binary | No operation |
 | macOS arm64 | Prepares the Steam-compatible application executable | Verifies the prepared app's signing contract |
 
@@ -66,8 +66,9 @@ For custom layouts, use the typed `linux`/`macos` options to
 ### Windows x64
 
 Use the standalone D3D11 host with offscreen/shared-texture Electron
-presentation. Ship the addon and required Steam DLLs alongside the package's
-native load path. Test the actual executable without a development override.
+presentation. Keep the addon and the Steam DLLs unpacked together in
+`app.asar.unpacked` using the `asarUnpack` entries above. Test the actual
+executable without a development override.
 
 The Windows native addon is unsigned. Preserve Valve's exact runtime bytes and
 signatures. Your application signing/reputation policy is your responsibility;
@@ -106,9 +107,11 @@ verification or use unsigned development output as shipping proof.
 ## 4. Include Steam Input assets
 
 If using Steam Input, include its manifest and every referenced controller
-layout at the expected relative paths on all depots. Run the validator and
-generated-output `--check` before staging. Publish the matching Steamworks app
-configuration, then confirm it from an installed Steam launch.
+layout at the expected relative paths on all depots. Before staging, run
+`steam-bridge-input validate`, `steam-bridge-input generate … --check`, and
+`steam-bridge-generate-legacy-layouts … --check` if you generate legacy layouts.
+Publish the matching Steamworks app configuration, then confirm it from an
+installed Steam launch.
 
 See the [Steam Input shipping checklist](steam-input.md#before-shipping).
 

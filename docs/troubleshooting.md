@@ -1,6 +1,6 @@
 # Troubleshooting
 
-[Documentation home](../README.md) · [Getting started](getting-started.md) · [Electron](electron.md) · [Steam Input](steam-input.md)
+[Documentation home](../README.md) · [Getting started](getting-started.md) · [Electron integration](electron.md) · [Steam Input](steam-input.md) · [Packaging](packaging.md) · [Troubleshooting](troubleshooting.md)
 
 First identify the failing boundary: native loading, Steam initialization,
 input, game rendering, or native presentation. Keep the exact failing version
@@ -15,7 +15,7 @@ and evidence before changing dependencies or runtime switches.
 | Steam initializes but no visible overlay | Correct platform window model, overlay availability, initialization before graphics creation, real Steam launch |
 | Actions are missing or handles are zero | Exact manifest names, active set, published configuration, depot paths, controller connection, one session/frame owner |
 | DOM gamepads work but Steam actions do not | Main-side `connectActionInput()`, correct session preload, connection before page load, trust and active-state checks |
-| A button repeats an action every game frame | Held `pressed` versus edge, or repeated cached `steamActions.sequence` |
+| A button repeats an action every game frame | Held `isDown` (DOM gamepads: `pressed`) versus `pressedThisFrame`, or repeated cached `steamActions.sequence` |
 | Controls stop in a hidden renderer | Use visible native-host focus, not the hidden `BrowserWindow.isFocused()` |
 | Wrong labels on a controller | Use action-origin glyphs, not hard-coded A/B/X/Y; refresh after rebinding |
 | Input is offset or sticks after blur | Logical/physical size mapping, aspect-fit geometry, native focus/capture release, forwarder lifecycle |
@@ -27,16 +27,16 @@ Do not copy a workaround from a different platform or runtime generation without
 checking whether it applies. The [platform policy](../README.md#platform-targets)
 and [window model](electron.md#choose-the-window-model) are deliberate.
 
-For Windows calls that remain inside `Present` despite a ready DXGI queue, the
-[presentation repair runbook](research/windows-present-diagnostic.md) documents
-the unreleased matching addon's nonblocking-VSync default, bounded two-copy
-admission, and explicit QA comparisons. Older addons retain their compatibility
-path. This source is not a published package or an affected-hardware-qualified fix.
+For Windows calls that remain inside `Present` despite a ready DXGI queue, see
+the [presentation diagnostic runbook](research/windows-present-diagnostic.md).
+Since 0.4.7, matching Windows addons default to nonblocking VSync with bounded
+two-copy admission, and the runbook's QA modes compare it with the standard
+path. It is not a confirmed fix for any particular GPU.
 
 ## Input problems
 
 Inspect `actions.getDiagnostics()` on demand for lifecycle, controller count,
-sequence, unresolved names and manifest override. Zero handles can be temporary;
+sequence, unresolved names and the `manifestPath` override. Zero handles can be temporary;
 the managed session retries them. A permanent zero often means a name or
 Steamworks configuration mismatch, not a need for another polling timer.
 

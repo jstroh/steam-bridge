@@ -1,6 +1,6 @@
 # Getting started
 
-[Documentation home](../README.md) · [Electron](electron.md) · [Steam Input](steam-input.md) · [Packaging](packaging.md)
+[Documentation home](../README.md) · [Getting started](getting-started.md) · [Electron integration](electron.md) · [Steam Input](steam-input.md) · [Packaging](packaging.md) · [Troubleshooting](troubleshooting.md)
 
 Use this guide for installation, the application lifetime, and deciding which
 process owns each Steam feature. For a first native-load check, run the
@@ -54,7 +54,10 @@ in its shutdown path rather than immediately after startup.
 `startSteam()` initializes Steamworks and owns its callback pump. It allows
 only one active managed application in a process. Its `close()` is idempotent
 and releases still-owned callbacks, action sessions, and game hosts before
-Steam shutdown. The Electron integration has its own lifetime and closes
+Steam shutdown. If native operations are still pending, the shutdown throws
+`SteamClientAsyncOperationsPendingError`; the application is already closed at
+that point and a second `close()` does not retry, so finish outstanding work
+first. The Electron integration has its own lifetime and closes
 separately.
 
 Do not initialize Steam again in an Electron renderer or worker, run a second
@@ -88,7 +91,8 @@ proof that every feature has passed live tests on every device.
 
 Public APIs use `bigint` for 64-bit identifiers. Do not convert these to
 JavaScript `number`, which can lose precision. Serialize them as decimal strings
-when crossing your own JSON boundary.
+when crossing your own JSON boundary. Renderer `steamActions` frames already
+carry them as decimal strings.
 
 An App ID alone does not provision achievements, inventory definitions, Workshop,
 commerce, or controller layouts. Configure the corresponding feature for your
@@ -124,10 +128,10 @@ const publisher = createSteamPublisherApi();
 ```
 
 Configure `STEAM_PUBLISHER_WEB_API_KEY` in the server environment
-(`STEAM_WEB_API_KEY` is the legacy fallback), or supply the server-only options.
-Never put a publisher key in a shipped Electron main process, preload, renderer,
-environment file, or game package. The server facade rejects browser and
-Electron runtimes, including Electron main.
+(`STEAM_WEB_API_KEY` is the legacy fallback), or pass `publisherApiKey` in the
+options. Never put a publisher key in a shipped Electron main process, preload,
+renderer, bundled environment file, or game package. The server facade rejects
+browser and Electron runtimes, including Electron main.
 
 For purchases, initialization, player authorization, server finalization, and
 granting the result are distinct stages. An `onPurchaseAuthorization` callback
