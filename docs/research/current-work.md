@@ -152,6 +152,38 @@ napi-generated functions by name, arity, parameter type and optionality; all
 their timeouts; networking batch-receive errors need corrupted Steam structs
 and every message is still released.
 
+### 2026-09-25 Steam Deck remote helper
+
+Goal: lasting SSH access to the Deck in Game and Desktop Mode through the
+runner, on branch `claude/steam-deck-remote-helper` from `35164c3`.
+
+- **Helper.** `scripts/steam-deck-remote.sh` now holds every Deck session step
+  the runner used to send as inline shell: environment and display selection,
+  capture, input, focus and state probes, close verification, the shortcut
+  wrapper, keep-awake, launch and cleanup. The runner installs it when its
+  content changes (`cmp`, then an atomic `mv`) and calls it. A fake-SSH
+  comparison against `35164c3` found no change in the seven Python blocks, the
+  wrapper, the env-file bytes (including URLs with `?`, `&` and spaces), the
+  remote step order, or the runner output.
+- **Preflight** also reports the SteamOS release, session mode, Desktop panel
+  power, the six runner tools and `/dev/uinput` access. `check_ssh` used to
+  succeed even when SSH failed, because it read `$?` after an `if`; it now
+  returns the SSH status.
+- **Access between runs:** `npm run steam-deck:remote -- <command>`,
+  `--mode capture`, `session game|desktop` (`steamos-session-select gamescope`
+  or `plasma-wayland`; plain `plasma` starts Plasma X11), and `wake-display`.
+- **Live so far, Desktop Mode:** preflight, status, capture and cleanup through
+  the helper. New ledger rows: `DECK-DESKTOP-DPMS-CAPTURE-001` and
+  `DECK-STEAM-GAME-LOCK-001`.
+- **Pending, in the next game-lock window:** a launch comparison of the old and
+  new runner (the matrix `shortcut-friends` flags, App ID `480`, the package
+  already on the Deck), then the Desktop -> Game -> Desktop
+  `steamos-session-select` test.
+- **Known, not fixed:** the web-close probe sets `RESULT_FILE` without
+  exporting it. Its close wait therefore never reads the lifecycle log and
+  always waits the full 3 seconds. It is kept unchanged so the evidence
+  contract holds.
+
 ## Open before release
 
 1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
@@ -204,6 +236,9 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- Steam Deck remote helper branch on macOS: runner, helper and matrix
+  self-tests, `npm test` (477/477 JavaScript plus native tests),
+  `package:smoke`, and `git diff --check`.
 - CI green on every job at `a27b9cc`. Locally: `npm test` 476/476, native tests
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.

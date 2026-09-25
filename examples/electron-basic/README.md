@@ -1749,6 +1749,40 @@ overlay readiness, and overlay callback checks. If preflight cannot reach SSH,
 verify the Deck is awake, SSH is enabled, and the `--host` IP address is still
 current; then rerun `--mode discover`.
 
+The runner keeps its Deck-side session shell in `scripts/steam-deck-remote.sh`.
+Every SSH mode installs it at `/home/deck/steam-bridge-smoke/steam-deck-remote.sh`
+when its content changed, then calls it. The helper sets up the display, X11
+authority and session bus. It picks the Game Mode display (SteamUI on `:0`,
+the app on `:1`) and captures with Gamescope in Game Mode or Spectacle in
+Desktop Mode. It also sends key input, runs the focus and state probes, writes
+the shortcut wrapper, and does the exact runtime cleanup. Preflight also
+reports the SteamOS release, the active mode, the runner's tools, and whether
+`/dev/uinput` is writable.
+
+Between runs, use the same helper directly. `steam-deck:remote` reads the host
+from `STEAM_DECK_HOST`, like the runner's default. To pass `--host` instead,
+use `npm run steam-deck:smoke -- --host deck@<deck-host-or-ip> --mode remote -- status`.
+
+```sh
+npm run steam-deck:remote -- status
+npm run steam-deck:remote -- session game
+npm run steam-deck:remote -- session desktop
+npm run steam-deck:remote -- wake-display
+
+npm run steam-deck:smoke -- \
+  --mode capture \
+  --visual-capture-dir /tmp/steam-bridge-deck-capture
+```
+
+`session game` runs `steamos-session-select gamescope`, and `session desktop`
+runs `steamos-session-select plasma-wayland`. Each switch restarts the Steam
+client, so a switch is skipped when the Deck is already in the requested mode.
+Do not use `steamos-session-select plasma` for Desktop Mode. On current SteamOS
+it starts Plasma X11, but the Deck Desktop evidence is Wayland.
+`--mode capture` saves a timestamped screenshot and state capture. When power
+management has turned the Desktop Mode panel off, KWin refuses screenshots; run
+`wake-display` first.
+
 To repeat the mode-appropriate Deck overlay matrices, run:
 
 ```sh

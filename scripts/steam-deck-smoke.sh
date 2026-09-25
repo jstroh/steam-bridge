@@ -6,6 +6,7 @@ local_app_dir="${STEAM_BRIDGE_SMOKE_LOCAL_APP_DIR:-}"
 remote_app_dir="${STEAM_DECK_SMOKE_REMOTE_APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}"
 remote_wrapper_path="${STEAM_DECK_SMOKE_WRAPPER_PATH:-/home/deck/steam-bridge-smoke/run-smoke-autorun.sh}"
 remote_wrapper_env_file="${STEAM_DECK_SMOKE_WRAPPER_ENV_FILE:-/home/deck/steam-bridge-smoke/run-smoke-autorun.env}"
+remote_helper_path="${STEAM_DECK_SMOKE_REMOTE_HELPER_PATH:-/home/deck/steam-bridge-smoke/steam-deck-remote.sh}"
 mode="game"
 app_id="480"
 overlay_game_id="app"
@@ -40,6 +41,7 @@ connect_timeout="6"
 scan_timeout="1"
 discover_subnet="${STEAM_DECK_DISCOVERY_SUBNET:-}"
 exclude_hosts=()
+remote_args=()
 copy_app="1"
 keep_awake="1"
 inhibit_seconds="900"
@@ -78,7 +80,14 @@ Modes:
   --mode preflight              Check SSH, remote package, Steam, and shortcuts.
   --mode print-shortcuts        Print matching Deck Steam shortcuts.
   --mode print-launch-options   Print shortcut launch options from the Deck helper.
+  --mode capture                Save a Deck screenshot and state capture to --visual-capture-dir.
+  --mode remote -- COMMAND [ARGS...]
+                                Run a steam-deck-remote.sh command on the Deck, such as status,
+                                screenshot, key, session game, or session desktop.
   --mode self-test              Validate this host runner without SSH.
+
+Every SSH mode first installs scripts/steam-deck-remote.sh on the Deck when its
+content changed. STEAM_DECK_SMOKE_REMOTE_HELPER_PATH overrides the Deck path.
 
 Options:
   --host USER@HOST              SSH target. Defaults to deck@steamdeck.local.
@@ -422,6 +431,11 @@ while [ "$#" -gt 0 ]; do
       connect_timeout="${2:?missing --connect-timeout value}"
       shift 2
       ;;
+    --)
+      shift
+      remote_args=("$@")
+      break
+      ;;
     *)
       echo "Unknown option: $1" >&2
       usage >&2
@@ -471,6 +485,8 @@ if [ "$control_server" != "1" ] && { [ -n "$control_file" ] || [ -n "$control_to
 fi
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+remote_helper_local="$repo_root/scripts/steam-deck-remote.sh"
+remote_helper_ready="0"
 kwin_active_window_probe="$repo_root/scripts/kwin-active-window-probe.js"
 remote_kwin_active_window_probe="/tmp/steam-bridge-kwin-active-window-probe.js"
 if [ -z "$local_app_dir" ]; then
@@ -492,6 +508,26 @@ quote_args() {
 
 remote_exec() {
   ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host" "$1"
+}
+
+ensure_remote_helper() {
+  if [ "$remote_helper_ready" = "1" ]; then
+    return 0
+  fi
+
+  local helper_q helper_dir_q install_result
+  helper_q="$(quote_arg "$remote_helper_path")"
+  helper_dir_q="$(quote_arg "$(dirname -- "$remote_helper_path")")"
+  install_result="$(remote_exec "set -e; mkdir -p $helper_dir_q; staged=\"\$(mktemp $helper_q.XXXXXX)\"; cat > \"\$staged\"; if cmp -s \"\$staged\" $helper_q; then rm -f \"\$staged\"; echo current; else chmod 0755 \"\$staged\"; mv -f \"\$staged\" $helper_q; echo installed; fi" < "$remote_helper_local")" || return
+  if [ "$install_result" = "installed" ]; then
+    echo "Installed Deck helper at $host:$remote_helper_path" >&2
+  fi
+  remote_helper_ready="1"
+}
+
+remote_helper() {
+  ensure_remote_helper || return
+  remote_exec "$(quote_arg "$remote_helper_path") $(quote_args "$@")"
 }
 
 copy_kwin_active_window_probe() {
@@ -534,35 +570,13 @@ capture_deck_screenshot() {
     return 0
   fi
 
-  local remote_path local_path remote_path_q
+  local remote_path local_path
   remote_path="/tmp/steam-bridge-smoke-$label.png"
   local_path="$visual_capture_dir/$label.png"
-  remote_path_q="$(quote_arg "$remote_path")"
 
   mkdir -p "$visual_capture_dir"
   echo "Capturing Deck screenshot: $label"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; rm -f $remote_path_q; if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null && command -v gamescopectl >/dev/null 2>&1; then
-  gamescopectl screenshot $remote_path_q
-  for attempt in \$(seq 1 50); do
-    [ -s $remote_path_q ] && break
-    sleep 0.1
-  done
-  [ -s $remote_path_q ] || { echo 'Gamescope screenshot was not written.' >&2; exit 1; }
-elif command -v spectacle >/dev/null 2>&1; then
-  for attempt in 1 2 3; do
-    rm -f $remote_path_q
-    if timeout 15 spectacle -b -n -o $remote_path_q >/dev/null 2>&1 && [ -s $remote_path_q ]; then
-      break
-    fi
-    sleep 0.5
-  done
-  [ -s $remote_path_q ] || { echo 'Spectacle screenshot was not written after three attempts.' >&2; exit 1; }
-elif command -v gnome-screenshot >/dev/null 2>&1; then
-  gnome-screenshot -f $remote_path_q
-else
-  echo 'No screenshot tool found on Deck.' >&2
-  exit 127
-fi"
+  remote_helper screenshot "$remote_path"
   scp -q -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$host:$remote_path" "$local_path"
   echo "Screenshot saved: $local_path"
 }
@@ -578,816 +592,47 @@ capture_deck_overlay_state() {
 
   mkdir -p "$visual_capture_dir"
   echo "Capturing Deck overlay state: $label"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"
-if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null &&
-  DISPLAY=:1 xdotool getdisplaygeometry >/dev/null 2>&1; then
-  export DISPLAY=:1
-fi
-if [ -z \"\${XAUTHORITY:-}\" ]; then
-  XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"
-  export XAUTHORITY
-fi
-export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"
-capture_pid=\"\$\$\"
-
-echo '== timestamp =='
-date -Is 2>/dev/null || date
-echo
-
-echo '== focused-window =='
-if command -v xdotool >/dev/null 2>&1; then
-  focus_id=\"\$(xdotool getwindowfocus 2>/dev/null || true)\"
-  echo \"focus_id=\$focus_id\"
-  if [ -n \"\$focus_id\" ]; then
-    echo -n 'focus_name='
-    xdotool getwindowname \"\$focus_id\" 2>/dev/null || true
-    echo -n 'focus_pid='
-    xdotool getwindowpid \"\$focus_id\" 2>/dev/null || true
-    if command -v xprop >/dev/null 2>&1; then
-      xprop -id \"\$focus_id\" WM_CLASS WM_NAME _NET_WM_PID _NET_WM_STATE 2>/dev/null || true
-    fi
-  fi
-else
-  echo 'xdotool unavailable'
-fi
-echo
-
-echo '== active-window =='
-if command -v xprop >/dev/null 2>&1; then
-  xprop -root _NET_ACTIVE_WINDOW 2>/dev/null || true
-else
-  echo 'xprop unavailable'
-fi
-echo
-
-echo '== overlay-processes =='
-for pid in \$(pgrep -f '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true); do
-  comm=\"\$(cat \"/proc/\$pid/comm\" 2>/dev/null || printf unknown)\"
-  ppid=\"\$(awk '/^PPid:/ { print \$2 }' \"/proc/\$pid/status\" 2>/dev/null || true)\"
-  printf 'pid=%s ppid=%s comm=%s\n' \"\$pid\" \"\${ppid:-unknown}\" \"\$comm\"
-done
-echo
-
-echo '== overlay-env =='
-for pid in \$(pgrep -f '[S]teamBridgeSmoke|[g]ameoverlayui' 2>/dev/null | awk -v self=\"\$capture_pid\" '\$1 != self' || true); do
-  if [ -r \"/proc/\$pid/environ\" ]; then
-    echo \"-- pid \$pid --\"
-    tr '\\000' '\\n' < \"/proc/\$pid/environ\" 2>/dev/null |
-      grep -E '^(SteamAppId|SteamGameId|SteamOverlayGameId|LD_PRELOAD|STEAM_BRIDGE_|DISPLAY=)' |
-      sed 's/=.*$/=<redacted>/' || true
-  fi
-done
-echo
-
-echo '== wmctrl =='
-if command -v wmctrl >/dev/null 2>&1; then
-  wmctrl -lp 2>/dev/null | grep -Ei 'steam|overlay|smoke|electron|gameoverlayui' || true
-else
-  echo 'wmctrl unavailable'
-fi
-echo
-
-echo '== xwininfo-filtered =='
-if command -v xwininfo >/dev/null 2>&1; then
-  xwininfo -root -tree 2>/dev/null | grep -Ei 'steam|overlay|smoke|electron|gameoverlayui' | head -n 160 || true
-else
-  echo 'xwininfo unavailable'
-fi
-" > "$local_path" 2>&1 || true
+  remote_helper state > "$local_path" 2>&1 || true
   echo "Overlay state saved: $local_path"
 }
 
 focus_deck_smoke_window() {
-  local app_name_q
-  app_name_q="$(quote_arg "$app_name")"
   echo "Focusing Deck smoke app window before visual probe"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null && DISPLAY=:1 xdotool getdisplaygeometry >/dev/null 2>&1; then export DISPLAY=:1; fi; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; if command -v xdotool >/dev/null 2>&1; then
-  xdotool key Escape >/dev/null 2>&1 || true
-  sleep 0.2
-  app_name=$app_name_q
-  window_id=\"\"
-  for pattern in \"Steam Bridge Electron Smoke\" \"\$app_name\" \"SteamBridgeSmoke\"; do
-    window_id=\"\$(xdotool search --name \"\$pattern\" 2>/dev/null | tail -n 1 || true)\"
-    if [ -n \"\$window_id\" ]; then
-      break
-    fi
-  done
-  if [ -n \"\$window_id\" ]; then
-    xdotool windowactivate --sync \"\$window_id\" >/dev/null 2>&1 || xdotool windowfocus \"\$window_id\" >/dev/null 2>&1 || true
-    sleep 0.35
-  fi
-fi"
+  remote_helper focus --app-name "$app_name"
 }
 
 clear_deck_transient_shells() {
   echo "Clearing Deck transient desktop shell state"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null && DISPLAY=:1 xdotool getdisplaygeometry >/dev/null 2>&1; then export DISPLAY=:1; fi; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; if command -v xdotool >/dev/null 2>&1; then
-  xdotool key Escape >/dev/null 2>&1 || true
-fi"
+  remote_helper clear-shells
 }
 
 cleanup_deck_smoke_runtime() {
-  local remote_q inhibit_pid_q
-  remote_q="$(quote_arg "$remote_app_dir")"
-  inhibit_pid_q="$(quote_arg "$remote_inhibit_pid_file")"
   check_ssh
   echo "Cleaning previous Deck smoke runtime"
-  remote_exec "app_dir=$remote_q
-inhibit_pid_file=$inhibit_pid_q
-target_process_live() {
-  [ -r \"/proc/\$1/stat\" ] || return 1
-  target_stat=\"\$(cat \"/proc/\$1/stat\" 2>/dev/null || true)\"
-  target_state=\"\${target_stat##*) }\"
-  target_state=\"\${target_state%% *}\"
-  case \"\$target_state\" in
-    Z|X|'') return 1 ;;
-    *) return 0 ;;
-  esac
-}
-for attempt in \$(seq 1 20); do
-  for process_dir in /proc/[0-9]*; do
-    executable=\"\$(readlink \"\$process_dir/exe\" 2>/dev/null || true)\"
-    executable=\"\${executable% (deleted)}\"
-    [ \"\$executable\" = \"\$app_dir/SteamBridgeSmoke\" ] || continue
-    kill \"\${process_dir##*/}\" >/dev/null 2>&1 || true
-  done
-  if [ -f \"\$inhibit_pid_file\" ]; then
-    inhibit_pid=\"\$(cat \"\$inhibit_pid_file\" 2>/dev/null || true)\"
-    case \"\$inhibit_pid\" in
-      *[!0-9]*|'') ;;
-      *) kill \"\$inhibit_pid\" >/dev/null 2>&1 || true ;;
-    esac
-    rm -f \"\$inhibit_pid_file\"
-  fi
-  for overlay_pid in \$(pgrep -x gameoverlayui 2>/dev/null || true); do
-    target_pid=\"\$(tr '\\000' '\\n' < \"/proc/\$overlay_pid/cmdline\" 2>/dev/null | awk 'previous == \"-pid\" { print; exit } { previous = \$0 }')\"
-    case \"\$target_pid\" in
-      *[!0-9]*|'') ;;
-      *) target_process_live \"\$target_pid\" || kill \"\$overlay_pid\" >/dev/null 2>&1 || true ;;
-    esac
-  done
-  smoke_count=0
-  for process_dir in /proc/[0-9]*; do
-    executable=\"\$(readlink \"\$process_dir/exe\" 2>/dev/null || true)\"
-    executable=\"\${executable% (deleted)}\"
-    [ \"\$executable\" = \"\$app_dir/SteamBridgeSmoke\" ] && smoke_count=\$((smoke_count + 1))
-  done
-  orphan_overlay_count=0
-  for overlay_pid in \$(pgrep -x gameoverlayui 2>/dev/null || true); do
-    target_pid=\"\$(tr '\\000' '\\n' < \"/proc/\$overlay_pid/cmdline\" 2>/dev/null | awk 'previous == \"-pid\" { print; exit } { previous = \$0 }')\"
-    case \"\$target_pid\" in
-      *[!0-9]*|'') ;;
-      *) target_process_live \"\$target_pid\" || { target_process_live \"\$overlay_pid\" && orphan_overlay_count=\$((orphan_overlay_count + 1)); } ;;
-    esac
-  done
-  if [ \"\$smoke_count\" -eq 0 ] && [ \"\$orphan_overlay_count\" -eq 0 ]; then
-    echo 'Previous Deck smoke runtime cleaned.'
-    exit 0
-  fi
-  sleep 0.5
-done
-echo 'Timed out cleaning previous Deck smoke runtime.' >&2
-exit 1"
+  remote_helper cleanup --app-dir "$remote_app_dir" --inhibit-pid-file "$remote_inhibit_pid_file"
 }
 
 send_deck_overlay_close_probe() {
   echo "Sending Deck overlay close probe"
-  remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
-python3 - <<'PY'
-import fcntl
-import os
-import struct
-import time
-
-EV_SYN = 0
-EV_KEY = 1
-SYN_REPORT = 0
-KEY_ESC = 1
-KEY_TAB = 15
-KEY_LEFTSHIFT = 42
-UI_SET_EVBIT = 0x40045564
-UI_SET_KEYBIT = 0x40045565
-UI_DEV_CREATE = 0x5501
-UI_DEV_DESTROY = 0x5502
-
-def emit(fd, event_type, code, value):
-    os.write(fd, struct.pack('llHHI', 0, 0, event_type, code, value))
-
-def sync(fd):
-    emit(fd, EV_SYN, SYN_REPORT, 0)
-
-def tap(fd, key):
-    emit(fd, EV_KEY, key, 1)
-    sync(fd)
-    time.sleep(0.05)
-    emit(fd, EV_KEY, key, 0)
-    sync(fd)
-
-fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
-try:
-    fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
-    for key in (KEY_ESC, KEY_TAB, KEY_LEFTSHIFT):
-        fcntl.ioctl(fd, UI_SET_KEYBIT, key)
-    user_dev = struct.pack('80sHHHH', b'steam-bridge-virtual-keyboard', 0x03, 0x1234, 0x5678, 1)
-    os.write(fd, user_dev + bytes(1028))
-    fcntl.ioctl(fd, UI_DEV_CREATE)
-    time.sleep(0.2)
-    emit(fd, EV_KEY, KEY_LEFTSHIFT, 1)
-    sync(fd)
-    tap(fd, KEY_TAB)
-    emit(fd, EV_KEY, KEY_LEFTSHIFT, 0)
-    sync(fd)
-    time.sleep(0.35)
-    tap(fd, KEY_ESC)
-    time.sleep(0.2)
-finally:
-    try:
-        fcntl.ioctl(fd, UI_DEV_DESTROY)
-    finally:
-        os.close(fd)
-PY
-elif command -v xdotool >/dev/null 2>&1; then
-  xdotool key Shift+Tab
-  sleep 0.35
-  xdotool key Escape
-else
-  echo 'No /dev/uinput or xdotool close input helper found on Deck.' >&2
-  exit 127
-fi"
+  remote_helper key close
 }
 
 send_deck_web_overlay_close_probe() {
-  local result_file_q
-  result_file_q="$(quote_arg "$result_file")"
   echo "Sending Deck web overlay close probe"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; RESULT_FILE=$result_file_q; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi
-if ! command -v xdotool >/dev/null 2>&1; then
-  echo 'No xdotool web overlay close helper found on Deck.' >&2
-  exit 127
-fi
-wait_for_web_overlay_closed() {
-  CLOSE_WAIT_SECONDS=\"\${1:-2.5}\" python3 - <<'PY'
-import os
-import sys
-import time
-
-result_file = os.environ.get('RESULT_FILE') or ''
-lifecycle_path = result_file + '.diagnostics/lifecycle.jsonl'
-deadline = time.monotonic() + float(os.environ.get('CLOSE_WAIT_SECONDS') or 2.5)
-
-def has_closed_after_active():
-    try:
-        with open(lifecycle_path, 'r', encoding='utf-8') as handle:
-            saw_active = False
-            for line in handle:
-                if 'event:callback:overlay-activated' not in line:
-                    continue
-                if '\"active\":true' in line or '\"m_bActive\":true' in line or '\"active\":1' in line:
-                    saw_active = True
-                elif saw_active and (
-                    '\"active\":false' in line or '\"m_bActive\":false' in line or '\"active\":0' in line
-                ):
-                    return True
-    except FileNotFoundError:
-        return False
-    return False
-
-while time.monotonic() < deadline:
-    if has_closed_after_active():
-        sys.exit(0)
-    time.sleep(0.1)
-sys.exit(1)
-PY
-}
-active_kwin_effects() {
-  if command -v qdbus >/dev/null 2>&1; then
-    qdbus org.kde.KWin /Effects activeEffects 2>/dev/null || true
-  elif command -v qdbus6 >/dev/null 2>&1; then
-    qdbus6 org.kde.KWin /Effects activeEffects 2>/dev/null || true
-  fi
-}
-kwin_overview_active() {
-  active_kwin_effects | grep -Eq '^(overview|windowview|scale)$'
-}
-clear_kwin_overview_if_active() {
-  if ! kwin_overview_active; then
-    return 0
-  fi
-  xdotool key Escape >/dev/null 2>&1 || true
-  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    if ! kwin_overview_active; then
-      return 0
-    fi
-    sleep 0.1
-  done
-}
-clear_kwin_overview_if_active
-set -- \$(xdotool getdisplaygeometry)
-display_width=\"\${1:-1280}\"
-display_height=\"\${2:-800}\"
-host_window=\"\$(xdotool search --name 'Steam Bridge Native Overlay' 2>/dev/null | tail -n 1 || true)\"
-if [ -z \"\$host_window\" ]; then
-  echo 'Steam web close probe could not find the native overlay host.' >&2
-  exit 1
-fi
-eval \"\$(xdotool getwindowgeometry --shell \"\$host_window\" 2>/dev/null || true)\"
-host_x=\"\${X:-0}\"
-host_y=\"\${Y:-0}\"
-host_width=\"\${WIDTH:-\$display_width}\"
-host_height=\"\${HEIGHT:-\$display_height}\"
-close_image=/tmp/steam-bridge-smoke-web-close.png
-close_gray=/tmp/steam-bridge-smoke-web-close.gray
-rm -f \"\$close_image\" \"\$close_gray\"
-if ! command -v spectacle >/dev/null 2>&1 || ! command -v ffmpeg >/dev/null 2>&1; then
-  echo 'Steam web close probe requires spectacle and ffmpeg.' >&2
-  exit 127
-fi
-spectacle -b -n -o \"\$close_image\" >/dev/null 2>&1
-ffmpeg -v error -y -i \"\$close_image\" -f rawvideo -pix_fmt gray \"\$close_gray\"
-close_point=\"\$(python3 - \"\$close_gray\" \"\$display_width\" \"\$display_height\" \"\$host_x\" \"\$host_y\" \"\$host_width\" \"\$host_height\" <<'PY'
-import sys
-from pathlib import Path
-
-gray_path = Path(sys.argv[1])
-display_width, display_height, host_x, host_y, host_width, host_height = map(int, sys.argv[2:])
-pixels = gray_path.read_bytes()
-if len(pixels) != display_width * display_height:
-    print('Steam web close probe received an unexpected screenshot size.', file=sys.stderr)
-    sys.exit(1)
-
-minimum_x = max(8, host_x + host_width * 75 // 100)
-maximum_x = min(display_width - 9, host_x + host_width * 90 // 100)
-minimum_y = max(8, host_y + host_height * 7 // 100)
-maximum_y = min(display_height - 9, host_y + host_height * 20 // 100)
-
-def pixel(x, y):
-    return pixels[y * display_width + x]
-
-best = None
-for y in range(minimum_y, maximum_y + 1):
-    for x in range(minimum_x, maximum_x + 1):
-        diagonal = []
-        off_axis = []
-        for offset in range(-5, 6):
-            diagonal.extend((pixel(x + offset, y + offset), pixel(x - offset, y + offset)))
-            if abs(offset) >= 3:
-                off_axis.extend((pixel(x, y + offset), pixel(x + offset, y)))
-        if max(diagonal) - min(diagonal) < 50:
-            continue
-        local = sorted(
-            pixel(x + offset_x, y + offset_y)
-            for offset_y in range(-8, 9)
-            for offset_x in range(-8, 9)
-        )
-        background = local[len(local) // 2]
-        if background >= 60:
-            continue
-        score_threshold = background + 28
-        bright_threshold = background + 53
-        score = sum(max(0, value - score_threshold) for value in diagonal)
-        score -= sum(max(0, value - score_threshold) for value in off_axis)
-        bright = sum(value >= bright_threshold for value in diagonal)
-        if score < 900 or bright < 20:
-            continue
-        candidate = (score, bright, x, y)
-        if best is None or candidate > best:
-            best = candidate
-
-if best is None:
-    print('Steam web close probe could not detect the close glyph.', file=sys.stderr)
-    sys.exit(1)
-
-score, _bright, click_x, click_y = best
-print(f'{click_x} {click_y} {score}')
-PY
-)\"
-rm -f \"\$close_image\" \"\$close_gray\"
-set -- \$close_point
-click_x=\"\$1\"
-click_y=\"\$2\"
-close_score=\"\$3\"
-echo \"Detected Steam web close control (score=\$close_score).\"
-xdotool mousemove \"\$click_x\" \"\$click_y\" click 1
-wait_for_web_overlay_closed 3.0 || true"
+  remote_helper web-close --result-file "$result_file"
 }
 
 verify_deck_overlay_closed_after_probe() {
   local require_shortcut_open="${1:-0}"
   local require_presenter_parking="${2:-1}"
-  local result_file_q app_name_q
-  result_file_q="$(quote_arg "$result_file")"
-  app_name_q="$(quote_arg "$app_name")"
   echo "Verifying Deck overlay close/deactivation evidence"
-  remote_exec "RESULT_FILE=$result_file_q APP_NAME=$app_name_q ACTION=$(quote_arg "$action") REQUIRE_SHORTCUT_OPEN=$require_shortcut_open REQUIRE_PRESENTER_PARKING=$require_presenter_parking KWIN_ACTIVE_WINDOW_PROBE=$(quote_arg "$remote_kwin_active_window_probe") python3 - <<'PY'
-import glob
-import json
-import os
-import shutil
-import subprocess
-import sys
-import time
-
-result_file = os.environ['RESULT_FILE']
-app_name = os.environ.get('APP_NAME') or 'Steam Bridge Smoke'
-action = os.environ.get('ACTION') or ''
-require_shortcut_open = os.environ.get('REQUIRE_SHORTCUT_OPEN') == '1'
-require_presenter_parking = os.environ.get('REQUIRE_PRESENTER_PARKING') == '1'
-require_open_and_wait_completion = action in {
-    'presenter-web-open-and-wait',
-    'presenter-store-open-and-wait',
-    'presenter-dialog-auto-open-and-wait',
-    'presenter-friends-open-and-wait'
-}
-diagnostic_dir = result_file + '.diagnostics'
-lifecycle_path = os.path.join(diagnostic_dir, 'lifecycle.jsonl')
-crash_dump_dir = os.path.join(diagnostic_dir, 'crash-dumps')
-fatal_types = {
-    'app:render-process-gone',
-    'app:child-process-gone',
-    'app:gpu-process-crashed',
-    'process:uncaught-exception',
-    'process:unhandled-rejection',
-}
-failures = []
-
-def active_value(payload):
-    if payload is True or payload == 1:
-        return True
-    if payload is False or payload == 0:
-        return False
-    if not isinstance(payload, dict):
-        return None
-    active_payload = payload.get('0') if isinstance(payload.get('0'), dict) else payload
-    for key in ('active', 'm_bActive'):
-        value = active_payload.get(key)
-        if value is True or value == 1:
-            return True
-        if value is False or value == 0:
-            return False
-    return None
-
-def read_lifecycle_entries():
-    loaded_entries = []
-    load_failures = []
-    try:
-        with open(lifecycle_path, 'r', encoding='utf-8') as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    loaded_entries.append(json.loads(line))
-                except json.JSONDecodeError as error:
-                    load_failures.append(f'invalid lifecycle JSON: {error}')
-    except FileNotFoundError:
-        load_failures.append(f'missing lifecycle log: {lifecycle_path}')
-    return loaded_entries, load_failures
-
-def presenter_payload(entry):
-    payload = entry.get('payload')
-    if not isinstance(payload, dict):
-        return None
-    presenter = payload.get('presenter')
-    return presenter if isinstance(presenter, dict) else None
-
-def expect_presenter_field(presenter, key, expected, label):
-    actual = presenter.get(key)
-    if actual != expected:
-        failures.append(f'{label} after close expected {expected!r}, got {actual!r}')
-
-def find_overlay_state_indices(loaded_entries):
-    states = []
-    for index, entry in enumerate(loaded_entries):
-        if entry.get('type') == 'event:callback:overlay-activated':
-            states.append((index, active_value(entry.get('payload'))))
-    first_active = next((index for index, state in states if state is True), None)
-    inactive_after_active = None
-    if first_active is not None:
-        inactive_after_active = next((index for index, state in states if index > first_active and state is False), None)
-    return first_active, inactive_after_active
-
-def has_presenter_after_close_stable_event(loaded_entries):
-    _first_active, inactive_after_active = find_overlay_state_indices(loaded_entries)
-    if inactive_after_active is None:
-        return False
-    return any(
-        index > inactive_after_active and entry.get('type') == 'event:overlay:presenter-after-close-stable'
-        for index, entry in enumerate(loaded_entries)
-    )
-
-def has_required_close_evidence(loaded_entries):
-    _first_active, inactive_after_active = find_overlay_state_indices(loaded_entries)
-    if inactive_after_active is None:
-        return False
-    if require_presenter_parking:
-        if not has_presenter_after_close_stable_event(loaded_entries):
-            return False
-    if require_open_and_wait_completion:
-        return any(
-            index > inactive_after_active and entry.get('type') == 'event:overlay:presenter-open-and-wait-complete'
-            for index, entry in enumerate(loaded_entries)
-        )
-    return True
-
-def expect_parked_presenter(presenter, label):
-    expect_presenter_field(presenter, 'closed', False, f'native presenter closed {label}')
-    expect_presenter_field(presenter, 'attached', True, f'native presenter attached {label}')
-    expect_presenter_field(presenter, 'nativeHostOpen', True, f'native presenter host open {label}')
-    expect_presenter_field(presenter, 'mode', 'passive', f'native presenter mode {label}')
-    expect_presenter_field(presenter, 'clickThrough', True, f'native presenter click-through {label}')
-    expect_presenter_field(presenter, 'focusable', False, f'native presenter focusable {label}')
-    expect_presenter_field(presenter, 'transparent', True, f'native presenter transparent {label}')
-    expect_presenter_field(presenter, 'overlayActive', False, f'native presenter overlay active {label}')
-    expect_presenter_field(presenter, 'idleFps', 0, f'native presenter idle FPS {label}')
-    expect_presenter_field(presenter, 'currentFps', 0, f'native presenter current FPS {label}')
-    expect_presenter_field(presenter, 'overlayNeedsPresent', False, f'native presenter overlay needs present {label}')
-
-entries = []
-lifecycle_failures = []
-deadline = time.monotonic() + 5
-while True:
-    entries, lifecycle_failures = read_lifecycle_entries()
-    if not lifecycle_failures and (has_required_close_evidence(entries) or time.monotonic() >= deadline):
-        break
-    if lifecycle_failures and time.monotonic() >= deadline:
-        failures.extend(lifecycle_failures)
-        break
-    time.sleep(0.2)
-
-if not failures and lifecycle_failures:
-    failures.extend(lifecycle_failures)
-
-first_active_index, inactive_after_active_index = find_overlay_state_indices(entries)
-if first_active_index is None:
-    failures.append('no active=true overlay callback in lifecycle log')
-elif inactive_after_active_index is None:
-    failures.append('no active=false overlay callback after active=true')
-else:
-    reactivated_after_close = any(
-        index > inactive_after_active_index
-        and entry.get('type') == 'event:callback:overlay-activated'
-        and active_value(entry.get('payload')) is True
-        for index, entry in enumerate(entries)
-    )
-    if reactivated_after_close:
-        failures.append('overlay reactivated after close probe')
-
-    if require_presenter_parking:
-        first_after_close_entries = [
-            (index, presenter_payload(entry))
-            for index, entry in enumerate(entries)
-            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close'
-        ]
-        stable_after_close_entries = [
-            (index, presenter_payload(entry))
-            for index, entry in enumerate(entries)
-            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-after-close-stable'
-        ]
-        first_after_close_presenters = [(index, presenter) for index, presenter in first_after_close_entries if presenter]
-        stable_after_close_presenters = [(index, presenter) for index, presenter in stable_after_close_entries if presenter]
-        if not first_after_close_entries:
-            failures.append('no overlay:presenter-after-close event after active=false in lifecycle log')
-        elif not first_after_close_presenters:
-            failures.append('overlay:presenter-after-close did not include a presenter snapshot')
-        if not stable_after_close_entries:
-            failures.append('no overlay:presenter-after-close-stable event after active=false in lifecycle log')
-        elif not stable_after_close_presenters:
-            failures.append('overlay:presenter-after-close-stable did not include a presenter snapshot')
-        if first_after_close_presenters and stable_after_close_presenters:
-            _first_presenter_index, first_presenter = first_after_close_presenters[-1]
-            _stable_presenter_index, stable_presenter = stable_after_close_presenters[-1]
-            expect_parked_presenter(first_presenter, 'first sample')
-            expect_parked_presenter(stable_presenter, 'stable sample')
-            first_pump_count = first_presenter.get('pumpCount')
-            stable_pump_count = stable_presenter.get('pumpCount')
-            if first_pump_count != stable_pump_count:
-                failures.append(
-                    f'native presenter pump count changed after close: first={first_pump_count!r}, stable={stable_pump_count!r}'
-                )
-
-        wait_shown_presenters = [
-            presenter_payload(entry)
-            for index, entry in enumerate(entries)
-            if index > first_active_index and entry.get('type') == 'event:overlay:presenter-wait-shown'
-        ]
-        wait_closed_presenters = [
-            presenter_payload(entry)
-            for index, entry in enumerate(entries)
-            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-wait-closed'
-        ]
-        wait_parked_presenters = [
-            presenter_payload(entry)
-            for index, entry in enumerate(entries)
-            if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-parked'
-        ]
-        if not wait_shown_presenters:
-            failures.append('no overlay:presenter-wait-shown event after active=true in lifecycle log')
-        elif not any(wait_shown_presenters):
-            failures.append('overlay:presenter-wait-shown did not include a presenter snapshot')
-        if not wait_closed_presenters:
-            failures.append('no overlay:presenter-wait-closed event after active=false in lifecycle log')
-        elif not any(wait_closed_presenters):
-            failures.append('overlay:presenter-wait-closed did not include a presenter snapshot')
-        if not wait_parked_presenters:
-            failures.append('no overlay:presenter-parked event after active=false in lifecycle log')
-        elif not any(wait_parked_presenters):
-            failures.append('overlay:presenter-parked did not include a presenter snapshot')
-
-        if require_open_and_wait_completion:
-            open_and_wait_entries = [
-                entry
-                for index, entry in enumerate(entries)
-                if index > inactive_after_active_index and entry.get('type') == 'event:overlay:presenter-open-and-wait-complete'
-            ]
-            if not open_and_wait_entries:
-                failures.append('no overlay:presenter-open-and-wait-complete event after active=false in lifecycle log')
-            else:
-                payload = open_and_wait_entries[-1].get('payload')
-                if not isinstance(payload, dict):
-                    failures.append('overlay:presenter-open-and-wait-complete did not include a payload')
-                else:
-                    shown = payload.get('shown')
-                    parked = payload.get('parked')
-                    if not isinstance(shown, dict):
-                        failures.append('overlay:presenter-open-and-wait-complete did not include a shown snapshot')
-                    elif shown.get('overlayActive') is not True:
-                        failures.append('openAndWait shown snapshot did not report overlayActive=true')
-                    if not isinstance(parked, dict):
-                        failures.append('overlay:presenter-open-and-wait-complete did not include a parked snapshot')
-                    else:
-                        expect_parked_presenter(parked, 'openAndWait parked result')
-
-if require_shortcut_open and not any(entry.get('type') == 'event:overlay:shortcut-open' for entry in entries):
-    failures.append('no overlay:shortcut-open event in lifecycle log')
-
-fatal_entries = [entry for entry in entries if entry.get('type') in fatal_types]
-if fatal_entries:
-    failures.append('fatal lifecycle events recorded after close probe: ' + ', '.join(entry.get('type', 'unknown') for entry in fatal_entries))
-
-crash_dumps = []
-for root, _dirs, files in os.walk(crash_dump_dir):
-    for name in files:
-        normalized = name.lower()
-        if normalized.endswith(('.dmp', '.mdmp', '.dump', '.crash')):
-            crash_dumps.append(os.path.relpath(os.path.join(root, name), crash_dump_dir))
-if crash_dumps:
-    failures.append('crash dump files found after close probe: ' + ', '.join(crash_dumps))
-
-process_check = subprocess.run(
-    ['pgrep', '-af', '[S]teamBridgeSmoke'],
-    text=True,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.DEVNULL,
-)
-if process_check.returncode != 0 or not process_check.stdout.strip():
-    failures.append('SteamBridgeSmoke process is not running after close probe')
-
-def read_kwin_active_window():
-    probe_path = os.environ.get('KWIN_ACTIVE_WINDOW_PROBE') or ''
-    qdbus = shutil.which('qdbus6') or shutil.which('qdbus')
-    journalctl = shutil.which('journalctl')
-    if not probe_path or not os.path.isfile(probe_path) or not qdbus or not journalctl:
-        return False, None
-
-    plugin_name = 'steam-bridge-focus-probe'
-    cursor_result = subprocess.run(
-        [journalctl, '--user', '-n', '0', '--show-cursor', '--no-pager'],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-    cursor = next(
-        (
-            line.split(':', 1)[1].strip()
-            for line in cursor_result.stdout.splitlines()
-            if line.startswith('-- cursor:')
-        ),
-        '',
-    )
-    unload = [
-        qdbus,
-        'org.kde.KWin',
-        '/Scripting',
-        'org.kde.kwin.Scripting.unloadScript',
-        plugin_name,
-    ]
-    subprocess.run(unload, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        loaded = subprocess.run(
-            [
-                qdbus,
-                'org.kde.KWin',
-                '/Scripting',
-                'org.kde.kwin.Scripting.loadScript',
-                probe_path,
-                plugin_name,
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        if loaded.returncode != 0:
-            return False, None
-        started = subprocess.run(
-            [qdbus, 'org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.start'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if started.returncode != 0:
-            return False, None
-        time.sleep(0.25)
-        journal_args = [journalctl, '--user', '--no-pager', '-o', 'cat']
-        if cursor:
-            journal_args.extend(['--after-cursor', cursor])
-        else:
-            journal_args.append('--since=5sec')
-        journal = subprocess.run(
-            journal_args,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        marker = 'STEAM_BRIDGE_KWIN_ACTIVE '
-        for line in reversed(journal.stdout.splitlines()):
-            marker_index = line.find(marker)
-            if marker_index < 0:
-                continue
-            try:
-                return True, json.loads(line[marker_index + len(marker):])
-            except json.JSONDecodeError:
-                return True, None
-        return False, None
-    finally:
-        subprocess.run(unload, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-expected = [app_name.lower(), 'steam bridge electron smoke', 'steambridgesmoke']
-kwin_focus_read, kwin_active_window = read_kwin_active_window()
-if kwin_focus_read:
-    if not isinstance(kwin_active_window, dict):
-        failures.append('KWin reported no active window after close probe')
-    else:
-        active_identity = ' '.join(
-            str(kwin_active_window.get(key) or '').lower()
-            for key in ('caption', 'resourceClass', 'resourceName')
-        )
-        if not any(name and name in active_identity for name in expected):
-            failures.append('KWin active window after close probe is not the smoke app')
-else:
-    focus_env = os.environ.copy()
-    if not focus_env.get('XAUTHORITY'):
-        xauth_candidates = glob.glob('/run/user/1000/xauth_*')
-        if xauth_candidates:
-            focus_env['XAUTHORITY'] = xauth_candidates[0]
-
-    if shutil.which('xdotool') is None:
-        failures.append('could not read focused X11 window after close probe')
-    else:
-        game_mode = subprocess.run(
-            ['systemctl', '--user', 'is-active', '--quiet', 'gamescope-session.service'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
-        display_candidates = [':1', ':0'] if game_mode else [focus_env.get('DISPLAY') or ':0', ':0']
-        focused_window_read = False
-        smoke_app_focused = False
-        for display in dict.fromkeys(display_candidates):
-            display_env = focus_env.copy()
-            display_env['DISPLAY'] = display
-            focus_id = subprocess.run(
-                ['xdotool', 'getwindowfocus'],
-                env=display_env,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-            )
-            if focus_id.returncode != 0 or not focus_id.stdout.strip():
-                continue
-            focus_name_result = subprocess.run(
-                ['xdotool', 'getwindowname', focus_id.stdout.strip()],
-                env=display_env,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-            )
-            if focus_name_result.returncode != 0:
-                continue
-            focused_window_read = True
-            focus_name_lower = focus_name_result.stdout.strip().lower()
-            if any(name and name in focus_name_lower for name in expected):
-                smoke_app_focused = True
-                break
-        if not focused_window_read:
-            failures.append('could not read focused X11 window after close probe')
-        elif not smoke_app_focused:
-            failures.append('focused window after close probe is not the smoke app')
-
-if failures:
-    for failure in failures:
-        print(f'Deck close verification failed: {failure}', file=sys.stderr)
-    raise SystemExit(1)
-
-print('Deck overlay close verified: active=false observed, managed presenter parking verified when required, app focused, no crash evidence.')
-PY"
+  remote_helper verify-close \
+    --result-file "$result_file" \
+    --app-name "$app_name" \
+    --action "$action" \
+    --require-shortcut-open "$require_shortcut_open" \
+    --require-presenter-parking "$require_presenter_parking" \
+    --kwin-probe "$remote_kwin_active_window_probe"
 }
 
 send_deck_overlay_toggle_probe() {
@@ -1408,182 +653,17 @@ send_deck_overlay_toggle_probe() {
 
 send_deck_overlay_keyboard_toggle_probe() {
   echo "Sending Deck overlay keyboard toggle probe"
-  remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
-python3 - <<'PY'
-import fcntl
-import os
-import struct
-import time
-
-EV_SYN = 0
-EV_KEY = 1
-SYN_REPORT = 0
-KEY_TAB = 15
-KEY_LEFTSHIFT = 42
-UI_SET_EVBIT = 0x40045564
-UI_SET_KEYBIT = 0x40045565
-UI_DEV_CREATE = 0x5501
-UI_DEV_DESTROY = 0x5502
-
-def emit(fd, event_type, code, value):
-    os.write(fd, struct.pack('llHHI', 0, 0, event_type, code, value))
-
-def sync(fd):
-    emit(fd, EV_SYN, SYN_REPORT, 0)
-
-def tap(fd, key):
-    emit(fd, EV_KEY, key, 1)
-    sync(fd)
-    time.sleep(0.05)
-    emit(fd, EV_KEY, key, 0)
-    sync(fd)
-
-fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
-try:
-    fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
-    for key in (KEY_TAB, KEY_LEFTSHIFT):
-        fcntl.ioctl(fd, UI_SET_KEYBIT, key)
-    user_dev = struct.pack('80sHHHH', b'steam-bridge-virtual-keyboard', 0x03, 0x1234, 0x5678, 1)
-    os.write(fd, user_dev + bytes(1028))
-    fcntl.ioctl(fd, UI_DEV_CREATE)
-    time.sleep(0.2)
-    emit(fd, EV_KEY, KEY_LEFTSHIFT, 1)
-    sync(fd)
-    tap(fd, KEY_TAB)
-    emit(fd, EV_KEY, KEY_LEFTSHIFT, 0)
-    sync(fd)
-    time.sleep(0.2)
-finally:
-    try:
-        fcntl.ioctl(fd, UI_DEV_DESTROY)
-    finally:
-        os.close(fd)
-PY
-elif command -v xdotool >/dev/null 2>&1; then
-  xdotool key Shift+Tab
-else
-  echo 'No /dev/uinput or xdotool toggle input helper found on Deck.' >&2
-  exit 127
-fi"
+  remote_helper key toggle
 }
 
 send_deck_overlay_guide_toggle_probe() {
   echo "Sending Deck overlay Guide/Steam-button toggle probe"
-  remote_exec "if [ -w /dev/uinput ] && command -v python3 >/dev/null 2>&1; then
-python3 - <<'PY'
-import fcntl
-import os
-import struct
-import time
-
-EV_SYN = 0
-EV_KEY = 1
-EV_ABS = 3
-SYN_REPORT = 0
-ABS_X = 0
-ABS_Y = 1
-ABS_Z = 2
-ABS_RX = 3
-ABS_RY = 4
-ABS_RZ = 5
-ABS_HAT0X = 16
-ABS_HAT0Y = 17
-BTN_SOUTH = 304
-BTN_EAST = 305
-BTN_NORTH = 307
-BTN_WEST = 308
-BTN_TL = 310
-BTN_TR = 311
-BTN_SELECT = 314
-BTN_START = 315
-BTN_MODE = 316
-BTN_THUMBL = 317
-BTN_THUMBR = 318
-UI_SET_EVBIT = 0x40045564
-UI_SET_KEYBIT = 0x40045565
-UI_SET_ABSBIT = 0x40045567
-UI_DEV_CREATE = 0x5501
-UI_DEV_DESTROY = 0x5502
-ABS_CNT = 64
-
-def emit(fd, event_type, code, value):
-    os.write(fd, struct.pack('llHHI', 0, 0, event_type, code, value))
-
-def sync(fd):
-    emit(fd, EV_SYN, SYN_REPORT, 0)
-
-def user_dev():
-    data = bytearray(80 + 8 + 4 + ABS_CNT * 4 * 4)
-    struct.pack_into('80sHHHHI', data, 0, b'steam-bridge-virtual-gamepad', 0x03, 0x28de, 0x11ff, 1, 0)
-    absmax_offset = 92
-    absmin_offset = absmax_offset + ABS_CNT * 4
-    absfuzz_offset = absmin_offset + ABS_CNT * 4
-    absflat_offset = absfuzz_offset + ABS_CNT * 4
-    for axis in (ABS_X, ABS_Y, ABS_RX, ABS_RY):
-        struct.pack_into('i', data, absmin_offset + axis * 4, -32768)
-        struct.pack_into('i', data, absmax_offset + axis * 4, 32767)
-        struct.pack_into('i', data, absflat_offset + axis * 4, 4096)
-    for axis in (ABS_Z, ABS_RZ):
-        struct.pack_into('i', data, absmin_offset + axis * 4, 0)
-        struct.pack_into('i', data, absmax_offset + axis * 4, 255)
-    for axis in (ABS_HAT0X, ABS_HAT0Y):
-        struct.pack_into('i', data, absmin_offset + axis * 4, -1)
-        struct.pack_into('i', data, absmax_offset + axis * 4, 1)
-    return data
-
-fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
-try:
-    fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
-    fcntl.ioctl(fd, UI_SET_EVBIT, EV_ABS)
-    for key in (BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR):
-        fcntl.ioctl(fd, UI_SET_KEYBIT, key)
-    for axis in (ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y):
-        fcntl.ioctl(fd, UI_SET_ABSBIT, axis)
-    os.write(fd, user_dev())
-    fcntl.ioctl(fd, UI_DEV_CREATE)
-    time.sleep(1.2)
-    for axis, value in ((ABS_X, 0), (ABS_Y, 0), (ABS_RX, 0), (ABS_RY, 0), (ABS_Z, 0), (ABS_RZ, 0), (ABS_HAT0X, 0), (ABS_HAT0Y, 0)):
-        emit(fd, EV_ABS, axis, value)
-    sync(fd)
-    time.sleep(0.2)
-    emit(fd, EV_KEY, BTN_MODE, 1)
-    sync(fd)
-    time.sleep(0.15)
-    emit(fd, EV_KEY, BTN_MODE, 0)
-    sync(fd)
-    time.sleep(1.0)
-finally:
-    try:
-        fcntl.ioctl(fd, UI_DEV_DESTROY)
-    finally:
-        os.close(fd)
-PY
-else
-  echo 'No /dev/uinput Guide-button input helper found on Deck.' >&2
-  exit 127
-fi"
+  remote_helper key guide
 }
 
 send_deck_overlay_escape_probe() {
   echo "Sending Deck overlay SteamUI Escape probe"
-  remote_exec "if ! command -v xdotool >/dev/null 2>&1; then
-  echo 'SteamUI Escape probe requires xdotool.' >&2
-  exit 127
-fi
-if [ -z \"\${XAUTHORITY:-}\" ]; then
-  XAUTHORITY=\"\$(ls -t /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"
-  export XAUTHORITY
-fi
-escape_display=\"\${DISPLAY:-:0}\"
-if systemctl --user is-active --quiet gamescope-session.service 2>/dev/null &&
-  DISPLAY=:0 xdotool getdisplaygeometry >/dev/null 2>&1; then
-  escape_display=:0
-fi
-if ! DISPLAY=\"\$escape_display\" xdotool getdisplaygeometry >/dev/null 2>&1; then
-  echo \"SteamUI Escape probe could not authenticate to X11 display \$escape_display.\" >&2
-  exit 1
-fi
-DISPLAY=\"\$escape_display\" xdotool key Escape"
+  remote_helper key steamui-escape
 }
 
 run_visual_capture() {
@@ -1637,55 +717,7 @@ run_visual_capture() {
 }
 
 wait_for_deck_shortcut_overlay_open() {
-  local result_file_q
-  result_file_q="$(quote_arg "$result_file")"
-  remote_exec "RESULT_FILE=$result_file_q python3 - <<'PY'
-import json
-import os
-import sys
-import time
-
-result_file = os.environ['RESULT_FILE']
-lifecycle_path = os.path.join(result_file + '.diagnostics', 'lifecycle.jsonl')
-deadline = time.monotonic() + 12
-
-def active_value(payload):
-    if not isinstance(payload, dict):
-        return None
-    if isinstance(payload.get('active'), bool):
-        return payload.get('active')
-    first = payload.get('0')
-    if isinstance(first, dict) and isinstance(first.get('active'), bool):
-        return first.get('active')
-    return None
-
-while time.monotonic() < deadline:
-    shortcut_open = False
-    overlay_active = False
-    try:
-        with open(lifecycle_path, 'r', encoding='utf-8') as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-                if entry.get('type') == 'event:overlay:shortcut-open':
-                    shortcut_open = True
-                elif entry.get('type') == 'event:callback:overlay-activated' and active_value(entry.get('payload')) is True:
-                    overlay_active = True
-    except FileNotFoundError:
-        pass
-    except json.JSONDecodeError as error:
-        print(f'Invalid lifecycle JSON while waiting for shortcut overlay open: {error}', file=sys.stderr)
-        sys.exit(1)
-
-    if shortcut_open and overlay_active:
-        print('Deck shortcut overlay open verified from lifecycle log.')
-        sys.exit(0)
-    time.sleep(0.1)
-
-print(f'Timed out waiting for managed shortcut overlay open in {lifecycle_path}', file=sys.stderr)
-sys.exit(1)
-PY"
+  remote_helper wait-shortcut-open --result-file "$result_file"
 }
 
 run_visual_toggle_probe_for_input() {
@@ -1741,13 +773,14 @@ EOF
 }
 
 check_ssh() {
+  local status=0
   echo "Checking SSH reachability for $host"
-  if remote_exec "true" >/dev/null; then
+  remote_exec "true" >/dev/null || status=$?
+  if [ "$status" -eq 0 ]; then
     echo "SSH reachable."
     return 0
   fi
 
-  local status=$?
   print_ssh_hint
   return "$status"
 }
@@ -1901,10 +934,7 @@ start_keep_awake() {
     return 0
   fi
 
-  local pid_q seconds_q
-  pid_q="$(quote_arg "$remote_inhibit_pid_file")"
-  seconds_q="$(quote_arg "$inhibit_seconds")"
-  remote_exec "if command -v systemd-inhibit >/dev/null 2>&1; then nohup systemd-inhibit --what=sleep --why='Steam Bridge smoke' sleep $seconds_q >/tmp/steam-bridge-smoke-inhibit.log 2>&1 & echo \$! > $pid_q; else echo 'systemd-inhibit not found; skipping sleep inhibitor' >&2; fi"
+  remote_helper keep-awake start --seconds "$inhibit_seconds" --pid-file "$remote_inhibit_pid_file"
 }
 
 stop_keep_awake() {
@@ -1912,9 +942,7 @@ stop_keep_awake() {
     return 0
   fi
 
-  local pid_q
-  pid_q="$(quote_arg "$remote_inhibit_pid_file")"
-  remote_exec "if [ -f $pid_q ]; then kill \$(cat $pid_q) >/dev/null 2>&1 || true; rm -f $pid_q; fi" >/dev/null 2>&1 || true
+  remote_helper keep-awake stop --pid-file "$remote_inhibit_pid_file" >/dev/null 2>&1 || true
 }
 
 resolved_overlay_profile() {
@@ -1986,7 +1014,7 @@ supports_close_deactivation_check() {
 }
 
 prepare_remote_wrapper() {
-  local app_dir_q env_q wrapper_q wrapper_dir_q
+  local app_dir_q
   local app_id_q overlay_game_id_q action_q profile_q scrub_child_env_q isolate_child_processes_q window_mode_q result_file_q diagnostic_dir_q action_delay_q result_delay_q keep_open_q control_server_q control_file_q control_token_q require_active_q web_url_q web_modal_q checkout_url_q checkout_transaction_id_q checkout_return_url_q overlay_dialog_q user_dialog_q shortcut_target_q presenter_mode_q achievement_name_q achievement_current_q achievement_max_q
   local require_overlay_active="0"
 
@@ -1998,9 +1026,6 @@ prepare_remote_wrapper() {
   fi
 
   app_dir_q="$(quote_arg "$remote_app_dir")"
-  env_q="$(quote_arg "$remote_wrapper_env_file")"
-  wrapper_q="$(quote_arg "$remote_wrapper_path")"
-  wrapper_dir_q="$(quote_arg "$(dirname -- "$remote_wrapper_path")")"
   app_id_q="$(quote_arg "$app_id")"
   overlay_game_id_q="$(quote_arg "$(resolve_overlay_game_id)")"
   action_q="$(quote_arg "$action")"
@@ -2031,159 +1056,37 @@ prepare_remote_wrapper() {
   achievement_max_q="$(quote_arg "$achievement_max")"
 
   echo "Writing Steam shortcut wrapper config to $host:$remote_wrapper_env_file"
-  remote_exec "set -e
-mkdir -p $wrapper_dir_q
-cat > $env_q <<EOF
-APP_DIR=$app_dir_q
-APP_ID=$app_id_q
-OVERLAY_GAME_ID=$overlay_game_id_q
-AUTORUN_ACTION=$action_q
-OVERLAY_PROFILE=$profile_q
-OVERLAY_SCRUB_CHILD_ENV=$scrub_child_env_q
-OVERLAY_ISOLATE_CHILD_PROCESSES=$isolate_child_processes_q
-WINDOW_MODE=$window_mode_q
-RESULT_FILE=$result_file_q
-DIAGNOSTIC_DIR=$diagnostic_dir_q
-ACTION_DELAY_MS=$action_delay_q
-RESULT_DELAY_MS=$result_delay_q
-KEEP_OPEN_AFTER_RESULT=$keep_open_q
-CONTROL_SERVER=$control_server_q
-CONTROL_FILE=$control_file_q
-CONTROL_TOKEN=$control_token_q
-REQUIRE_OVERLAY_ACTIVE=$require_active_q
-WEB_URL=$web_url_q
-WEB_MODAL=$web_modal_q
-CHECKOUT_URL=$checkout_url_q
-CHECKOUT_TRANSACTION_ID=$checkout_transaction_id_q
-CHECKOUT_RETURN_URL=$checkout_return_url_q
-OVERLAY_DIALOG=$overlay_dialog_q
-USER_DIALOG=$user_dialog_q
-SHORTCUT_TARGET=$shortcut_target_q
-PRESENTER_MODE=$presenter_mode_q
-ACHIEVEMENT_NAME=$achievement_name_q
-ACHIEVEMENT_CURRENT=$achievement_current_q
-ACHIEVEMENT_MAX=$achievement_max_q
-EOF
-cat > $wrapper_q <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-SCRIPT_DIR=\"\$(cd -- \"\$(dirname -- \"\${BASH_SOURCE[0]}\")\" && pwd)\"
-SCRIPT_NAME=\"\$(basename -- \"\${BASH_SOURCE[0]}\")\"
-CONFIG_FILE=\"\${STEAM_BRIDGE_SMOKE_WRAPPER_ENV_FILE:-\$SCRIPT_DIR/\${SCRIPT_NAME%.sh}.env}\"
-if [ -f \"\$CONFIG_FILE\" ]; then
-  # shellcheck disable=SC1090
-  source \"\$CONFIG_FILE\"
-fi
-
-APP_DIR=\"\${APP_DIR:-/home/deck/steam-bridge-smoke/SteamBridgeSmoke-linux-x64}\"
-APP_ID=\"\${APP_ID:-480}\"
-OVERLAY_GAME_ID=\"\${OVERLAY_GAME_ID:-\$APP_ID}\"
-AUTORUN_ACTION=\"\${AUTORUN_ACTION:-none}\"
-OVERLAY_PROFILE=\"\${OVERLAY_PROFILE:-diagnostic}\"
-OVERLAY_SCRUB_CHILD_ENV=\"\${OVERLAY_SCRUB_CHILD_ENV:-}\"
-OVERLAY_ISOLATE_CHILD_PROCESSES=\"\${OVERLAY_ISOLATE_CHILD_PROCESSES:-}\"
-WINDOW_MODE=\"\${WINDOW_MODE:-}\"
-RESULT_FILE=\"\${RESULT_FILE:-/tmp/steam-bridge-smoke-default.log}\"
-DIAGNOSTIC_DIR=\"\${DIAGNOSTIC_DIR:-\$RESULT_FILE.diagnostics}\"
-ACTION_DELAY_MS=\"\${ACTION_DELAY_MS:-1500}\"
-RESULT_DELAY_MS=\"\${RESULT_DELAY_MS:-8000}\"
-CONTROL_SERVER=\"\${CONTROL_SERVER:-0}\"
-CONTROL_FILE=\"\${CONTROL_FILE:-}\"
-CONTROL_TOKEN=\"\${CONTROL_TOKEN:-}\"
-KEEP_OPEN_AFTER_RESULT=\"\${KEEP_OPEN_AFTER_RESULT:-0}\"
-REQUIRE_OVERLAY_ACTIVE=\"\${REQUIRE_OVERLAY_ACTIVE:-0}\"
-WEB_URL=\"\${WEB_URL:-}\"
-WEB_MODAL=\"\${WEB_MODAL:-}\"
-CHECKOUT_URL=\"\${CHECKOUT_URL:-}\"
-CHECKOUT_TRANSACTION_ID=\"\${CHECKOUT_TRANSACTION_ID:-}\"
-CHECKOUT_RETURN_URL=\"\${CHECKOUT_RETURN_URL:-}\"
-OVERLAY_DIALOG=\"\${OVERLAY_DIALOG:-}\"
-USER_DIALOG=\"\${USER_DIALOG:-}\"
-SHORTCUT_TARGET=\"\${SHORTCUT_TARGET:-}\"
-PRESENTER_MODE=\"\${PRESENTER_MODE:-}\"
-ACHIEVEMENT_NAME=\"\${ACHIEVEMENT_NAME:-}\"
-ACHIEVEMENT_CURRENT=\"\${ACHIEVEMENT_CURRENT:-}\"
-ACHIEVEMENT_MAX=\"\${ACHIEVEMENT_MAX:-}\"
-
-rm -f \"\$RESULT_FILE\"
-rm -rf \"\$DIAGNOSTIC_DIR\"
-export SteamAppId=\"\$APP_ID\"
-export SteamGameId=\"\$APP_ID\"
-if [ \"\$OVERLAY_GAME_ID\" != \"inherit\" ]; then
-  export SteamOverlayGameId=\"\$OVERLAY_GAME_ID\"
-fi
-export STEAM_BRIDGE_APP_ID=\"\$APP_ID\"
-export STEAM_BRIDGE_ELECTRON_OVERLAY_PROFILE=\"\$OVERLAY_PROFILE\"
-if [ -n \"\$OVERLAY_SCRUB_CHILD_ENV\" ]; then
-  export STEAM_BRIDGE_ELECTRON_OVERLAY_SCRUB_CHILD_ENV=\"\$OVERLAY_SCRUB_CHILD_ENV\"
-fi
-if [ -n \"\$OVERLAY_ISOLATE_CHILD_PROCESSES\" ]; then
-  export STEAM_BRIDGE_ELECTRON_OVERLAY_ISOLATE_CHILD_PROCESSES=\"\$OVERLAY_ISOLATE_CHILD_PROCESSES\"
-fi
-if [ -n \"\$WINDOW_MODE\" ]; then
-  export STEAM_BRIDGE_SMOKE_WINDOW_MODE=\"\$WINDOW_MODE\"
-fi
-export STEAM_BRIDGE_SMOKE_AUTORUN=1
-export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION=\"\$AUTORUN_ACTION\"
-export STEAM_BRIDGE_SMOKE_AUTORUN_ACTION_DELAY_MS=\"\$ACTION_DELAY_MS\"
-export STEAM_BRIDGE_SMOKE_AUTORUN_RESULT_DELAY_MS=\"\$RESULT_DELAY_MS\"
-export STEAM_BRIDGE_SMOKE_KEEP_OPEN_AFTER_RESULT=\"\$KEEP_OPEN_AFTER_RESULT\"
-export STEAM_BRIDGE_SMOKE_CONTROL_SERVER=\"\$CONTROL_SERVER\"
-if [ -n \"\$CONTROL_FILE\" ]; then
-  export STEAM_BRIDGE_SMOKE_CONTROL_FILE=\"\$CONTROL_FILE\"
-fi
-if [ -n \"\$CONTROL_TOKEN\" ]; then
-  export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN=\"\$CONTROL_TOKEN\"
-fi
-export STEAM_BRIDGE_SMOKE_RESULT_FILE=\"\$RESULT_FILE\"
-export STEAM_BRIDGE_SMOKE_DIAGNOSTIC_DIR=\"\$DIAGNOSTIC_DIR\"
-export STEAM_BRIDGE_SMOKE_REQUIRE_OVERLAY_ACTIVE=\"\$REQUIRE_OVERLAY_ACTIVE\"
-if [ -n \"\$WEB_URL\" ]; then
-  export STEAM_BRIDGE_SMOKE_WEB_URL=\"\$WEB_URL\"
-fi
-if [ -n \"\$WEB_MODAL\" ]; then
-  export STEAM_BRIDGE_SMOKE_WEB_MODAL=\"\$WEB_MODAL\"
-fi
-if [ -n \"\$CHECKOUT_URL\" ]; then
-  export STEAM_BRIDGE_SMOKE_CHECKOUT_URL=\"\$CHECKOUT_URL\"
-fi
-if [ -n \"\$CHECKOUT_TRANSACTION_ID\" ]; then
-  export STEAM_BRIDGE_SMOKE_CHECKOUT_TRANSACTION_ID=\"\$CHECKOUT_TRANSACTION_ID\"
-fi
-if [ -n \"\$CHECKOUT_RETURN_URL\" ]; then
-  export STEAM_BRIDGE_SMOKE_CHECKOUT_RETURN_URL=\"\$CHECKOUT_RETURN_URL\"
-fi
-if [ -n \"\$OVERLAY_DIALOG\" ]; then
-  export STEAM_BRIDGE_SMOKE_OVERLAY_DIALOG=\"\$OVERLAY_DIALOG\"
-fi
-if [ -n \"\$USER_DIALOG\" ]; then
-  export STEAM_BRIDGE_SMOKE_USER_DIALOG=\"\$USER_DIALOG\"
-fi
-if [ -n \"\$SHORTCUT_TARGET\" ]; then
-  export STEAM_BRIDGE_SMOKE_SHORTCUT_TARGET=\"\$SHORTCUT_TARGET\"
-fi
-if [ -n \"\$PRESENTER_MODE\" ]; then
-  export STEAM_BRIDGE_SMOKE_PRESENTER_MODE=\"\$PRESENTER_MODE\"
-  export STEAM_BRIDGE_ELECTRON_OVERLAY_PRESENTER=\"\$PRESENTER_MODE\"
-fi
-if [ -n \"\$ACHIEVEMENT_NAME\" ]; then
-  export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_NAME=\"\$ACHIEVEMENT_NAME\"
-fi
-if [ -n \"\$ACHIEVEMENT_CURRENT\" ]; then
-  export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_CURRENT=\"\$ACHIEVEMENT_CURRENT\"
-fi
-if [ -n \"\$ACHIEVEMENT_MAX\" ]; then
-  export STEAM_BRIDGE_SMOKE_ACHIEVEMENT_MAX=\"\$ACHIEVEMENT_MAX\"
-fi
-
-cd \"\$APP_DIR\"
-if command -v systemd-inhibit >/dev/null 2>&1; then
-  exec systemd-inhibit --what=sleep --why=\"Steam Bridge smoke\" ./SteamBridgeSmoke --no-sandbox
-fi
-exec ./SteamBridgeSmoke --no-sandbox
-EOF
-chmod +x $wrapper_q"
+  printf '%s\n' \
+    "APP_DIR=$app_dir_q" \
+    "APP_ID=$app_id_q" \
+    "OVERLAY_GAME_ID=$overlay_game_id_q" \
+    "AUTORUN_ACTION=$action_q" \
+    "OVERLAY_PROFILE=$profile_q" \
+    "OVERLAY_SCRUB_CHILD_ENV=$scrub_child_env_q" \
+    "OVERLAY_ISOLATE_CHILD_PROCESSES=$isolate_child_processes_q" \
+    "WINDOW_MODE=$window_mode_q" \
+    "RESULT_FILE=$result_file_q" \
+    "DIAGNOSTIC_DIR=$diagnostic_dir_q" \
+    "ACTION_DELAY_MS=$action_delay_q" \
+    "RESULT_DELAY_MS=$result_delay_q" \
+    "KEEP_OPEN_AFTER_RESULT=$keep_open_q" \
+    "CONTROL_SERVER=$control_server_q" \
+    "CONTROL_FILE=$control_file_q" \
+    "CONTROL_TOKEN=$control_token_q" \
+    "REQUIRE_OVERLAY_ACTIVE=$require_active_q" \
+    "WEB_URL=$web_url_q" \
+    "WEB_MODAL=$web_modal_q" \
+    "CHECKOUT_URL=$checkout_url_q" \
+    "CHECKOUT_TRANSACTION_ID=$checkout_transaction_id_q" \
+    "CHECKOUT_RETURN_URL=$checkout_return_url_q" \
+    "OVERLAY_DIALOG=$overlay_dialog_q" \
+    "USER_DIALOG=$user_dialog_q" \
+    "SHORTCUT_TARGET=$shortcut_target_q" \
+    "PRESENTER_MODE=$presenter_mode_q" \
+    "ACHIEVEMENT_NAME=$achievement_name_q" \
+    "ACHIEVEMENT_CURRENT=$achievement_current_q" \
+    "ACHIEVEMENT_MAX=$achievement_max_q" |
+    remote_helper write-wrapper --wrapper-path "$remote_wrapper_path" --env-file "$remote_wrapper_env_file"
 }
 
 helper_args=()
@@ -2466,11 +1369,7 @@ resolve_overlay_shortcut_game_id() {
 }
 
 run_helper() {
-  local args
-  local remote_q
-  remote_q="$(quote_arg "$remote_app_dir")"
-  args="$(quote_args "$@")"
-  remote_exec "export DISPLAY=\"\${DISPLAY:-:0}\"; if [ -z \"\${XAUTHORITY:-}\" ]; then XAUTHORITY=\"\$(ls /run/user/1000/xauth_* 2>/dev/null | head -n 1 || true)\"; export XAUTHORITY; fi; export DBUS_SESSION_BUS_ADDRESS=\"\${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}\"; cd $remote_q && ./linux-electron-smoke.sh $args"
+  remote_helper launch --app-dir "$remote_app_dir" -- "$@"
 }
 
 run_helper_with_artifacts() {
@@ -2506,7 +1405,7 @@ run_preflight() {
 
   check_ssh
 
-  remote_exec "set -e; echo \"Remote host: \$(uname -n 2>/dev/null || printf unknown)\"; echo \"Remote kernel: \$(uname -srmo 2>/dev/null || uname -a)\"; if [ -x $remote_q/SteamBridgeSmoke ] && [ -x $remote_q/linux-electron-smoke.sh ] && [ -x $remote_q/chrome_crashpad_handler ] && [ -x $remote_q/chrome-sandbox ]; then echo \"Remote package: present\"; else echo \"Remote package: incomplete or non-executable at $remote_app_dir\"; fi; if command -v steam >/dev/null 2>&1; then echo \"Steam command: \$(command -v steam)\"; elif [ -x \"\$HOME/.steam/root/ubuntu12_32/steam\" ]; then echo \"Steam command: \$HOME/.steam/root/ubuntu12_32/steam\"; else echo \"Steam command: missing\"; fi; if command -v systemd-inhibit >/dev/null 2>&1; then echo \"Sleep inhibitor: available\"; else echo \"Sleep inhibitor: missing\"; fi; if ls \"\$HOME/.local/share/Steam/userdata\"/*/config/shortcuts.vdf >/dev/null 2>&1; then echo \"Shortcut files: present\"; else echo \"Shortcut files: missing\"; fi"
+  remote_helper status --app-dir "$remote_app_dir"
 
   if [ "$copy_app" = "0" ]; then
     remote_exec "test -x $remote_q/SteamBridgeSmoke && test -x $remote_q/linux-electron-smoke.sh && test -x $remote_q/chrome_crashpad_handler && test -x $remote_q/chrome-sandbox" || {
@@ -2575,6 +1474,25 @@ run_remote_mode() {
       build_print_shortcuts_args
       run_helper "${helper_args[@]}"
       ;;
+    capture)
+      if [ -z "$visual_capture_dir" ]; then
+        echo "--mode capture requires --visual-capture-dir." >&2
+        exit 2
+      fi
+      check_ssh
+      local capture_label
+      capture_label="capture-$(date +%Y%m%d-%H%M%S)"
+      capture_deck_screenshot "$capture_label"
+      capture_deck_overlay_state "$capture_label"
+      ;;
+    remote)
+      if [ "${#remote_args[@]}" -eq 0 ]; then
+        echo "--mode remote requires a helper command after --, for example: --mode remote -- status" >&2
+        exit 2
+      fi
+      check_ssh >&2
+      remote_helper "${remote_args[@]}"
+      ;;
     *)
       echo "Unknown mode: $mode" >&2
       usage >&2
@@ -2584,7 +1502,7 @@ run_remote_mode() {
 }
 
 run_self_test() {
-  local game_args desktop_args renderer_args dialog_args friends_args open_wait_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check original_local_app_dir package_fixture
+  local game_args desktop_args renderer_args dialog_args friends_args open_wait_args community_args stats_args achievements_args checkout_args real_checkout_args toast_args unlock_toast_args direct_check original_local_app_dir package_fixture inline_remote_callers check_ssh_status remote_mode_status capture_mode_status
   original_local_app_dir="$local_app_dir"
   package_fixture="$(mktemp -d)"
   printf '%s\n' smoke >"$package_fixture/SteamBridgeSmoke"
@@ -2638,18 +1556,26 @@ run_self_test() {
     exit 1
   fi
   action="dialog"
-  if ! grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_SERVER=\"\$CONTROL_SERVER\"' "$0" ||
-    ! grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_FILE=\"\$CONTROL_FILE\"' "$0" ||
-    ! grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN=\"\$CONTROL_TOKEN\"' "$0"; then
+  if ! bash "$remote_helper_local" self-test; then
+    echo "Self-test failed: Deck remote helper self-test failed." >&2
+    exit 1
+  fi
+  if ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_SERVER="$CONTROL_SERVER"' ||
+    ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_FILE="$CONTROL_FILE"' ||
+    ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN="$CONTROL_TOKEN"'; then
     echo "Self-test failed: Steam shortcut wrapper must forward bounded localhost control configuration." >&2
     exit 1
   fi
-  if ! grep -Fq 'export SteamOverlayGameId=\"\$OVERLAY_GAME_ID\"' "$0"; then
+  if ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export SteamOverlayGameId="$OVERLAY_GAME_ID"'; then
     echo "Self-test failed: Steam shortcut wrapper must export configurable SteamOverlayGameId." >&2
     exit 1
   fi
-  if ! grep -Fq 'OVERLAY_GAME_ID=\"\${OVERLAY_GAME_ID:-\$APP_ID}\"' "$0"; then
+  if ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'OVERLAY_GAME_ID="${OVERLAY_GAME_ID:-$APP_ID}"'; then
     echo "Self-test failed: Steam shortcut wrapper must default overlay game ID to the app ID." >&2
+    exit 1
+  fi
+  if ! sed -n '/^prepare_remote_wrapper()/,/^}/p' "$0" | grep -Fq 'remote_helper write-wrapper --wrapper-path "$remote_wrapper_path" --env-file "$remote_wrapper_env_file"'; then
+    echo "Self-test failed: Steam shortcut wrapper config must be written by the Deck helper." >&2
     exit 1
   fi
   overlay_game_id="123456789"
@@ -2666,15 +1592,25 @@ run_self_test() {
     echo "Self-test failed: Visual toggle probes must capture Deck overlay state." >&2
     exit 1
   fi
-  if sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -Fq "pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper'"; then
+  if ! sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -Fq 'remote_helper state > "$local_path" 2>&1 || true'; then
+    echo "Self-test failed: Deck overlay state must come from the Deck helper." >&2
+    exit 1
+  fi
+  if sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -Fq "pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper'"; then
     echo "Self-test failed: Deck overlay state must not retain full process command lines." >&2
     exit 1
   fi
-  if ! sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -Fq "sed 's/=.*$/=<redacted>/'"; then
+  if ! sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -Fq "sed 's/=.*$/=<redacted>/'"; then
     echo "Self-test failed: Deck overlay state must redact captured environment values." >&2
     exit 1
   fi
-  if ! sed -n '/^run_helper()/,/^}/p' "$0" | grep -Fq 'export DISPLAY=\"\${DISPLAY:-:0}\"'; then
+  if ! sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -Fq 'use_game_app_display'; then
+    echo "Self-test failed: Deck overlay state must read the app display in Game Mode." >&2
+    exit 1
+  fi
+  if ! sed -n '/^run_helper()/,/^}/p' "$0" | grep -Fq 'remote_helper launch --app-dir "$remote_app_dir" -- "$@"' ||
+    ! sed -n '/^cmd_launch()/,/^}/p' "$remote_helper_local" | grep -Fq 'use_default_display' ||
+    ! sed -n '/^use_default_display()/,/^}/p' "$remote_helper_local" | grep -Fq 'export DISPLAY="${DISPLAY:-:0}"'; then
     echo "Self-test failed: Deck helper runs must inherit the graphical session environment." >&2
     exit 1
   fi
@@ -2682,35 +1618,35 @@ run_self_test() {
     echo "Self-test failed: Managed shortcut toggle probes must verify close/deactivation evidence." >&2
     exit 1
   fi
-  if ! grep -Fq "event:overlay:presenter-after-close" "$0"; then
+  if ! grep -Fq "event:overlay:presenter-after-close" "$remote_helper_local"; then
     echo "Self-test failed: Deck close verification must require post-close presenter parking evidence." >&2
     exit 1
   fi
-  if ! grep -Fq "event:overlay:presenter-after-close-stable" "$0"; then
+  if ! grep -Fq "event:overlay:presenter-after-close-stable" "$remote_helper_local"; then
     echo "Self-test failed: Deck close verification must require stable post-close presenter parking evidence." >&2
     exit 1
   fi
-  if ! grep -Fq "native presenter pump count changed after close" "$0"; then
+  if ! grep -Fq "native presenter pump count changed after close" "$remote_helper_local"; then
     echo "Self-test failed: Deck close verification must require no post-close presenter pumping." >&2
     exit 1
   fi
-  if ! grep -Fq "wait_for_web_overlay_closed 3.0 || true" "$0"; then
+  if ! grep -Fq "wait_for_web_overlay_closed 3.0 || true" "$remote_helper_local"; then
     echo "Self-test failed: Web close probe must wait for close evidence after clicking the Steam web close control." >&2
     exit 1
   fi
-  if [ "$(awk '/^send_deck_web_overlay_close_probe[(][)]/ { inside=1; next } inside && /^verify_deck_overlay_closed_after_probe[(][)]/ { print clicks + 0; exit } inside && /xdotool mousemove .* click 1/ { clicks += 1 }' "$0")" != "1" ]; then
+  if [ "$(awk '/^cmd_web_close[(][)]/ { inside=1; next } inside && /^cmd_wait_shortcut_open[(][)]/ { print clicks + 0; exit } inside && /xdotool mousemove .* click 1/ { clicks += 1 }' "$remote_helper_local")" != "1" ]; then
     echo "Self-test failed: Web close probe must use one Steam web close-control click." >&2
     exit 1
   fi
-  if ! grep -Fq "clear_kwin_overview_if_active" "$0"; then
+  if ! awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -Fq "clear_kwin_overview_if_active"; then
     echo "Self-test failed: Web close probe must clear KWin overview before clicking the Steam web close control." >&2
     exit 1
   fi
-  if ! awk '/^send_deck_web_overlay_close_probe[(][)]/ { inside=1 } /^verify_deck_overlay_closed_after_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'Detected Steam web close control'; then
+  if ! awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -Fq 'Detected Steam web close control'; then
     echo "Self-test failed: Web close probe must detect the Steam close glyph before clicking." >&2
     exit 1
   fi
-  if awk '/^send_deck_web_overlay_close_probe[(][)]/ { inside=1 } /^verify_deck_overlay_closed_after_probe[(][)]/ { inside=0 } inside' "$0" | grep -Eq 'host_(width|height) \* [0-9]+ / 100'; then
+  if awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -Eq 'host_(width|height) \* [0-9]+ / 100'; then
     echo "Self-test failed: Web close probe must not use a fixed percentage click target." >&2
     exit 1
   fi
@@ -2718,15 +1654,20 @@ run_self_test() {
     echo "Self-test failed: Deck launch path must clear transient desktop shell state before visual proofs." >&2
     exit 1
   fi
-  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'gamescopectl screenshot'; then
+  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'remote_helper screenshot "$remote_path"'; then
+    echo "Self-test failed: Deck screenshots must come from the Deck helper." >&2
+    exit 1
+  fi
+  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -Fq 'gamescopectl screenshot'; then
     echo "Self-test failed: Game Mode screenshots must use Gamescope capture." >&2
     exit 1
   fi
-  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'gamescope-session.service'; then
+  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -Fq 'game_mode_active' ||
+    ! sed -n '/^game_mode_active()/,/^}/p' "$remote_helper_local" | grep -Fq 'gamescope-session.service'; then
     echo "Self-test failed: Screenshot capture must select its tool from the active Deck session." >&2
     exit 1
   fi
-  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'Spectacle screenshot was not written after three attempts.'; then
+  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -Fq 'Spectacle screenshot was not written after three attempts.'; then
     echo "Self-test failed: Desktop screenshot capture must retry transient Spectacle failures." >&2
     exit 1
   fi
@@ -2734,11 +1675,12 @@ run_self_test() {
     echo "Self-test failed: Game Mode close capture must support SteamUI Escape input." >&2
     exit 1
   fi
-  if ! sed -n '/^send_deck_overlay_escape_probe()/,/^}/p' "$0" | grep -Fq 'XAUTHORITY='; then
+  if ! sed -n '/^send_steamui_escape()/,/^}/p' "$remote_helper_local" | grep -Fq 'use_newest_xauthority' ||
+    ! sed -n '/^use_newest_xauthority()/,/^}/p' "$remote_helper_local" | grep -Fq 'XAUTHORITY='; then
     echo "Self-test failed: SteamUI Escape input must discover the active X11 authority for SSH-driven probes." >&2
     exit 1
   fi
-  if ! sed -n '/^send_deck_overlay_escape_probe()/,/^}/p' "$0" | grep -Fq 'xdotool getdisplaygeometry'; then
+  if ! sed -n '/^send_steamui_escape()/,/^}/p' "$remote_helper_local" | grep -Fq 'xdotool getdisplaygeometry'; then
     echo "Self-test failed: SteamUI Escape input must authenticate its target display before sending input." >&2
     exit 1
   fi
@@ -2750,15 +1692,19 @@ run_self_test() {
     echo "Self-test failed: Deck launch paths and explicit cleanup mode must share exact runtime cleanup." >&2
     exit 1
   fi
-  if ! awk '/^cleanup_deck_smoke_runtime[(][)]/ { inside=1 } /^send_deck_overlay_close_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'target_process_live'; then
+  if ! sed -n '/^cleanup_deck_smoke_runtime()/,/^}/p' "$0" | grep -Fq 'remote_helper cleanup --app-dir "$remote_app_dir" --inhibit-pid-file "$remote_inhibit_pid_file"'; then
+    echo "Self-test failed: Deck runtime cleanup must run in the Deck helper." >&2
+    exit 1
+  fi
+  if ! sed -n '/^cmd_cleanup()/,/^}/p' "$remote_helper_local" | grep -Fq 'target_process_live'; then
     echo "Self-test failed: Deck runtime cleanup must classify process state." >&2
     exit 1
   fi
-  if ! awk '/^cleanup_deck_smoke_runtime[(][)]/ { inside=1 } /^send_deck_overlay_close_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fq "Z|X|'') return 1"; then
+  if ! sed -n '/^target_process_live()/,/^}/p' "$remote_helper_local" | grep -Fq "Z|X|'') return 1"; then
     echo "Self-test failed: Deck runtime cleanup must treat zombie and exited targets as non-live." >&2
     exit 1
   fi
-  if [ "$(awk '/^cleanup_deck_smoke_runtime[(][)]/ { inside=1 } /^send_deck_overlay_close_probe[(][)]/ { inside=0 } inside' "$0" | grep -Fc 'executable=\"\${executable% (deleted)}\"')" != "2" ]; then
+  if [ "$(sed -n '/^cmd_cleanup()/,/^}/p' "$remote_helper_local" | grep -Fc 'executable="${executable% (deleted)}"')" != "2" ]; then
     echo "Self-test failed: Deck runtime cleanup must recognize replaced executable images." >&2
     exit 1
   fi
@@ -2774,16 +1720,47 @@ run_self_test() {
     echo "Self-test failed: Deck launch paths must clean the previous runtime before copying the package." >&2
     exit 1
   fi
-  if ! grep -Fq "event:overlay:presenter-wait-shown" "$0"; then
+  if ! grep -Fq "event:overlay:presenter-wait-shown" "$remote_helper_local"; then
     echo "Self-test failed: Deck close verification must require managed overlay shown wait evidence." >&2
     exit 1
   fi
-  if ! grep -Fq "event:overlay:presenter-wait-closed" "$0"; then
+  if ! grep -Fq "event:overlay:presenter-wait-closed" "$remote_helper_local"; then
     echo "Self-test failed: Deck close verification must require managed overlay closed wait evidence." >&2
     exit 1
   fi
-  if ! grep -Fq "event:overlay:presenter-parked" "$0"; then
+  if ! grep -Fq "event:overlay:presenter-parked" "$remote_helper_local"; then
     echo "Self-test failed: Deck close verification must require managed overlay parked wait evidence." >&2
+    exit 1
+  fi
+  inline_remote_callers="$(awk '
+    /^[a-z_]+[(][)] [{]$/ { current = $1; sub(/[(][)]$/, "", current) }
+    /remote_exec "/ && current != "remote_exec" && current != "run_self_test" { print current }
+  ' "$0" | sort -u | tr '\n' ' ')"
+  if [ "$inline_remote_callers" != "check_ssh collect_remote_diagnostics copy_to_deck ensure_remote_helper remote_helper run_preflight " ]; then
+    echo "Self-test failed: Deck session shell must live in steam-deck-remote.sh; inline remote_exec callers: $inline_remote_callers" >&2
+    exit 1
+  fi
+  if ! sed -n '/^ensure_remote_helper()/,/^}/p' "$0" | grep -Fq 'cmp -s' ||
+    ! sed -n '/^ensure_remote_helper()/,/^}/p' "$0" | grep -Fq 'mv -f'; then
+    echo "Self-test failed: Deck helper installation must replace the helper atomically only when it changed." >&2
+    exit 1
+  fi
+  check_ssh_status=0
+  (remote_exec() { return 255; }; check_ssh) >/dev/null 2>&1 || check_ssh_status=$?
+  if [ "$check_ssh_status" != "255" ]; then
+    echo "Self-test failed: check_ssh must fail when SSH is unreachable (got $check_ssh_status)." >&2
+    exit 1
+  fi
+  remote_mode_status=0
+  bash "$0" --host deck@example.invalid --mode remote >/dev/null 2>&1 || remote_mode_status=$?
+  if [ "$remote_mode_status" != "2" ]; then
+    echo "Self-test failed: --mode remote must require a helper command before contacting the Deck." >&2
+    exit 1
+  fi
+  capture_mode_status=0
+  bash "$0" --host deck@example.invalid --mode capture >/dev/null 2>&1 || capture_mode_status=$?
+  if [ "$capture_mode_status" != "2" ]; then
+    echo "Self-test failed: --mode capture must require --visual-capture-dir before contacting the Deck." >&2
     exit 1
   fi
 
