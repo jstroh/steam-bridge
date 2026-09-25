@@ -172,13 +172,17 @@ runner, on branch `claude/steam-deck-remote-helper` from `35164c3`.
 - **Access between runs:** `npm run steam-deck:remote -- <command>`,
   `--mode capture`, `session game|desktop` (`steamos-session-select gamescope`
   or `plasma-wayland`; plain `plasma` starts Plasma X11), and `wake-display`.
-- **Live so far, Desktop Mode:** preflight, status, capture and cleanup through
-  the helper. New ledger rows: `DECK-DESKTOP-DPMS-CAPTURE-001` and
-  `DECK-STEAM-GAME-LOCK-001`.
-- **Pending, in the next game-lock window:** a launch comparison of the old and
-  new runner (the matrix `shortcut-friends` flags, App ID `480`, the package
-  already on the Deck), then the Desktop -> Game -> Desktop
-  `steamos-session-select` test.
+- **Live, in the 13:19-13:39 UTC game-lock window:** the helper switched
+  Desktop -> Game -> Desktop through `steamos-session-select`, about 8 s each
+  way, with a Gamescope capture in Game Mode (`DECK-SESSION-SELECT-001`).
+  The matrix `shortcut-friends` case (App ID `480`, the package already on the
+  Deck) then passed with both the new runner and the old one, with matching
+  artifacts (`DECK-HOST-001`). Steam was shut down again afterwards. Earlier
+  live checks were preflight, status, capture and cleanup. Other ledger rows
+  from today: `DECK-DESKTOP-DPMS-CAPTURE-001`, `DECK-STEAM-GAME-LOCK-001`,
+  `DECK-STEAM-COLD-LAUNCH-001`.
+- **Game lock:** the Deck shares one Steam account with other machines. Run
+  nothing that starts Steam on the Deck without the account's game lock.
 - **Known, not fixed:** the web-close probe sets `RESULT_FILE` without
   exporting it. Its close wait therefore never reads the lifecycle log and
   always waits the full 3 seconds. It is kept unchanged so the evidence
@@ -238,7 +242,9 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 - Steam Deck remote helper branch on macOS: runner, helper and matrix
   self-tests, `npm test` (477/477 JavaScript plus native tests),
-  `package:smoke`, and `git diff --check`.
+  `package:smoke`, and `git diff --check`. Live on the Deck (SteamOS 3.8.11)
+  at `c0e047b`: both session switches and the `shortcut-friends` case with the
+  new and the old runner.
 - CI green on every job at `a27b9cc`. Locally: `npm test` 476/476, native tests
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.

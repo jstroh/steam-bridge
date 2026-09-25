@@ -1777,6 +1777,8 @@ npm run steam-deck:smoke -- \
 `session game` runs `steamos-session-select gamescope`, and `session desktop`
 runs `steamos-session-select plasma-wayland`. Each switch restarts the Steam
 client, so a switch is skipped when the Deck is already in the requested mode.
+Steam starts on its own after the switch back to Desktop Mode. The Steam-launched
+runner modes expect Steam to be running and signed in already.
 Do not use `steamos-session-select plasma` for Desktop Mode. On current SteamOS
 it starts Plasma X11, but the Deck Desktop evidence is Wayland.
 `--mode capture` saves a timestamped screenshot and state capture. When power
