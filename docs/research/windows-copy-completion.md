@@ -61,6 +61,67 @@ The consumer forwards this object in existing low-rate diagnostics, using null
 with older addons. These counters do not identify the cause of an actually
 unfinished GPU fence or measure physical input-to-photon latency.
 
+Native host diagnostics also separate copy time from queue delay and report
+the adapter topology:
+
+- `sharedTextureCopy.gpuTiming`: GPU timestamps around at most one copy in
+  every 30 (`sampleInterval`; a sample is skipped while its query slot is still
+  pending), read later without flushing. `meanMs`, `lastMs` and
+  `maxMs` are GPU execution time only, so completion latency minus this value
+  is time spent queued. `disjointCount` counts rejected samples.
+  `abandonedCount` counts query slots reissued after staying unresolved for
+  two passes of the four-slot ring, so a query that never resolves cannot
+  stop sampling.
+- `frameLatencyWait`: the bypass latch (`bypassed`, `bypassCount`,
+  `rearmCount`), timeouts that did not count because the host was iconic,
+  hidden or occluded (`expectedTimeoutCount`), the consecutive-timeout count
+  and its threshold, and `presentOccluded`.
+- `adapters`: host, shared-texture and output adapter LUIDs, with
+  `crossAdapterTexture` and `crossAdapterPresent` when both sides are known.
+  The output adapter is the adapter whose DXGI output owns the window's
+  monitor (`MonitorFromWindow`), falling back to the swap chain's containing
+  output. It is read only when diagnostics are requested. On hybrid laptops,
+  `GetContainingOutput` fails for a discrete-GPU swap chain, so the monitor
+  lookup is what reports the cross-adapter present.
+
+The Windows session snapshot adds `nativeFrameWaitRecoveryCount`, the number of times
+the JavaScript scheduler left its timeout fallback after the native waitable
+re-armed.
+
+## Dedicated copy device
+
+The opt-in `windowsDedicatedCopyDevice` session option copies Electron's
+shared texture on a second D3D11 device on the host adapter. The option is
+process-wide and applied only when a session defines it, so a later session
+that omits it does not turn the device off. The copy lands in
+one of four host-owned shared textures. A shared copy fence orders the host's
+first sample of a new texture after its copy, and a shared sampled fence orders
+the next overwrite after the host's last sample. The producer is still released
+only when the copy fence completes, and the two-copy admission bound is
+unchanged. A partial update first copies the newest complete texture, then the
+dirty rectangle, so every ring texture holds a whole frame. If the second
+device cannot be created, copies fall back to the host context. If it is
+removed, the import fails with the device-lost HRESULT, and the existing
+recovery rebuilds the renderer with the option still set. This also holds when
+removal is first seen by an in-flight copy wait: once a copy has stalled or
+failed, the next import checks the host and copy devices, and reports device
+loss rather than a plain stall if either was removed. The copy wait itself also
+checks the host device, so host removal ends the wait as device loss without
+relying on the shared fence reading `UINT64_MAX`. A D3D11 device cannot be
+removed on demand without a real GPU reset, so that check is unit-tested.
+A synchronous import or CPU frame clears the ring's pending and newest frames,
+so an older dedicated frame can never replace it. Turning the option off first
+binds a pending frame that was never shown. If the copy device cannot wait for
+host sampling of a slot, it skips that copy rather than overwrite the slot.
+When a Present is busy, occluded or fails after the host signalled its
+sample, the host context is flushed so the copy device does not wait on a
+signal that never reached the GPU. A busy or occluded Present could not be
+forced on the NVIDIA desktop, so only the decision is unit-tested.
+`sharedTextureCopy.dedicatedDevice` reports whether it is requested and
+active, its copy count, creation failures and last error. `gpuTiming` then
+reports the copy device's timestamps. Evidence and the remaining hybrid-laptop
+gate are in `WIN-FRAME-WAIT-BYPASS-LATCH-001`.
+
 ## Validation
 
 Three regressions failed with the original logic: completed fence plus missing

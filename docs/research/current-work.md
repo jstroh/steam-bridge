@@ -175,6 +175,26 @@ and every message is still released.
    20-36 ms completion floor at 3440x1440@50. Next: a hybrid-GPU run, GPU
    timestamps around the copy, and an A/B that moves the copy off the host's
    render/Present context.
+   Cause found on 2026-09-25: one 25 ms frame-wait timeout (minimize,
+   occlusion, F11, overlay or a zone load) permanently latches
+   `frameLatencyWaitBypassed`; ungated presents then queue ahead of the copy
+   on the same context, and cross-adapter present lengthens that queue. See
+   `WIN-FRAME-WAIT-BYPASS-LATCH-001`. Done: expected iconic or hidden
+   timeouts no longer latch. The occlusion guard never runs, because a
+   flip-model swap chain does not return `DXGI_STATUS_OCCLUDED`, so full
+   occlusion by another window still latches and recovers through the
+   render re-arm. A latch needs three consecutive
+   unexpected timeouts, and both native and JavaScript recover without timers
+   on restore, occlusion end, a swap-chain resize, or four consecutive
+   signalled polls while bypassed. An adapter switch now releases the old swap
+   chain before attaching the new one (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`).
+   Diagnostics now report adapter LUIDs, cross-adapter present, latch and
+   re-arm counts, and sampled GPU copy time. The opt-in
+   `windowsDedicatedCopyDevice` option moves the copy off the host queue:
+   latched completion falls from about 48 ms to 1.35 ms in the harness and
+   from 20-37 ms to about 1.3 ms live on a single-GPU desktop. It stays off by
+   default until an NVIDIA hybrid laptop at 60 Hz passes the candidate gate in
+   `WIN-FRAME-WAIT-BYPASS-LATCH-001`.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and

@@ -1577,7 +1577,7 @@ mod windows {
     use std::env;
     use std::mem;
     use std::ptr;
-    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -1619,32 +1619,33 @@ mod windows {
         ReleaseCapture, SetActiveWindow, SetCapture, SetFocus, VK_LBUTTON, VK_RBUTTON,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
-        DestroyCursor, DestroyMenu, DestroyWindow, DispatchMessageW, DrawMenuBar, EnumWindows,
-        GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu, GetMenuBarInfo,
-        GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect,
-        GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic, IsWindow,
-        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
+        AppendMenuW, CallNextHookEx, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW,
+        DefWindowProcW, DestroyCursor, DestroyMenu, DestroyWindow, DispatchMessageW, DrawMenuBar,
+        EnumWindows, GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu,
+        GetMenuBarInfo, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
+        GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic,
+        IsWindow, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
         SendMessageW, SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetMenu,
-        SetTimer, SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
-        SystemParametersInfoW, TranslateMessage, CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE,
-        GW_OWNER, HCURSOR, HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO, MENUITEMINFOW,
-        MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
-        MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU,
-        MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED, SM_CXMENUCHECK,
-        SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SM_SWAPBUTTON,
-        SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE,
-        SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
-        SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE,
-        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE, WM_DPICHANGED,
-        WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
-        WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-        WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
-        WM_MOUSEWHEEL, WM_MOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
-        WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE,
-        WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_XBUTTONDOWN, WM_XBUTTONUP,
-        WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
+        SetTimer, SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, SetWindowsHookExW,
+        ShowCursor, ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx,
+        CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR, HC_ACTION, HHOOK,
+        HMENU, IDC_ARROW, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO,
+        MENUITEMINFOW, MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED,
+        MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING,
+        MIIM_SUBMENU, MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED,
+        SM_CXMENUCHECK, SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN,
+        SM_SWAPBUTTON, SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
+        SW_SHOWNOACTIVATE, WH_KEYBOARD_LL, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP,
+        WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE,
+        WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE,
+        WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEHWHEEL,
+        WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN,
+        WM_NCLBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+        WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
+        WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
     };
 
     type Hglrc = isize;
@@ -1666,6 +1667,7 @@ mod windows {
     const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
     const VK_TAB_CODE: i32 = 0x09;
     const VK_SHIFT_CODE: i32 = 0x10;
+    const VK_F4_CODE: i32 = 0x73;
     const VK_CONTROL_CODE: i32 = 0x11;
     const VK_ALT_CODE: i32 = 0x12;
     const VK_CAPS_LOCK_CODE: i32 = 0x14;
@@ -2360,6 +2362,30 @@ mod windows {
         })
     }
 
+    pub fn set_dedicated_copy_device(enabled: bool) -> Result<(), Error> {
+        windows_d3d11::set_dedicated_copy_device_requested(enabled);
+        with_surface(|surface| {
+            if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                renderer.set_dedicated_copy_device(enabled);
+            }
+        })
+    }
+
+    pub fn focus() -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if !surface.visible {
+                return;
+            }
+            if IsIconic(surface.hwnd) != 0 {
+                ShowWindow(
+                    surface.hwnd,
+                    windows_sys::Win32::UI::WindowsAndMessaging::SW_RESTORE,
+                );
+            }
+            activate_window(surface);
+        })
+    }
+
     pub fn set_continuous_present(continuous: bool, frame_rate: Option<f64>) -> Result<(), Error> {
         with_surface(|surface| unsafe {
             let target_frame_rate = frame_rate.filter(|value| value.is_finite() && *value > 0.0);
@@ -2730,8 +2756,12 @@ mod windows {
             sync_steam_dialog(surface);
             sync_cursor_visibility(surface);
             poll_overlay_shortcut(surface);
+            sync_overlay_close_hook(surface);
             let present_after_modal_loop = mem::take(&mut surface.present_after_modal_loop);
-            if surface.visible && (present_after_modal_loop || surface_needs_render(surface)) {
+            if let Err(error) = sync_presentation_state(surface) {
+                Err(error)
+            } else if surface.visible && (present_after_modal_loop || surface_needs_render(surface))
+            {
                 render_surface(surface)
             } else {
                 if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
@@ -2768,10 +2798,27 @@ mod windows {
                 // unavailable wait handle could resolve false in a microtask
                 // loop during startup or under the diagnostic OpenGL backend.
                 surface.source_frame_dirty
+                    && unsafe { IsIconic(surface.hwnd) } == 0
                     && matches!(
                         &surface.renderer,
                         WindowsSurfaceRenderer::D3d11 { renderer, .. }
-                            if renderer.has_source() || surface.source_frame.is_some()
+                            if (renderer.has_source() || surface.source_frame.is_some())
+                                && !renderer.present_occluded()
+                    )
+            })
+    }
+
+    pub fn presentation_suspended() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| {
+                !surface.visible
+                    || unsafe { IsIconic(surface.hwnd) } != 0
+                    || matches!(
+                        &surface.renderer,
+                        WindowsSurfaceRenderer::D3d11 { renderer, .. } if renderer.present_occluded()
                     )
             })
     }
@@ -2839,6 +2886,24 @@ mod windows {
             return false;
         };
         renderer.grant_frame_latency_ready_permit(token.renderer_generation)
+    }
+
+    pub fn record_frame_latency_timeout(token: FrameLatencyReadyToken) -> bool {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard
+            .as_mut()
+            .filter(|surface| surface.instance_generation == token.surface_generation)
+        else {
+            return false;
+        };
+        let expected = !surface.visible || unsafe { IsIconic(surface.hwnd) } != 0;
+        let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer else {
+            return false;
+        };
+        renderer.record_frame_latency_timeout(token.renderer_generation, expected)
+            == Some(windows_d3d11::FrameLatencyTimeoutOutcome::Bypassed)
     }
 
     pub fn bypass_frame_latency_wait(token: FrameLatencyReadyToken) -> bool {
@@ -3533,7 +3598,29 @@ mod windows {
         Ok(surface)
     }
 
+    unsafe fn sync_presentation_state(surface: &mut NativeSurface) -> Result<(), Error> {
+        if !surface.visible {
+            return Ok(());
+        }
+        let WindowsSurfaceRenderer::D3d11 {
+            renderer,
+            device_lost: false,
+            ..
+        } = &mut surface.renderer
+        else {
+            return Ok(());
+        };
+        if renderer
+            .sync_window_presentation_state()
+            .map_err(Error::from_reason)?
+        {
+            surface.source_frame_dirty = true;
+        }
+        Ok(())
+    }
+
     unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
+        sync_presentation_state(surface)?;
         if IsIconic(surface.hwnd) != 0 {
             if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
                 renderer.suspend_presentation();
@@ -3762,7 +3849,8 @@ mod windows {
                 device_lost,
                 device_lost_count,
                 device_recovery_count,
-            } => json!({
+            } => {
+                let mut diagnostics = json!({
                 "backend": "windows-d3d11",
                 "width": renderer.width(),
                 "height": renderer.height(),
@@ -3775,7 +3863,7 @@ mod windows {
                 "frameLatencyFallbackTimerResolutionRequested": renderer.fallback_timer_resolution_requested(),
                 "frameLatencyFallbackTimerResolutionActive": renderer.fallback_timer_resolution_active(),
                 "frameLatencyFallbackTimerResolutionMs": if renderer.fallback_timer_resolution_active() { Some(1) } else { None },
-                "maximumFrameLatency": 2,
+                "maximumFrameLatency": windows_d3d11::MAXIMUM_FRAME_LATENCY,
                 "presentSyncInterval": renderer.present_sync_interval(),
                 "presentDiagnostics": renderer.present_diagnostics(),
                 "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),
@@ -3845,7 +3933,15 @@ mod windows {
                 "sourceSampleCount": renderer.source_sample_count(),
                 "cpuUploadCount": renderer.cpu_upload_count(),
                 "sharedTextureImportCount": renderer.shared_texture_import_count(),
-            }),
+                });
+                diagnostics["frameLatencyWait"] = renderer.frame_latency_wait_diagnostics();
+                diagnostics["adapters"] = renderer.adapter_diagnostics();
+                diagnostics["sharedTextureCopy"]["gpuTiming"] =
+                    renderer.shared_texture_copy_gpu_timing_diagnostics();
+                diagnostics["sharedTextureCopy"]["dedicatedDevice"] =
+                    renderer.shared_texture_copy_dedicated_device_diagnostics();
+                diagnostics
+            }
         }
     }
 
@@ -4248,6 +4344,7 @@ mod windows {
     }
 
     unsafe fn destroy_surface(mut surface: NativeSurface) {
+        remove_overlay_close_hook();
         restore_adopted_steam_dialog(&mut surface);
         if surface.cursor_suppressed {
             normalize_cursor_display_count(true);
@@ -4351,6 +4448,71 @@ mod windows {
 
     unsafe fn surface_has_foreground(surface: &NativeSurface) -> bool {
         GetForegroundWindow() == surface.hwnd
+    }
+
+    static OVERLAY_CLOSE_HOOK: AtomicIsize = AtomicIsize::new(0);
+    static OVERLAY_CLOSE_HOST: AtomicIsize = AtomicIsize::new(0);
+    static OVERLAY_CLOSE_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+    fn overlay_close_key_requested(
+        virtual_key: u32,
+        flags: u32,
+        message: u32,
+        host_foreground: bool,
+    ) -> bool {
+        host_foreground
+            && virtual_key == VK_F4_CODE as u32
+            && matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN)
+            && flags & LLKHF_ALTDOWN != 0
+    }
+
+    unsafe extern "system" fn overlay_close_keyboard_hook(
+        code: i32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if code == HC_ACTION as i32 && lparam != 0 {
+            let info = &*(lparam as *const KBDLLHOOKSTRUCT);
+            let host = OVERLAY_CLOSE_HOST.load(Ordering::Acquire) as HWND;
+            if overlay_close_key_requested(
+                info.vkCode,
+                info.flags,
+                wparam as u32,
+                !host.is_null() && GetForegroundWindow() == host,
+            ) {
+                OVERLAY_CLOSE_REQUESTED.store(true, Ordering::Release);
+            }
+        }
+        CallNextHookEx(ptr::null_mut(), code, wparam, lparam)
+    }
+
+    unsafe fn sync_overlay_close_hook(surface: &NativeSurface) {
+        let installed = OVERLAY_CLOSE_HOOK.load(Ordering::Acquire) != 0;
+        if surface.overlay_active && !installed {
+            OVERLAY_CLOSE_REQUESTED.store(false, Ordering::Release);
+            OVERLAY_CLOSE_HOST.store(surface.hwnd as isize, Ordering::Release);
+            let hook = SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                Some(overlay_close_keyboard_hook),
+                GetModuleHandleW(ptr::null()),
+                0,
+            );
+            OVERLAY_CLOSE_HOOK.store(hook as isize, Ordering::Release);
+        } else if !surface.overlay_active && installed {
+            remove_overlay_close_hook();
+        }
+        if surface.overlay_active && OVERLAY_CLOSE_REQUESTED.swap(false, Ordering::AcqRel) {
+            SendMessageW(surface.hwnd, WM_CLOSE, 0, 0);
+        }
+    }
+
+    unsafe fn remove_overlay_close_hook() {
+        let hook = OVERLAY_CLOSE_HOOK.swap(0, Ordering::AcqRel);
+        if hook != 0 {
+            UnhookWindowsHookEx(hook as HHOOK);
+        }
+        OVERLAY_CLOSE_HOST.store(0, Ordering::Release);
+        OVERLAY_CLOSE_REQUESTED.store(false, Ordering::Release);
     }
 
     unsafe fn poll_overlay_shortcut(surface: &mut NativeSurface) {
@@ -6336,11 +6498,36 @@ mod windows {
             clamp_outer_rect_to_work_area, corrected_outer_size, geometry_residual,
             geometry_satisfies_constraints, logical_pixels_to_physical,
             menu_text_without_mnemonics, minimum_menu_dpi, minimum_track_outer_size,
-            normalize_windows_display_refresh_rate, physical_pixels_to_logical, positive_rect_size,
-            rect_from_position_size, residual_requires_correction, residual_within_tolerance,
+            normalize_windows_display_refresh_rate, overlay_close_key_requested,
+            physical_pixels_to_logical, positive_rect_size, rect_from_position_size,
+            residual_requires_correction, residual_within_tolerance,
             set_standalone_logical_client_size, set_standalone_min_client_size,
             standalone_logical_client_size, standalone_min_client_size, OuterClampPlan, RECT,
         };
+
+        #[test]
+        fn alt_f4_closes_the_host_while_the_steam_overlay_swallows_keys() {
+            const F4: u32 = 0x73;
+            const ALT: u32 = 0x20;
+            const KEYDOWN: u32 = 0x0100;
+            const SYSKEYDOWN: u32 = 0x0104;
+            const SYSKEYUP: u32 = 0x0105;
+            assert!(overlay_close_key_requested(F4, ALT, SYSKEYDOWN, true));
+            assert!(overlay_close_key_requested(F4, ALT, KEYDOWN, true));
+            assert!(!overlay_close_key_requested(F4, ALT, SYSKEYUP, true));
+            assert!(
+                !overlay_close_key_requested(F4, 0, KEYDOWN, true),
+                "F4 alone"
+            );
+            assert!(
+                !overlay_close_key_requested(0x74, ALT, SYSKEYDOWN, true),
+                "Alt+F5"
+            );
+            assert!(
+                !overlay_close_key_requested(F4, ALT, SYSKEYDOWN, false),
+                "Alt+F4 aimed at another window"
+            );
+        }
 
         #[test]
         fn windows_display_refresh_rejects_driver_default_sentinels() {

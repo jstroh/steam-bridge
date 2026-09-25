@@ -1677,6 +1677,15 @@ export interface NativeOverlaySessionOptions {
    * Present hook after the visible input handoff; the default is 5000 ms.
    */
   windowsSharedTextureResumeDelayMs?: number;
+  /**
+   * Windows-only. Copy Electron shared textures on a second D3D11 device on the
+   * host adapter so copy completion does not queue behind the host's own
+   * rendering and Present. Off by default. The setting applies process-wide to
+   * the native host, including renderers recreated after device loss. A
+   * session that omits it leaves the current process setting unchanged; pass
+   * `false` to turn it off.
+   */
+  windowsDedicatedCopyDevice?: boolean;
   hideNativeHostOnOverlayDeactivate?: boolean;
   /**
    * Cold-start floor applied before checkout reservations report the Steam
@@ -1854,6 +1863,8 @@ export interface NativeOverlaySessionSnapshot {
   nativeFrameWaitTimeoutCount?: number;
   /** The Windows presenter rejected async DXGI waits and is using bounded polling. */
   nativeFrameWaitFallback?: boolean;
+  /** Number of times the Windows presenter left that fallback after the native waitable re-armed. */
+  nativeFrameWaitRecoveryCount?: number;
   windowsPresentDiagnosticMode?: "standard" | "nonblocking-vsync" | "nonblocking-immediate";
   nativePresentRetryCount?: number;
   inputDispatchCount?: number;
@@ -1882,6 +1893,8 @@ export interface NativeOverlaySessionSnapshot {
   windowsOverlayHandoffFallbackCount?: number;
   /** Configured Windows post-overlay GPU-texture quarantine in milliseconds. */
   windowsSharedTextureResumeDelayMs?: number;
+  /** Whether this session requested the Windows dedicated shared-texture copy device. */
+  windowsDedicatedCopyDevice?: boolean;
   /** Duration of the latest synchronous native shared-texture update attempt. */
   lastSharedTextureUpdateDurationMs?: number;
   /** Longest synchronous native shared-texture update attempt in this session. */
@@ -1970,6 +1983,13 @@ export interface NativeOverlaySession extends CallbackHandle {
    */
   updateSharedTextureAsync(texture: NativeOverlaySharedTexture): Promise<boolean>;
   setCursorHidden(hidden: boolean): void;
+  /**
+   * Windows standalone host only: restore the native window if it is
+   * minimized and bring it to the foreground, for example when a second
+   * launch of the application is redirected to the running instance.
+   * No-op on other platforms and with older native addons.
+   */
+  focus(): void;
   setFrameRate(frameRate: number): void;
   setFullScreen(fullScreen: boolean): void;
   isFullScreen(): boolean;
@@ -10326,6 +10346,11 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     restoreFocusDelayMs,
     finiteNumber(options.windowsSharedTextureResumeDelayMs, 5000)
   );
+  const requestedDedicatedCopyDevice = typeof options.windowsDedicatedCopyDevice === "boolean"
+    ? options.windowsDedicatedCopyDevice
+    : undefined;
+  const windowsDedicatedCopyDevice = requestedDedicatedCopyDevice === true;
+  let dedicatedCopyDeviceApplied = false;
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
   const startedAt = Date.now();
   const activationWarmupMs = normalizeNativeOverlayActivationWarmupMs(
@@ -10380,9 +10405,13 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpImmediate: NodeJS.Immediate | undefined;
   let frameDrivenPumpQueued = false;
   let nativeFramePending = false;
+  let nativePresentationSuspended = false;
   let nativeFrameWaitInFlight = false;
   let nativeFrameWaitEpoch = 0;
   let nativeFrameWaitUnavailable = false;
+  let nativeFrameWaitRecoverable = false;
+  let nativeFrameWaitRecoveryObservations = 0;
+  let nativeFrameWaitRecoveryCount = 0;
   let nativeFrameWaitTimeoutCount = 0;
   let nativePresentRetryAt: number | undefined;
   let nativePresentRetryCount = 0;
@@ -10439,6 +10468,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const qaForceWindowsNativeFrameWaitTimeout =
     process.env.STEAM_BRIDGE_QA_FORCE_FRAME_WAIT_TIMEOUT === "1";
   const windowsNativeFrameWaitTimeoutMs = qaForceWindowsNativeFrameWaitTimeout ? 0 : 25;
+  const windowsNativeFrameWaitRecoveryObservations = 3;
 
   const pump = (): void => {
     if (closed) {
@@ -10475,6 +10505,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       syncFullScreen();
       syncNativeHostBounds();
       syncContinuousPresent();
+      syncDedicatedCopyDevice();
       try {
         const binding = native();
         if (nonblockingPresentDiagnostic) {
@@ -10495,19 +10526,37 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         } else {
           binding.pumpNativeOverlayProbeWindow();
         }
-        if (
-          usesWindowsStandaloneHost
-          && binding.isNativeOverlayHostFrameLatencyWaitBypassed?.() === true
-        ) {
+        const nativeFrameLatencyWaitBypassed = usesWindowsStandaloneHost
+          ? binding.isNativeOverlayHostFrameLatencyWaitBypassed?.()
+          : undefined;
+        if (nativeFrameLatencyWaitBypassed === true) {
           // The native surface outlives individual JavaScript presenter
           // sessions. Carry its one-way timeout fallback into a replacement
           // session so the scheduler cannot resume the stale waitable-object
           // path or its immediate pump loop after navigation.
+          if (!nativeFrameWaitUnavailable) {
+            nativeFrameWaitRecoverable = true;
+          }
           nativeFrameWaitUnavailable = true;
+          nativeFrameWaitRecoveryObservations = 0;
+        } else if (
+          nativeFrameLatencyWaitBypassed === false
+          && nativeFrameWaitUnavailable
+          && nativeFrameWaitRecoverable
+        ) {
+          nativeFrameWaitRecoveryObservations += 1;
+          if (nativeFrameWaitRecoveryObservations >= windowsNativeFrameWaitRecoveryObservations) {
+            nativeFrameWaitUnavailable = false;
+            nativeFrameWaitRecoverable = false;
+            nativeFrameWaitRecoveryObservations = 0;
+            nativeFrameWaitRecoveryCount += 1;
+          }
         }
         nativeFramePending = usesWindowsStandaloneHost
           && !nativeFrameWaitUnavailable
           && binding.isNativeOverlayHostFramePending?.() === true;
+        nativePresentationSuspended = usesWindowsStandaloneHost
+          && binding.isNativeOverlayHostPresentationSuspended?.() === true;
       } catch (error) {
         // X11 can deliver WM_DELETE_WINDOW and DestroyNotify in the same pump.
         // The native layer has already queued the close input before reporting
@@ -10612,7 +10661,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         ? {
             windowsOverlayHandoffPending,
             windowsOverlayHandoffFallbackCount,
-            windowsSharedTextureResumeDelayMs
+            windowsSharedTextureResumeDelayMs,
+            windowsDedicatedCopyDevice
           }
         : {}),
       lastSharedTextureUpdateDurationMs,
@@ -10635,6 +10685,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       nativeFrameWaitTimeoutCount,
       nativeFrameWaitFallback: nativeFrameWaitUnavailable,
       ...(usesWindowsStandaloneHost ? {
+        nativeFrameWaitRecoveryCount,
         windowsPresentDiagnosticMode,
         nativePresentRetryCount,
         inputDispatchCount,
@@ -10981,6 +11032,22 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     syncCursorHidden();
   };
 
+  const focus = (): void => {
+    if (closed || !usesWindowsStandaloneHost || !ownsNativeOverlaySurface(surfaceLease)) {
+      return;
+    }
+    const binding = native();
+    const focusHost = binding.focusNativeOverlayHost;
+    if (typeof focusHost !== "function") {
+      return;
+    }
+    try {
+      focusHost.call(binding);
+    } catch (error) {
+      lastError = error;
+    }
+  };
+
   const setFrameRate = (nextFrameRate: number): void => {
     const normalizedFrameRate = normalizeNativeOverlayFrameRate(nextFrameRate);
     const nextPumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(normalizedFrameRate);
@@ -11137,6 +11204,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     updateSharedTexture,
     updateSharedTextureAsync,
     setCursorHidden,
+    focus,
     setFrameRate,
     setFullScreen,
     isFullScreen: () => fullScreenRequested,
@@ -11756,6 +11824,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const waitForFrameReady = binding.waitForNativeOverlayHostFrameReady;
     if (typeof waitForFrameReady !== "function") {
       nativeFrameWaitUnavailable = true;
+      nativeFrameWaitRecoverable = false;
       return false;
     }
 
@@ -11770,6 +11839,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     } catch (error) {
       nativeFrameWaitInFlight = false;
       nativeFrameWaitUnavailable = true;
+      nativeFrameWaitRecoverable = false;
       lastError = error;
       return false;
     }
@@ -11805,7 +11875,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
             // while Present itself remains usable. The timed native wait has
             // disabled that stale gate; bounded timer-driven nonblocking
             // Present now paces this session.
-            nativeFrameWaitUnavailable = true;
+            const nativeKeptWaitArmed = !qaForceWindowsNativeFrameWaitTimeout
+              && binding.isNativeOverlayHostFrameLatencyWaitBypassed?.() === false;
+            if (!nativeKeptWaitArmed) {
+              if (!nativeFrameWaitUnavailable) {
+                nativeFrameWaitRecoverable = !qaForceWindowsNativeFrameWaitTimeout;
+              }
+              nativeFrameWaitUnavailable = true;
+              nativeFrameWaitRecoveryObservations = 0;
+            }
           }
           schedulePumpTimer();
           return;
@@ -11838,6 +11916,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         }
         nativeFrameWaitInFlight = false;
         nativeFrameWaitUnavailable = true;
+        nativeFrameWaitRecoverable = false;
         lastError = error;
         schedulePumpTimer();
       }
@@ -11958,6 +12037,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       // jitter is added to Steam's hooked Present and drops below high-refresh
       // display rates after live mode transitions.
       if (displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable
+        && !nativePresentationSuspended
         && windowsPresentDiagnosticMode !== "nonblocking-immediate") {
         pumpImmediate = setImmediate(runScheduledPump);
         pumpImmediate.unref?.();
@@ -12658,6 +12738,30 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       setter.call(binding, continuous, appliedFrameRate);
       continuousPresentApplied = continuous;
       continuousPresentFrameRateApplied = appliedFrameRate;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function syncDedicatedCopyDevice(): void {
+    if (
+      dedicatedCopyDeviceApplied
+      || closed
+      || !usesWindowsStandaloneHost
+      || !ownsNativeOverlaySurface(surfaceLease)
+      || nativeHostUnavailableReason !== undefined
+    ) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostDedicatedCopyDevice;
+    if (requestedDedicatedCopyDevice === undefined || typeof setter !== "function") {
+      dedicatedCopyDeviceApplied = true;
+      return;
+    }
+    try {
+      setter.call(binding, requestedDedicatedCopyDevice);
+      dedicatedCopyDeviceApplied = true;
     } catch (error) {
       lastError = error;
     }

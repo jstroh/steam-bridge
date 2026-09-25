@@ -1222,6 +1222,14 @@ pub fn is_native_overlay_host_present_busy() -> bool {
     false
 }
 
+#[napi(js_name = "isNativeOverlayHostPresentationSuspended")]
+pub fn is_native_overlay_host_presentation_suspended() -> bool {
+    #[cfg(target_os = "windows")]
+    return native_surface::presentation_suspended();
+    #[cfg(not(target_os = "windows"))]
+    false
+}
+
 #[napi(js_name = "isNativeOverlayHostFramePending")]
 pub fn is_native_overlay_host_frame_pending() -> bool {
     #[cfg(target_os = "windows")]
@@ -1272,7 +1280,7 @@ pub async fn wait_for_native_overlay_host_frame_ready(
         Ok(match ready_token {
             Some(token) => native_surface::grant_frame_latency_ready(token),
             None => {
-                native_surface::bypass_frame_latency_wait(wait_token);
+                native_surface::record_frame_latency_timeout(wait_token);
                 false
             }
         })
@@ -1363,6 +1371,33 @@ pub fn set_native_overlay_host_continuous_present(
     frame_rate: Option<f64>,
 ) -> Result<(), Error> {
     native_surface::set_continuous_present(continuous, frame_rate)
+}
+
+#[napi(js_name = "focusNativeOverlayHost")]
+pub fn focus_native_overlay_host() -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::focus()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
+#[napi(js_name = "setNativeOverlayHostDedicatedCopyDevice")]
+pub fn set_native_overlay_host_dedicated_copy_device(enabled: bool) -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::set_dedicated_copy_device(enabled)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        Ok(())
+    }
 }
 
 #[napi(js_name = "setNativeOverlayHostFullScreen")]

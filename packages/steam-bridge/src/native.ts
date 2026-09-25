@@ -1836,6 +1836,7 @@ export interface NativeBinding {
   pumpNativeOverlayHostInput(): void;
   pumpNativeOverlayHostFrame(): void;
   isNativeOverlayHostPresentBusy(): boolean;
+  isNativeOverlayHostPresentationSuspended(): boolean;
   pumpNativeOverlayHostView(): void;
   isNativeOverlayHostFramePending(): boolean;
   isNativeOverlayHostFrameLatencyWaitBypassed(): boolean;
@@ -1849,6 +1850,8 @@ export interface NativeBinding {
   setNativeOverlayHostOverlayActive(active: boolean): void;
   setNativeOverlayHostCursorHidden(hidden: boolean): void;
   setNativeOverlayHostContinuousPresent(continuous: boolean, frameRate?: number): void;
+  setNativeOverlayHostDedicatedCopyDevice(enabled: boolean): void;
+  focusNativeOverlayHost(): void;
   setNativeOverlayHostFullScreen(fullScreen: boolean): void;
   setNativeOverlayHostPresentationEpoch(instanceId: string, epoch: number): boolean | void;
   setNativeOverlayHostPresentationTransportClosed(instanceId: string): void;

@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use windows::core::{Interface, PCSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE,
-    HWND, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, DXGI_STATUS_OCCLUDED, GENERIC_ALL, HANDLE,
+    HMODULE, HWND, LUID, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
@@ -20,23 +20,28 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11PixelShader, ID3D11Query, ID3D11RenderTargetView, ID3D11SamplerState,
     ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader, D3D11_ASYNC_GETDATA_DONOTFLUSH,
     D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_COMPARISON_NEVER,
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_FENCE_FLAG_NONE, D3D11_FILTER_MIN_MAG_MIP_LINEAR,
-    D3D11_QUERY_DESC, D3D11_QUERY_EVENT, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION,
-    D3D11_TEXTURE2D_DESC, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT, D3D11_VIEWPORT,
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_FENCE_FLAG_NONE, D3D11_FENCE_FLAG_SHARED,
+    D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, D3D11_QUERY_DESC,
+    D3D11_QUERY_EVENT, D3D11_QUERY_TIMESTAMP, D3D11_QUERY_TIMESTAMP_DISJOINT,
+    D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_SAMPLER_DESC,
+    D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT,
+    D3D11_VIEWPORT,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
     DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory6,
-    IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_ADAPTER_FLAG_SOFTWARE,
-    DXGI_CREATE_FACTORY_FLAGS, DXGI_ERROR_WAS_STILL_DRAWING, DXGI_FRAME_STATISTICS,
-    DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT,
-    DXGI_PRESENT_DO_NOT_WAIT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+    CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory4,
+    IDXGIFactory6, IDXGIOutput, IDXGIResource1, IDXGISwapChain1, IDXGISwapChain2,
+    DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_CREATE_FACTORY_FLAGS, DXGI_ERROR_WAS_STILL_DRAWING,
+    DXGI_FRAME_STATISTICS, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER,
+    DXGI_PRESENT, DXGI_PRESENT_DO_NOT_WAIT, DXGI_PRESENT_TEST, DXGI_SCALING_STRETCH,
+    DXGI_SHARED_RESOURCE_READ, DXGI_SHARED_RESOURCE_WRITE, DXGI_SWAP_CHAIN_DESC1,
     DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
     DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
+use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOERROR};
 use windows::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, ResetEvent, WaitForSingleObjectEx,
@@ -205,8 +210,25 @@ fn poll_shared_texture_copy_fence(
     Ok(complete)
 }
 
+fn copy_wait_device_removed_error(
+    copy_removed: Option<&windows::core::Error>,
+    host_removed: Option<&windows::core::Error>,
+) -> Option<String> {
+    if let Some(error) = copy_removed {
+        return Some(format!(
+            "D3D11 device was removed while waiting for the Electron shared-texture copy: {error}"
+        ));
+    }
+    host_removed.map(|error| {
+        format!(
+            "D3D11 host device was removed while the dedicated copy device waited for it: {error}; the native graphics device must be restarted"
+        )
+    })
+}
+
 pub struct SharedTextureCopyWaitHandle {
     device: ID3D11Device,
+    host_device: Option<ID3D11Device>,
     completion: SharedTextureCopyCompletion,
     slot: Arc<SharedTextureCopySlot>,
     submitted_at: Instant,
@@ -358,13 +380,18 @@ impl SharedTextureCopyWaitHandle {
                     "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
                 ));
             }
-            if let Err(error) = unsafe { self.device.GetDeviceRemovedReason() } {
+            let copy_removed = unsafe { self.device.GetDeviceRemovedReason() }.err();
+            let host_removed = self
+                .host_device
+                .as_ref()
+                .and_then(|device| unsafe { device.GetDeviceRemovedReason() }.err());
+            if let Some(error) =
+                copy_wait_device_removed_error(copy_removed.as_ref(), host_removed.as_ref())
+            {
                 self.telemetry
                     .terminal_failure_count
                     .fetch_add(1, Ordering::Release);
-                return Err(format!(
-                    "D3D11 device was removed while waiting for the Electron shared-texture copy: {error}"
-                ));
+                return Err(error);
             }
             if matches!(&self.completion, SharedTextureCopyCompletion::Query { .. })
                 || !use_event_wait
@@ -527,6 +554,581 @@ impl SourceMode {
     }
 }
 
+pub const MAXIMUM_FRAME_LATENCY: u32 = 1;
+pub const FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS: u32 = 3;
+pub const FRAME_LATENCY_WAIT_REARM_READY_POLLS: u32 = 4;
+const GPU_COPY_TIMING_SAMPLE_INTERVAL: u64 = 30;
+const GPU_COPY_TIMING_RING_SIZE: usize = 4;
+const GPU_COPY_TIMING_ABANDON_SKIPS: u32 = 2;
+
+struct GpuCopyTimingEntry {
+    disjoint: ID3D11Query,
+    start: ID3D11Query,
+    end: ID3D11Query,
+}
+
+#[derive(Default)]
+struct GpuCopyTimingRing {
+    pending: [bool; GPU_COPY_TIMING_RING_SIZE],
+    skipped: [u32; GPU_COPY_TIMING_RING_SIZE],
+    next: usize,
+    abandoned_count: u64,
+}
+
+impl GpuCopyTimingRing {
+    fn claim(&mut self) -> Option<usize> {
+        let index = self.next;
+        self.next = (index + 1) % GPU_COPY_TIMING_RING_SIZE;
+        if self.pending[index] {
+            self.skipped[index] = self.skipped[index].saturating_add(1);
+            if self.skipped[index] < GPU_COPY_TIMING_ABANDON_SKIPS {
+                return None;
+            }
+            self.abandoned_count = self.abandoned_count.saturating_add(1);
+        }
+        self.skipped[index] = 0;
+        Some(index)
+    }
+
+    fn issued(&mut self, index: usize) {
+        self.pending[index] = true;
+    }
+
+    fn resolved(&mut self, index: usize) {
+        self.pending[index] = false;
+    }
+}
+
+#[derive(Default)]
+struct GpuCopyTimingStats {
+    sample_count: u64,
+    total_micros: f64,
+    last_micros: f64,
+    max_micros: f64,
+    disjoint_count: u64,
+}
+
+struct GpuCopyTiming {
+    entries: Vec<GpuCopyTimingEntry>,
+    ring: GpuCopyTimingRing,
+    copy_count: u64,
+    stats: GpuCopyTimingStats,
+}
+
+impl GpuCopyTiming {
+    unsafe fn new(device: &ID3D11Device) -> Option<Self> {
+        let create = |query| {
+            let mut created = None;
+            device
+                .CreateQuery(
+                    &D3D11_QUERY_DESC {
+                        Query: query,
+                        MiscFlags: 0,
+                    },
+                    Some(&mut created),
+                )
+                .ok()?;
+            created
+        };
+        let mut entries = Vec::with_capacity(GPU_COPY_TIMING_RING_SIZE);
+        for _ in 0..GPU_COPY_TIMING_RING_SIZE {
+            entries.push(GpuCopyTimingEntry {
+                disjoint: create(D3D11_QUERY_TIMESTAMP_DISJOINT)?,
+                start: create(D3D11_QUERY_TIMESTAMP)?,
+                end: create(D3D11_QUERY_TIMESTAMP)?,
+            });
+        }
+        Some(Self {
+            entries,
+            ring: GpuCopyTimingRing::default(),
+            copy_count: 0,
+            stats: GpuCopyTimingStats::default(),
+        })
+    }
+
+    unsafe fn begin(&mut self, context: &ID3D11DeviceContext) -> Option<usize> {
+        self.poll(context);
+        self.copy_count = self.copy_count.saturating_add(1);
+        if (self.copy_count - 1) % GPU_COPY_TIMING_SAMPLE_INTERVAL != 0 {
+            return None;
+        }
+        let index = self.ring.claim()?;
+        let entry = &self.entries[index];
+        context.Begin(&entry.disjoint);
+        context.End(&entry.start);
+        Some(index)
+    }
+
+    unsafe fn end(&mut self, context: &ID3D11DeviceContext, index: Option<usize>) {
+        let Some(index) = index else {
+            return;
+        };
+        let entry = &self.entries[index];
+        context.End(&entry.end);
+        context.End(&entry.disjoint);
+        self.ring.issued(index);
+    }
+
+    unsafe fn poll(&mut self, context: &ID3D11DeviceContext) {
+        for (index, entry) in self.entries.iter().enumerate() {
+            if !self.ring.pending[index] {
+                continue;
+            }
+            let mut disjoint = D3D11_QUERY_DATA_TIMESTAMP_DISJOINT::default();
+            let ready = context
+                .GetData(
+                    &entry.disjoint,
+                    Some((&mut disjoint as *mut D3D11_QUERY_DATA_TIMESTAMP_DISJOINT).cast()),
+                    std::mem::size_of::<D3D11_QUERY_DATA_TIMESTAMP_DISJOINT>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+                .is_ok()
+                && disjoint.Frequency != 0;
+            if !ready {
+                continue;
+            }
+            let mut start = u64::MAX;
+            let mut end = u64::MAX;
+            let start_ready = context
+                .GetData(
+                    &entry.start,
+                    Some((&mut start as *mut u64).cast()),
+                    std::mem::size_of::<u64>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+                .is_ok();
+            let end_ready = context
+                .GetData(
+                    &entry.end,
+                    Some((&mut end as *mut u64).cast()),
+                    std::mem::size_of::<u64>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+                .is_ok();
+            if !start_ready || !end_ready || start == u64::MAX || end == u64::MAX {
+                continue;
+            }
+            self.ring.resolved(index);
+            self.stats.record(start, end, disjoint);
+        }
+    }
+
+    fn diagnostics(&self) -> serde_json::Value {
+        let mut diagnostics = self.stats.diagnostics(GPU_COPY_TIMING_SAMPLE_INTERVAL);
+        diagnostics["abandonedCount"] = self.ring.abandoned_count.into();
+        diagnostics
+    }
+}
+
+impl GpuCopyTimingStats {
+    fn record(&mut self, start: u64, end: u64, disjoint: D3D11_QUERY_DATA_TIMESTAMP_DISJOINT) {
+        if disjoint.Disjoint.as_bool() || end < start || disjoint.Frequency == 0 {
+            self.disjoint_count = self.disjoint_count.saturating_add(1);
+            return;
+        }
+        let micros = (end - start) as f64 * 1_000_000.0 / disjoint.Frequency as f64;
+        self.sample_count = self.sample_count.saturating_add(1);
+        self.total_micros += micros;
+        self.last_micros = micros;
+        self.max_micros = self.max_micros.max(micros);
+    }
+
+    fn diagnostics(&self, sample_interval: u64) -> serde_json::Value {
+        serde_json::json!({
+            "sampleInterval": sample_interval,
+            "sampleCount": self.sample_count,
+            "lastMs": self.last_micros / 1_000.0,
+            "meanMs": if self.sample_count > 0 {
+                self.total_micros / self.sample_count as f64 / 1_000.0
+            } else {
+                0.0
+            },
+            "maxMs": self.max_micros / 1_000.0,
+            "disjointCount": self.disjoint_count,
+        })
+    }
+}
+
+const DEDICATED_COPY_RING_SIZE: usize = 4;
+const DEDICATED_COPY_CREATION_ATTEMPTS: u64 = 3;
+static DEDICATED_COPY_DEVICE_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+pub fn set_dedicated_copy_device_requested(enabled: bool) {
+    DEDICATED_COPY_DEVICE_REQUESTED.store(enabled, Ordering::Release);
+}
+
+fn swap_chain_attach_failure_error(attach_error: &str, restore_error: &str) -> String {
+    format!(
+        "D3D11 swap chain could not be attached after an adapter switch ({attach_error}; restoring the previous adapter also failed: {restore_error}); the native graphics device must be restarted"
+    )
+}
+
+fn stalled_shared_texture_copy_error(
+    host_removed: Option<&windows::core::Error>,
+    copy_removed: Option<&windows::core::Error>,
+) -> String {
+    if let Some(error) = host_removed {
+        return format!(
+            "D3D11 device was removed while a shared-texture copy was outstanding: {error}; the native graphics device must be restarted"
+        );
+    }
+    if let Some(error) = copy_removed {
+        return dedicated_copy_device_removed_error(error);
+    }
+    "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted"
+        .to_owned()
+}
+
+fn present_submitted_frame(result: windows::core::HRESULT) -> bool {
+    result.is_ok() && result != DXGI_STATUS_OCCLUDED
+}
+
+fn dedicated_copy_device_removed_error(error: &windows::core::Error) -> String {
+    format!(
+        "D3D11 dedicated copy device was removed: {error}; the native graphics device must be restarted"
+    )
+}
+
+struct DedicatedCopySlot {
+    host_view: ID3D11ShaderResourceView,
+    copy_texture: ID3D11Texture2D,
+    last_sampled_value: u64,
+}
+
+struct DedicatedCopyDevice {
+    device: ID3D11Device,
+    device1: ID3D11Device1,
+    context: ID3D11DeviceContext,
+    context4: ID3D11DeviceContext4,
+    copy_fence: ID3D11Fence,
+    host_copy_fence: ID3D11Fence,
+    next_copy_value: u64,
+    sampled_fence: ID3D11Fence,
+    copy_sampled_fence: ID3D11Fence,
+    next_sampled_value: u64,
+    ring: Vec<DedicatedCopySlot>,
+    ring_width: u32,
+    ring_height: u32,
+    ring_format: DXGI_FORMAT,
+    next_ring_index: usize,
+    pending: Option<(usize, u64)>,
+    displayed: Option<usize>,
+    newest: Option<usize>,
+    gpu_timing: Option<GpuCopyTiming>,
+}
+
+unsafe fn share_fence(fence: &ID3D11Fence, device5: &ID3D11Device5) -> Result<ID3D11Fence, String> {
+    let handle = fence
+        .CreateSharedHandle(None, GENERIC_ALL.0, windows::core::PCWSTR::null())
+        .map_err(|error| format!("ID3D11Fence::CreateSharedHandle failed: {error}"))?;
+    let mut opened: Option<ID3D11Fence> = None;
+    let result = device5.OpenSharedFence(handle, &mut opened);
+    let _ = CloseHandle(handle);
+    result.map_err(|error| format!("ID3D11Device5::OpenSharedFence failed: {error}"))?;
+    opened.ok_or_else(|| "ID3D11Device5::OpenSharedFence returned no fence".to_owned())
+}
+
+impl DedicatedCopyDevice {
+    unsafe fn new(host_device: &ID3D11Device) -> Result<Self, String> {
+        let adapter = host_device
+            .cast::<IDXGIDevice>()
+            .and_then(|device| device.GetAdapter())
+            .map_err(|error| format!("host DXGI adapter is unavailable: {error}"))?;
+        let mut device = None;
+        let mut context = None;
+        D3D11CreateDevice(
+            &adapter,
+            D3D_DRIVER_TYPE_UNKNOWN,
+            HMODULE::default(),
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            Some(&[D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0]),
+            D3D11_SDK_VERSION,
+            Some(&mut device),
+            None,
+            Some(&mut context),
+        )
+        .map_err(|error| {
+            format!("D3D11CreateDevice for the dedicated copy device failed: {error}")
+        })?;
+        let device: ID3D11Device = device
+            .ok_or_else(|| "D3D11CreateDevice returned no dedicated copy device".to_owned())?;
+        let context: ID3D11DeviceContext = context
+            .ok_or_else(|| "D3D11CreateDevice returned no dedicated copy context".to_owned())?;
+        let device1: ID3D11Device1 = device
+            .cast()
+            .map_err(|error| format!("dedicated ID3D11Device1 is unavailable: {error}"))?;
+        let device5: ID3D11Device5 = device
+            .cast()
+            .map_err(|error| format!("dedicated ID3D11Device5 is unavailable: {error}"))?;
+        let context4: ID3D11DeviceContext4 = context
+            .cast()
+            .map_err(|error| format!("dedicated ID3D11DeviceContext4 is unavailable: {error}"))?;
+        let host_device5: ID3D11Device5 = host_device
+            .cast()
+            .map_err(|error| format!("host ID3D11Device5 is unavailable: {error}"))?;
+        let mut copy_fence = None;
+        device5
+            .CreateFence(0, D3D11_FENCE_FLAG_SHARED, &mut copy_fence)
+            .map_err(|error| format!("dedicated copy fence creation failed: {error}"))?;
+        let copy_fence: ID3D11Fence =
+            copy_fence.ok_or_else(|| "dedicated copy fence was not created".to_owned())?;
+        let host_copy_fence = share_fence(&copy_fence, &host_device5)?;
+        let mut sampled_fence = None;
+        host_device5
+            .CreateFence(0, D3D11_FENCE_FLAG_SHARED, &mut sampled_fence)
+            .map_err(|error| format!("host sampled fence creation failed: {error}"))?;
+        let sampled_fence: ID3D11Fence =
+            sampled_fence.ok_or_else(|| "host sampled fence was not created".to_owned())?;
+        let copy_sampled_fence = share_fence(&sampled_fence, &device5)?;
+        let gpu_timing = GpuCopyTiming::new(&device);
+        Ok(Self {
+            device,
+            device1,
+            context,
+            context4,
+            copy_fence,
+            host_copy_fence,
+            next_copy_value: 0,
+            sampled_fence,
+            copy_sampled_fence,
+            next_sampled_value: 0,
+            ring: Vec::with_capacity(DEDICATED_COPY_RING_SIZE),
+            ring_width: 0,
+            ring_height: 0,
+            ring_format: DXGI_FORMAT_UNKNOWN,
+            next_ring_index: 0,
+            pending: None,
+            displayed: None,
+            newest: None,
+            gpu_timing,
+        })
+    }
+
+    unsafe fn ensure_ring(
+        &mut self,
+        host_device: &ID3D11Device,
+        width: u32,
+        height: u32,
+        format: DXGI_FORMAT,
+    ) -> Result<bool, String> {
+        if !self.ring.is_empty()
+            && self.ring_width == width
+            && self.ring_height == height
+            && self.ring_format == format
+        {
+            return Ok(false);
+        }
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: width,
+            Height: height,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: format,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: (D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET).0 as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: (D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED).0 as u32,
+        };
+        let mut ring = Vec::with_capacity(DEDICATED_COPY_RING_SIZE);
+        for _ in 0..DEDICATED_COPY_RING_SIZE {
+            let mut texture = None;
+            host_device
+                .CreateTexture2D(&desc, None, Some(&mut texture))
+                .map_err(|error| format!("dedicated copy ring texture creation failed: {error}"))?;
+            let texture: ID3D11Texture2D =
+                texture.ok_or_else(|| "dedicated copy ring texture was not created".to_owned())?;
+            let host_view = create_source_view(host_device, &texture)?;
+            let handle = texture
+                .cast::<IDXGIResource1>()
+                .and_then(|resource| {
+                    resource.CreateSharedHandle(
+                        None,
+                        DXGI_SHARED_RESOURCE_READ.0 | DXGI_SHARED_RESOURCE_WRITE.0,
+                        windows::core::PCWSTR::null(),
+                    )
+                })
+                .map_err(|error| {
+                    format!("dedicated copy ring CreateSharedHandle failed: {error}")
+                })?;
+            let copy_texture = self.device1.OpenSharedResource1(handle);
+            let _ = CloseHandle(handle);
+            ring.push(DedicatedCopySlot {
+                host_view,
+                copy_texture: copy_texture
+                    .map_err(|error| format!("dedicated copy ring open failed: {error}"))?,
+                last_sampled_value: 0,
+            });
+        }
+        self.ring = ring;
+        self.ring_width = width;
+        self.ring_height = height;
+        self.ring_format = format;
+        self.next_ring_index = 0;
+        self.pending = None;
+        self.displayed = None;
+        self.newest = None;
+        Ok(true)
+    }
+
+    fn select_ring_slot(&mut self) -> usize {
+        let len = self.ring.len();
+        let mut index = self.next_ring_index;
+        for _ in 0..len {
+            let reserved = self.displayed == Some(index)
+                || self.pending.is_some_and(|(slot, _)| slot == index)
+                || self.newest == Some(index);
+            if !reserved {
+                break;
+            }
+            index = (index + 1) % len;
+        }
+        self.next_ring_index = (index + 1) % len;
+        index
+    }
+}
+
+fn adapter_for_monitor<M: PartialEq>(
+    monitor: &M,
+    outputs: impl IntoIterator<Item = (LUID, M)>,
+) -> Option<LUID> {
+    outputs
+        .into_iter()
+        .find(|(_, output_monitor)| output_monitor == monitor)
+        .map(|(luid, _)| luid)
+}
+
+unsafe fn output_adapter_luid_for_window(hwnd: HWND) -> Option<LUID> {
+    if hwnd.0.is_null() {
+        return None;
+    }
+    let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if monitor.is_invalid() {
+        return None;
+    }
+    let factory: IDXGIFactory2 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).ok()?;
+    let mut outputs = Vec::new();
+    let mut adapter_index = 0;
+    while let Ok(adapter) = factory.EnumAdapters1(adapter_index) {
+        adapter_index += 1;
+        let Ok(adapter_desc) = adapter.GetDesc1() else {
+            continue;
+        };
+        let mut output_index = 0;
+        while let Ok(output) = adapter.EnumOutputs(output_index) {
+            output_index += 1;
+            if let Ok(output_desc) = output.GetDesc() {
+                outputs.push((adapter_desc.AdapterLuid, output_desc.Monitor));
+            }
+        }
+    }
+    adapter_for_monitor(&monitor, outputs)
+}
+
+fn adapter_luid_string(luid: LUID) -> String {
+    format!("{:08x}-{:08x}", luid.HighPart as u32, luid.LowPart)
+}
+
+fn device_adapter_luid(device: &ID3D11Device) -> Option<LUID> {
+    unsafe {
+        let adapter = device.cast::<IDXGIDevice>().ok()?.GetAdapter().ok()?;
+        Some(adapter.GetDesc().ok()?.AdapterLuid)
+    }
+}
+
+fn shared_resource_adapter_luid(handle: usize) -> Option<LUID> {
+    unsafe {
+        let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).ok()?;
+        factory
+            .GetSharedResourceAdapterLuid(HANDLE(handle as *mut c_void))
+            .ok()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameLatencyTimeoutOutcome {
+    Expected,
+    Counted,
+    Bypassed,
+}
+
+#[derive(Debug, Default)]
+struct FrameLatencyWaitGate {
+    bypassed: bool,
+    consecutive_timeouts: u32,
+    consecutive_bypass_ready_polls: u32,
+    expected_timeout_count: u64,
+    bypass_count: u64,
+    rearm_count: u64,
+}
+
+impl FrameLatencyWaitGate {
+    fn record_timeout(&mut self, expected: bool) -> FrameLatencyTimeoutOutcome {
+        if self.bypassed {
+            return FrameLatencyTimeoutOutcome::Bypassed;
+        }
+        if expected {
+            self.consecutive_timeouts = 0;
+            self.expected_timeout_count = self.expected_timeout_count.saturating_add(1);
+            return FrameLatencyTimeoutOutcome::Expected;
+        }
+        self.consecutive_timeouts = self.consecutive_timeouts.saturating_add(1);
+        if self.consecutive_timeouts >= FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            self.bypass();
+            FrameLatencyTimeoutOutcome::Bypassed
+        } else {
+            FrameLatencyTimeoutOutcome::Counted
+        }
+    }
+
+    fn record_ready(&mut self) {
+        self.consecutive_timeouts = 0;
+    }
+
+    fn record_bypass_poll(&mut self, ready: bool) -> bool {
+        if !self.bypassed {
+            return false;
+        }
+        if !ready {
+            self.consecutive_bypass_ready_polls = 0;
+            return false;
+        }
+        self.consecutive_bypass_ready_polls = self.consecutive_bypass_ready_polls.saturating_add(1);
+        self.consecutive_bypass_ready_polls >= FRAME_LATENCY_WAIT_REARM_READY_POLLS && self.rearm()
+    }
+
+    fn bypass(&mut self) -> bool {
+        self.consecutive_timeouts = 0;
+        self.consecutive_bypass_ready_polls = 0;
+        if self.bypassed {
+            return false;
+        }
+        self.bypassed = true;
+        self.bypass_count = self.bypass_count.saturating_add(1);
+        true
+    }
+
+    fn rearm(&mut self) -> bool {
+        self.consecutive_timeouts = 0;
+        self.consecutive_bypass_ready_polls = 0;
+        if !self.bypassed {
+            return false;
+        }
+        self.bypassed = false;
+        self.rearm_count = self.rearm_count.saturating_add(1);
+        true
+    }
+
+    fn reset_for_new_swap_chain(&mut self) {
+        self.bypassed = false;
+        self.consecutive_timeouts = 0;
+        self.consecutive_bypass_ready_polls = 0;
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PresentMode {
     Standard,
@@ -598,7 +1200,9 @@ pub struct WindowsD3d11Renderer {
     frame_latency_waitable_object: HANDLE,
     frame_latency_wait_generation: u64,
     frame_latency_ready_permits: u32,
-    frame_latency_wait_bypassed: bool,
+    frame_latency_wait: FrameLatencyWaitGate,
+    present_occluded: bool,
+    window_iconic: bool,
     fallback_timer_resolution_requested: bool,
     fallback_timer_resolution_active: bool,
     async_frame_latency_ready_count: u64,
@@ -647,6 +1251,16 @@ pub struct WindowsD3d11Renderer {
     last_shared_texture_presentation_rect: [u32; 4],
     cpu_upload_count: u64,
     shared_texture_import_count: u64,
+    gpu_copy_timing: Option<GpuCopyTiming>,
+    host_adapter_luid: Option<LUID>,
+    texture_adapter_luid: Option<LUID>,
+    window: HWND,
+    swap_chain_attach_failure: Option<String>,
+    dedicated_copy: Option<DedicatedCopyDevice>,
+    dedicated_copy_requested: bool,
+    dedicated_copy_creation_failures: u64,
+    dedicated_copy_last_error: Option<String>,
+    dedicated_copy_count: u64,
 }
 
 unsafe impl Send for WindowsD3d11Renderer {}
@@ -949,7 +1563,9 @@ impl WindowsD3d11Renderer {
             frame_latency_waitable_object: HANDLE::default(),
             frame_latency_wait_generation: 0,
             frame_latency_ready_permits: 0,
-            frame_latency_wait_bypassed: false,
+            frame_latency_wait: FrameLatencyWaitGate::default(),
+            present_occluded: false,
+            window_iconic: false,
             fallback_timer_resolution_requested: false,
             fallback_timer_resolution_active: false,
             async_frame_latency_ready_count: 0,
@@ -993,7 +1609,19 @@ impl WindowsD3d11Renderer {
             last_shared_texture_presentation_rect: [0; 4],
             cpu_upload_count: 0,
             shared_texture_import_count: 0,
+            gpu_copy_timing: None,
+            host_adapter_luid: None,
+            texture_adapter_luid: None,
+            window: HWND(hwnd),
+            swap_chain_attach_failure: None,
+            dedicated_copy: None,
+            dedicated_copy_requested: DEDICATED_COPY_DEVICE_REQUESTED.load(Ordering::Acquire),
+            dedicated_copy_creation_failures: 0,
+            dedicated_copy_last_error: None,
+            dedicated_copy_count: 0,
         };
+        renderer.gpu_copy_timing = GpuCopyTiming::new(&renderer.device);
+        renderer.host_adapter_luid = device_adapter_luid(&renderer.device);
         if attach_swap_chain {
             renderer.attach_swap_chain(hwnd)?;
         }
@@ -1048,7 +1676,7 @@ impl WindowsD3d11Renderer {
         // showed fewer missed refreshes than a one-frame queue with either
         // timer polling or the same worker-wakeup scheduler.
         swap_chain2
-            .SetMaximumFrameLatency(2)
+            .SetMaximumFrameLatency(MAXIMUM_FRAME_LATENCY)
             .map_err(|error| format!("IDXGISwapChain2::SetMaximumFrameLatency failed: {error}"))?;
         let frame_latency_waitable_object = swap_chain2.GetFrameLatencyWaitableObject();
         if frame_latency_waitable_object.is_invalid() {
@@ -1070,7 +1698,8 @@ impl WindowsD3d11Renderer {
         self.frame_latency_wait_generation =
             NEXT_FRAME_LATENCY_WAIT_GENERATION.fetch_add(1, Ordering::Relaxed);
         self.frame_latency_ready_permits = 0;
-        self.frame_latency_wait_bypassed = false;
+        self.frame_latency_wait.reset_for_new_swap_chain();
+        self.present_occluded = false;
         self.swap_chain = Some(swap_chain);
         self.render_target = Some(render_target);
         Ok(())
@@ -1103,6 +1732,7 @@ impl WindowsD3d11Renderer {
         self.render_target = Some(create_render_target(&self.device, swap_chain)?);
         self.width = width;
         self.height = height;
+        self.rearm_frame_latency_wait();
         Ok(())
     }
 
@@ -1156,6 +1786,7 @@ impl WindowsD3d11Renderer {
             self.source_width = width;
             self.source_height = height;
         }
+        self.forget_dedicated_frames();
         let texture = self
             .source_texture
             .as_ref()
@@ -1223,6 +1854,9 @@ impl WindowsD3d11Renderer {
         presentation_rect: (u32, u32, u32, u32),
         asynchronous_completion: bool,
     ) -> Result<SharedTextureImportSubmission, String> {
+        if let Some(failure) = self.swap_chain_attach_failure.as_ref() {
+            return Err(failure.clone());
+        }
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
         if asynchronous_completion
@@ -1237,14 +1871,29 @@ impl WindowsD3d11Renderer {
                     .load(Ordering::Acquire)
                     > 0)
         {
-            return Err(
-                "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted"
-                    .to_owned(),
-            );
+            let host_removed = self.device.GetDeviceRemovedReason().err();
+            let copy_removed = self
+                .dedicated_copy
+                .as_ref()
+                .and_then(|dedicated| dedicated.device.GetDeviceRemovedReason().err());
+            return Err(stalled_shared_texture_copy_error(
+                host_removed.as_ref(),
+                copy_removed.as_ref(),
+            ));
         }
         if handle == 0 {
             return Err("Electron shared texture handle is null".to_owned());
         }
+        if asynchronous_completion && self.ensure_dedicated_copy_device() {
+            return self.import_shared_texture_dedicated(
+                handle,
+                expected_width,
+                expected_height,
+                content_rect,
+                presentation_rect,
+            );
+        }
+        self.forget_dedicated_frames();
         let device1: ID3D11Device1 = self
             .device
             .cast()
@@ -1357,6 +2006,7 @@ impl WindowsD3d11Renderer {
             None
         };
         if storage_recreated {
+            self.texture_adapter_luid = shared_resource_adapter_luid(handle);
             self.shared_texture_storage_recreate_count =
                 self.shared_texture_storage_recreate_count.saturating_add(1);
             let owned_desc = D3D11_TEXTURE2D_DESC {
@@ -1450,6 +2100,10 @@ impl WindowsD3d11Renderer {
             } else {
                 None
             };
+            let gpu_copy_sample = match self.gpu_copy_timing.as_mut() {
+                Some(timing) => timing.begin(&self.context),
+                None => None,
+            };
             self.context.CopySubresourceRegion(
                 &destination_texture,
                 0,
@@ -1460,6 +2114,9 @@ impl WindowsD3d11Renderer {
                 0,
                 Some(&source_box),
             );
+            if let Some(timing) = self.gpu_copy_timing.as_mut() {
+                timing.end(&self.context, gpu_copy_sample);
+            }
             match async_copy_submission {
                 Some(AsyncCopySubmission::Fence {
                     reservation,
@@ -1516,6 +2173,7 @@ impl WindowsD3d11Renderer {
                     self.context.Flush();
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
+                        host_device: None,
                         completion,
                         slot: reservation.into_slot(),
                         submitted_at: copy_submitted_at,
@@ -1531,6 +2189,7 @@ impl WindowsD3d11Renderer {
                     self.context.Flush();
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
+                        host_device: None,
                         completion: SharedTextureCopyCompletion::Query {
                             context: self.context.clone(),
                             query,
@@ -1650,40 +2309,400 @@ impl WindowsD3d11Renderer {
         replacement.present_budget_ms = self.present_budget_ms;
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
-        self.context.ClearState();
-        self.context.Flush();
-        self.render_target = None;
-        self.source_view = None;
-        self.source_texture = None;
-        self.swap_chain = None;
+        self.release_swap_chain_for_replacement();
 
         match replacement.attach_swap_chain(hwnd) {
             Ok(()) => {
                 *self = replacement;
                 Ok(())
             }
-            Err(error) => {
-                if let Ok(mut restored) = Self::new(hwnd, width, height) {
+            Err(error) => match Self::new(hwnd, width, height) {
+                Ok(mut restored) => {
                     restored.set_present_sync_interval(present_sync_interval);
                     restored.present_mode = self.present_mode;
                     restored.present_budget_ms = self.present_budget_ms;
                     *self = restored;
+                    Err(error)
                 }
-                Err(error)
+                Err(restore_error) => {
+                    let terminal = swap_chain_attach_failure_error(&error, &restore_error);
+                    self.swap_chain_attach_failure = Some(terminal.clone());
+                    Err(terminal)
+                }
+            },
+        }
+    }
+
+    pub fn swap_chain_attach_failure(&self) -> Option<&str> {
+        self.swap_chain_attach_failure.as_deref()
+    }
+
+    pub fn set_dedicated_copy_device(&mut self, enabled: bool) {
+        if self.dedicated_copy_requested == enabled {
+            return;
+        }
+        self.dedicated_copy_requested = enabled;
+        if !enabled {
+            unsafe {
+                self.bind_dedicated_copy_for_render();
+            }
+            self.dedicated_copy = None;
+        }
+        self.source_texture = None;
+    }
+
+    fn forget_dedicated_frames(&mut self) {
+        if let Some(dedicated) = self.dedicated_copy.as_mut() {
+            dedicated.pending = None;
+            dedicated.newest = None;
+            dedicated.displayed = None;
+        }
+    }
+
+    pub fn dedicated_copy_device_active(&self) -> bool {
+        self.dedicated_copy.is_some()
+    }
+
+    fn dedicated_copy_diagnostics(&self) -> serde_json::Value {
+        serde_json::json!({
+            "requested": self.dedicated_copy_requested,
+            "active": self.dedicated_copy.is_some(),
+            "copyCount": self.dedicated_copy_count,
+            "creationFailureCount": self.dedicated_copy_creation_failures,
+            "lastError": self.dedicated_copy_last_error,
+        })
+    }
+
+    unsafe fn ensure_dedicated_copy_device(&mut self) -> bool {
+        if !self.dedicated_copy_requested || self.shared_texture_copy_context4.is_none() {
+            return false;
+        }
+        if self.dedicated_copy.is_some() {
+            return true;
+        }
+        if self.dedicated_copy_creation_failures >= DEDICATED_COPY_CREATION_ATTEMPTS {
+            return false;
+        }
+        match DedicatedCopyDevice::new(&self.device) {
+            Ok(dedicated) => {
+                self.dedicated_copy = Some(dedicated);
+                true
+            }
+            Err(error) => {
+                self.dedicated_copy_creation_failures =
+                    self.dedicated_copy_creation_failures.saturating_add(1);
+                self.dedicated_copy_last_error = Some(error);
+                false
             }
         }
     }
 
+    unsafe fn import_shared_texture_dedicated(
+        &mut self,
+        handle: usize,
+        expected_width: u32,
+        expected_height: u32,
+        content_rect: (u32, u32, u32, u32),
+        presentation_rect: (u32, u32, u32, u32),
+    ) -> Result<SharedTextureImportSubmission, String> {
+        let host_device = self.device.clone();
+        let source_was_shared_texture = self.source_mode == Some(SourceMode::SharedTexture);
+        let presentation_changed = self.last_shared_texture_presentation_rect
+            != [
+                presentation_rect.0,
+                presentation_rect.1,
+                presentation_rect.2,
+                presentation_rect.3,
+            ];
+        let dedicated = self
+            .dedicated_copy
+            .as_mut()
+            .ok_or_else(|| "The dedicated copy device is unavailable".to_owned())?;
+        if let Err(error) = dedicated.device.GetDeviceRemovedReason() {
+            self.dedicated_copy = None;
+            return Err(dedicated_copy_device_removed_error(&error));
+        }
+        let texture: ID3D11Texture2D = dedicated
+            .device1
+            .OpenSharedResource1(HANDLE(handle as *mut c_void))
+            .map_err(|error| format!("ID3D11Device1::OpenSharedResource1 failed: {error}"))?;
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        texture.GetDesc(&mut desc);
+        if desc.Width != expected_width.max(1) || desc.Height != expected_height.max(1) {
+            return Err(format!(
+                "Electron shared texture is {}x{}, expected {}x{}",
+                desc.Width,
+                desc.Height,
+                expected_width.max(1),
+                expected_height.max(1)
+            ));
+        }
+        let (content_x, content_y, content_width, content_height) = content_rect;
+        let content_right = content_x
+            .checked_add(content_width)
+            .ok_or_else(|| "Electron shared texture content rectangle overflows".to_owned())?;
+        let content_bottom = content_y
+            .checked_add(content_height)
+            .ok_or_else(|| "Electron shared texture content rectangle overflows".to_owned())?;
+        if content_width == 0
+            || content_height == 0
+            || content_right > desc.Width
+            || content_bottom > desc.Height
+        {
+            return Err(format!(
+                "Electron shared texture content rectangle {},{} {}x{} exceeds {}x{}",
+                content_x, content_y, content_width, content_height, desc.Width, desc.Height
+            ));
+        }
+        let (presentation_x, presentation_y, presentation_width, presentation_height) =
+            presentation_rect;
+        let presentation_right = presentation_x
+            .checked_add(presentation_width)
+            .ok_or_else(|| "Electron shared texture presentation rectangle overflows".to_owned())?;
+        let presentation_bottom = presentation_y
+            .checked_add(presentation_height)
+            .ok_or_else(|| "Electron shared texture presentation rectangle overflows".to_owned())?;
+        if presentation_width == 0
+            || presentation_height == 0
+            || presentation_right > desc.Width
+            || presentation_bottom > desc.Height
+        {
+            return Err(format!(
+                "Electron shared texture presentation rectangle {},{} {}x{} exceeds {}x{}",
+                presentation_x,
+                presentation_y,
+                presentation_width,
+                presentation_height,
+                desc.Width,
+                desc.Height
+            ));
+        }
+        let ring_recreated = dedicated.ensure_ring(
+            &host_device,
+            presentation_width,
+            presentation_height,
+            desc.Format,
+        )?;
+        let full_copy = ring_recreated
+            || presentation_changed
+            || !source_was_shared_texture
+            || dedicated.newest.is_none();
+        let copy_rect = if full_copy {
+            Some(presentation_rect)
+        } else {
+            intersect_rect(content_rect, presentation_rect)
+        };
+        let Some((copy_x, copy_y, copy_width, copy_height)) = copy_rect else {
+            self.shared_texture_import_count = self.shared_texture_import_count.saturating_add(1);
+            return Ok(SharedTextureImportSubmission::Accepted(None));
+        };
+        let Some(reservation) =
+            try_reserve_shared_texture_copy_slot(&self.shared_texture_copy_slots)
+        else {
+            self.shared_texture_copy_saturation_drop_count = self
+                .shared_texture_copy_saturation_drop_count
+                .saturating_add(1);
+            return Ok(SharedTextureImportSubmission::Dropped);
+        };
+        let in_flight = self
+            .shared_texture_copy_slots
+            .iter()
+            .filter(|slot| slot.in_flight.load(Ordering::Acquire))
+            .count() as u64;
+        self.max_shared_texture_copies_in_flight =
+            self.max_shared_texture_copies_in_flight.max(in_flight);
+        let copy_submitted_at = Instant::now();
+        let base_slot = if full_copy { None } else { dedicated.newest };
+        let slot_index = dedicated.select_ring_slot();
+        let mut submission_error = None;
+        let last_sampled_value = dedicated.ring[slot_index].last_sampled_value;
+        if last_sampled_value > 0 {
+            if let Err(error) = dedicated
+                .context4
+                .Wait(&dedicated.copy_sampled_fence, last_sampled_value)
+            {
+                submission_error = Some(format!(
+                    "The dedicated copy device could not wait for host sampling: {error}; the native graphics device must be restarted"
+                ));
+            }
+        }
+        let mut copy_value = dedicated.next_copy_value;
+        if submission_error.is_none() {
+            let gpu_copy_sample = match dedicated.gpu_timing.as_mut() {
+                Some(timing) => timing.begin(&dedicated.context),
+                None => None,
+            };
+            if let Some(base_slot) = base_slot {
+                dedicated.context.CopyResource(
+                    &dedicated.ring[slot_index].copy_texture,
+                    &dedicated.ring[base_slot].copy_texture,
+                );
+            }
+            dedicated.context.CopySubresourceRegion(
+                &dedicated.ring[slot_index].copy_texture,
+                0,
+                copy_x - presentation_x,
+                copy_y - presentation_y,
+                0,
+                &texture,
+                0,
+                Some(&D3D11_BOX {
+                    left: copy_x,
+                    top: copy_y,
+                    front: 0,
+                    right: copy_x + copy_width,
+                    bottom: copy_y + copy_height,
+                    back: 1,
+                }),
+            );
+            if let Some(timing) = dedicated.gpu_timing.as_mut() {
+                timing.end(&dedicated.context, gpu_copy_sample);
+            }
+            dedicated.next_copy_value = dedicated.next_copy_value.saturating_add(1);
+            copy_value = dedicated.next_copy_value;
+            if let Err(error) = dedicated.context4.Signal(&dedicated.copy_fence, copy_value) {
+                self.shared_texture_copy_telemetry
+                    .submission_failure_count
+                    .fetch_add(1, Ordering::Release);
+                submission_error.get_or_insert(format!(
+                    "ID3D11DeviceContext4::Signal for the dedicated shared texture copy failed after submission: {error}; the native graphics device must be restarted"
+                ));
+            }
+            dedicated.context.Flush();
+        }
+        if submission_error.is_none() {
+            dedicated.pending = Some((slot_index, copy_value));
+            dedicated.newest = Some(slot_index);
+        }
+        let copy_wait = SharedTextureCopyWaitHandle {
+            device: dedicated.device.clone(),
+            host_device: Some(self.device.clone()),
+            completion: SharedTextureCopyCompletion::Fence {
+                fence: dedicated.copy_fence.clone(),
+                fence_value: copy_value,
+            },
+            slot: reservation.into_slot(),
+            submitted_at: copy_submitted_at,
+            telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
+            submission_error,
+        };
+        if ring_recreated {
+            self.texture_adapter_luid = shared_resource_adapter_luid(handle);
+            self.shared_texture_storage_recreate_count =
+                self.shared_texture_storage_recreate_count.saturating_add(1);
+        }
+        if full_copy {
+            self.shared_texture_full_copy_count =
+                self.shared_texture_full_copy_count.saturating_add(1);
+        } else {
+            self.shared_texture_partial_copy_count =
+                self.shared_texture_partial_copy_count.saturating_add(1);
+        }
+        self.dedicated_copy_count = self.dedicated_copy_count.saturating_add(1);
+        self.source_texture = None;
+        self.source_mode = Some(SourceMode::SharedTexture);
+        self.source_width = presentation_width;
+        self.source_height = presentation_height;
+        self.source_format = desc.Format;
+        self.source_sample_count = desc.SampleDesc.Count;
+        self.source_sample_quality = desc.SampleDesc.Quality;
+        self.last_shared_texture_content_rect =
+            [content_x, content_y, content_width, content_height];
+        self.last_shared_texture_presentation_rect = [
+            presentation_x,
+            presentation_y,
+            presentation_width,
+            presentation_height,
+        ];
+        self.shared_texture_import_count = self.shared_texture_import_count.saturating_add(1);
+        Ok(SharedTextureImportSubmission::Accepted(Some(copy_wait)))
+    }
+
+    unsafe fn bind_dedicated_copy_for_render(&mut self) {
+        let (Some(dedicated), Some(context4)) = (
+            self.dedicated_copy.as_mut(),
+            self.shared_texture_copy_context4.as_ref(),
+        ) else {
+            return;
+        };
+        if let Some((slot, copy_value)) = dedicated.pending.take() {
+            if context4
+                .Wait(&dedicated.host_copy_fence, copy_value)
+                .is_ok()
+            {
+                dedicated.displayed = Some(slot);
+                self.source_view = Some(dedicated.ring[slot].host_view.clone());
+            }
+        }
+    }
+
+    unsafe fn signal_dedicated_copy_sampled(&mut self) -> bool {
+        let (Some(dedicated), Some(context4)) = (
+            self.dedicated_copy.as_mut(),
+            self.shared_texture_copy_context4.as_ref(),
+        ) else {
+            return false;
+        };
+        let Some(slot) = dedicated.displayed else {
+            return false;
+        };
+        let sampled_value = dedicated.next_sampled_value.saturating_add(1);
+        if context4
+            .Signal(&dedicated.sampled_fence, sampled_value)
+            .is_err()
+        {
+            return false;
+        }
+        dedicated.next_sampled_value = sampled_value;
+        dedicated.ring[slot].last_sampled_value = sampled_value;
+        true
+    }
+
+    unsafe fn release_swap_chain_for_replacement(&mut self) {
+        self.render_target = None;
+        self.source_view = None;
+        self.source_texture = None;
+        self.swap_chain = None;
+        if !self.frame_latency_waitable_object.is_invalid() {
+            let _ = CloseHandle(self.frame_latency_waitable_object);
+            self.frame_latency_waitable_object = HANDLE::default();
+        }
+        self.frame_latency_ready_permits = 0;
+        self.context.ClearState();
+        self.context.Flush();
+    }
+
     pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<Option<i32>, String> {
+        if let Some(failure) = self.swap_chain_attach_failure.as_ref() {
+            return Err(failure.clone());
+        }
         self.present_retry_pending = false;
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
         let render_started_at = Instant::now();
-        if self.frame_latency_wait_bypassed {
-            // The waitable object stopped signaling after a native window
-            // transition. The timer-driven nonblocking Present fallback now
-            // provides bounded retries; do not poll the stale signal again.
+        if self.present_occluded {
+            let swap_chain = self
+                .swap_chain
+                .as_ref()
+                .ok_or_else(|| "D3D11 swap chain is unavailable".to_owned())?;
+            if swap_chain.Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED {
+                return Ok(None);
+            }
+            self.present_occluded = false;
+            self.rearm_frame_latency_wait();
+        }
+        if self.frame_latency_wait.bypassed {
+            // The waitable object stopped signaling. The timer-driven
+            // nonblocking Present fallback provides bounded retries, and a
+            // zero-timeout poll re-arms the wait once it signals repeatedly.
             self.last_frame_latency_wait_duration_ms = 0.0;
+            let ready = !self.frame_latency_waitable_object.is_invalid()
+                && WaitForSingleObjectEx(self.frame_latency_waitable_object, 0, false)
+                    == WAIT_OBJECT_0;
+            if self.frame_latency_wait.record_bypass_poll(ready) {
+                self.frame_latency_ready_permits = 0;
+                self.release_frame_timer_resolution();
+            }
         } else if self.frame_latency_ready_permits > 0 {
             // The async worker consumed the auto-reset waitable-object signal.
             // Spend its matching permit instead of polling the same handle a
@@ -1719,6 +2738,7 @@ impl WindowsD3d11Renderer {
                     self.frame_latency_wait_timeout_count.saturating_add(1);
                 return Ok(None);
             }
+            self.frame_latency_wait.record_ready();
         }
         if let Some(previous_render_started_at) =
             self.last_render_started_at.replace(render_started_at)
@@ -1739,6 +2759,7 @@ impl WindowsD3d11Renderer {
                     self.render_interval_over_100_ms_count.saturating_add(1);
             }
         }
+        self.bind_dedicated_copy_for_render();
         // Steam renders its overlay from the Present hook on this device and
         // can transiently touch rasterizer/scissor and other pipeline state.
         // Start every game frame from known D3D11 defaults before rebinding
@@ -1756,6 +2777,7 @@ impl WindowsD3d11Renderer {
         self.context
             .ClearRenderTargetView(render_target, &clear_color);
 
+        let mut sampled_signalled = false;
         if self.source_view.is_some() && self.source_width > 0 && self.source_height > 0 {
             let (x, y, width, height) = aspect_fit(
                 self.width,
@@ -1784,6 +2806,7 @@ impl WindowsD3d11Renderer {
                 .PSSetSamplers(0, Some(slice::from_ref(&self.sampler)));
             self.context.Draw(3, 0);
             self.context.PSSetShaderResources(0, Some(&[None]));
+            sampled_signalled = self.signal_dedicated_copy_sampled();
         }
 
         let swap_chain = self
@@ -1797,11 +2820,14 @@ impl WindowsD3d11Renderer {
         // flip-model composition remains owned by DWM.
         let (present_sync_interval, present_flags) = self
             .present_mode
-            .parameters(self.present_sync_interval, self.frame_latency_wait_bypassed);
+            .parameters(self.present_sync_interval, self.frame_latency_wait.bypassed);
         self.last_present_flags = present_flags.0;
         let present_started_at = Instant::now();
         let result = swap_chain.Present(present_sync_interval, present_flags);
         let present_duration_ms = present_started_at.elapsed().as_secs_f64() * 1_000.0;
+        if sampled_signalled && !present_submitted_frame(result) {
+            self.context.Flush();
+        }
         self.last_present_duration_ms = present_duration_ms;
         self.max_present_duration_ms = self.max_present_duration_ms.max(present_duration_ms);
         if self
@@ -1820,10 +2846,11 @@ impl WindowsD3d11Renderer {
             self.render_over_25_ms_count = self.render_over_25_ms_count.saturating_add(1);
         }
         self.last_present = result.0;
+        self.present_occluded = result == DXGI_STATUS_OCCLUDED;
         if result == DXGI_ERROR_WAS_STILL_DRAWING {
             self.present_retry_pending = true;
             self.request_frame_timer_resolution();
-            if !self.frame_latency_wait_bypassed {
+            if !self.frame_latency_wait.bypassed {
                 self.frame_latency_ready_permits = 1;
             }
             self.present_busy_count = self.present_busy_count.saturating_add(1);
@@ -1884,7 +2911,7 @@ impl WindowsD3d11Renderer {
         }
         if self
             .present_mode
-            .needs_frame_timer_resolution(self.frame_latency_wait_bypassed, false)
+            .needs_frame_timer_resolution(self.frame_latency_wait.bypassed, false)
         {
             self.request_frame_timer_resolution();
         } else {
@@ -1935,7 +2962,7 @@ impl WindowsD3d11Renderer {
 
     pub fn present_sync_interval(&self) -> u32 {
         self.present_mode
-            .parameters(self.present_sync_interval, self.frame_latency_wait_bypassed)
+            .parameters(self.present_sync_interval, self.frame_latency_wait.bypassed)
             .0
     }
 
@@ -1972,7 +2999,7 @@ impl WindowsD3d11Renderer {
     pub fn duplicate_frame_latency_wait_handle(
         &self,
     ) -> Result<Option<FrameLatencyWaitHandle>, String> {
-        if self.frame_latency_waitable_object.is_invalid() || self.frame_latency_wait_bypassed {
+        if self.frame_latency_waitable_object.is_invalid() || self.frame_latency_wait.bypassed {
             return Ok(None);
         }
 
@@ -2000,10 +3027,11 @@ impl WindowsD3d11Renderer {
         if generation == 0
             || generation != self.frame_latency_wait_generation
             || self.frame_latency_waitable_object.is_invalid()
-            || self.frame_latency_wait_bypassed
+            || self.frame_latency_wait.bypassed
         {
             return false;
         }
+        self.frame_latency_wait.record_ready();
         self.frame_latency_ready_permits =
             self.frame_latency_ready_permits.saturating_add(1).min(1);
         self.async_frame_latency_ready_count =
@@ -2018,10 +3046,127 @@ impl WindowsD3d11Renderer {
         {
             return false;
         }
-        self.frame_latency_wait_bypassed = true;
+        self.frame_latency_wait.bypass();
         self.frame_latency_ready_permits = 0;
         self.request_frame_timer_resolution();
         true
+    }
+
+    pub fn record_frame_latency_timeout(
+        &mut self,
+        generation: u64,
+        expected: bool,
+    ) -> Option<FrameLatencyTimeoutOutcome> {
+        if generation == 0
+            || generation != self.frame_latency_wait_generation
+            || self.frame_latency_waitable_object.is_invalid()
+        {
+            return None;
+        }
+        let outcome = self
+            .frame_latency_wait
+            .record_timeout(expected || self.present_occluded);
+        if outcome == FrameLatencyTimeoutOutcome::Bypassed {
+            self.frame_latency_ready_permits = 0;
+            self.request_frame_timer_resolution();
+        }
+        Some(outcome)
+    }
+
+    pub unsafe fn sync_window_presentation_state(&mut self) -> Result<bool, String> {
+        if windows_sys::Win32::UI::WindowsAndMessaging::IsIconic(self.window.0) != 0 {
+            self.window_iconic = true;
+            return Ok(false);
+        }
+        let mut resumed = std::mem::take(&mut self.window_iconic);
+        if self.present_occluded {
+            let context_lock = self.shared_texture_context_lock.clone();
+            let _context_guard = lock_shared_texture_context(&context_lock)?;
+            let Some(swap_chain) = self.swap_chain.as_ref() else {
+                return Ok(resumed);
+            };
+            if swap_chain.Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED {
+                return Ok(false);
+            }
+            self.present_occluded = false;
+            resumed = true;
+        }
+        if resumed {
+            self.rearm_frame_latency_wait();
+        }
+        Ok(resumed)
+    }
+
+    pub fn rearm_frame_latency_wait(&mut self) -> bool {
+        if self.frame_latency_waitable_object.is_invalid() || !self.frame_latency_wait.rearm() {
+            return false;
+        }
+        self.frame_latency_ready_permits = 0;
+        self.release_frame_timer_resolution();
+        true
+    }
+
+    pub fn present_occluded(&self) -> bool {
+        self.present_occluded
+    }
+
+    pub fn frame_latency_wait_diagnostics(&self) -> serde_json::Value {
+        let gate = &self.frame_latency_wait;
+        serde_json::json!({
+            "bypassed": gate.bypassed,
+            "consecutiveTimeouts": gate.consecutive_timeouts,
+            "bypassTimeoutThreshold": FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS,
+            "bypassCount": gate.bypass_count,
+            "rearmCount": gate.rearm_count,
+            "expectedTimeoutCount": gate.expected_timeout_count,
+            "presentOccluded": self.present_occluded,
+        })
+    }
+
+    pub fn shared_texture_copy_gpu_timing_diagnostics(&self) -> serde_json::Value {
+        self.dedicated_copy
+            .as_ref()
+            .and_then(|dedicated| dedicated.gpu_timing.as_ref())
+            .or(self.gpu_copy_timing.as_ref())
+            .map_or(serde_json::Value::Null, GpuCopyTiming::diagnostics)
+    }
+
+    pub fn shared_texture_copy_dedicated_device_diagnostics(&self) -> serde_json::Value {
+        self.dedicated_copy_diagnostics()
+    }
+
+    pub fn adapter_diagnostics(&self) -> serde_json::Value {
+        let output_luid = unsafe {
+            output_adapter_luid_for_window(self.window).or_else(|| {
+                self.swap_chain
+                    .as_ref()
+                    .and_then(|swap_chain| swap_chain.GetContainingOutput().ok())
+                    .and_then(|output| output.GetParent::<IDXGIAdapter>().ok())
+                    .and_then(|adapter| adapter.GetDesc().ok())
+                    .map(|desc| desc.AdapterLuid)
+            })
+        };
+        let luid_equal = |left: Option<LUID>, right: Option<LUID>| match (left, right) {
+            (Some(left), Some(right)) => {
+                Some(left.HighPart == right.HighPart && left.LowPart == right.LowPart)
+            }
+            _ => None,
+        };
+        serde_json::json!({
+            "hostAdapterLuid": self.host_adapter_luid.map(adapter_luid_string),
+            "textureAdapterLuid": self.texture_adapter_luid.map(adapter_luid_string),
+            "outputAdapterLuid": output_luid.map(adapter_luid_string),
+            "crossAdapterPresent": luid_equal(self.host_adapter_luid, output_luid).map(|same| !same),
+            "crossAdapterTexture": luid_equal(self.host_adapter_luid, self.texture_adapter_luid).map(|same| !same),
+        })
+    }
+
+    pub fn frame_latency_wait_counts(&self) -> (u64, u64, u64) {
+        (
+            self.frame_latency_wait.bypass_count,
+            self.frame_latency_wait.rearm_count,
+            self.frame_latency_wait.expected_timeout_count,
+        )
     }
 
     fn request_frame_timer_resolution(&mut self) {
@@ -2042,7 +3187,7 @@ impl WindowsD3d11Renderer {
     }
 
     pub fn frame_latency_wait_bypassed(&self) -> bool {
-        self.frame_latency_wait_bypassed
+        self.frame_latency_wait.bypassed
     }
 
     pub fn fallback_timer_resolution_requested(&self) -> bool {
@@ -2880,6 +4025,7 @@ mod shared_texture_copy_slot_tests {
             }
             let wait = SharedTextureCopyWaitHandle {
                 device: renderer.device.clone(),
+                host_device: None,
                 completion: SharedTextureCopyCompletion::Query {
                     context: renderer.context.clone(),
                     query,
@@ -3112,6 +4258,299 @@ fn intersect_rect(
     let right = (first.0 + first.2).min(second.0 + second.2);
     let bottom = (first.1 + first.3).min(second.1 + second.3);
     (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
+}
+
+#[cfg(test)]
+mod hardware_window_tests;
+
+#[cfg(test)]
+mod dedicated_copy_device_tests {
+    use super::{
+        copy_wait_device_removed_error, dedicated_copy_device_removed_error, is_device_lost_error,
+        present_submitted_frame, stalled_shared_texture_copy_error, DXGI_ERROR_WAS_STILL_DRAWING,
+        DXGI_STATUS_OCCLUDED,
+    };
+
+    #[test]
+    fn a_copy_wait_reports_host_device_removal_without_a_fence_sentinel() {
+        let removed = windows::core::Error::from(DXGI_ERROR_DEVICE_REMOVED);
+        assert!(copy_wait_device_removed_error(None, None).is_none());
+        let copy = copy_wait_device_removed_error(Some(&removed), None).expect("copy removal");
+        assert!(is_device_lost_error(&copy), "{copy}");
+        let host = copy_wait_device_removed_error(None, Some(&removed))
+            .expect("host removal must end the dedicated copy wait");
+        assert!(is_device_lost_error(&host), "{host}");
+        assert!(host.contains("host device"), "{host}");
+    }
+
+    #[test]
+    fn only_a_submitted_present_carries_the_sampled_signal_to_the_gpu() {
+        assert!(present_submitted_frame(windows::core::HRESULT(0)));
+        assert!(!present_submitted_frame(DXGI_ERROR_WAS_STILL_DRAWING));
+        assert!(!present_submitted_frame(DXGI_STATUS_OCCLUDED));
+        assert!(!present_submitted_frame(DXGI_ERROR_DEVICE_REMOVED));
+    }
+
+    #[test]
+    fn a_stalled_copy_after_either_device_was_removed_is_device_loss() {
+        let removed = windows::core::Error::from(DXGI_ERROR_DEVICE_REMOVED);
+        let stalled = stalled_shared_texture_copy_error(None, None);
+        assert!(stalled.contains("previously stalled"));
+        assert!(!is_device_lost_error(&stalled));
+        let host = stalled_shared_texture_copy_error(Some(&removed), None);
+        assert!(is_device_lost_error(&host), "{host}");
+        let copy = stalled_shared_texture_copy_error(None, Some(&removed));
+        assert!(is_device_lost_error(&copy), "{copy}");
+        assert!(copy.contains("dedicated copy device"), "{copy}");
+    }
+    use windows::Win32::Graphics::Dxgi::{
+        DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET,
+    };
+
+    #[test]
+    fn a_removed_dedicated_copy_device_is_reported_as_device_loss() {
+        for code in [
+            DXGI_ERROR_DEVICE_REMOVED,
+            DXGI_ERROR_DEVICE_HUNG,
+            DXGI_ERROR_DEVICE_RESET,
+        ] {
+            let message = dedicated_copy_device_removed_error(&windows::core::Error::from(code));
+            assert!(is_device_lost_error(&message), "{message}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod adapter_and_gpu_timing_diagnostics_tests {
+    use super::{
+        adapter_for_monitor, adapter_luid_string, GpuCopyTimingRing, GpuCopyTimingStats,
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, GPU_COPY_TIMING_RING_SIZE, LUID,
+    };
+
+    #[test]
+    fn a_query_that_never_resolves_does_not_stop_gpu_copy_sampling() {
+        let mut ring = GpuCopyTimingRing::default();
+        let stuck = ring.claim().expect("first sample");
+        ring.issued(stuck);
+        let mut sampled = 0;
+        for _ in 0..GPU_COPY_TIMING_RING_SIZE * 8 {
+            if let Some(index) = ring.claim() {
+                ring.issued(index);
+                if index != stuck {
+                    ring.resolved(index);
+                }
+                sampled += 1;
+            }
+        }
+        assert!(
+            sampled >= GPU_COPY_TIMING_RING_SIZE * 6,
+            "sampling continued past a stuck entry only {sampled} times"
+        );
+        let mut reissued = false;
+        for _ in 0..GPU_COPY_TIMING_RING_SIZE * 8 {
+            if let Some(index) = ring.claim() {
+                reissued |= index == stuck;
+                ring.issued(index);
+                ring.resolved(index);
+            }
+        }
+        assert!(reissued, "a stuck entry is eventually abandoned and reused");
+        assert!(ring.abandoned_count >= 1);
+    }
+
+    #[test]
+    fn the_output_adapter_is_the_one_that_owns_the_window_monitor() {
+        let integrated = LUID {
+            LowPart: 1,
+            HighPart: 0,
+        };
+        let discrete = LUID {
+            LowPart: 2,
+            HighPart: 0,
+        };
+        let outputs = [(discrete, 30), (integrated, 10), (integrated, 20)];
+        let found = adapter_for_monitor(&20, outputs).expect("monitor owner");
+        assert_eq!((found.LowPart, found.HighPart), (1, 0));
+        assert!(adapter_for_monitor(&40, outputs).is_none());
+    }
+
+    #[test]
+    fn adapter_luids_format_as_stable_hex_pairs() {
+        assert_eq!(
+            adapter_luid_string(LUID {
+                LowPart: 0x0001_2f3a,
+                HighPart: 0,
+            }),
+            "00000000-00012f3a"
+        );
+        assert_eq!(
+            adapter_luid_string(LUID {
+                LowPart: 7,
+                HighPart: -1,
+            }),
+            "ffffffff-00000007"
+        );
+    }
+
+    #[test]
+    fn gpu_copy_timing_converts_ticks_and_rejects_disjoint_samples() {
+        let mut stats = GpuCopyTimingStats::default();
+        let frequency = D3D11_QUERY_DATA_TIMESTAMP_DISJOINT {
+            Frequency: 1_000_000,
+            Disjoint: false.into(),
+        };
+        stats.record(1_000, 1_250, frequency);
+        stats.record(2_000, 2_150, frequency);
+        stats.record(
+            3_000,
+            3_900,
+            D3D11_QUERY_DATA_TIMESTAMP_DISJOINT {
+                Frequency: 1_000_000,
+                Disjoint: true.into(),
+            },
+        );
+        stats.record(5_000, 4_000, frequency);
+        let diagnostics = stats.diagnostics(30);
+        assert_eq!(diagnostics["sampleCount"], 2);
+        assert_eq!(diagnostics["disjointCount"], 2);
+        assert_eq!(diagnostics["sampleInterval"], 30);
+        assert!((diagnostics["lastMs"].as_f64().unwrap() - 0.15).abs() < 1e-9);
+        assert!((diagnostics["maxMs"].as_f64().unwrap() - 0.25).abs() < 1e-9);
+        assert!((diagnostics["meanMs"].as_f64().unwrap() - 0.2).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod frame_latency_wait_gate_tests {
+    use super::{
+        FrameLatencyTimeoutOutcome, FrameLatencyWaitGate, FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS,
+        FRAME_LATENCY_WAIT_REARM_READY_POLLS,
+    };
+
+    #[test]
+    fn only_consecutive_unexpected_timeouts_latch_the_bypass() {
+        let mut gate = FrameLatencyWaitGate::default();
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+            assert!(!gate.bypassed);
+        }
+        assert_eq!(
+            gate.record_timeout(false),
+            FrameLatencyTimeoutOutcome::Bypassed
+        );
+        assert!(gate.bypassed);
+        assert_eq!(gate.bypass_count, 1);
+    }
+
+    #[test]
+    fn expected_timeouts_never_latch_and_restart_the_count() {
+        let mut gate = FrameLatencyWaitGate::default();
+        for _ in 0..10 {
+            assert_eq!(
+                gate.record_timeout(true),
+                FrameLatencyTimeoutOutcome::Expected
+            );
+        }
+        assert!(!gate.bypassed);
+        assert_eq!(gate.expected_timeout_count, 10);
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            gate.record_timeout(false);
+        }
+        gate.record_timeout(true);
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+        }
+        assert!(!gate.bypassed);
+    }
+
+    #[test]
+    fn a_ready_signal_restarts_the_timeout_count() {
+        let mut gate = FrameLatencyWaitGate::default();
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            gate.record_timeout(false);
+        }
+        gate.record_ready();
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+        }
+        assert!(!gate.bypassed);
+    }
+
+    #[test]
+    fn rearm_clears_a_latched_bypass_and_counts_each_recovery() {
+        let mut gate = FrameLatencyWaitGate::default();
+        assert!(!gate.rearm(), "an armed wait has nothing to re-arm");
+        assert!(gate.bypass());
+        assert!(!gate.bypass(), "a second bypass is not a new latch");
+        assert_eq!(
+            gate.record_timeout(false),
+            FrameLatencyTimeoutOutcome::Bypassed
+        );
+        assert_eq!(gate.bypass_count, 1);
+        assert!(gate.rearm());
+        assert!(!gate.bypassed);
+        assert_eq!(gate.rearm_count, 1);
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+        }
+    }
+
+    #[test]
+    fn consecutive_ready_polls_rearm_a_bypass_without_a_window_transition() {
+        let mut gate = FrameLatencyWaitGate::default();
+        assert!(
+            !gate.record_bypass_poll(true),
+            "an armed wait ignores bypass polls"
+        );
+        gate.bypass();
+        for _ in 1..FRAME_LATENCY_WAIT_REARM_READY_POLLS {
+            assert!(!gate.record_bypass_poll(true));
+        }
+        assert!(
+            !gate.record_bypass_poll(false),
+            "a not-ready poll restarts the count"
+        );
+        for _ in 1..FRAME_LATENCY_WAIT_REARM_READY_POLLS {
+            assert!(!gate.record_bypass_poll(true));
+        }
+        assert!(gate.bypassed);
+        assert!(gate.record_bypass_poll(true));
+        assert!(!gate.bypassed);
+        assert_eq!(gate.rearm_count, 1);
+    }
+
+    #[test]
+    fn a_waitable_that_never_signals_stays_bypassed() {
+        let mut gate = FrameLatencyWaitGate::default();
+        gate.bypass();
+        for _ in 0..1_000 {
+            assert!(!gate.record_bypass_poll(false));
+        }
+        assert!(gate.bypassed);
+        assert_eq!(gate.rearm_count, 0);
+    }
+
+    #[test]
+    fn a_new_swap_chain_starts_armed_without_losing_history() {
+        let mut gate = FrameLatencyWaitGate::default();
+        gate.bypass();
+        gate.reset_for_new_swap_chain();
+        assert!(!gate.bypassed);
+        assert_eq!(gate.consecutive_timeouts, 0);
+        assert_eq!(gate.bypass_count, 1);
+    }
 }
 
 #[cfg(test)]

@@ -1301,7 +1301,8 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /let previous_menu = mem::replace\(&mut surface\.menu, menu\);/);
   assert.doesNotMatch(source, /client size did not stabilize after changing its menu/);
   assert.match(d3dSource, /DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT/);
-  assert.match(d3dSource, /SetMaximumFrameLatency\(2\)/);
+  assert.match(d3dSource, /pub const MAXIMUM_FRAME_LATENCY: u32 = 1;/);
+  assert.match(d3dSource, /SetMaximumFrameLatency\(MAXIMUM_FRAME_LATENCY\)/);
   assert.match(d3dSource, /DuplicateHandle\(/);
   assert.match(d3dSource, /frame_latency_ready_permits/);
   assert.match(d3dSource, /frame_latency_wait_bypassed/);
@@ -1314,7 +1315,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /wait_result == WAIT_TIMEOUT[\s\S]*?return Ok\(None\)/);
   assert.match(
     d3dSource,
-    /if self\.frame_latency_wait_bypassed \{[\s\S]*?self\.last_frame_latency_wait_duration_ms = 0\.0;/
+    /if self\.frame_latency_wait\.bypassed \{[\s\S]*?self\.last_frame_latency_wait_duration_ms = 0\.0;/
   );
   assert.match(d3dSource, /pub fn bypass_frame_latency_wait\(/);
   assert.match(d3dSource, /DXGI_PRESENT_DO_NOT_WAIT/);
@@ -1347,7 +1348,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
   assert.match(
     bridgeSource,
-    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\s*&& windowsPresentDiagnosticMode !== "nonblocking-immediate"\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
+    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\s*&& !nativePresentationSuspended\s*&& windowsPresentDiagnosticMode !== "nonblocking-immediate"\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
   );
   assert.match(d3dSource, /D3D11_QUERY_EVENT/);
   assert.match(d3dSource, /D3D11_ASYNC_GETDATA_DONOTFLUSH/);
@@ -25964,6 +25965,87 @@ test("Windows present diagnostic dispatches input before a still-blocking native
   assert.equal(snapshot.nativeFrameWaitFallback, false);
 });
 
+test("a suspended Windows host with the overlay active keeps the timer cadence instead of spinning", async (t) => {
+  let suspended = false;
+  let hostPumps = 0;
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync", {
+    isNativeOverlayHostFramePending: () => false,
+    isNativeOverlayHostPresentationSuspended: () => suspended,
+  });
+  const pumpFrame = fake.pumpNativeOverlayHostFrame;
+  fake.pumpNativeOverlayHostFrame = function (...args) {
+    hostPumps += 1;
+    return pumpFrame.apply(this, args);
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 20 });
+  t.after(() => session.close());
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  suspended = true;
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().overlayActive, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent").at(-1)?.args[0],
+    true,
+    "the active overlay applies continuous presentation"
+  );
+  session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const pumpsWhileSuspended = hostPumps;
+  const busyUntil = performance.now() + 200;
+  while (performance.now() < busyUntil) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(
+    hostPumps - pumpsWhileSuspended <= 30,
+    `a minimized or occluded host pumped ${hostPumps - pumpsWhileSuspended} times in 200 ms at a 20 ms cadence`
+  );
+
+  suspended = false;
+  const pumpsBeforeRestore = hostPumps;
+  const restoredUntil = performance.now() + 100;
+  while (performance.now() < restoredUntil) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(
+    hostPumps - pumpsBeforeRestore > 30,
+    `a restored host with the overlay active returns to display-synchronized pumping (${hostPumps - pumpsBeforeRestore} pumps)`
+  );
+});
+
+test("an older Windows addon without the suspended query keeps display-synchronized pumping", async (t) => {
+  let hostPumps = 0;
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync", {
+    isNativeOverlayHostFramePending: () => false,
+  });
+  delete fake.isNativeOverlayHostPresentationSuspended;
+  const pumpFrame = fake.pumpNativeOverlayHostFrame;
+  fake.pumpNativeOverlayHostFrame = function (...args) {
+    hostPumps += 1;
+    return pumpFrame.apply(this, args);
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 20 });
+  t.after(() => session.close());
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  await new Promise((resolve) => setImmediate(resolve));
+  session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const pumpsBefore = hostPumps;
+  const busyUntil = performance.now() + 100;
+  while (performance.now() < busyUntil) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(session.isOpen(), true);
+  assert.equal(session.snapshot().lastError, undefined);
+  assert.ok(hostPumps - pumpsBefore > 30, `an older addon kept its previous scheduling (${hostPumps - pumpsBefore} pumps)`);
+});
+
 test("Windows present diagnostic busy retries yield even with an always-ready waitable and keep the newest frame", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);
@@ -26234,6 +26316,263 @@ test("Windows frame readiness timeout stops retrying after a message-path presen
   assert.equal(waitResolvers.length, 0);
 });
 
+function createRecoverableFrameWaitNative(state) {
+  let probeOpen = false;
+  return createFakeNative({
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      state.framePending = true;
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    isNativeOverlayHostFramePending() {
+      return state.framePending;
+    },
+    isNativeOverlayHostFrameLatencyWaitBypassed() {
+      return state.bypassed;
+    },
+    setNativeOverlayHostDedicatedCopyDevice(enabled) {
+      this.calls.push({ method: "setNativeOverlayHostDedicatedCopyDevice", args: [enabled] });
+    },
+    waitForNativeOverlayHostFrameReady(timeoutMs) {
+      this.calls.push({ method: "waitForNativeOverlayHostFrameReady", args: [timeoutMs] });
+      return state.waitResult === "reject"
+        ? Promise.reject(new Error("wait failed"))
+        : new Promise((resolve) => state.waitResolvers.push(resolve));
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+}
+
+function startRecoverableFrameWaitSession(t, state, options = {}) {
+  setProcessPlatformForTest(t, "win32");
+  const fake = createRecoverableFrameWaitNative(state);
+  const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000, ...options });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+  let frameByte = 0;
+  const pumpFrame = async () => {
+    frameByte = (frameByte + 1) % 256;
+    session.updateFrame({ data: Buffer.from([frameByte, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  const waitCalls = () =>
+    fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length;
+  return { session, pumpFrame, waitCalls, fake };
+}
+
+test("Windows dedicated copy device option is forwarded once only when defined", async (t) => {
+  for (const [options, forwarded, expected] of [
+    [{ windowsDedicatedCopyDevice: true }, [[true]], true],
+    [{ windowsDedicatedCopyDevice: false }, [[false]], false],
+    [{}, [], false]
+  ]) {
+    const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+    const { session, pumpFrame, fake } = startRecoverableFrameWaitSession(t, state, options);
+    await pumpFrame();
+    await pumpFrame();
+    assert.deepEqual(
+      fake.calls
+        .filter((call) => call.method === "setNativeOverlayHostDedicatedCopyDevice")
+        .map((call) => call.args),
+      forwarded,
+      "a session that omits the process-wide option must not turn it off"
+    );
+    assert.equal(session.snapshot().windowsDedicatedCopyDevice, expected);
+    session.close();
+  }
+});
+
+test("session focus brings the Windows host forward and is a no-op elsewhere", async (t) => {
+  for (const [platform, expected] of [["win32", 1], ["linux", 0], ["darwin", 0]]) {
+    setProcessPlatformForTest(t, platform);
+    const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+    const fake = createRecoverableFrameWaitNative(state);
+    let focusCalls = 0;
+    fake.focusNativeOverlayHost = () => { focusCalls += 1; };
+    const steam = loadSteamWithFakeNative(fake);
+    steam.init(480);
+    const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+    session.focus();
+    assert.equal(focusCalls, expected, platform);
+    session.close();
+    session.focus();
+    assert.equal(focusCalls, expected, `${platform} closed session`);
+    clearSteamBridgeCache();
+  }
+  setProcessPlatformForTest(t, "win32");
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const fake = createRecoverableFrameWaitNative(state);
+  delete fake.focusNativeOverlayHost;
+  const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  assert.doesNotThrow(() => session.focus(), "an older addon without focus support is a no-op");
+  session.close();
+  clearSteamBridgeCache();
+});
+
+test("Windows dedicated copy and frame-wait recovery fields are no-ops off Windows", async (t) => {
+  for (const platform of ["linux", "darwin"]) {
+    setProcessPlatformForTest(t, platform);
+    const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+    const fake = createRecoverableFrameWaitNative(state);
+    const steam = loadSteamWithFakeNative(fake);
+    steam.init(480);
+    const session = steam.overlay.startNativeOverlaySession({
+      pumpIntervalMs: 10000,
+      windowsDedicatedCopyDevice: true
+    });
+    session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+    session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      fake.calls.filter((call) => call.method === "setNativeOverlayHostDedicatedCopyDevice"),
+      [],
+      `${platform} must not forward the Windows copy device option`
+    );
+    const snapshot = session.snapshot();
+    assert.equal("windowsDedicatedCopyDevice" in snapshot, false, platform);
+    assert.equal("nativeFrameWaitRecoveryCount" in snapshot, false, platform);
+    session.close();
+    clearSteamBridgeCache();
+  }
+});
+
+async function latchFrameWaitByTimeout(state, session, pumpFrame) {
+  await pumpFrame();
+  assert.equal(state.waitResolvers.length, 1);
+  state.bypassed = true;
+  state.waitResolvers.shift()(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
+}
+
+test("Windows frame readiness fallback recovers after counted native re-arm observations", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await latchFrameWaitByTimeout(state, session, pumpFrame);
+  const waitsWhileLatched = waitCalls();
+
+  for (let index = 0; index < 5; index += 1) {
+    await pumpFrame();
+  }
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true, "a bypassed native waitable keeps the fallback");
+  assert.equal(waitCalls(), waitsWhileLatched, "the fallback must not arm DXGI waits");
+
+  state.bypassed = false;
+  await pumpFrame();
+  await pumpFrame();
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true, "two re-armed observations are not enough");
+  state.bypassed = true;
+  await pumpFrame();
+  state.bypassed = false;
+  await pumpFrame();
+  await pumpFrame();
+  assert.equal(
+    session.snapshot().nativeFrameWaitFallback,
+    true,
+    "a relapse into bypass restarts the consecutive observation count"
+  );
+  assert.equal(session.snapshot().nativeFrameWaitRecoveryCount, 0);
+  await pumpFrame();
+  assert.equal(session.snapshot().nativeFrameWaitFallback, false);
+  assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+  assert.equal(session.snapshot().nativeFrameWaitRecoveryCount, 1);
+
+  state.framePending = true;
+  await pumpFrame();
+  assert.equal(waitCalls(), waitsWhileLatched + 1, "recovery resumes the bounded DXGI wait path");
+  assert.equal(state.waitResolvers.length, 1);
+  state.waitResolvers.shift()(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitFallback, false);
+});
+
+test("Windows frame readiness fallback stays latched while native keeps the waitable bypassed", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await latchFrameWaitByTimeout(state, session, pumpFrame);
+  const waitsWhileLatched = waitCalls();
+  for (let index = 0; index < 12; index += 1) {
+    await pumpFrame();
+  }
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
+  assert.equal(waitCalls(), waitsWhileLatched);
+});
+
+test("Windows frame readiness timeout keeps waiting while native keeps the waitable armed", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await pumpFrame();
+  assert.equal(state.waitResolvers.length, 1);
+  state.waitResolvers.shift()(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+  assert.equal(
+    session.snapshot().nativeFrameWaitFallback,
+    false,
+    "an expected or first timeout must not latch the timer fallback"
+  );
+  state.framePending = true;
+  await pumpFrame();
+  assert.equal(waitCalls(), 2, "the next frame arms a fresh bounded DXGI wait");
+  assert.equal(state.waitResolvers.length, 1);
+});
+
+test("Windows frame readiness falls back once native latches after repeated timeouts", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  for (let timeout = 1; timeout <= 3; timeout += 1) {
+    state.framePending = true;
+    await pumpFrame();
+    assert.equal(state.waitResolvers.length, 1, `timeout ${timeout} has one in-flight wait`);
+    state.bypassed = timeout === 3;
+    state.waitResolvers.shift()(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(session.snapshot().nativeFrameWaitFallback, timeout === 3);
+  }
+  const waitsAtLatch = waitCalls();
+  await pumpFrame();
+  assert.equal(waitCalls(), waitsAtLatch, "a latched session must not arm DXGI waits");
+});
+
+test("Windows frame readiness fallback after a failed wait never recovers", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "reject" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await pumpFrame();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
+  const waitsAfterFailure = waitCalls();
+  for (let index = 0; index < 8; index += 1) {
+    await pumpFrame();
+  }
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true, "wait errors keep the permanent fallback");
+  assert.equal(waitCalls(), waitsAfterFailure);
+});
+
 test("Windows frame-driven pump coalesces to the newest retained source", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake, pumpedSources } = createFrameDrivenPumpTestNative();
@@ -26328,7 +26667,7 @@ test("Windows busy Present preserves its consumed readiness permit for the bound
   const source = readSourceFile("crates", "native", "src", "windows_d3d11.rs");
   const busyStart = source.indexOf("if result == DXGI_ERROR_WAS_STILL_DRAWING {");
   const busyBranch = source.slice(busyStart, source.indexOf("return Ok(None);", busyStart));
-  assert.match(busyBranch, /if !self\.frame_latency_wait_bypassed \{\s*self\.frame_latency_ready_permits = 1;/u);
+  assert.match(busyBranch, /if !self\.frame_latency_wait\.bypassed \{\s*self\.frame_latency_ready_permits = 1;/u);
   assert.match(busyBranch, /self\.request_frame_timer_resolution\(\)/u);
   assert.match(busyBranch, /self\.present_retry_pending = true/u);
 });

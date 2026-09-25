@@ -1200,6 +1200,7 @@ export interface ElectronNativeOverlaySessionOptions {
   restoreFocus?: () => void;
   restoreFocusDelayMs?: number;
   windowsSharedTextureResumeDelayMs?: number;
+  windowsDedicatedCopyDevice?: boolean;
   hideNativeHostOnOverlayDeactivate?: boolean;
 }
 
