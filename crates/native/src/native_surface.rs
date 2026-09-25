@@ -3845,7 +3845,7 @@ mod windows {
                 "frameLatencyFallbackTimerResolutionRequested": renderer.fallback_timer_resolution_requested(),
                 "frameLatencyFallbackTimerResolutionActive": renderer.fallback_timer_resolution_active(),
                 "frameLatencyFallbackTimerResolutionMs": if renderer.fallback_timer_resolution_active() { Some(1) } else { None },
-                "maximumFrameLatency": 2,
+                "maximumFrameLatency": windows_d3d11::MAXIMUM_FRAME_LATENCY,
                 "presentSyncInterval": renderer.present_sync_interval(),
                 "presentDiagnostics": renderer.present_diagnostics(),
                 "frameLatencyWaitTimeoutCount": renderer.frame_latency_wait_timeout_count(),

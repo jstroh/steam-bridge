@@ -1301,7 +1301,8 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(source, /let previous_menu = mem::replace\(&mut surface\.menu, menu\);/);
   assert.doesNotMatch(source, /client size did not stabilize after changing its menu/);
   assert.match(d3dSource, /DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT/);
-  assert.match(d3dSource, /SetMaximumFrameLatency\(2\)/);
+  assert.match(d3dSource, /pub const MAXIMUM_FRAME_LATENCY: u32 = 1;/);
+  assert.match(d3dSource, /SetMaximumFrameLatency\(MAXIMUM_FRAME_LATENCY\)/);
   assert.match(d3dSource, /DuplicateHandle\(/);
   assert.match(d3dSource, /frame_latency_ready_permits/);
   assert.match(d3dSource, /frame_latency_wait_bypassed/);

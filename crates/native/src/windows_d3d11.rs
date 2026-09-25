@@ -554,6 +554,7 @@ impl SourceMode {
     }
 }
 
+pub const MAXIMUM_FRAME_LATENCY: u32 = 1;
 pub const FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS: u32 = 3;
 pub const FRAME_LATENCY_WAIT_REARM_READY_POLLS: u32 = 4;
 const GPU_COPY_TIMING_SAMPLE_INTERVAL: u64 = 30;
@@ -1675,7 +1676,7 @@ impl WindowsD3d11Renderer {
         // showed fewer missed refreshes than a one-frame queue with either
         // timer polling or the same worker-wakeup scheduler.
         swap_chain2
-            .SetMaximumFrameLatency(2)
+            .SetMaximumFrameLatency(MAXIMUM_FRAME_LATENCY)
             .map_err(|error| format!("IDXGISwapChain2::SetMaximumFrameLatency failed: {error}"))?;
         let frame_latency_waitable_object = swap_chain2.GetFrameLatencyWaitableObject();
         if frame_latency_waitable_object.is_invalid() {

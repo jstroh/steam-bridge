@@ -437,6 +437,31 @@ fn a_visible_stall_latch_rearms_from_render_without_a_window_transition() {
 
 #[test]
 #[ignore = "requires a real GPU and a visible desktop"]
+fn the_swap_chain_queues_at_most_one_frame_ahead_of_the_display() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+        let swap_chain: IDXGISwapChain2 = renderer
+            .swap_chain
+            .as_ref()
+            .expect("swap chain")
+            .cast()
+            .expect("IDXGISwapChain2");
+        assert_eq!(
+            swap_chain.GetMaximumFrameLatency().expect("frame latency"),
+            MAXIMUM_FRAME_LATENCY
+        );
+        assert_eq!(
+            MAXIMUM_FRAME_LATENCY, 1,
+            "each queued frame adds a refresh of input lag"
+        );
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
 fn a_restore_without_a_minimized_render_rearms_a_latched_wait() {
     unsafe {
         let hwnd = create_test_window(336, 239);
