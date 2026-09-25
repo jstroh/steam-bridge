@@ -40,8 +40,9 @@ is stale and belongs in CI.
 The validator checks KeyValues syntax, action/set/layer names, supported modes,
 localization, action limits, and referenced controller layouts. The bundled
 SteamInput006 SDK supports 256 unique digital and 24 unique analog actions.
-Keep an English fallback for referenced titles and separate gameplay/menu
-contexts where appropriate.
+An `english` localization block is required and must define every referenced
+title. Keep gameplay and menu contexts in separate action sets where
+appropriate.
 
 For a hand-written definition, developer keys map to exact Steam manifest names:
 
@@ -254,8 +255,9 @@ npx steam-bridge-generate-legacy-layouts resources/steam-input-layout.json --out
 ```
 
 The [layout schema](../packages/steam-bridge/src/steam-input-layouts.ts) lists
-the complete required binding keys. Version 1 includes `version`, `title`,
-`description`, and `bindings`; do not omit directional fields when opting into
+the complete required binding keys. Version 1 requires `version`, `title`,
+`description`, and `bindings`; `actionSetName`, `actionSetTitle`, and
+`analogMovement` are optional. Do not omit directional fields when opting into
 analog movement.
 
 By default, the left stick emits the configured four directional bindings.
@@ -287,8 +289,8 @@ or trigger effects.
 
 For controller text entry, `utils.showGamepadTextInput()` from
 `steam-bridge/steamworks` resolves to submitted text or `null` on cancellation.
-For an existing field, use `showFloatingGamepadTextInput()` and its dismissal
-callback. Keep normal keyboard input available and keep Steam alive until the
+For an existing field, use `utils.showFloatingGamepadTextInput()` and subscribe
+to `utils.onFloatingGamepadTextInputDismissed()`. Keep normal keyboard input available and keep Steam alive until the
 promise settles. Never put entered text in diagnostic logs.
 
 ## Events, timing and advanced transport

@@ -44,11 +44,11 @@ consumer crash-service credentials.
 Generic optional Authenticode verification remains available for separately
 signed candidates. When requested, it requires the configured expected
 publisher, trusted certificate chain, code-signing EKU, RSA key, and trusted
-timestamp. Removing a provider does not make an unsigned artifact signed or
-weaken consumer application release gates.
+timestamp. Unsigned artifacts are reported as unsigned, and the optional check
+never weakens consumer application release gates.
 
 All GitHub Actions dependencies in the release workflow are pinned to immutable
-commits. Release source, CI, package gates, and optional signature checks are review
+commits. Release source, CI, package gates, and optional signature checks are
 security boundaries and must receive the same review as native code.
 
 ## Team roles
@@ -68,7 +68,7 @@ authentication for GitHub.
 
 Steam Bridge itself does not send telemetry or information to its maintainers.
 Network access happens only when the application or operator explicitly invokes
-Steam/Steamworks or a configured publisher endpoint. See the full
+Steam/Steamworks, the Steam Web API helpers, or a configured publisher endpoint. See the full
 [privacy policy](PRIVACY.md).
 
 ## Security and revocation

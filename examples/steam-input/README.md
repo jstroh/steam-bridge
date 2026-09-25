@@ -11,7 +11,9 @@ production templates.
 | [diagnostic.cjs](diagnostic.cjs) | Runnable console diagnostic for native Steam Input state |
 | [game.ts](game.ts) | Managed session example exporting update/shutdown functions for an application's loop |
 | [steam_input_manifest.vdf](steam_input_manifest.vdf) | Small manifest for learning and code generation |
-| [electron-main.cjs](electron-main.cjs), [preload.cjs](preload.cjs) | Advanced manual MessagePort transport inspection |
+| [steam-input.generated.ts](steam-input.generated.ts) | Committed definition generated from the manifest and used by `game.ts` |
+| [definition.cjs](definition.cjs) | Plain CommonJS mirror of the generated definition for the runnable examples |
+| [electron-main.cjs](electron-main.cjs), [preload.cjs](preload.cjs), [renderer.html](renderer.html), [renderer.js](renderer.js) | Advanced manual MessagePort transport inspection |
 
 ## Prepare the repository
 
@@ -36,7 +38,8 @@ With Steam running and signed in, run from the repository root:
 npm run steam-input:example:node
 ```
 
-The default run uses SpaceWar `480` for ten seconds and reports controller/action
+The default run uses SpaceWar `480` for ten seconds (set
+`STEAM_INPUT_DURATION_MS`, 100 through 600000, to change it) and reports controller/action
 state and diagnostics. A controller-free run proves lifecycle only. Action
 names must exist in the selected app's configuration before button/glyph output
 can qualify a real integration.
