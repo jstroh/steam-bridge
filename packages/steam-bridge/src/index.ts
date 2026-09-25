@@ -10398,6 +10398,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let pumpImmediate: NodeJS.Immediate | undefined;
   let frameDrivenPumpQueued = false;
   let nativeFramePending = false;
+  let nativePresentationSuspended = false;
   let nativeFrameWaitInFlight = false;
   let nativeFrameWaitEpoch = 0;
   let nativeFrameWaitUnavailable = false;
@@ -10547,6 +10548,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         nativeFramePending = usesWindowsStandaloneHost
           && !nativeFrameWaitUnavailable
           && binding.isNativeOverlayHostFramePending?.() === true;
+        nativePresentationSuspended = usesWindowsStandaloneHost
+          && binding.isNativeOverlayHostPresentationSuspended?.() === true;
       } catch (error) {
         // X11 can deliver WM_DELETE_WINDOW and DestroyNotify in the same pump.
         // The native layer has already queued the close input before reporting
@@ -12010,6 +12013,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       // jitter is added to Steam's hooked Present and drops below high-refresh
       // display rates after live mode transitions.
       if (displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable
+        && !nativePresentationSuspended
         && windowsPresentDiagnosticMode !== "nonblocking-immediate") {
         pumpImmediate = setImmediate(runScheduledPump);
         pumpImmediate.unref?.();

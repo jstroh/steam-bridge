@@ -2790,6 +2790,21 @@ mod windows {
             })
     }
 
+    pub fn presentation_suspended() -> bool {
+        SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned")
+            .as_ref()
+            .is_some_and(|surface| {
+                !surface.visible
+                    || unsafe { IsIconic(surface.hwnd) } != 0
+                    || matches!(
+                        &surface.renderer,
+                        WindowsSurfaceRenderer::D3d11 { renderer, .. } if renderer.present_occluded()
+                    )
+            })
+    }
+
     pub fn present_busy() -> bool {
         SURFACE
             .lock()

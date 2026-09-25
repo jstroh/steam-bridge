@@ -1222,6 +1222,14 @@ pub fn is_native_overlay_host_present_busy() -> bool {
     false
 }
 
+#[napi(js_name = "isNativeOverlayHostPresentationSuspended")]
+pub fn is_native_overlay_host_presentation_suspended() -> bool {
+    #[cfg(target_os = "windows")]
+    return native_surface::presentation_suspended();
+    #[cfg(not(target_os = "windows"))]
+    false
+}
+
 #[napi(js_name = "isNativeOverlayHostFramePending")]
 pub fn is_native_overlay_host_frame_pending() -> bool {
     #[cfg(target_os = "windows")]

@@ -1347,7 +1347,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(bridgeSource, /clearImmediate\(pumpImmediate\)/);
   assert.match(
     bridgeSource,
-    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\s*&& windowsPresentDiagnosticMode !== "nonblocking-immediate"\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
+    /if \(displaySynchronizedStandaloneHost && !nativeFrameWaitUnavailable\s*&& !nativePresentationSuspended\s*&& windowsPresentDiagnosticMode !== "nonblocking-immediate"\) \{[\s\S]*?setImmediate\(runScheduledPump\)/
   );
   assert.match(d3dSource, /D3D11_QUERY_EVENT/);
   assert.match(d3dSource, /D3D11_ASYNC_GETDATA_DONOTFLUSH/);
@@ -25962,6 +25962,57 @@ test("Windows present diagnostic dispatches input before a still-blocking native
   assert.equal(snapshot.inputDispatchOverBudgetCount, 1);
   assert.equal(snapshot.nativeFrameWaitTimeoutCount, 0);
   assert.equal(snapshot.nativeFrameWaitFallback, false);
+});
+
+test("a suspended Windows host with the overlay active keeps the timer cadence instead of spinning", async (t) => {
+  let suspended = false;
+  let hostPumps = 0;
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync", {
+    isNativeOverlayHostFramePending: () => false,
+    isNativeOverlayHostPresentationSuspended: () => suspended,
+  });
+  const pumpFrame = fake.pumpNativeOverlayHostFrame;
+  fake.pumpNativeOverlayHostFrame = function (...args) {
+    hostPumps += 1;
+    return pumpFrame.apply(this, args);
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 20 });
+  t.after(() => session.close());
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  suspended = true;
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().overlayActive, true);
+  assert.deepEqual(
+    fake.calls.filter((call) => call.method === "setNativeOverlayHostContinuousPresent").at(-1)?.args[0],
+    true,
+    "the active overlay applies continuous presentation"
+  );
+  session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const pumpsWhileSuspended = hostPumps;
+  const busyUntil = performance.now() + 200;
+  while (performance.now() < busyUntil) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(
+    hostPumps - pumpsWhileSuspended <= 30,
+    `a minimized or occluded host pumped ${hostPumps - pumpsWhileSuspended} times in 200 ms at a 20 ms cadence`
+  );
+
+  suspended = false;
+  const pumpsBeforeRestore = hostPumps;
+  const restoredUntil = performance.now() + 100;
+  while (performance.now() < restoredUntil) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(
+    hostPumps - pumpsBeforeRestore > 30,
+    `a restored host with the overlay active returns to display-synchronized pumping (${hostPumps - pumpsBeforeRestore} pumps)`
+  );
 });
 
 test("Windows present diagnostic busy retries yield even with an always-ready waitable and keep the newest frame", async (t) => {

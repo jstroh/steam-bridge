@@ -1836,6 +1836,7 @@ export interface NativeBinding {
   pumpNativeOverlayHostInput(): void;
   pumpNativeOverlayHostFrame(): void;
   isNativeOverlayHostPresentBusy(): boolean;
+  isNativeOverlayHostPresentationSuspended(): boolean;
   pumpNativeOverlayHostView(): void;
   isNativeOverlayHostFramePending(): boolean;
   isNativeOverlayHostFrameLatencyWaitBypassed(): boolean;
