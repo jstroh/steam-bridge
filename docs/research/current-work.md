@@ -169,6 +169,12 @@ and every message is still released.
    and a post-close state signal is found.
    The consumer now pins Electron 44.4.5, which needs a new Windows runtime
    epoch before release.
+   `WIN-COPY-COMPLETION-FOCUS-001` has a second affected report on `0.4.9`
+   (hybrid NVIDIA laptop: copies about 100 ms and fresh delivery about 19 FPS
+   once foreground). A single-GPU desktop did not reproduce it but showed a
+   20-36 ms completion floor at 3440x1440@50. Next: a hybrid-GPU run, GPU
+   timestamps around the copy, and an A/B that moves the copy off the host's
+   render/Present context.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and

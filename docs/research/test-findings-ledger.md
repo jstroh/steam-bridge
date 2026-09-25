@@ -196,7 +196,28 @@ on AMD Radeon(TM) Graphics. Final benchmark review excludes common post-test
 validation from both timed regions; corrected interleaved 1080p means remain
 about 0.25 ms in both paths with small mixed variations, not a consistent speedup
 or a zero-overhead guarantee. This is not an affected-device or cross-process gameplay pass.
-See [the repair note](windows-copy-completion.md). Never release a producer early, raise the copy bound, infer fresh
+A second affected report on 2026-09-25 came from a Windows 10 NVIDIA GTX 1070
+Max-Q plus Intel HD 630 hybrid laptop at 60 Hz on Electron 44.4.3 and published
+`0.4.9`, which includes the repaired waiter. Paint and native Present stayed at
+60 FPS. While the host was not foreground, copies completed in about 0.5-1.7 ms
+at 59-60 FPS. From the moment it became foreground, every copy took about 83-103
+ms, fresh delivery held at 18.1-19.8 FPS for the rest of the session, and slow
+copies and admission drops climbed continuously. Both affected reports are
+NVIDIA laptops; this one is a confirmed hybrid, and whether the first had
+iGPU scan-out was not recorded. The same day, a single-GPU RTX 2080 desktop with HAGS
+off did not reproduce it: focus had no effect at 1080p60 or 3440x1440@50, with
+or without a second instance. It did show a latent floor at 3440x1440@50, where
+completion settled at 20-36 ms (one to two refresh periods) against about 1 ms
+at 1080p60. Timeout counters there showed genuinely late fences, not missed
+notifications. The leading unproven explanation is head-of-line blocking: the
+copy, signal and flush share the host's immediate context with rendering and
+Present, so completion can track flip and back-buffer release, which iGPU
+scan-out may stretch. NVIDIA's Background Application Max Frame Rate is an
+untested public lead for Electron's separate GPU process. Agent-shell launches
+run at BelowNormal CPU priority while Chromium raises its GPU process, inverting
+a real Steam launch; use Normal priority for evidence. See [the repair
+note](windows-copy-completion.md). Never release a producer early, raise the
+copy bound, infer fresh
 content from repeated presents, or call a speculative workaround proven. See
 [the checkpoint](checkpoint-history.md#2026-09-21-foreground-copy-completion-collapse-after-application-switching).
 
