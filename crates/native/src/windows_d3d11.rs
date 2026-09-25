@@ -41,6 +41,7 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
     DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
+use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOERROR};
 use windows::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, ResetEvent, WaitForSingleObjectEx,
@@ -912,6 +913,43 @@ impl DedicatedCopyDevice {
     }
 }
 
+fn adapter_for_monitor<M: PartialEq>(
+    monitor: &M,
+    outputs: impl IntoIterator<Item = (LUID, M)>,
+) -> Option<LUID> {
+    outputs
+        .into_iter()
+        .find(|(_, output_monitor)| output_monitor == monitor)
+        .map(|(luid, _)| luid)
+}
+
+unsafe fn output_adapter_luid_for_window(hwnd: HWND) -> Option<LUID> {
+    if hwnd.0.is_null() {
+        return None;
+    }
+    let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if monitor.is_invalid() {
+        return None;
+    }
+    let factory: IDXGIFactory2 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).ok()?;
+    let mut outputs = Vec::new();
+    let mut adapter_index = 0;
+    while let Ok(adapter) = factory.EnumAdapters1(adapter_index) {
+        adapter_index += 1;
+        let Ok(adapter_desc) = adapter.GetDesc1() else {
+            continue;
+        };
+        let mut output_index = 0;
+        while let Ok(output) = adapter.EnumOutputs(output_index) {
+            output_index += 1;
+            if let Ok(output_desc) = output.GetDesc() {
+                outputs.push((adapter_desc.AdapterLuid, output_desc.Monitor));
+            }
+        }
+    }
+    adapter_for_monitor(&monitor, outputs)
+}
+
 fn adapter_luid_string(luid: LUID) -> String {
     format!("{:08x}-{:08x}", luid.HighPart as u32, luid.LowPart)
 }
@@ -1137,6 +1175,7 @@ pub struct WindowsD3d11Renderer {
     gpu_copy_timing: Option<GpuCopyTiming>,
     host_adapter_luid: Option<LUID>,
     texture_adapter_luid: Option<LUID>,
+    window: HWND,
     dedicated_copy: Option<DedicatedCopyDevice>,
     dedicated_copy_requested: bool,
     dedicated_copy_creation_failures: u64,
@@ -1492,6 +1531,7 @@ impl WindowsD3d11Renderer {
             gpu_copy_timing: None,
             host_adapter_luid: None,
             texture_adapter_luid: None,
+            window: HWND(hwnd),
             dedicated_copy: None,
             dedicated_copy_requested: DEDICATED_COPY_DEVICE_REQUESTED.load(Ordering::Acquire),
             dedicated_copy_creation_failures: 0,
@@ -2946,12 +2986,14 @@ impl WindowsD3d11Renderer {
 
     pub fn adapter_diagnostics(&self) -> serde_json::Value {
         let output_luid = unsafe {
-            self.swap_chain
-                .as_ref()
-                .and_then(|swap_chain| swap_chain.GetContainingOutput().ok())
-                .and_then(|output| output.GetParent::<IDXGIAdapter>().ok())
-                .and_then(|adapter| adapter.GetDesc().ok())
-                .map(|desc| desc.AdapterLuid)
+            output_adapter_luid_for_window(self.window).or_else(|| {
+                self.swap_chain
+                    .as_ref()
+                    .and_then(|swap_chain| swap_chain.GetContainingOutput().ok())
+                    .and_then(|output| output.GetParent::<IDXGIAdapter>().ok())
+                    .and_then(|adapter| adapter.GetDesc().ok())
+                    .map(|desc| desc.AdapterLuid)
+            })
         };
         let luid_equal = |left: Option<LUID>, right: Option<LUID>| match (left, right) {
             (Some(left), Some(right)) => {
@@ -4092,8 +4134,25 @@ mod dedicated_copy_device_tests {
 #[cfg(test)]
 mod adapter_and_gpu_timing_diagnostics_tests {
     use super::{
-        adapter_luid_string, GpuCopyTimingStats, D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, LUID,
+        adapter_for_monitor, adapter_luid_string, GpuCopyTimingStats,
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, LUID,
     };
+
+    #[test]
+    fn the_output_adapter_is_the_one_that_owns_the_window_monitor() {
+        let integrated = LUID {
+            LowPart: 1,
+            HighPart: 0,
+        };
+        let discrete = LUID {
+            LowPart: 2,
+            HighPart: 0,
+        };
+        let outputs = [(discrete, 30), (integrated, 10), (integrated, 20)];
+        let found = adapter_for_monitor(&20, outputs).expect("monitor owner");
+        assert_eq!((found.LowPart, found.HighPart), (1, 0));
+        assert!(adapter_for_monitor(&40, outputs).is_none());
+    }
 
     #[test]
     fn adapter_luids_format_as_stable_hex_pairs() {

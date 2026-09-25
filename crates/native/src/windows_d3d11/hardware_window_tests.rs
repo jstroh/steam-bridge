@@ -377,6 +377,25 @@ fn copy_diagnostics_report_gpu_timing_and_same_adapter_luids() {
 
 #[test]
 #[ignore = "requires a real GPU and a visible desktop"]
+fn output_adapter_resolves_from_the_window_monitor_without_a_containing_output() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let renderer =
+            WindowsD3d11Renderer::new_with_adapter(hwnd, 320, 200, None, false).expect("renderer");
+        assert!(renderer.swap_chain.is_none());
+        let adapters = renderer.adapter_diagnostics();
+        assert!(
+            adapters["outputAdapterLuid"].is_string(),
+            "the monitor lookup must not depend on GetContainingOutput: {adapters}"
+        );
+        assert!(adapters["crossAdapterPresent"].is_boolean(), "{adapters}");
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
 fn a_visible_stall_latch_rearms_from_render_without_a_window_transition() {
     unsafe {
         let hwnd = create_test_window(336, 239);

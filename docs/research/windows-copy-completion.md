@@ -64,8 +64,9 @@ unfinished GPU fence or measure physical input-to-photon latency.
 Native host diagnostics also separate copy time from queue delay and report
 the adapter topology:
 
-- `sharedTextureCopy.gpuTiming`: GPU timestamps around one copy in every 30
-  (`sampleInterval`), read later without flushing. `meanMs`, `lastMs` and
+- `sharedTextureCopy.gpuTiming`: GPU timestamps around at most one copy in
+  every 30 (`sampleInterval`; a sample is skipped while its query slot is still
+  pending), read later without flushing. `meanMs`, `lastMs` and
   `maxMs` are GPU execution time only, so completion latency minus this value
   is time spent queued. `disjointCount` counts rejected samples.
 - `frameLatencyWait`: the bypass latch (`bypassed`, `bypassCount`,
@@ -74,8 +75,11 @@ the adapter topology:
   and its threshold, and `presentOccluded`.
 - `adapters`: host, shared-texture and output adapter LUIDs, with
   `crossAdapterTexture` and `crossAdapterPresent` when both sides are known.
-  The output adapter is the parent of the swap chain's containing output and
-  is read only when diagnostics are requested.
+  The output adapter is the adapter whose DXGI output owns the window's
+  monitor (`MonitorFromWindow`), falling back to the swap chain's containing
+  output. It is read only when diagnostics are requested. On hybrid laptops,
+  `GetContainingOutput` fails for a discrete-GPU swap chain, so the monitor
+  lookup is what reports the cross-adapter present.
 
 The session snapshot adds `nativeFrameWaitRecoveryCount`, the number of times
 the JavaScript scheduler left its timeout fallback after the native waitable
