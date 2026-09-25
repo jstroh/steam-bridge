@@ -5,7 +5,8 @@ Last reviewed: 2026-09-25
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
 candidates through the 0.4.9 preparation, and the historical release evidence
-are preserved verbatim in [checkpoint history](checkpoint-history.md).
+are preserved, with private identifiers redacted, in
+[checkpoint history](checkpoint-history.md).
 Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
@@ -108,6 +109,30 @@ a `SendInput` result. The public example passes a direct App ID `480` smoke,
 but its `presenter-*` actions intentionally fail on Windows, so it cannot
 prove Windows overlay routes.
 
+### 2026-09-25 independent Windows review of this branch
+
+- **Fixed:**
+  - `29f49d5`: unregistering a Steam-thread hook returned while a dispatch
+    was still running, a regression from moving callbacks out of the
+    registry lock. A test fails before the fix.
+  - `82071f3`: doc corrections: checkpoint-move wording, remaining consumer
+    remnants, and `close()` failure behaviour.
+- **Rejected:** the missing-XTest CI risk (the Xvfb step ran the end-to-end
+  test), surrogate-pairing gaps (traced), and launcher and `npm pack` parser
+  memory-safety or shape issues.
+- **Residual, not fixed:**
+  - A consumer `onBeforeDispatch` hook sees raw surrogate halves.
+  - Nested unregistration from inside another dispatch does not wait.
+  - The macOS launcher derives its directory from `argv[0]`.
+  - The env-file filter is a denylist.
+  - Non-init app IDs lack an upper bound.
+- **Checks on Windows:** everything passed except `package:smoke`:
+  - Passed: `check:platform`, `native:build`, `npm test` (476/473 pass, 82
+    native), `native:fmt`, `native:check`, `api:check`, `git diff --check`.
+  - `package:smoke` stops on environment only: CRLF checkout line endings and
+    an elevated shell. The same write-protection self-test passes with a
+    non-admin token.
+
 Verified without code changes: the `NativeBinding` interface matches all 1,153
 napi-generated functions by name, arity, parameter type and optionality; all
 210 native callback IDs match the SDK; KWin `qdbus` calls are each bounded by
@@ -142,7 +167,7 @@ The smoke self-tests' Steam `userdata` account number also appeared as
 as a real account ID and replaced with synthetic `12345678`, and the shortcut
 app ID with synthetic `3000000001`. The values are arbitrary inside each self-test.
 
-Documentation cleanup (2026-09-25): old checkpoints moved verbatim to
+Documentation cleanup (2026-09-25): old checkpoints moved, with private identifiers redacted, to
 [checkpoint history](checkpoint-history.md), and standing decisions moved to the
 presenter plan. The README, user guides, CONTRIBUTING, RELEASING, PRIVACY,
 signing policy and Steam Input example were checked against the code and
