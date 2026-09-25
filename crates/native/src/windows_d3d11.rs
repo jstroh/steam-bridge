@@ -532,6 +532,7 @@ impl SourceMode {
 }
 
 pub const FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS: u32 = 3;
+pub const FRAME_LATENCY_WAIT_REARM_READY_POLLS: u32 = 4;
 const GPU_COPY_TIMING_SAMPLE_INTERVAL: u64 = 30;
 const GPU_COPY_TIMING_RING_SIZE: usize = 4;
 
@@ -942,6 +943,7 @@ pub enum FrameLatencyTimeoutOutcome {
 struct FrameLatencyWaitGate {
     bypassed: bool,
     consecutive_timeouts: u32,
+    consecutive_bypass_ready_polls: u32,
     expected_timeout_count: u64,
     bypass_count: u64,
     rearm_count: u64,
@@ -970,8 +972,21 @@ impl FrameLatencyWaitGate {
         self.consecutive_timeouts = 0;
     }
 
+    fn record_bypass_poll(&mut self, ready: bool) -> bool {
+        if !self.bypassed {
+            return false;
+        }
+        if !ready {
+            self.consecutive_bypass_ready_polls = 0;
+            return false;
+        }
+        self.consecutive_bypass_ready_polls = self.consecutive_bypass_ready_polls.saturating_add(1);
+        self.consecutive_bypass_ready_polls >= FRAME_LATENCY_WAIT_REARM_READY_POLLS && self.rearm()
+    }
+
     fn bypass(&mut self) -> bool {
         self.consecutive_timeouts = 0;
+        self.consecutive_bypass_ready_polls = 0;
         if self.bypassed {
             return false;
         }
@@ -982,6 +997,7 @@ impl FrameLatencyWaitGate {
 
     fn rearm(&mut self) -> bool {
         self.consecutive_timeouts = 0;
+        self.consecutive_bypass_ready_polls = 0;
         if !self.bypassed {
             return false;
         }
@@ -993,6 +1009,7 @@ impl FrameLatencyWaitGate {
     fn reset_for_new_swap_chain(&mut self) {
         self.bypassed = false;
         self.consecutive_timeouts = 0;
+        self.consecutive_bypass_ready_polls = 0;
     }
 }
 
@@ -1593,6 +1610,7 @@ impl WindowsD3d11Renderer {
         self.render_target = Some(create_render_target(&self.device, swap_chain)?);
         self.width = width;
         self.height = height;
+        self.rearm_frame_latency_wait();
         Ok(())
     }
 
@@ -2511,10 +2529,17 @@ impl WindowsD3d11Renderer {
             self.rearm_frame_latency_wait();
         }
         if self.frame_latency_wait.bypassed {
-            // The waitable object stopped signaling after a native window
-            // transition. The timer-driven nonblocking Present fallback now
-            // provides bounded retries; do not poll the stale signal again.
+            // The waitable object stopped signaling. The timer-driven
+            // nonblocking Present fallback provides bounded retries, and a
+            // zero-timeout poll re-arms the wait once it signals repeatedly.
             self.last_frame_latency_wait_duration_ms = 0.0;
+            let ready = !self.frame_latency_waitable_object.is_invalid()
+                && WaitForSingleObjectEx(self.frame_latency_waitable_object, 0, false)
+                    == WAIT_OBJECT_0;
+            if self.frame_latency_wait.record_bypass_poll(ready) {
+                self.frame_latency_ready_permits = 0;
+                self.release_frame_timer_resolution();
+            }
         } else if self.frame_latency_ready_permits > 0 {
             // The async worker consumed the auto-reset waitable-object signal.
             // Spend its matching permit instead of polling the same handle a
@@ -2550,6 +2575,7 @@ impl WindowsD3d11Renderer {
                     self.frame_latency_wait_timeout_count.saturating_add(1);
                 return Ok(None);
             }
+            self.frame_latency_wait.record_ready();
         }
         if let Some(previous_render_started_at) =
             self.last_render_started_at.replace(render_started_at)
@@ -4119,6 +4145,7 @@ mod adapter_and_gpu_timing_diagnostics_tests {
 mod frame_latency_wait_gate_tests {
     use super::{
         FrameLatencyTimeoutOutcome, FrameLatencyWaitGate, FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS,
+        FRAME_LATENCY_WAIT_REARM_READY_POLLS,
     };
 
     #[test]
@@ -4199,6 +4226,41 @@ mod frame_latency_wait_gate_tests {
                 FrameLatencyTimeoutOutcome::Counted
             );
         }
+    }
+
+    #[test]
+    fn consecutive_ready_polls_rearm_a_bypass_without_a_window_transition() {
+        let mut gate = FrameLatencyWaitGate::default();
+        assert!(
+            !gate.record_bypass_poll(true),
+            "an armed wait ignores bypass polls"
+        );
+        gate.bypass();
+        for _ in 1..FRAME_LATENCY_WAIT_REARM_READY_POLLS {
+            assert!(!gate.record_bypass_poll(true));
+        }
+        assert!(
+            !gate.record_bypass_poll(false),
+            "a not-ready poll restarts the count"
+        );
+        for _ in 1..FRAME_LATENCY_WAIT_REARM_READY_POLLS {
+            assert!(!gate.record_bypass_poll(true));
+        }
+        assert!(gate.bypassed);
+        assert!(gate.record_bypass_poll(true));
+        assert!(!gate.bypassed);
+        assert_eq!(gate.rearm_count, 1);
+    }
+
+    #[test]
+    fn a_waitable_that_never_signals_stays_bypassed() {
+        let mut gate = FrameLatencyWaitGate::default();
+        gate.bypass();
+        for _ in 0..1_000 {
+            assert!(!gate.record_bypass_poll(false));
+        }
+        assert!(gate.bypassed);
+        assert_eq!(gate.rearm_count, 0);
     }
 
     #[test]

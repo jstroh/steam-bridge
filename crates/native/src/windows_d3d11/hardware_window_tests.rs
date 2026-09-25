@@ -377,6 +377,40 @@ fn copy_diagnostics_report_gpu_timing_and_same_adapter_luids() {
 
 #[test]
 #[ignore = "requires a real GPU and a visible desktop"]
+fn a_visible_stall_latch_rearms_from_render_without_a_window_transition() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+        render_until_presented(&mut renderer);
+        let generation = renderer.frame_latency_wait_generation;
+        for _ in 0..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            renderer.record_frame_latency_timeout(generation, false);
+        }
+        assert!(
+            renderer.frame_latency_wait_bypassed(),
+            "three visible timeouts latch the bypass"
+        );
+        for _ in 0..500 {
+            if !renderer.frame_latency_wait_bypassed() {
+                break;
+            }
+            renderer.render([0.0, 0.0, 0.0, 1.0]).expect("render");
+            pump_test_window_messages();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            !renderer.frame_latency_wait_bypassed(),
+            "a waitable that signals again must re-arm without minimize or occlusion"
+        );
+        assert_eq!(renderer.frame_latency_wait_diagnostics()["rearmCount"], 1);
+        assert_eq!(wm::IsIconic(hwnd), 0);
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
 fn adapter_switch_attaches_a_new_swap_chain_to_the_same_window() {
     unsafe {
         let hwnd = create_test_window(336, 239);

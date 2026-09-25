@@ -182,7 +182,8 @@ and every message is still released.
    `WIN-FRAME-WAIT-BYPASS-LATCH-001`. Done: expected iconic, hidden or
    occluded timeouts no longer latch, a latch needs three consecutive
    unexpected timeouts, and both native and JavaScript recover without timers
-   on restore or occlusion end. An adapter switch now releases the old swap
+   on restore, occlusion end, a swap-chain resize, or four consecutive
+   signalled polls while bypassed. An adapter switch now releases the old swap
    chain before attaching the new one (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`).
    Diagnostics now report adapter LUIDs, cross-adapter present, latch and
    re-arm counts, and sampled GPU copy time. The opt-in
