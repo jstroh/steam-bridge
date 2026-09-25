@@ -1808,6 +1808,7 @@ mod windows {
         last_present_at: Option<Instant>,
         present_after_modal_loop: bool,
         modal_size_move_active: bool,
+        host_iconic: bool,
         overlay_shortcut_down: bool,
         overlay_active: bool,
         steam_dialog_baseline: SteamDialogWindowList,
@@ -2768,10 +2769,12 @@ mod windows {
                 // unavailable wait handle could resolve false in a microtask
                 // loop during startup or under the diagnostic OpenGL backend.
                 surface.source_frame_dirty
+                    && unsafe { IsIconic(surface.hwnd) } == 0
                     && matches!(
                         &surface.renderer,
                         WindowsSurfaceRenderer::D3d11 { renderer, .. }
-                            if renderer.has_source() || surface.source_frame.is_some()
+                            if (renderer.has_source() || surface.source_frame.is_some())
+                                && !renderer.present_occluded()
                     )
             })
     }
@@ -2839,6 +2842,24 @@ mod windows {
             return false;
         };
         renderer.grant_frame_latency_ready_permit(token.renderer_generation)
+    }
+
+    pub fn record_frame_latency_timeout(token: FrameLatencyReadyToken) -> bool {
+        let mut guard = SURFACE
+            .lock()
+            .expect("Steam overlay native surface lock poisoned");
+        let Some(surface) = guard
+            .as_mut()
+            .filter(|surface| surface.instance_generation == token.surface_generation)
+        else {
+            return false;
+        };
+        let expected = !surface.visible || unsafe { IsIconic(surface.hwnd) } != 0;
+        let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer else {
+            return false;
+        };
+        renderer.record_frame_latency_timeout(token.renderer_generation, expected)
+            == Some(windows_d3d11::FrameLatencyTimeoutOutcome::Bypassed)
     }
 
     pub fn bypass_frame_latency_wait(token: FrameLatencyReadyToken) -> bool {
@@ -3513,6 +3534,7 @@ mod windows {
             last_present_at: None,
             present_after_modal_loop: false,
             modal_size_move_active: false,
+            host_iconic: false,
             overlay_shortcut_down: false,
             overlay_active: false,
             steam_dialog_baseline: SteamDialogWindowList::default(),
@@ -3534,6 +3556,13 @@ mod windows {
     }
 
     unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
+        if IsIconic(surface.hwnd) != 0 {
+            surface.host_iconic = true;
+        } else if mem::take(&mut surface.host_iconic) {
+            if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                renderer.rearm_frame_latency_wait();
+            }
+        }
         if IsIconic(surface.hwnd) != 0 {
             if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
                 renderer.suspend_presentation();

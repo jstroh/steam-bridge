@@ -179,10 +179,13 @@ and every message is still released.
    occlusion, F11, overlay or a zone load) permanently latches
    `frameLatencyWaitBypassed`; ungated presents then queue ahead of the copy
    on the same context, and cross-adapter present lengthens that queue. See
-   `WIN-FRAME-WAIT-BYPASS-LATCH-001`. Planned fixes: recover from the latch
-   and ignore expected iconic/occluded timeouts, move the copy to a dedicated
-   device, release the old swap chain before an adapter switch
-   (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`), and report adapter and output LUIDs.
+   `WIN-FRAME-WAIT-BYPASS-LATCH-001`. Done: expected iconic, hidden or
+   occluded timeouts no longer latch, a latch needs three consecutive
+   unexpected timeouts, and both native and JavaScript recover without timers
+   on restore or occlusion end. Next: release the old swap chain before an
+   adapter switch (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`), report adapter and
+   output LUIDs, and offer a dedicated copy device. Live proof on an NVIDIA
+   hybrid laptop is still required.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and

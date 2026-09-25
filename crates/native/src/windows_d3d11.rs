@@ -33,7 +33,7 @@ use windows::Win32::Graphics::Dxgi::{
     IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_ADAPTER_FLAG_SOFTWARE,
     DXGI_CREATE_FACTORY_FLAGS, DXGI_ERROR_WAS_STILL_DRAWING, DXGI_FRAME_STATISTICS,
     DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT,
-    DXGI_PRESENT_DO_NOT_WAIT, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+    DXGI_PRESENT_DO_NOT_WAIT, DXGI_PRESENT_TEST, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
     DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
     DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
@@ -527,6 +527,73 @@ impl SourceMode {
     }
 }
 
+pub const FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS: u32 = 3;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameLatencyTimeoutOutcome {
+    Expected,
+    Counted,
+    Bypassed,
+}
+
+#[derive(Debug, Default)]
+struct FrameLatencyWaitGate {
+    bypassed: bool,
+    consecutive_timeouts: u32,
+    expected_timeout_count: u64,
+    bypass_count: u64,
+    rearm_count: u64,
+}
+
+impl FrameLatencyWaitGate {
+    fn record_timeout(&mut self, expected: bool) -> FrameLatencyTimeoutOutcome {
+        if self.bypassed {
+            return FrameLatencyTimeoutOutcome::Bypassed;
+        }
+        if expected {
+            self.consecutive_timeouts = 0;
+            self.expected_timeout_count = self.expected_timeout_count.saturating_add(1);
+            return FrameLatencyTimeoutOutcome::Expected;
+        }
+        self.consecutive_timeouts = self.consecutive_timeouts.saturating_add(1);
+        if self.consecutive_timeouts >= FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            self.bypass();
+            FrameLatencyTimeoutOutcome::Bypassed
+        } else {
+            FrameLatencyTimeoutOutcome::Counted
+        }
+    }
+
+    fn record_ready(&mut self) {
+        self.consecutive_timeouts = 0;
+    }
+
+    fn bypass(&mut self) -> bool {
+        self.consecutive_timeouts = 0;
+        if self.bypassed {
+            return false;
+        }
+        self.bypassed = true;
+        self.bypass_count = self.bypass_count.saturating_add(1);
+        true
+    }
+
+    fn rearm(&mut self) -> bool {
+        self.consecutive_timeouts = 0;
+        if !self.bypassed {
+            return false;
+        }
+        self.bypassed = false;
+        self.rearm_count = self.rearm_count.saturating_add(1);
+        true
+    }
+
+    fn reset_for_new_swap_chain(&mut self) {
+        self.bypassed = false;
+        self.consecutive_timeouts = 0;
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PresentMode {
     Standard,
@@ -598,7 +665,8 @@ pub struct WindowsD3d11Renderer {
     frame_latency_waitable_object: HANDLE,
     frame_latency_wait_generation: u64,
     frame_latency_ready_permits: u32,
-    frame_latency_wait_bypassed: bool,
+    frame_latency_wait: FrameLatencyWaitGate,
+    present_occluded: bool,
     fallback_timer_resolution_requested: bool,
     fallback_timer_resolution_active: bool,
     async_frame_latency_ready_count: u64,
@@ -949,7 +1017,8 @@ impl WindowsD3d11Renderer {
             frame_latency_waitable_object: HANDLE::default(),
             frame_latency_wait_generation: 0,
             frame_latency_ready_permits: 0,
-            frame_latency_wait_bypassed: false,
+            frame_latency_wait: FrameLatencyWaitGate::default(),
+            present_occluded: false,
             fallback_timer_resolution_requested: false,
             fallback_timer_resolution_active: false,
             async_frame_latency_ready_count: 0,
@@ -1070,7 +1139,8 @@ impl WindowsD3d11Renderer {
         self.frame_latency_wait_generation =
             NEXT_FRAME_LATENCY_WAIT_GENERATION.fetch_add(1, Ordering::Relaxed);
         self.frame_latency_ready_permits = 0;
-        self.frame_latency_wait_bypassed = false;
+        self.frame_latency_wait.reset_for_new_swap_chain();
+        self.present_occluded = false;
         self.swap_chain = Some(swap_chain);
         self.render_target = Some(render_target);
         Ok(())
@@ -1679,7 +1749,18 @@ impl WindowsD3d11Renderer {
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
         let render_started_at = Instant::now();
-        if self.frame_latency_wait_bypassed {
+        if self.present_occluded {
+            let swap_chain = self
+                .swap_chain
+                .as_ref()
+                .ok_or_else(|| "D3D11 swap chain is unavailable".to_owned())?;
+            if swap_chain.Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED {
+                return Ok(None);
+            }
+            self.present_occluded = false;
+            self.rearm_frame_latency_wait();
+        }
+        if self.frame_latency_wait.bypassed {
             // The waitable object stopped signaling after a native window
             // transition. The timer-driven nonblocking Present fallback now
             // provides bounded retries; do not poll the stale signal again.
@@ -1797,7 +1878,7 @@ impl WindowsD3d11Renderer {
         // flip-model composition remains owned by DWM.
         let (present_sync_interval, present_flags) = self
             .present_mode
-            .parameters(self.present_sync_interval, self.frame_latency_wait_bypassed);
+            .parameters(self.present_sync_interval, self.frame_latency_wait.bypassed);
         self.last_present_flags = present_flags.0;
         let present_started_at = Instant::now();
         let result = swap_chain.Present(present_sync_interval, present_flags);
@@ -1820,10 +1901,11 @@ impl WindowsD3d11Renderer {
             self.render_over_25_ms_count = self.render_over_25_ms_count.saturating_add(1);
         }
         self.last_present = result.0;
+        self.present_occluded = result == DXGI_STATUS_OCCLUDED;
         if result == DXGI_ERROR_WAS_STILL_DRAWING {
             self.present_retry_pending = true;
             self.request_frame_timer_resolution();
-            if !self.frame_latency_wait_bypassed {
+            if !self.frame_latency_wait.bypassed {
                 self.frame_latency_ready_permits = 1;
             }
             self.present_busy_count = self.present_busy_count.saturating_add(1);
@@ -1884,7 +1966,7 @@ impl WindowsD3d11Renderer {
         }
         if self
             .present_mode
-            .needs_frame_timer_resolution(self.frame_latency_wait_bypassed, false)
+            .needs_frame_timer_resolution(self.frame_latency_wait.bypassed, false)
         {
             self.request_frame_timer_resolution();
         } else {
@@ -1935,7 +2017,7 @@ impl WindowsD3d11Renderer {
 
     pub fn present_sync_interval(&self) -> u32 {
         self.present_mode
-            .parameters(self.present_sync_interval, self.frame_latency_wait_bypassed)
+            .parameters(self.present_sync_interval, self.frame_latency_wait.bypassed)
             .0
     }
 
@@ -1972,7 +2054,7 @@ impl WindowsD3d11Renderer {
     pub fn duplicate_frame_latency_wait_handle(
         &self,
     ) -> Result<Option<FrameLatencyWaitHandle>, String> {
-        if self.frame_latency_waitable_object.is_invalid() || self.frame_latency_wait_bypassed {
+        if self.frame_latency_waitable_object.is_invalid() || self.frame_latency_wait.bypassed {
             return Ok(None);
         }
 
@@ -2000,10 +2082,11 @@ impl WindowsD3d11Renderer {
         if generation == 0
             || generation != self.frame_latency_wait_generation
             || self.frame_latency_waitable_object.is_invalid()
-            || self.frame_latency_wait_bypassed
+            || self.frame_latency_wait.bypassed
         {
             return false;
         }
+        self.frame_latency_wait.record_ready();
         self.frame_latency_ready_permits =
             self.frame_latency_ready_permits.saturating_add(1).min(1);
         self.async_frame_latency_ready_count =
@@ -2018,10 +2101,52 @@ impl WindowsD3d11Renderer {
         {
             return false;
         }
-        self.frame_latency_wait_bypassed = true;
+        self.frame_latency_wait.bypass();
         self.frame_latency_ready_permits = 0;
         self.request_frame_timer_resolution();
         true
+    }
+
+    pub fn record_frame_latency_timeout(
+        &mut self,
+        generation: u64,
+        expected: bool,
+    ) -> Option<FrameLatencyTimeoutOutcome> {
+        if generation == 0
+            || generation != self.frame_latency_wait_generation
+            || self.frame_latency_waitable_object.is_invalid()
+        {
+            return None;
+        }
+        let outcome = self
+            .frame_latency_wait
+            .record_timeout(expected || self.present_occluded);
+        if outcome == FrameLatencyTimeoutOutcome::Bypassed {
+            self.frame_latency_ready_permits = 0;
+            self.request_frame_timer_resolution();
+        }
+        Some(outcome)
+    }
+
+    pub fn rearm_frame_latency_wait(&mut self) -> bool {
+        if self.frame_latency_waitable_object.is_invalid() || !self.frame_latency_wait.rearm() {
+            return false;
+        }
+        self.frame_latency_ready_permits = 0;
+        self.release_frame_timer_resolution();
+        true
+    }
+
+    pub fn present_occluded(&self) -> bool {
+        self.present_occluded
+    }
+
+    pub fn frame_latency_wait_counts(&self) -> (u64, u64, u64) {
+        (
+            self.frame_latency_wait.bypass_count,
+            self.frame_latency_wait.rearm_count,
+            self.frame_latency_wait.expected_timeout_count,
+        )
     }
 
     fn request_frame_timer_resolution(&mut self) {
@@ -2042,7 +2167,7 @@ impl WindowsD3d11Renderer {
     }
 
     pub fn frame_latency_wait_bypassed(&self) -> bool {
-        self.frame_latency_wait_bypassed
+        self.frame_latency_wait.bypassed
     }
 
     pub fn fallback_timer_resolution_requested(&self) -> bool {
@@ -3112,6 +3237,103 @@ fn intersect_rect(
     let right = (first.0 + first.2).min(second.0 + second.2);
     let bottom = (first.1 + first.3).min(second.1 + second.3);
     (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
+}
+
+#[cfg(test)]
+mod frame_latency_wait_gate_tests {
+    use super::{
+        FrameLatencyTimeoutOutcome, FrameLatencyWaitGate, FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS,
+    };
+
+    #[test]
+    fn only_consecutive_unexpected_timeouts_latch_the_bypass() {
+        let mut gate = FrameLatencyWaitGate::default();
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+            assert!(!gate.bypassed);
+        }
+        assert_eq!(
+            gate.record_timeout(false),
+            FrameLatencyTimeoutOutcome::Bypassed
+        );
+        assert!(gate.bypassed);
+        assert_eq!(gate.bypass_count, 1);
+    }
+
+    #[test]
+    fn expected_timeouts_never_latch_and_restart_the_count() {
+        let mut gate = FrameLatencyWaitGate::default();
+        for _ in 0..10 {
+            assert_eq!(
+                gate.record_timeout(true),
+                FrameLatencyTimeoutOutcome::Expected
+            );
+        }
+        assert!(!gate.bypassed);
+        assert_eq!(gate.expected_timeout_count, 10);
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            gate.record_timeout(false);
+        }
+        gate.record_timeout(true);
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+        }
+        assert!(!gate.bypassed);
+    }
+
+    #[test]
+    fn a_ready_signal_restarts_the_timeout_count() {
+        let mut gate = FrameLatencyWaitGate::default();
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            gate.record_timeout(false);
+        }
+        gate.record_ready();
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+        }
+        assert!(!gate.bypassed);
+    }
+
+    #[test]
+    fn rearm_clears_a_latched_bypass_and_counts_each_recovery() {
+        let mut gate = FrameLatencyWaitGate::default();
+        assert!(!gate.rearm(), "an armed wait has nothing to re-arm");
+        assert!(gate.bypass());
+        assert!(!gate.bypass(), "a second bypass is not a new latch");
+        assert_eq!(
+            gate.record_timeout(false),
+            FrameLatencyTimeoutOutcome::Bypassed
+        );
+        assert_eq!(gate.bypass_count, 1);
+        assert!(gate.rearm());
+        assert!(!gate.bypassed);
+        assert_eq!(gate.rearm_count, 1);
+        for _ in 1..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            assert_eq!(
+                gate.record_timeout(false),
+                FrameLatencyTimeoutOutcome::Counted
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_swap_chain_starts_armed_without_losing_history() {
+        let mut gate = FrameLatencyWaitGate::default();
+        gate.bypass();
+        gate.reset_for_new_swap_chain();
+        assert!(!gate.bypassed);
+        assert_eq!(gate.consecutive_timeouts, 0);
+        assert_eq!(gate.bypass_count, 1);
+    }
 }
 
 #[cfg(test)]

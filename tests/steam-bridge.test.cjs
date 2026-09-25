@@ -1314,7 +1314,7 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /wait_result == WAIT_TIMEOUT[\s\S]*?return Ok\(None\)/);
   assert.match(
     d3dSource,
-    /if self\.frame_latency_wait_bypassed \{[\s\S]*?self\.last_frame_latency_wait_duration_ms = 0\.0;/
+    /if self\.frame_latency_wait\.bypassed \{[\s\S]*?self\.last_frame_latency_wait_duration_ms = 0\.0;/
   );
   assert.match(d3dSource, /pub fn bypass_frame_latency_wait\(/);
   assert.match(d3dSource, /DXGI_PRESENT_DO_NOT_WAIT/);
@@ -26234,6 +26234,179 @@ test("Windows frame readiness timeout stops retrying after a message-path presen
   assert.equal(waitResolvers.length, 0);
 });
 
+function createRecoverableFrameWaitNative(state) {
+  let probeOpen = false;
+  return createFakeNative({
+    openNativeOverlayProbeWindow(...args) {
+      probeOpen = true;
+      this.calls.push({ method: "openNativeOverlayProbeWindow", args });
+    },
+    pumpNativeOverlayProbeWindow() {
+      this.calls.push({ method: "pumpNativeOverlayProbeWindow", args: [] });
+    },
+    updateNativeOverlayHostFrame(frame, width, height) {
+      state.framePending = true;
+      this.calls.push({ method: "updateNativeOverlayHostFrame", args: [frame, width, height] });
+    },
+    isNativeOverlayHostFramePending() {
+      return state.framePending;
+    },
+    isNativeOverlayHostFrameLatencyWaitBypassed() {
+      return state.bypassed;
+    },
+    waitForNativeOverlayHostFrameReady(timeoutMs) {
+      this.calls.push({ method: "waitForNativeOverlayHostFrameReady", args: [timeoutMs] });
+      return state.waitResult === "reject"
+        ? Promise.reject(new Error("wait failed"))
+        : new Promise((resolve) => state.waitResolvers.push(resolve));
+    },
+    setNativeOverlayHostContinuousPresent(continuous) {
+      this.calls.push({ method: "setNativeOverlayHostContinuousPresent", args: [continuous] });
+    },
+    closeNativeOverlayProbeWindow() {
+      probeOpen = false;
+      this.calls.push({ method: "closeNativeOverlayProbeWindow", args: [] });
+    },
+    isNativeOverlayProbeWindowOpen() {
+      return probeOpen;
+    },
+    isNativeOverlayHostViewOpen() {
+      return false;
+    }
+  });
+}
+
+function startRecoverableFrameWaitSession(t, state) {
+  setProcessPlatformForTest(t, "win32");
+  const fake = createRecoverableFrameWaitNative(state);
+  const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+  let frameByte = 0;
+  const pumpFrame = async () => {
+    frameByte = (frameByte + 1) % 256;
+    session.updateFrame({ data: Buffer.from([frameByte, 0, 0, 0]), width: 1, height: 1 });
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  const waitCalls = () =>
+    fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length;
+  return { session, pumpFrame, waitCalls };
+}
+
+async function latchFrameWaitByTimeout(state, session, pumpFrame) {
+  await pumpFrame();
+  assert.equal(state.waitResolvers.length, 1);
+  state.bypassed = true;
+  state.waitResolvers.shift()(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
+}
+
+test("Windows frame readiness fallback recovers after counted native re-arm observations", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await latchFrameWaitByTimeout(state, session, pumpFrame);
+  const waitsWhileLatched = waitCalls();
+
+  for (let index = 0; index < 5; index += 1) {
+    await pumpFrame();
+  }
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true, "a bypassed native waitable keeps the fallback");
+  assert.equal(waitCalls(), waitsWhileLatched, "the fallback must not arm DXGI waits");
+
+  state.bypassed = false;
+  await pumpFrame();
+  await pumpFrame();
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true, "two re-armed observations are not enough");
+  state.bypassed = true;
+  await pumpFrame();
+  state.bypassed = false;
+  await pumpFrame();
+  await pumpFrame();
+  assert.equal(
+    session.snapshot().nativeFrameWaitFallback,
+    true,
+    "a relapse into bypass restarts the consecutive observation count"
+  );
+  await pumpFrame();
+  assert.equal(session.snapshot().nativeFrameWaitFallback, false);
+  assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+
+  state.framePending = true;
+  await pumpFrame();
+  assert.equal(waitCalls(), waitsWhileLatched + 1, "recovery resumes the bounded DXGI wait path");
+  assert.equal(state.waitResolvers.length, 1);
+  state.waitResolvers.shift()(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitFallback, false);
+});
+
+test("Windows frame readiness fallback stays latched while native keeps the waitable bypassed", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await latchFrameWaitByTimeout(state, session, pumpFrame);
+  const waitsWhileLatched = waitCalls();
+  for (let index = 0; index < 12; index += 1) {
+    await pumpFrame();
+  }
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
+  assert.equal(waitCalls(), waitsWhileLatched);
+});
+
+test("Windows frame readiness timeout keeps waiting while native keeps the waitable armed", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await pumpFrame();
+  assert.equal(state.waitResolvers.length, 1);
+  state.waitResolvers.shift()(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+  assert.equal(
+    session.snapshot().nativeFrameWaitFallback,
+    false,
+    "an expected or first timeout must not latch the timer fallback"
+  );
+  state.framePending = true;
+  await pumpFrame();
+  assert.equal(waitCalls(), 2, "the next frame arms a fresh bounded DXGI wait");
+  assert.equal(state.waitResolvers.length, 1);
+});
+
+test("Windows frame readiness falls back once native latches after repeated timeouts", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  for (let timeout = 1; timeout <= 3; timeout += 1) {
+    state.framePending = true;
+    await pumpFrame();
+    assert.equal(state.waitResolvers.length, 1, `timeout ${timeout} has one in-flight wait`);
+    state.bypassed = timeout === 3;
+    state.waitResolvers.shift()(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(session.snapshot().nativeFrameWaitFallback, timeout === 3);
+  }
+  const waitsAtLatch = waitCalls();
+  await pumpFrame();
+  assert.equal(waitCalls(), waitsAtLatch, "a latched session must not arm DXGI waits");
+});
+
+test("Windows frame readiness fallback after a failed wait never recovers", async (t) => {
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "reject" };
+  const { session, pumpFrame, waitCalls } = startRecoverableFrameWaitSession(t, state);
+  await pumpFrame();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true);
+  const waitsAfterFailure = waitCalls();
+  for (let index = 0; index < 8; index += 1) {
+    await pumpFrame();
+  }
+  assert.equal(session.snapshot().nativeFrameWaitFallback, true, "wait errors keep the permanent fallback");
+  assert.equal(waitCalls(), waitsAfterFailure);
+});
+
 test("Windows frame-driven pump coalesces to the newest retained source", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake, pumpedSources } = createFrameDrivenPumpTestNative();
@@ -26328,7 +26501,7 @@ test("Windows busy Present preserves its consumed readiness permit for the bound
   const source = readSourceFile("crates", "native", "src", "windows_d3d11.rs");
   const busyStart = source.indexOf("if result == DXGI_ERROR_WAS_STILL_DRAWING {");
   const busyBranch = source.slice(busyStart, source.indexOf("return Ok(None);", busyStart));
-  assert.match(busyBranch, /if !self\.frame_latency_wait_bypassed \{\s*self\.frame_latency_ready_permits = 1;/u);
+  assert.match(busyBranch, /if !self\.frame_latency_wait\.bypassed \{\s*self\.frame_latency_ready_permits = 1;/u);
   assert.match(busyBranch, /self\.request_frame_timer_resolution\(\)/u);
   assert.match(busyBranch, /self\.present_retry_pending = true/u);
 });

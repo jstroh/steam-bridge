@@ -1272,7 +1272,7 @@ pub async fn wait_for_native_overlay_host_frame_ready(
         Ok(match ready_token {
             Some(token) => native_surface::grant_frame_latency_ready(token),
             None => {
-                native_surface::bypass_frame_latency_wait(wait_token);
+                native_surface::record_frame_latency_timeout(wait_token);
                 false
             }
         })

@@ -10383,6 +10383,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let nativeFrameWaitInFlight = false;
   let nativeFrameWaitEpoch = 0;
   let nativeFrameWaitUnavailable = false;
+  let nativeFrameWaitRecoverable = false;
+  let nativeFrameWaitRecoveryObservations = 0;
   let nativeFrameWaitTimeoutCount = 0;
   let nativePresentRetryAt: number | undefined;
   let nativePresentRetryCount = 0;
@@ -10439,6 +10441,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   const qaForceWindowsNativeFrameWaitTimeout =
     process.env.STEAM_BRIDGE_QA_FORCE_FRAME_WAIT_TIMEOUT === "1";
   const windowsNativeFrameWaitTimeoutMs = qaForceWindowsNativeFrameWaitTimeout ? 0 : 25;
+  const windowsNativeFrameWaitRecoveryObservations = 3;
 
   const pump = (): void => {
     if (closed) {
@@ -10495,15 +10498,30 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         } else {
           binding.pumpNativeOverlayProbeWindow();
         }
-        if (
-          usesWindowsStandaloneHost
-          && binding.isNativeOverlayHostFrameLatencyWaitBypassed?.() === true
-        ) {
+        const nativeFrameLatencyWaitBypassed = usesWindowsStandaloneHost
+          ? binding.isNativeOverlayHostFrameLatencyWaitBypassed?.()
+          : undefined;
+        if (nativeFrameLatencyWaitBypassed === true) {
           // The native surface outlives individual JavaScript presenter
           // sessions. Carry its one-way timeout fallback into a replacement
           // session so the scheduler cannot resume the stale waitable-object
           // path or its immediate pump loop after navigation.
+          if (!nativeFrameWaitUnavailable) {
+            nativeFrameWaitRecoverable = true;
+          }
           nativeFrameWaitUnavailable = true;
+          nativeFrameWaitRecoveryObservations = 0;
+        } else if (
+          nativeFrameLatencyWaitBypassed === false
+          && nativeFrameWaitUnavailable
+          && nativeFrameWaitRecoverable
+        ) {
+          nativeFrameWaitRecoveryObservations += 1;
+          if (nativeFrameWaitRecoveryObservations >= windowsNativeFrameWaitRecoveryObservations) {
+            nativeFrameWaitUnavailable = false;
+            nativeFrameWaitRecoverable = false;
+            nativeFrameWaitRecoveryObservations = 0;
+          }
         }
         nativeFramePending = usesWindowsStandaloneHost
           && !nativeFrameWaitUnavailable
@@ -11756,6 +11774,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     const waitForFrameReady = binding.waitForNativeOverlayHostFrameReady;
     if (typeof waitForFrameReady !== "function") {
       nativeFrameWaitUnavailable = true;
+      nativeFrameWaitRecoverable = false;
       return false;
     }
 
@@ -11770,6 +11789,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     } catch (error) {
       nativeFrameWaitInFlight = false;
       nativeFrameWaitUnavailable = true;
+      nativeFrameWaitRecoverable = false;
       lastError = error;
       return false;
     }
@@ -11805,7 +11825,15 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
             // while Present itself remains usable. The timed native wait has
             // disabled that stale gate; bounded timer-driven nonblocking
             // Present now paces this session.
-            nativeFrameWaitUnavailable = true;
+            const nativeKeptWaitArmed = !qaForceWindowsNativeFrameWaitTimeout
+              && binding.isNativeOverlayHostFrameLatencyWaitBypassed?.() === false;
+            if (!nativeKeptWaitArmed) {
+              if (!nativeFrameWaitUnavailable) {
+                nativeFrameWaitRecoverable = !qaForceWindowsNativeFrameWaitTimeout;
+              }
+              nativeFrameWaitUnavailable = true;
+              nativeFrameWaitRecoveryObservations = 0;
+            }
           }
           schedulePumpTimer();
           return;
@@ -11838,6 +11866,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         }
         nativeFrameWaitInFlight = false;
         nativeFrameWaitUnavailable = true;
+        nativeFrameWaitRecoverable = false;
         lastError = error;
         schedulePumpTimer();
       }
