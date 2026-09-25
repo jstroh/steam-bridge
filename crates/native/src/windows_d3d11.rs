@@ -705,6 +705,12 @@ pub fn set_dedicated_copy_device_requested(enabled: bool) {
     DEDICATED_COPY_DEVICE_REQUESTED.store(enabled, Ordering::Release);
 }
 
+fn swap_chain_attach_failure_error(attach_error: &str, restore_error: &str) -> String {
+    format!(
+        "D3D11 swap chain could not be attached after an adapter switch ({attach_error}; restoring the previous adapter also failed: {restore_error}); the native graphics device must be restarted"
+    )
+}
+
 fn dedicated_copy_device_removed_error(error: &windows::core::Error) -> String {
     format!(
         "D3D11 dedicated copy device was removed: {error}; the native graphics device must be restarted"
@@ -1176,6 +1182,7 @@ pub struct WindowsD3d11Renderer {
     host_adapter_luid: Option<LUID>,
     texture_adapter_luid: Option<LUID>,
     window: HWND,
+    swap_chain_attach_failure: Option<String>,
     dedicated_copy: Option<DedicatedCopyDevice>,
     dedicated_copy_requested: bool,
     dedicated_copy_creation_failures: u64,
@@ -1532,6 +1539,7 @@ impl WindowsD3d11Renderer {
             host_adapter_luid: None,
             texture_adapter_luid: None,
             window: HWND(hwnd),
+            swap_chain_attach_failure: None,
             dedicated_copy: None,
             dedicated_copy_requested: DEDICATED_COPY_DEVICE_REQUESTED.load(Ordering::Acquire),
             dedicated_copy_creation_failures: 0,
@@ -1771,6 +1779,9 @@ impl WindowsD3d11Renderer {
         presentation_rect: (u32, u32, u32, u32),
         asynchronous_completion: bool,
     ) -> Result<SharedTextureImportSubmission, String> {
+        if let Some(failure) = self.swap_chain_attach_failure.as_ref() {
+            return Err(failure.clone());
+        }
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
         if asynchronous_completion
@@ -2222,16 +2233,25 @@ impl WindowsD3d11Renderer {
                 *self = replacement;
                 Ok(())
             }
-            Err(error) => {
-                if let Ok(mut restored) = Self::new(hwnd, width, height) {
+            Err(error) => match Self::new(hwnd, width, height) {
+                Ok(mut restored) => {
                     restored.set_present_sync_interval(present_sync_interval);
                     restored.present_mode = self.present_mode;
                     restored.present_budget_ms = self.present_budget_ms;
                     *self = restored;
+                    Err(error)
                 }
-                Err(error)
-            }
+                Err(restore_error) => {
+                    let terminal = swap_chain_attach_failure_error(&error, &restore_error);
+                    self.swap_chain_attach_failure = Some(terminal.clone());
+                    Err(terminal)
+                }
+            },
         }
+    }
+
+    pub fn swap_chain_attach_failure(&self) -> Option<&str> {
+        self.swap_chain_attach_failure.as_deref()
     }
 
     pub fn set_dedicated_copy_device(&mut self, enabled: bool) {
@@ -2553,6 +2573,9 @@ impl WindowsD3d11Renderer {
     }
 
     pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<Option<i32>, String> {
+        if let Some(failure) = self.swap_chain_attach_failure.as_ref() {
+            return Err(failure.clone());
+        }
         self.present_retry_pending = false;
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;

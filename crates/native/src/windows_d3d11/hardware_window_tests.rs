@@ -437,12 +437,63 @@ fn a_visible_stall_latch_rearms_from_render_without_a_window_transition() {
 
 #[test]
 #[ignore = "requires a real GPU and a visible desktop"]
+fn a_failed_attach_after_an_adapter_switch_is_terminal_and_not_retried() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let blocker = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("blocking swap chain");
+        let mut renderer =
+            WindowsD3d11Renderer::new_with_adapter(hwnd, 320, 200, None, false).expect("renderer");
+        let producer = create_shared_producer_texture(&renderer, 320, 200);
+        let error = renderer
+            .switch_to_shared_texture_adapter(
+                hwnd,
+                producer.handle.0 as usize,
+                320,
+                200,
+                (0, 0, 320, 200),
+                (0, 0, 320, 200),
+            )
+            .expect_err("another swap chain owns the window");
+        assert!(
+            error.contains("could not be attached after an adapter switch"),
+            "{error}"
+        );
+        assert!(!is_device_lost_error(&error), "{error}");
+        assert!(!is_shared_texture_adapter_open_error(&error), "{error}");
+        let import = renderer.begin_import_shared_texture(
+            producer.handle.0 as usize,
+            320,
+            200,
+            (0, 0, 320, 200),
+            (0, 0, 320, 200),
+        );
+        assert_eq!(
+            import.err().as_deref(),
+            Some(error.as_str()),
+            "imports must not re-enter the switch"
+        );
+        assert_eq!(
+            renderer.render([0.0, 0.0, 0.0, 1.0]).err().as_deref(),
+            Some(error.as_str())
+        );
+        drop(renderer);
+        drop(blocker);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
 fn adapter_switch_attaches_a_new_swap_chain_to_the_same_window() {
     unsafe {
         let hwnd = create_test_window(336, 239);
         let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
         renderer.render([0.0, 0.0, 0.0, 1.0]).expect("first render");
         let producer = create_shared_producer_texture(&renderer, 320, 200);
+        let worker_handle = renderer
+            .duplicate_frame_latency_wait_handle()
+            .expect("duplicate waitable")
+            .expect("waitable handle");
         for attempt in 1..=3 {
             renderer
                 .switch_to_shared_texture_adapter(
@@ -460,6 +511,7 @@ fn adapter_switch_attaches_a_new_swap_chain_to_the_same_window() {
                 .render([0.0, 0.0, 0.0, 1.0])
                 .expect("render after switch");
         }
+        drop(worker_handle);
         drop(renderer);
         wm::DestroyWindow(hwnd);
     }
