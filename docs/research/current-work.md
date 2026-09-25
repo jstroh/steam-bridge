@@ -98,10 +98,13 @@ green. See `WIN-ELECTRON-4445-LOCAL-001` for what it covers:
 - **Text.** Emoji and non-BMP CJK arrived as one character each.
 - **Shutdown.** The app exited cleanly with code 0, and Steam kept running.
 
+Mouse edge, corner and title drags also pass, including the clamp to the
+logical minimum, and the host followed a live 125%-to-250% display change.
 Not covered: Steam-client launch (the direct launch still loaded Steam's
-overlay), a signed candidate, a display matrix, receipts, and mouse edge
-sizing. Injected corner drags never entered the size loop, while keyboard
-sizing worked. The public example passes a direct App ID `480` smoke, but its
+overlay), a signed candidate, a display matrix, and receipts. For automation:
+an elevated foreground utility makes UIPI silently drop injected input, so
+check the foreground owner and the host's message counters before trusting
+a `SendInput` result. The public example passes a direct App ID `480` smoke, but its
 `presenter-*` actions intentionally fail on Windows, so it cannot prove Windows
 overlay routes.
 
