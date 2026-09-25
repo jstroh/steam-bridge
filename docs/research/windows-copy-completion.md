@@ -105,6 +105,10 @@ A synchronous import or CPU frame clears the ring's pending and newest frames,
 so an older dedicated frame can never replace it. Turning the option off first
 binds a pending frame that was never shown. If the copy device cannot wait for
 host sampling of a slot, it skips that copy rather than overwrite the slot.
+When a Present is busy, occluded or fails after the host signalled its
+sample, the host context is flushed so the copy device does not wait on a
+signal that never reached the GPU. A busy or occluded Present could not be
+forced on the NVIDIA desktop, so only the decision is unit-tested.
 `sharedTextureCopy.dedicatedDevice` reports whether it is requested and
 active, its copy count, creation failures and last error. `gpuTiming` then
 reports the copy device's timestamps. Evidence and the remaining hybrid-laptop

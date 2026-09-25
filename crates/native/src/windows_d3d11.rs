@@ -727,6 +727,10 @@ fn stalled_shared_texture_copy_error(
         .to_owned()
 }
 
+fn present_submitted_frame(result: windows::core::HRESULT) -> bool {
+    result.is_ok() && result != DXGI_STATUS_OCCLUDED
+}
+
 fn dedicated_copy_device_removed_error(error: &windows::core::Error) -> String {
     format!(
         "D3D11 dedicated copy device was removed: {error}; the native graphics device must be restarted"
@@ -2575,24 +2579,26 @@ impl WindowsD3d11Renderer {
         }
     }
 
-    unsafe fn signal_dedicated_copy_sampled(&mut self) {
+    unsafe fn signal_dedicated_copy_sampled(&mut self) -> bool {
         let (Some(dedicated), Some(context4)) = (
             self.dedicated_copy.as_mut(),
             self.shared_texture_copy_context4.as_ref(),
         ) else {
-            return;
+            return false;
         };
         let Some(slot) = dedicated.displayed else {
-            return;
+            return false;
         };
         let sampled_value = dedicated.next_sampled_value.saturating_add(1);
         if context4
             .Signal(&dedicated.sampled_fence, sampled_value)
-            .is_ok()
+            .is_err()
         {
-            dedicated.next_sampled_value = sampled_value;
-            dedicated.ring[slot].last_sampled_value = sampled_value;
+            return false;
         }
+        dedicated.next_sampled_value = sampled_value;
+        dedicated.ring[slot].last_sampled_value = sampled_value;
+        true
     }
 
     unsafe fn release_swap_chain_for_replacement(&mut self) {
@@ -2714,6 +2720,7 @@ impl WindowsD3d11Renderer {
         self.context
             .ClearRenderTargetView(render_target, &clear_color);
 
+        let mut sampled_signalled = false;
         if self.source_view.is_some() && self.source_width > 0 && self.source_height > 0 {
             let (x, y, width, height) = aspect_fit(
                 self.width,
@@ -2742,7 +2749,7 @@ impl WindowsD3d11Renderer {
                 .PSSetSamplers(0, Some(slice::from_ref(&self.sampler)));
             self.context.Draw(3, 0);
             self.context.PSSetShaderResources(0, Some(&[None]));
-            self.signal_dedicated_copy_sampled();
+            sampled_signalled = self.signal_dedicated_copy_sampled();
         }
 
         let swap_chain = self
@@ -2761,6 +2768,9 @@ impl WindowsD3d11Renderer {
         let present_started_at = Instant::now();
         let result = swap_chain.Present(present_sync_interval, present_flags);
         let present_duration_ms = present_started_at.elapsed().as_secs_f64() * 1_000.0;
+        if sampled_signalled && !present_submitted_frame(result) {
+            self.context.Flush();
+        }
         self.last_present_duration_ms = present_duration_ms;
         self.max_present_duration_ms = self.max_present_duration_ms.max(present_duration_ms);
         if self
@@ -4174,9 +4184,17 @@ mod hardware_window_tests;
 #[cfg(test)]
 mod dedicated_copy_device_tests {
     use super::{
-        dedicated_copy_device_removed_error, is_device_lost_error,
-        stalled_shared_texture_copy_error,
+        dedicated_copy_device_removed_error, is_device_lost_error, present_submitted_frame,
+        stalled_shared_texture_copy_error, DXGI_ERROR_WAS_STILL_DRAWING, DXGI_STATUS_OCCLUDED,
     };
+
+    #[test]
+    fn only_a_submitted_present_carries_the_sampled_signal_to_the_gpu() {
+        assert!(present_submitted_frame(windows::core::HRESULT(0)));
+        assert!(!present_submitted_frame(DXGI_ERROR_WAS_STILL_DRAWING));
+        assert!(!present_submitted_frame(DXGI_STATUS_OCCLUDED));
+        assert!(!present_submitted_frame(DXGI_ERROR_DEVICE_REMOVED));
+    }
 
     #[test]
     fn a_stalled_copy_after_either_device_was_removed_is_device_loss() {
