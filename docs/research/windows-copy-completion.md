@@ -97,7 +97,10 @@ unchanged. A partial update first copies the newest complete texture, then the
 dirty rectangle, so every ring texture holds a whole frame. If the second
 device cannot be created, copies fall back to the host context. If it is
 removed, the import fails with the device-lost HRESULT, and the existing
-recovery rebuilds the renderer with the option still set.
+recovery rebuilds the renderer with the option still set. This also holds when
+removal is first seen by an in-flight copy wait: once a copy has stalled or
+failed, the next import checks the host and copy devices, and reports device
+loss rather than a plain stall if either was removed.
 `sharedTextureCopy.dedicatedDevice` reports whether it is requested and
 active, its copy count, creation failures and last error. `gpuTiming` then
 reports the copy device's timestamps. Evidence and the remaining hybrid-laptop

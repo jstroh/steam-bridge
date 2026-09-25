@@ -711,6 +711,22 @@ fn swap_chain_attach_failure_error(attach_error: &str, restore_error: &str) -> S
     )
 }
 
+fn stalled_shared_texture_copy_error(
+    host_removed: Option<&windows::core::Error>,
+    copy_removed: Option<&windows::core::Error>,
+) -> String {
+    if let Some(error) = host_removed {
+        return format!(
+            "D3D11 device was removed while a shared-texture copy was outstanding: {error}; the native graphics device must be restarted"
+        );
+    }
+    if let Some(error) = copy_removed {
+        return dedicated_copy_device_removed_error(error);
+    }
+    "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted"
+        .to_owned()
+}
+
 fn dedicated_copy_device_removed_error(error: &windows::core::Error) -> String {
     format!(
         "D3D11 dedicated copy device was removed: {error}; the native graphics device must be restarted"
@@ -1796,10 +1812,15 @@ impl WindowsD3d11Renderer {
                     .load(Ordering::Acquire)
                     > 0)
         {
-            return Err(
-                "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted"
-                    .to_owned(),
-            );
+            let host_removed = self.device.GetDeviceRemovedReason().err();
+            let copy_removed = self
+                .dedicated_copy
+                .as_ref()
+                .and_then(|dedicated| dedicated.device.GetDeviceRemovedReason().err());
+            return Err(stalled_shared_texture_copy_error(
+                host_removed.as_ref(),
+                copy_removed.as_ref(),
+            ));
         }
         if handle == 0 {
             return Err("Electron shared texture handle is null".to_owned());
@@ -4136,7 +4157,23 @@ mod hardware_window_tests;
 
 #[cfg(test)]
 mod dedicated_copy_device_tests {
-    use super::{dedicated_copy_device_removed_error, is_device_lost_error};
+    use super::{
+        dedicated_copy_device_removed_error, is_device_lost_error,
+        stalled_shared_texture_copy_error,
+    };
+
+    #[test]
+    fn a_stalled_copy_after_either_device_was_removed_is_device_loss() {
+        let removed = windows::core::Error::from(DXGI_ERROR_DEVICE_REMOVED);
+        let stalled = stalled_shared_texture_copy_error(None, None);
+        assert!(stalled.contains("previously stalled"));
+        assert!(!is_device_lost_error(&stalled));
+        let host = stalled_shared_texture_copy_error(Some(&removed), None);
+        assert!(is_device_lost_error(&host), "{host}");
+        let copy = stalled_shared_texture_copy_error(None, Some(&removed));
+        assert!(is_device_lost_error(&copy), "{copy}");
+        assert!(copy.contains("dedicated copy device"), "{copy}");
+    }
     use windows::Win32::Graphics::Dxgi::{
         DXGI_ERROR_DEVICE_HUNG, DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET,
     };
