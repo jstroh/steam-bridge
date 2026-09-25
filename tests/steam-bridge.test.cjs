@@ -26254,6 +26254,9 @@ function createRecoverableFrameWaitNative(state) {
     isNativeOverlayHostFrameLatencyWaitBypassed() {
       return state.bypassed;
     },
+    setNativeOverlayHostDedicatedCopyDevice(enabled) {
+      this.calls.push({ method: "setNativeOverlayHostDedicatedCopyDevice", args: [enabled] });
+    },
     waitForNativeOverlayHostFrameReady(timeoutMs) {
       this.calls.push({ method: "waitForNativeOverlayHostFrameReady", args: [timeoutMs] });
       return state.waitResult === "reject"
@@ -26276,12 +26279,12 @@ function createRecoverableFrameWaitNative(state) {
   });
 }
 
-function startRecoverableFrameWaitSession(t, state) {
+function startRecoverableFrameWaitSession(t, state, options = {}) {
   setProcessPlatformForTest(t, "win32");
   const fake = createRecoverableFrameWaitNative(state);
   const steam = loadSteamWithFakeNative(fake);
   steam.init(480);
-  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000, ...options });
   t.after(() => {
     session.close();
     clearSteamBridgeCache();
@@ -26294,8 +26297,25 @@ function startRecoverableFrameWaitSession(t, state) {
   };
   const waitCalls = () =>
     fake.calls.filter((call) => call.method === "waitForNativeOverlayHostFrameReady").length;
-  return { session, pumpFrame, waitCalls };
+  return { session, pumpFrame, waitCalls, fake };
 }
+
+test("Windows dedicated copy device option is forwarded once and reported", async (t) => {
+  for (const [options, expected] of [[{ windowsDedicatedCopyDevice: true }, true], [{}, false]]) {
+    const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+    const { session, pumpFrame, fake } = startRecoverableFrameWaitSession(t, state, options);
+    await pumpFrame();
+    await pumpFrame();
+    assert.deepEqual(
+      fake.calls
+        .filter((call) => call.method === "setNativeOverlayHostDedicatedCopyDevice")
+        .map((call) => call.args),
+      [[expected]]
+    );
+    assert.equal(session.snapshot().windowsDedicatedCopyDevice, expected);
+    session.close();
+  }
+});
 
 async function latchFrameWaitByTimeout(state, session, pumpFrame) {
   await pumpFrame();

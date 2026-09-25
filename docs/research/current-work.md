@@ -185,8 +185,12 @@ and every message is still released.
    on restore or occlusion end. An adapter switch now releases the old swap
    chain before attaching the new one (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`).
    Diagnostics now report adapter LUIDs, cross-adapter present, latch and
-   re-arm counts, and sampled GPU copy time. Next: offer a dedicated copy
-   device. Live proof on an NVIDIA hybrid laptop is still required.
+   re-arm counts, and sampled GPU copy time. The opt-in
+   `windowsDedicatedCopyDevice` option moves the copy off the host queue:
+   latched completion falls from about 48 ms to 1.35 ms in the harness and
+   from 20-37 ms to about 1.3 ms live on a single-GPU desktop. It stays off by
+   default until an NVIDIA hybrid laptop at 60 Hz passes the candidate gate in
+   `WIN-FRAME-WAIT-BYPASS-LATCH-001`.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and

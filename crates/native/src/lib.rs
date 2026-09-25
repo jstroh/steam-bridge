@@ -1365,6 +1365,20 @@ pub fn set_native_overlay_host_continuous_present(
     native_surface::set_continuous_present(continuous, frame_rate)
 }
 
+#[napi(js_name = "setNativeOverlayHostDedicatedCopyDevice")]
+pub fn set_native_overlay_host_dedicated_copy_device(enabled: bool) -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::set_dedicated_copy_device(enabled)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        Ok(())
+    }
+}
+
 #[napi(js_name = "setNativeOverlayHostFullScreen")]
 pub fn set_native_overlay_host_full_screen(full_screen: bool) -> Result<(), Error> {
     native_surface::set_full_screen(full_screen)

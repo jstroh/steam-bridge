@@ -1849,6 +1849,7 @@ export interface NativeBinding {
   setNativeOverlayHostOverlayActive(active: boolean): void;
   setNativeOverlayHostCursorHidden(hidden: boolean): void;
   setNativeOverlayHostContinuousPresent(continuous: boolean, frameRate?: number): void;
+  setNativeOverlayHostDedicatedCopyDevice(enabled: boolean): void;
   setNativeOverlayHostFullScreen(fullScreen: boolean): void;
   setNativeOverlayHostPresentationEpoch(instanceId: string, epoch: number): boolean | void;
   setNativeOverlayHostPresentationTransportClosed(instanceId: string): void;

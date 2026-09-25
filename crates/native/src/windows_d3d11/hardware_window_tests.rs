@@ -1,9 +1,6 @@
 use super::*;
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
-};
-use windows::Win32::Graphics::Dxgi::{
-    IDXGIResource1, DXGI_SHARED_RESOURCE_READ, DXGI_SHARED_RESOURCE_WRITE,
+    D3D11_CPU_ACCESS_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ, D3D11_USAGE_STAGING,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging as wm;
@@ -61,9 +58,86 @@ pub(super) unsafe fn pump_test_window_messages() {
 }
 
 pub(super) struct SharedProducerTexture {
-    _device: ID3D11Device,
+    device: ID3D11Device,
+    context: ID3D11DeviceContext,
+    view: ID3D11RenderTargetView,
     _texture: ID3D11Texture2D,
     pub(super) handle: HANDLE,
+}
+
+impl SharedProducerTexture {
+    pub(super) unsafe fn paint(&self, color: [f32; 4]) {
+        self.context.ClearRenderTargetView(&self.view, &color);
+        let mut query = None;
+        self.device
+            .CreateQuery(
+                &D3D11_QUERY_DESC {
+                    Query: D3D11_QUERY_EVENT,
+                    MiscFlags: 0,
+                },
+                Some(&mut query),
+            )
+            .expect("producer event query");
+        let query = query.expect("producer event query");
+        self.context.End(&query);
+        self.context.Flush();
+        loop {
+            let mut done = 0i32;
+            let _ = self.context.GetData(
+                &query,
+                Some((&mut done as *mut i32).cast()),
+                std::mem::size_of::<i32>() as u32,
+                0,
+            );
+            if done != 0 {
+                break;
+            }
+            std::thread::yield_now();
+        }
+    }
+}
+
+pub(super) unsafe fn read_presented_source_pixels(
+    renderer: &WindowsD3d11Renderer,
+    points: &[(u32, u32)],
+) -> Vec<[u8; 4]> {
+    let view = renderer.source_view.as_ref().expect("source view");
+    let texture: ID3D11Texture2D = view
+        .GetResource()
+        .expect("source resource")
+        .cast()
+        .expect("texture");
+    let mut desc = D3D11_TEXTURE2D_DESC::default();
+    texture.GetDesc(&mut desc);
+    let staging_desc = D3D11_TEXTURE2D_DESC {
+        Usage: D3D11_USAGE_STAGING,
+        BindFlags: 0,
+        CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+        MiscFlags: 0,
+        ..desc
+    };
+    let mut staging = None;
+    renderer
+        .device
+        .CreateTexture2D(&staging_desc, None, Some(&mut staging))
+        .expect("staging texture");
+    let staging: ID3D11Texture2D = staging.expect("staging texture");
+    renderer.context.CopyResource(&staging, &texture);
+    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+    renderer
+        .context
+        .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+        .expect("map staging");
+    let pixels = points
+        .iter()
+        .map(|&(x, y)| {
+            let offset = y as usize * mapped.RowPitch as usize + x as usize * 4;
+            let bytes = std::slice::from_raw_parts((mapped.pData as *const u8).add(offset), 4);
+            [bytes[0], bytes[1], bytes[2], bytes[3]]
+        })
+        .collect();
+    renderer.context.Unmap(&staging, 0);
+    pixels
 }
 
 impl Drop for SharedProducerTexture {
@@ -79,6 +153,7 @@ pub(super) unsafe fn create_shared_producer_texture(
     height: u32,
 ) -> SharedProducerTexture {
     let mut device = None;
+    let mut context = None;
     D3D11CreateDevice(
         None,
         D3D_DRIVER_TYPE_HARDWARE,
@@ -88,10 +163,11 @@ pub(super) unsafe fn create_shared_producer_texture(
         D3D11_SDK_VERSION,
         Some(&mut device),
         None,
-        None,
+        Some(&mut context),
     )
     .expect("producer D3D11CreateDevice");
     let device: ID3D11Device = device.expect("producer device");
+    let context: ID3D11DeviceContext = context.expect("producer context");
     let desc = D3D11_TEXTURE2D_DESC {
         Width: width,
         Height: height,
@@ -121,10 +197,131 @@ pub(super) unsafe fn create_shared_producer_texture(
             windows::core::PCWSTR::null(),
         )
         .expect("producer shared handle");
+    let mut view = None;
+    device
+        .CreateRenderTargetView(&texture, None, Some(&mut view))
+        .expect("producer render target");
     SharedProducerTexture {
-        _device: device,
+        device,
+        context,
+        view: view.expect("producer render target"),
         _texture: texture,
         handle,
+    }
+}
+
+unsafe fn render_until_presented(renderer: &mut WindowsD3d11Renderer) {
+    for _ in 0..500 {
+        if renderer
+            .render([0.0, 0.0, 0.0, 1.0])
+            .expect("render")
+            .is_some()
+        {
+            return;
+        }
+        pump_test_window_messages();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    panic!("the renderer did not present within 500 attempts");
+}
+
+unsafe fn import_and_wait(
+    renderer: &mut WindowsD3d11Renderer,
+    producer: &SharedProducerTexture,
+    content_rect: (u32, u32, u32, u32),
+) {
+    match renderer
+        .begin_import_shared_texture(
+            producer.handle.0 as usize,
+            320,
+            200,
+            content_rect,
+            (0, 0, 320, 200),
+        )
+        .expect("import")
+    {
+        SharedTextureImportSubmission::Accepted(Some(wait)) => wait.wait().expect("copy"),
+        SharedTextureImportSubmission::Accepted(None) => {}
+        SharedTextureImportSubmission::Dropped => panic!("single in-flight copy was dropped"),
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
+fn dedicated_copy_device_presents_full_and_dirty_rect_frames() {
+    unsafe {
+        set_dedicated_copy_device_requested(true);
+        let hwnd = create_test_window(336, 239);
+        let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+        set_dedicated_copy_device_requested(false);
+        assert!(
+            renderer.dedicated_copy_requested,
+            "new renderers inherit the process flag"
+        );
+        let producer = create_shared_producer_texture(320, 200);
+        let inside = (100, 60);
+        let outside = (10, 10);
+
+        producer.paint([1.0, 0.0, 0.0, 1.0]);
+        import_and_wait(&mut renderer, &producer, (0, 0, 320, 200));
+        assert!(renderer.dedicated_copy_device_active());
+        render_until_presented(&mut renderer);
+        let full = read_presented_source_pixels(&renderer, &[inside, outside]);
+        assert_eq!(
+            full,
+            vec![[0, 0, 255, 255], [0, 0, 255, 255]],
+            "full red frame (BGRA)"
+        );
+
+        producer.paint([0.0, 1.0, 0.0, 1.0]);
+        import_and_wait(&mut renderer, &producer, (80, 40, 80, 60));
+        render_until_presented(&mut renderer);
+        let partial = read_presented_source_pixels(&renderer, &[inside, outside]);
+        assert_eq!(
+            partial[0],
+            [0, 255, 0, 255],
+            "dirty rect shows the new frame"
+        );
+        assert_eq!(
+            partial[1],
+            [0, 0, 255, 255],
+            "pixels outside the dirty rect keep the previous frame"
+        );
+        assert_eq!(renderer.shared_texture_partial_copy_count, 1);
+
+        for frame in 0..8 {
+            let shade = if frame % 2 == 0 { 1.0 } else { 0.0 };
+            producer.paint([shade, 0.0, 1.0 - shade, 1.0]);
+            import_and_wait(&mut renderer, &producer, (0, 0, 320, 200));
+            render_until_presented(&mut renderer);
+            let expected = if frame % 2 == 0 {
+                [0, 0, 255, 255]
+            } else {
+                [255, 0, 0, 255]
+            };
+            assert_eq!(
+                read_presented_source_pixels(&renderer, &[inside])[0],
+                expected,
+                "ring frame {frame}"
+            );
+        }
+        assert_eq!(renderer.dedicated_copy_count, 10);
+
+        renderer.set_dedicated_copy_device(false);
+        assert!(!renderer.dedicated_copy_device_active());
+        producer.paint([0.0, 0.0, 1.0, 1.0]);
+        import_and_wait(&mut renderer, &producer, (0, 0, 320, 200));
+        render_until_presented(&mut renderer);
+        assert_eq!(
+            read_presented_source_pixels(&renderer, &[inside])[0],
+            [255, 0, 0, 255]
+        );
+        assert_eq!(
+            renderer.dedicated_copy_count, 10,
+            "disabled option returns to the host path"
+        );
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
     }
 }
 

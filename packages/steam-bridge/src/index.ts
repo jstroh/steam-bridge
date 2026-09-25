@@ -1677,6 +1677,13 @@ export interface NativeOverlaySessionOptions {
    * Present hook after the visible input handoff; the default is 5000 ms.
    */
   windowsSharedTextureResumeDelayMs?: number;
+  /**
+   * Windows-only. Copy Electron shared textures on a second D3D11 device on the
+   * host adapter so copy completion does not queue behind the host's own
+   * rendering and Present. Off by default. The setting applies process-wide to
+   * the native host, including renderers recreated after device loss.
+   */
+  windowsDedicatedCopyDevice?: boolean;
   hideNativeHostOnOverlayDeactivate?: boolean;
   /**
    * Cold-start floor applied before checkout reservations report the Steam
@@ -1884,6 +1891,8 @@ export interface NativeOverlaySessionSnapshot {
   windowsOverlayHandoffFallbackCount?: number;
   /** Configured Windows post-overlay GPU-texture quarantine in milliseconds. */
   windowsSharedTextureResumeDelayMs?: number;
+  /** Whether this session requested the Windows dedicated shared-texture copy device. */
+  windowsDedicatedCopyDevice?: boolean;
   /** Duration of the latest synchronous native shared-texture update attempt. */
   lastSharedTextureUpdateDurationMs?: number;
   /** Longest synchronous native shared-texture update attempt in this session. */
@@ -10328,6 +10337,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     restoreFocusDelayMs,
     finiteNumber(options.windowsSharedTextureResumeDelayMs, 5000)
   );
+  const windowsDedicatedCopyDevice = options.windowsDedicatedCopyDevice === true;
+  let dedicatedCopyDeviceApplied = false;
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
   const startedAt = Date.now();
   const activationWarmupMs = normalizeNativeOverlayActivationWarmupMs(
@@ -10481,6 +10492,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       syncFullScreen();
       syncNativeHostBounds();
       syncContinuousPresent();
+      syncDedicatedCopyDevice();
       try {
         const binding = native();
         if (nonblockingPresentDiagnostic) {
@@ -10634,7 +10646,8 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
         ? {
             windowsOverlayHandoffPending,
             windowsOverlayHandoffFallbackCount,
-            windowsSharedTextureResumeDelayMs
+            windowsSharedTextureResumeDelayMs,
+            windowsDedicatedCopyDevice
           }
         : {}),
       lastSharedTextureUpdateDurationMs,
@@ -12692,6 +12705,30 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       setter.call(binding, continuous, appliedFrameRate);
       continuousPresentApplied = continuous;
       continuousPresentFrameRateApplied = appliedFrameRate;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  function syncDedicatedCopyDevice(): void {
+    if (
+      dedicatedCopyDeviceApplied
+      || closed
+      || !usesWindowsStandaloneHost
+      || !ownsNativeOverlaySurface(surfaceLease)
+      || nativeHostUnavailableReason !== undefined
+    ) {
+      return;
+    }
+    const binding = native();
+    const setter = binding.setNativeOverlayHostDedicatedCopyDevice;
+    if (typeof setter !== "function") {
+      dedicatedCopyDeviceApplied = true;
+      return;
+    }
+    try {
+      setter.call(binding, windowsDedicatedCopyDevice);
+      dedicatedCopyDeviceApplied = true;
     } catch (error) {
       lastError = error;
     }

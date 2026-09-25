@@ -2361,6 +2361,15 @@ mod windows {
         })
     }
 
+    pub fn set_dedicated_copy_device(enabled: bool) -> Result<(), Error> {
+        windows_d3d11::set_dedicated_copy_device_requested(enabled);
+        with_surface(|surface| {
+            if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
+                renderer.set_dedicated_copy_device(enabled);
+            }
+        })
+    }
+
     pub fn set_continuous_present(continuous: bool, frame_rate: Option<f64>) -> Result<(), Error> {
         with_surface(|surface| unsafe {
             let target_frame_rate = frame_rate.filter(|value| value.is_finite() && *value > 0.0);
@@ -3880,6 +3889,8 @@ mod windows {
                 diagnostics["adapters"] = renderer.adapter_diagnostics();
                 diagnostics["sharedTextureCopy"]["gpuTiming"] =
                     renderer.shared_texture_copy_gpu_timing_diagnostics();
+                diagnostics["sharedTextureCopy"]["dedicatedDevice"] =
+                    renderer.shared_texture_copy_dedicated_device_diagnostics();
                 diagnostics
             }
         }

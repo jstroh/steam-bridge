@@ -81,6 +81,24 @@ The session snapshot adds `nativeFrameWaitRecoveryCount`, the number of times
 the JavaScript scheduler left its timeout fallback after the native waitable
 re-armed.
 
+## Dedicated copy device
+
+The opt-in `windowsDedicatedCopyDevice` session option copies Electron's
+shared texture on a second D3D11 device on the host adapter. The copy lands in
+one of four host-owned shared textures. A shared copy fence orders the host's
+first sample of a new texture after its copy, and a shared sampled fence orders
+the next overwrite after the host's last sample. The producer is still released
+only when the copy fence completes, and the two-copy admission bound is
+unchanged. A partial update first copies the newest complete texture, then the
+dirty rectangle, so every ring texture holds a whole frame. If the second
+device cannot be created, copies fall back to the host context. If it is
+removed, the import fails with the device-lost HRESULT, and the existing
+recovery rebuilds the renderer with the option still set.
+`sharedTextureCopy.dedicatedDevice` reports whether it is requested and
+active, its copy count, creation failures and last error. `gpuTiming` then
+reports the copy device's timestamps. Evidence and the remaining hybrid-laptop
+gate are in `WIN-FRAME-WAIT-BYPASS-LATCH-001`.
+
 ## Validation
 
 Three regressions failed with the original logic: completed fence plus missing
