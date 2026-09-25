@@ -26300,8 +26300,12 @@ function startRecoverableFrameWaitSession(t, state, options = {}) {
   return { session, pumpFrame, waitCalls, fake };
 }
 
-test("Windows dedicated copy device option is forwarded once and reported", async (t) => {
-  for (const [options, expected] of [[{ windowsDedicatedCopyDevice: true }, true], [{}, false]]) {
+test("Windows dedicated copy device option is forwarded once only when defined", async (t) => {
+  for (const [options, forwarded, expected] of [
+    [{ windowsDedicatedCopyDevice: true }, [[true]], true],
+    [{ windowsDedicatedCopyDevice: false }, [[false]], false],
+    [{}, [], false]
+  ]) {
     const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
     const { session, pumpFrame, fake } = startRecoverableFrameWaitSession(t, state, options);
     await pumpFrame();
@@ -26310,7 +26314,8 @@ test("Windows dedicated copy device option is forwarded once and reported", asyn
       fake.calls
         .filter((call) => call.method === "setNativeOverlayHostDedicatedCopyDevice")
         .map((call) => call.args),
-      [[expected]]
+      forwarded,
+      "a session that omits the process-wide option must not turn it off"
     );
     assert.equal(session.snapshot().windowsDedicatedCopyDevice, expected);
     session.close();

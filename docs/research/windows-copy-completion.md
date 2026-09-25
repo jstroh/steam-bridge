@@ -91,7 +91,9 @@ re-armed.
 ## Dedicated copy device
 
 The opt-in `windowsDedicatedCopyDevice` session option copies Electron's
-shared texture on a second D3D11 device on the host adapter. The copy lands in
+shared texture on a second D3D11 device on the host adapter. The option is
+process-wide and applied only when a session defines it, so a later session
+that omits it does not turn the device off. The copy lands in
 one of four host-owned shared textures. A shared copy fence orders the host's
 first sample of a new texture after its copy, and a shared sampled fence orders
 the next overwrite after the host's last sample. The producer is still released

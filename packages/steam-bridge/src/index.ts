@@ -1681,7 +1681,9 @@ export interface NativeOverlaySessionOptions {
    * Windows-only. Copy Electron shared textures on a second D3D11 device on the
    * host adapter so copy completion does not queue behind the host's own
    * rendering and Present. Off by default. The setting applies process-wide to
-   * the native host, including renderers recreated after device loss.
+   * the native host, including renderers recreated after device loss. A
+   * session that omits it leaves the current process setting unchanged; pass
+   * `false` to turn it off.
    */
   windowsDedicatedCopyDevice?: boolean;
   hideNativeHostOnOverlayDeactivate?: boolean;
@@ -10337,7 +10339,10 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     restoreFocusDelayMs,
     finiteNumber(options.windowsSharedTextureResumeDelayMs, 5000)
   );
-  const windowsDedicatedCopyDevice = options.windowsDedicatedCopyDevice === true;
+  const requestedDedicatedCopyDevice = typeof options.windowsDedicatedCopyDevice === "boolean"
+    ? options.windowsDedicatedCopyDevice
+    : undefined;
+  const windowsDedicatedCopyDevice = requestedDedicatedCopyDevice === true;
   let dedicatedCopyDeviceApplied = false;
   const hideNativeHostDelayMs = usesNativeHostView ? 500 : 0;
   const startedAt = Date.now();
@@ -12722,12 +12727,12 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     }
     const binding = native();
     const setter = binding.setNativeOverlayHostDedicatedCopyDevice;
-    if (typeof setter !== "function") {
+    if (requestedDedicatedCopyDevice === undefined || typeof setter !== "function") {
       dedicatedCopyDeviceApplied = true;
       return;
     }
     try {
-      setter.call(binding, windowsDedicatedCopyDevice);
+      setter.call(binding, requestedDedicatedCopyDevice);
       dedicatedCopyDeviceApplied = true;
     } catch (error) {
       lastError = error;
