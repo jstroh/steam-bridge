@@ -2371,6 +2371,21 @@ mod windows {
         })
     }
 
+    pub fn focus() -> Result<(), Error> {
+        with_surface(|surface| unsafe {
+            if !surface.visible {
+                return;
+            }
+            if IsIconic(surface.hwnd) != 0 {
+                ShowWindow(
+                    surface.hwnd,
+                    windows_sys::Win32::UI::WindowsAndMessaging::SW_RESTORE,
+                );
+            }
+            activate_window(surface);
+        })
+    }
+
     pub fn set_continuous_present(continuous: bool, frame_rate: Option<f64>) -> Result<(), Error> {
         with_surface(|surface| unsafe {
             let target_frame_rate = frame_rate.filter(|value| value.is_finite() && *value > 0.0);

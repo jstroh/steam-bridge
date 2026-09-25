@@ -1983,6 +1983,13 @@ export interface NativeOverlaySession extends CallbackHandle {
    */
   updateSharedTextureAsync(texture: NativeOverlaySharedTexture): Promise<boolean>;
   setCursorHidden(hidden: boolean): void;
+  /**
+   * Windows standalone host only: restore the native window if it is
+   * minimized and bring it to the foreground, for example when a second
+   * launch of the application is redirected to the running instance.
+   * No-op on other platforms and with older native addons.
+   */
+  focus(): void;
   setFrameRate(frameRate: number): void;
   setFullScreen(fullScreen: boolean): void;
   isFullScreen(): boolean;
@@ -11025,6 +11032,22 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     syncCursorHidden();
   };
 
+  const focus = (): void => {
+    if (closed || !usesWindowsStandaloneHost || !ownsNativeOverlaySurface(surfaceLease)) {
+      return;
+    }
+    const binding = native();
+    const focusHost = binding.focusNativeOverlayHost;
+    if (typeof focusHost !== "function") {
+      return;
+    }
+    try {
+      focusHost.call(binding);
+    } catch (error) {
+      lastError = error;
+    }
+  };
+
   const setFrameRate = (nextFrameRate: number): void => {
     const normalizedFrameRate = normalizeNativeOverlayFrameRate(nextFrameRate);
     const nextPumpIntervalMs = nativeOverlayPumpIntervalForFrameRate(normalizedFrameRate);
@@ -11181,6 +11204,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
     updateSharedTexture,
     updateSharedTextureAsync,
     setCursorHidden,
+    focus,
     setFrameRate,
     setFullScreen,
     isFullScreen: () => fullScreenRequested,

@@ -26404,6 +26404,35 @@ test("Windows dedicated copy device option is forwarded once only when defined",
   }
 });
 
+test("session focus brings the Windows host forward and is a no-op elsewhere", async (t) => {
+  for (const [platform, expected] of [["win32", 1], ["linux", 0], ["darwin", 0]]) {
+    setProcessPlatformForTest(t, platform);
+    const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+    const fake = createRecoverableFrameWaitNative(state);
+    let focusCalls = 0;
+    fake.focusNativeOverlayHost = () => { focusCalls += 1; };
+    const steam = loadSteamWithFakeNative(fake);
+    steam.init(480);
+    const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+    session.focus();
+    assert.equal(focusCalls, expected, platform);
+    session.close();
+    session.focus();
+    assert.equal(focusCalls, expected, `${platform} closed session`);
+    clearSteamBridgeCache();
+  }
+  setProcessPlatformForTest(t, "win32");
+  const state = { framePending: false, bypassed: false, waitResolvers: [], waitResult: "pending" };
+  const fake = createRecoverableFrameWaitNative(state);
+  delete fake.focusNativeOverlayHost;
+  const steam = loadSteamWithFakeNative(fake);
+  steam.init(480);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  assert.doesNotThrow(() => session.focus(), "an older addon without focus support is a no-op");
+  session.close();
+  clearSteamBridgeCache();
+});
+
 test("Windows dedicated copy and frame-wait recovery fields are no-ops off Windows", async (t) => {
   for (const platform of ["linux", "darwin"]) {
     setProcessPlatformForTest(t, platform);

@@ -1373,6 +1373,19 @@ pub fn set_native_overlay_host_continuous_present(
     native_surface::set_continuous_present(continuous, frame_rate)
 }
 
+#[napi(js_name = "focusNativeOverlayHost")]
+pub fn focus_native_overlay_host() -> Result<(), Error> {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::focus()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
 #[napi(js_name = "setNativeOverlayHostDedicatedCopyDevice")]
 pub fn set_native_overlay_host_dedicated_copy_device(enabled: bool) -> Result<(), Error> {
     #[cfg(target_os = "windows")]
