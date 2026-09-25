@@ -1577,7 +1577,7 @@ mod windows {
     use std::env;
     use std::mem;
     use std::ptr;
-    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, AtomicU64, Ordering};
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -1619,32 +1619,33 @@ mod windows {
         ReleaseCapture, SetActiveWindow, SetCapture, SetFocus, VK_LBUTTON, VK_RBUTTON,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
-        DestroyCursor, DestroyMenu, DestroyWindow, DispatchMessageW, DrawMenuBar, EnumWindows,
-        GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu, GetMenuBarInfo,
-        GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect,
-        GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic, IsWindow,
-        IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
+        AppendMenuW, CallNextHookEx, CreateCursor, CreateMenu, CreatePopupMenu, CreateWindowExW,
+        DefWindowProcW, DestroyCursor, DestroyMenu, DestroyWindow, DispatchMessageW, DrawMenuBar,
+        EnumWindows, GetClassNameW, GetClientRect, GetCursorPos, GetForegroundWindow, GetMenu,
+        GetMenuBarInfo, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
+        GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, InsertMenuItemW, IsIconic,
+        IsWindow, IsWindowVisible, IsZoomed, KillTimer, LoadCursorW, PeekMessageW, RegisterClassW,
         SendMessageW, SetCursor, SetForegroundWindow, SetLayeredWindowAttributes, SetMenu,
-        SetTimer, SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, ShowCursor, ShowWindow,
-        SystemParametersInfoW, TranslateMessage, CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE,
-        GW_OWNER, HCURSOR, HMENU, IDC_ARROW, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO, MENUITEMINFOW,
-        MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED, MF_POPUP, MF_SEPARATOR,
-        MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING, MIIM_SUBMENU,
-        MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED, SM_CXMENUCHECK,
-        SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN, SM_SWAPBUTTON,
-        SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW, SWP_NOACTIVATE,
-        SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
-        SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP, WM_CANCELMODE,
-        WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE, WM_DPICHANGED,
-        WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
-        WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-        WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
-        WM_MOUSEWHEEL, WM_MOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
-        WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE,
-        WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER, WM_XBUTTONDOWN, WM_XBUTTONUP,
-        WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
+        SetTimer, SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, SetWindowsHookExW,
+        ShowCursor, ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx,
+        CS_OWNDC, GWLP_HWNDPARENT, GWL_EXSTYLE, GWL_STYLE, GW_OWNER, HCURSOR, HC_ACTION, HHOOK,
+        HMENU, IDC_ARROW, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LWA_ALPHA, MA_NOACTIVATE, MENUBARINFO,
+        MENUITEMINFOW, MFS_DISABLED, MFS_ENABLED, MFT_OWNERDRAW, MFT_SEPARATOR, MF_GRAYED,
+        MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_DATA, MIIM_FTYPE, MIIM_ID, MIIM_STATE, MIIM_STRING,
+        MIIM_SUBMENU, MINMAXINFO, MSG, NONCLIENTMETRICSW, OBJID_MENU, PM_REMOVE, SIZE_MINIMIZED,
+        SM_CXMENUCHECK, SM_CXMENUSIZE, SM_CXSCREEN, SM_CYMENU, SM_CYMENUSIZE, SM_CYSCREEN,
+        SM_SWAPBUTTON, SPI_GETNONCLIENTMETRICS, SPI_GETWORKAREA, SWP_FRAMECHANGED, SWP_HIDEWINDOW,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOW,
+        SW_SHOWNOACTIVATE, WH_KEYBOARD_LL, WINDOWPLACEMENT, WM_ACTIVATE, WM_ACTIVATEAPP,
+        WM_CANCELMODE, WM_CAPTURECHANGED, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_DISPLAYCHANGE,
+        WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE,
+        WM_GETMINMAXINFO, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP,
+        WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_MOUSEHWHEEL,
+        WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN,
+        WM_NCLBUTTONUP, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+        WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
+        WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_LAYERED,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_OVERLAPPEDWINDOW,
     };
 
     type Hglrc = isize;
@@ -1666,7 +1667,6 @@ mod windows {
     const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
     const VK_TAB_CODE: i32 = 0x09;
     const VK_SHIFT_CODE: i32 = 0x10;
-    const VK_MENU_CODE: i32 = 0x12;
     const VK_F4_CODE: i32 = 0x73;
     const VK_CONTROL_CODE: i32 = 0x11;
     const VK_ALT_CODE: i32 = 0x12;
@@ -1811,7 +1811,6 @@ mod windows {
         present_after_modal_loop: bool,
         modal_size_move_active: bool,
         overlay_shortcut_down: bool,
-        overlay_close_shortcut_down: bool,
         overlay_active: bool,
         steam_dialog_baseline: SteamDialogWindowList,
         adopted_steam_dialog: Option<AdoptedSteamDialog>,
@@ -2742,6 +2741,7 @@ mod windows {
             sync_steam_dialog(surface);
             sync_cursor_visibility(surface);
             poll_overlay_shortcut(surface);
+            sync_overlay_close_hook(surface);
             let present_after_modal_loop = mem::take(&mut surface.present_after_modal_loop);
             if let Err(error) = sync_presentation_state(surface) {
                 Err(error)
@@ -3564,7 +3564,6 @@ mod windows {
             present_after_modal_loop: false,
             modal_size_move_active: false,
             overlay_shortcut_down: false,
-            overlay_close_shortcut_down: false,
             overlay_active: false,
             steam_dialog_baseline: SteamDialogWindowList::default(),
             adopted_steam_dialog: None,
@@ -4330,6 +4329,7 @@ mod windows {
     }
 
     unsafe fn destroy_surface(mut surface: NativeSurface) {
+        remove_overlay_close_hook();
         restore_adopted_steam_dialog(&mut surface);
         if surface.cursor_suppressed {
             normalize_cursor_display_count(true);
@@ -4435,19 +4435,69 @@ mod windows {
         GetForegroundWindow() == surface.hwnd
     }
 
-    fn overlay_close_shortcut_edge(
-        alt_state: u16,
-        f4_state: u16,
-        has_foreground: bool,
-        overlay_active: bool,
-        was_down: bool,
-    ) -> (bool, bool) {
-        if !overlay_active || !has_foreground {
-            return (false, false);
+    static OVERLAY_CLOSE_HOOK: AtomicIsize = AtomicIsize::new(0);
+    static OVERLAY_CLOSE_HOST: AtomicIsize = AtomicIsize::new(0);
+    static OVERLAY_CLOSE_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+    fn overlay_close_key_requested(
+        virtual_key: u32,
+        flags: u32,
+        message: u32,
+        host_foreground: bool,
+    ) -> bool {
+        host_foreground
+            && virtual_key == VK_F4_CODE as u32
+            && matches!(message, WM_KEYDOWN | WM_SYSKEYDOWN)
+            && flags & LLKHF_ALTDOWN != 0
+    }
+
+    unsafe extern "system" fn overlay_close_keyboard_hook(
+        code: i32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if code == HC_ACTION as i32 && lparam != 0 {
+            let info = &*(lparam as *const KBDLLHOOKSTRUCT);
+            let host = OVERLAY_CLOSE_HOST.load(Ordering::Acquire) as HWND;
+            if overlay_close_key_requested(
+                info.vkCode,
+                info.flags,
+                wparam as u32,
+                !host.is_null() && GetForegroundWindow() == host,
+            ) {
+                OVERLAY_CLOSE_REQUESTED.store(true, Ordering::Release);
+            }
         }
-        let down = alt_state & 0x8000 != 0 && f4_state & 0x8000 != 0;
-        let signaled = alt_state & 0x8001 != 0 && f4_state & 0x8001 != 0;
-        (signaled && !was_down, down)
+        CallNextHookEx(ptr::null_mut(), code, wparam, lparam)
+    }
+
+    unsafe fn sync_overlay_close_hook(surface: &NativeSurface) {
+        let installed = OVERLAY_CLOSE_HOOK.load(Ordering::Acquire) != 0;
+        if surface.overlay_active && !installed {
+            OVERLAY_CLOSE_REQUESTED.store(false, Ordering::Release);
+            OVERLAY_CLOSE_HOST.store(surface.hwnd as isize, Ordering::Release);
+            let hook = SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                Some(overlay_close_keyboard_hook),
+                GetModuleHandleW(ptr::null()),
+                0,
+            );
+            OVERLAY_CLOSE_HOOK.store(hook as isize, Ordering::Release);
+        } else if !surface.overlay_active && installed {
+            remove_overlay_close_hook();
+        }
+        if surface.overlay_active && OVERLAY_CLOSE_REQUESTED.swap(false, Ordering::AcqRel) {
+            SendMessageW(surface.hwnd, WM_CLOSE, 0, 0);
+        }
+    }
+
+    unsafe fn remove_overlay_close_hook() {
+        let hook = OVERLAY_CLOSE_HOOK.swap(0, Ordering::AcqRel);
+        if hook != 0 {
+            UnhookWindowsHookEx(hook as HHOOK);
+        }
+        OVERLAY_CLOSE_HOST.store(0, Ordering::Release);
+        OVERLAY_CLOSE_REQUESTED.store(false, Ordering::Release);
     }
 
     unsafe fn poll_overlay_shortcut(surface: &mut NativeSurface) {
@@ -4463,17 +4513,6 @@ mod windows {
             record_overlay_shortcut(surface.hwnd);
         }
         surface.overlay_shortcut_down = shortcut_down;
-        let (close_requested, close_down) = overlay_close_shortcut_edge(
-            async_key_state(VK_MENU_CODE),
-            async_key_state(VK_F4_CODE),
-            has_foreground,
-            surface.overlay_active,
-            surface.overlay_close_shortcut_down,
-        );
-        surface.overlay_close_shortcut_down = close_down;
-        if close_requested {
-            SendMessageW(surface.hwnd, WM_CLOSE, 0, 0);
-        }
     }
 
     unsafe fn async_key_state(virtual_key: i32) -> u16 {
@@ -6444,7 +6483,7 @@ mod windows {
             clamp_outer_rect_to_work_area, corrected_outer_size, geometry_residual,
             geometry_satisfies_constraints, logical_pixels_to_physical,
             menu_text_without_mnemonics, minimum_menu_dpi, minimum_track_outer_size,
-            normalize_windows_display_refresh_rate, overlay_close_shortcut_edge,
+            normalize_windows_display_refresh_rate, overlay_close_key_requested,
             physical_pixels_to_logical, positive_rect_size, rect_from_position_size,
             residual_requires_correction, residual_within_tolerance,
             set_standalone_logical_client_size, set_standalone_min_client_size,
@@ -6453,40 +6492,25 @@ mod windows {
 
         #[test]
         fn alt_f4_closes_the_host_while_the_steam_overlay_swallows_keys() {
-            const DOWN: u16 = 0x8000;
-            const TAPPED: u16 = 0x0001;
-            assert_eq!(
-                overlay_close_shortcut_edge(DOWN, DOWN, true, true, false),
-                (true, true),
-                "Alt+F4 held over the active overlay requests a close"
+            const F4: u32 = 0x73;
+            const ALT: u32 = 0x20;
+            const KEYDOWN: u32 = 0x0100;
+            const SYSKEYDOWN: u32 = 0x0104;
+            const SYSKEYUP: u32 = 0x0105;
+            assert!(overlay_close_key_requested(F4, ALT, SYSKEYDOWN, true));
+            assert!(overlay_close_key_requested(F4, ALT, KEYDOWN, true));
+            assert!(!overlay_close_key_requested(F4, ALT, SYSKEYUP, true));
+            assert!(
+                !overlay_close_key_requested(F4, 0, KEYDOWN, true),
+                "F4 alone"
             );
-            assert_eq!(
-                overlay_close_shortcut_edge(DOWN, TAPPED, true, true, false),
-                (true, false),
-                "a tap between two polls still requests a close"
+            assert!(
+                !overlay_close_key_requested(0x74, ALT, SYSKEYDOWN, true),
+                "Alt+F5"
             );
-            assert_eq!(
-                overlay_close_shortcut_edge(DOWN, DOWN, true, true, true),
-                (false, true),
-                "a held shortcut requests one close"
-            );
-            assert_eq!(
-                overlay_close_shortcut_edge(DOWN, DOWN, true, false, false),
-                (false, false),
-                "without the overlay the window message path owns Alt+F4"
-            );
-            assert_eq!(
-                overlay_close_shortcut_edge(DOWN, DOWN, false, true, false),
-                (false, false),
-                "Alt+F4 aimed at another window is ignored"
-            );
-            assert_eq!(
-                overlay_close_shortcut_edge(0, DOWN, true, true, false),
-                (false, false)
-            );
-            assert_eq!(
-                overlay_close_shortcut_edge(DOWN, 0, true, true, false),
-                (false, false)
+            assert!(
+                !overlay_close_key_requested(F4, ALT, SYSKEYDOWN, false),
+                "Alt+F4 aimed at another window"
             );
         }
 
