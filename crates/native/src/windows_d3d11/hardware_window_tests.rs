@@ -435,6 +435,66 @@ fn a_visible_stall_latch_rearms_from_render_without_a_window_transition() {
     }
 }
 
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
+fn a_restore_without_a_minimized_render_rearms_a_latched_wait() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+        render_until_presented(&mut renderer);
+        let generation = renderer.frame_latency_wait_generation;
+        for _ in 0..FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS {
+            renderer.record_frame_latency_timeout(generation, false);
+        }
+        assert!(renderer.frame_latency_wait_bypassed());
+        wm::ShowWindow(hwnd, wm::SW_MINIMIZE);
+        pump_test_window_messages();
+        assert_ne!(wm::IsIconic(hwnd), 0);
+        assert!(!renderer
+            .sync_window_presentation_state()
+            .expect("minimized pump"));
+        wm::ShowWindow(hwnd, wm::SW_RESTORE);
+        pump_test_window_messages();
+        assert_eq!(wm::IsIconic(hwnd), 0);
+        assert!(
+            renderer
+                .sync_window_presentation_state()
+                .expect("restored pump"),
+            "the first pump after a restore resumes presentation"
+        );
+        assert!(
+            !renderer.frame_latency_wait_bypassed(),
+            "a restore re-arms the wait even though nothing rendered while minimized"
+        );
+        assert_eq!(renderer.frame_latency_wait_diagnostics()["rearmCount"], 1);
+        assert!(!renderer
+            .sync_window_presentation_state()
+            .expect("steady pump"));
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
+fn the_pump_probes_the_end_of_occlusion_without_a_new_frame() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+        render_until_presented(&mut renderer);
+        renderer.present_occluded = true;
+        assert!(
+            renderer
+                .sync_window_presentation_state()
+                .expect("occlusion probe"),
+            "a visible window ends occlusion on the next pump"
+        );
+        assert!(!renderer.present_occluded());
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
 unsafe fn dedicated_renderer_with_pending_red(
     hwnd: *mut c_void,
 ) -> (WindowsD3d11Renderer, SharedProducerTexture) {

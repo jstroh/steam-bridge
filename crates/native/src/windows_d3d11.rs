@@ -1201,6 +1201,7 @@ pub struct WindowsD3d11Renderer {
     frame_latency_ready_permits: u32,
     frame_latency_wait: FrameLatencyWaitGate,
     present_occluded: bool,
+    window_iconic: bool,
     fallback_timer_resolution_requested: bool,
     fallback_timer_resolution_active: bool,
     async_frame_latency_ready_count: u64,
@@ -1563,6 +1564,7 @@ impl WindowsD3d11Renderer {
             frame_latency_ready_permits: 0,
             frame_latency_wait: FrameLatencyWaitGate::default(),
             present_occluded: false,
+            window_iconic: false,
             fallback_timer_resolution_requested: false,
             fallback_timer_resolution_active: false,
             async_frame_latency_ready_count: 0,
@@ -3068,6 +3070,30 @@ impl WindowsD3d11Renderer {
             self.request_frame_timer_resolution();
         }
         Some(outcome)
+    }
+
+    pub unsafe fn sync_window_presentation_state(&mut self) -> Result<bool, String> {
+        if windows_sys::Win32::UI::WindowsAndMessaging::IsIconic(self.window.0) != 0 {
+            self.window_iconic = true;
+            return Ok(false);
+        }
+        let mut resumed = std::mem::take(&mut self.window_iconic);
+        if self.present_occluded {
+            let context_lock = self.shared_texture_context_lock.clone();
+            let _context_guard = lock_shared_texture_context(&context_lock)?;
+            let Some(swap_chain) = self.swap_chain.as_ref() else {
+                return Ok(resumed);
+            };
+            if swap_chain.Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED {
+                return Ok(false);
+            }
+            self.present_occluded = false;
+            resumed = true;
+        }
+        if resumed {
+            self.rearm_frame_latency_wait();
+        }
+        Ok(resumed)
     }
 
     pub fn rearm_frame_latency_wait(&mut self) -> bool {

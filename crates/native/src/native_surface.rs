@@ -1808,7 +1808,6 @@ mod windows {
         last_present_at: Option<Instant>,
         present_after_modal_loop: bool,
         modal_size_move_active: bool,
-        host_iconic: bool,
         overlay_shortcut_down: bool,
         overlay_active: bool,
         steam_dialog_baseline: SteamDialogWindowList,
@@ -2741,7 +2740,10 @@ mod windows {
             sync_cursor_visibility(surface);
             poll_overlay_shortcut(surface);
             let present_after_modal_loop = mem::take(&mut surface.present_after_modal_loop);
-            if surface.visible && (present_after_modal_loop || surface_needs_render(surface)) {
+            if let Err(error) = sync_presentation_state(surface) {
+                Err(error)
+            } else if surface.visible && (present_after_modal_loop || surface_needs_render(surface))
+            {
                 render_surface(surface)
             } else {
                 if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
@@ -3543,7 +3545,6 @@ mod windows {
             last_present_at: None,
             present_after_modal_loop: false,
             modal_size_move_active: false,
-            host_iconic: false,
             overlay_shortcut_down: false,
             overlay_active: false,
             steam_dialog_baseline: SteamDialogWindowList::default(),
@@ -3564,14 +3565,29 @@ mod windows {
         Ok(surface)
     }
 
-    unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
-        if IsIconic(surface.hwnd) != 0 {
-            surface.host_iconic = true;
-        } else if mem::take(&mut surface.host_iconic) {
-            if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
-                renderer.rearm_frame_latency_wait();
-            }
+    unsafe fn sync_presentation_state(surface: &mut NativeSurface) -> Result<(), Error> {
+        if !surface.visible {
+            return Ok(());
         }
+        let WindowsSurfaceRenderer::D3d11 {
+            renderer,
+            device_lost: false,
+            ..
+        } = &mut surface.renderer
+        else {
+            return Ok(());
+        };
+        if renderer
+            .sync_window_presentation_state()
+            .map_err(Error::from_reason)?
+        {
+            surface.source_frame_dirty = true;
+        }
+        Ok(())
+    }
+
+    unsafe fn render_surface(surface: &mut NativeSurface) -> Result<(), Error> {
+        sync_presentation_state(surface)?;
         if IsIconic(surface.hwnd) != 0 {
             if let WindowsSurfaceRenderer::D3d11 { renderer, .. } = &mut surface.renderer {
                 renderer.suspend_presentation();
