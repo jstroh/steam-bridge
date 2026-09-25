@@ -55,10 +55,10 @@ in its shutdown path rather than immediately after startup.
 only one active managed application in a process. Its `close()` is idempotent
 and releases still-owned callbacks, action sessions, and game hosts before
 Steam shutdown. If native operations are still pending, the shutdown throws
-`SteamClientAsyncOperationsPendingError`; the application is already closed at
-that point and a second `close()` does not retry, so finish outstanding work
-first. The Electron integration has its own lifetime and closes
-separately.
+`SteamClientAsyncOperationsPendingError` before Steamworks shuts down. The
+application is already closed at that point, Steamworks stays initialized, and
+a second `close()` does not retry, so finish outstanding work first. The
+Electron integration has its own lifetime and closes separately.
 
 Do not initialize Steam again in an Electron renderer or worker, run a second
 callback pump, or mix managed ownership with independent raw

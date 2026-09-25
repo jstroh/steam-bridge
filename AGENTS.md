@@ -27,7 +27,7 @@ If the session was compacted, resumed, or the task state is unclear:
 | --- | --- |
 | Stable repo-wide recovery, privacy, platform, and workflow rules | `AGENTS.md` |
 | Canonical continuity checkpoint: active goal, blocker, next actions, and last verification | `docs/research/current-work.md` |
-| Superseded checkpoints and historical release evidence, moved out of the checkpoint verbatim | `docs/research/checkpoint-history.md` |
+| Superseded checkpoints and historical release evidence, moved out of the checkpoint with private identifiers redacted | `docs/research/checkpoint-history.md` |
 | Expensive, manual, live, negative, or environment-sensitive test findings and rerun conditions | `docs/research/test-findings-ledger.md` |
 | Detailed platform artifact history and live evidence | `docs/research/cross-platform-overlay-status.md` |
 | Presenter architecture, decisions, milestones, and non-goals | `docs/research/native-overlay-presenter-plan.md` |

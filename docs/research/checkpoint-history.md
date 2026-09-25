@@ -1,8 +1,10 @@
 # Checkpoint History
 
 Earlier `current-work.md` checkpoints, historical release evidence, and superseded
-goals, preserved verbatim in their original order when the checkpoint was reduced
-to active state on 2026-09-25. These entries are evidence, not current
+goals, moved in their original order when the checkpoint was reduced to active
+state on 2026-09-25. Private product names, paths and identifiers were redacted
+during the move, and the standing Windows, Linux/Deck host and sandbox decisions
+moved to the [presenter plan](native-overlay-presenter-plan.md). These entries are evidence, not current
 instructions: code, tests, Git history, and the
 [current checkpoint](current-work.md) outrank them.
 
@@ -4213,9 +4215,9 @@ crash. A separate instrumented launch at 225% DPI recorded the exact 1280 by
 present FPS at steady state, a frame-latency waitable swapchain, and zero frame-
 latency timeouts, device losses, recoveries, or slow shared-texture copies.
 Artifact roots are
-`C:\Users\admin\steam-bridge-artifacts\fov-popup-prune-regression-20260721-220604`
+`C:\Users\admin\steam-bridge-artifacts\consumer-popup-prune-regression-20260721-220604`
 and
-`C:\Users\admin\steam-bridge-artifacts\fov-popup-prune-fps-20260721-221429`.
+`C:\Users\admin\steam-bridge-artifacts\consumer-popup-prune-fps-20260721-221429`.
 
 The exact local `0.3.6` tarball then exposed and closed an overlay-only pacing
 gap. Game paint/native present held 59.9 FPS against the current 60 Hz display,
@@ -4229,7 +4231,7 @@ slow-copy counts. Electron paint was zero while Steam owned the visible frame;
 the receipt therefore enforces game paint plus present and overlay present while
 retaining overlay paint as a reported diagnostic. No transaction or subscription
 was authorized. The focused artifact root is
-`C:\Users\admin\steam-bridge-artifacts\fov-v0.3.6-pacing-manual-20260721-2330`.
+`C:\Users\admin\steam-bridge-artifacts\consumer-v0.3.6-pacing-manual-20260721-2330`.
 
 The final `v0.3.6` proof attempt also exposed a receipt-design defect rather
 than a runtime regression. Win32's modal menu loop can pause the telemetry
@@ -4914,9 +4916,9 @@ Consumer gates on registry `0.2.14` passed:
 ### 2026-07-22 Windows actual-game exhaustive QA update
 
 An actual consumer game pass was run from
-`C:\Users\admin\source\consumer` with Steam Bridge QA overlay and FPS
+`<consumer checkout>` with Steam Bridge QA overlay and FPS
 reporting enabled. Receipts live under
-`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-20260722-205311`.
+`C:\Users\admin\steam-bridge-artifacts\consumer-windows-exhaustive-qa-20260722-205311`.
 
 Covered launch, menu clickability, fast title drag, resize sweeps, exact
 `640x480` logical minimum, maximize/restore, minimize/restore,
@@ -4933,7 +4935,7 @@ median on the 165 Hz display, below the 95% high-refresh pass threshold.
 A focused local-source repair retest then linked the unpublished Steam Bridge
 build into the consumer and repeated only that failing 165 Hz Friends-overlay scenario.
 Receipts live under
-`C:\Users\admin\steam-bridge-artifacts\fov-windows-overlay-165-focused-20260722-212404`.
+`C:\Users\admin\steam-bridge-artifacts\consumer-windows-overlay-165-focused-20260722-212404`.
 The display was switched from `1920x1200@60` to `1920x1200@165` for the retest
 and restored to `1920x1200@60` afterward. The overlay stayed bounded to the
 game client, no FOV/Electron process remained after close, stderr was empty,
@@ -4944,7 +4946,7 @@ paths for it.
 
 Final Windows actual-game QA then passed after the individual failures were
 green. Receipts live under
-`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-final-20260722-2230`.
+`C:\Users\admin\steam-bridge-artifacts\consumer-windows-exhaustive-qa-final-20260722-2230`.
 The final run covered actual-game launch into the world, Steam startup toast,
 File/Edit/View menu clicks, title drag, fast drag, resize, minimum clamp,
 maximize/restore, fullscreen/restore, focus away/back, baseline overlay,

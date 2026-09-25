@@ -17,7 +17,7 @@ messages.
 
 Use the actual game consumer, not the smoke app, for this pass:
 
-- The consumer repo: `C:\Users\admin\source\consumer`
+- The consumer repo: `<consumer checkout>`
 - Launch command: `npm run dev`
 - Required env:
   - `STEAM_BRIDGE_QA_OVERLAY=1`
@@ -142,7 +142,7 @@ neither replaces the other.
 
 Create an artifact directory named like:
 
-`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-YYYYMMDD-HHMMSS`
+`C:\Users\admin\steam-bridge-artifacts\consumer-windows-exhaustive-qa-YYYYMMDD-HHMMSS`
 
 Include:
 
@@ -184,7 +184,7 @@ DPI transitions remain independent active-overlay tests.
 ## 2026-07-22 actual consumer Windows pass
 
 Artifact root:
-`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-20260722-205311`
+`C:\Users\admin\steam-bridge-artifacts\consumer-windows-exhaustive-qa-20260722-205311`
 
 Command:
 
@@ -260,7 +260,7 @@ Representative medians:
 Focused repair retest:
 
 - Artifact root:
-  `C:\Users\admin\steam-bridge-artifacts\fov-windows-overlay-165-focused-20260722-212404`
+  `C:\Users\admin\steam-bridge-artifacts\consumer-windows-overlay-165-focused-20260722-212404`
 - Local unpublished Steam Bridge source was linked into the consumer.
 - The Windows display was switched from `1920x1200@60` to `1920x1200@165`
   for this targeted retest and restored to `1920x1200@60` afterward.
@@ -285,7 +285,7 @@ green.
 ## 2026-07-22 final Windows actual-game QA rerun
 
 Artifact root:
-`C:\Users\admin\steam-bridge-artifacts\fov-windows-exhaustive-qa-final-20260722-2230`
+`C:\Users\admin\steam-bridge-artifacts\consumer-windows-exhaustive-qa-final-20260722-2230`
 
 Result: green. This pass was run only after the individually failing 165 Hz
 overlay and 165 Hz game-surface pacing scenarios were fixed with focused
