@@ -69,6 +69,9 @@ the adapter topology:
   pending), read later without flushing. `meanMs`, `lastMs` and
   `maxMs` are GPU execution time only, so completion latency minus this value
   is time spent queued. `disjointCount` counts rejected samples.
+  `abandonedCount` counts query slots reissued after staying unresolved for
+  two passes of the four-slot ring, so a query that never resolves cannot
+  stop sampling.
 - `frameLatencyWait`: the bypass latch (`bypassed`, `bypassCount`,
   `rearmCount`), timeouts that did not count because the host was iconic,
   hidden or occluded (`expectedTimeoutCount`), the consecutive-timeout count

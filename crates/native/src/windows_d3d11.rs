@@ -536,12 +536,44 @@ pub const FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS: u32 = 3;
 pub const FRAME_LATENCY_WAIT_REARM_READY_POLLS: u32 = 4;
 const GPU_COPY_TIMING_SAMPLE_INTERVAL: u64 = 30;
 const GPU_COPY_TIMING_RING_SIZE: usize = 4;
+const GPU_COPY_TIMING_ABANDON_SKIPS: u32 = 2;
 
 struct GpuCopyTimingEntry {
     disjoint: ID3D11Query,
     start: ID3D11Query,
     end: ID3D11Query,
-    pending: bool,
+}
+
+#[derive(Default)]
+struct GpuCopyTimingRing {
+    pending: [bool; GPU_COPY_TIMING_RING_SIZE],
+    skipped: [u32; GPU_COPY_TIMING_RING_SIZE],
+    next: usize,
+    abandoned_count: u64,
+}
+
+impl GpuCopyTimingRing {
+    fn claim(&mut self) -> Option<usize> {
+        let index = self.next;
+        self.next = (index + 1) % GPU_COPY_TIMING_RING_SIZE;
+        if self.pending[index] {
+            self.skipped[index] = self.skipped[index].saturating_add(1);
+            if self.skipped[index] < GPU_COPY_TIMING_ABANDON_SKIPS {
+                return None;
+            }
+            self.abandoned_count = self.abandoned_count.saturating_add(1);
+        }
+        self.skipped[index] = 0;
+        Some(index)
+    }
+
+    fn issued(&mut self, index: usize) {
+        self.pending[index] = true;
+    }
+
+    fn resolved(&mut self, index: usize) {
+        self.pending[index] = false;
+    }
 }
 
 #[derive(Default)]
@@ -555,7 +587,7 @@ struct GpuCopyTimingStats {
 
 struct GpuCopyTiming {
     entries: Vec<GpuCopyTimingEntry>,
-    next: usize,
+    ring: GpuCopyTimingRing,
     copy_count: u64,
     stats: GpuCopyTimingStats,
 }
@@ -581,12 +613,11 @@ impl GpuCopyTiming {
                 disjoint: create(D3D11_QUERY_TIMESTAMP_DISJOINT)?,
                 start: create(D3D11_QUERY_TIMESTAMP)?,
                 end: create(D3D11_QUERY_TIMESTAMP)?,
-                pending: false,
             });
         }
         Some(Self {
             entries,
-            next: 0,
+            ring: GpuCopyTimingRing::default(),
             copy_count: 0,
             stats: GpuCopyTimingStats::default(),
         })
@@ -598,11 +629,8 @@ impl GpuCopyTiming {
         if (self.copy_count - 1) % GPU_COPY_TIMING_SAMPLE_INTERVAL != 0 {
             return None;
         }
-        let index = self.next;
+        let index = self.ring.claim()?;
         let entry = &self.entries[index];
-        if entry.pending {
-            return None;
-        }
         context.Begin(&entry.disjoint);
         context.End(&entry.start);
         Some(index)
@@ -612,16 +640,15 @@ impl GpuCopyTiming {
         let Some(index) = index else {
             return;
         };
-        let entry = &mut self.entries[index];
+        let entry = &self.entries[index];
         context.End(&entry.end);
         context.End(&entry.disjoint);
-        entry.pending = true;
-        self.next = (index + 1) % self.entries.len();
+        self.ring.issued(index);
     }
 
     unsafe fn poll(&mut self, context: &ID3D11DeviceContext) {
-        for entry in &mut self.entries {
-            if !entry.pending {
+        for (index, entry) in self.entries.iter().enumerate() {
+            if !self.ring.pending[index] {
                 continue;
             }
             let mut disjoint = D3D11_QUERY_DATA_TIMESTAMP_DISJOINT::default();
@@ -658,13 +685,15 @@ impl GpuCopyTiming {
             if !start_ready || !end_ready || start == u64::MAX || end == u64::MAX {
                 continue;
             }
-            entry.pending = false;
+            self.ring.resolved(index);
             self.stats.record(start, end, disjoint);
         }
     }
 
     fn diagnostics(&self) -> serde_json::Value {
-        self.stats.diagnostics(GPU_COPY_TIMING_SAMPLE_INTERVAL)
+        let mut diagnostics = self.stats.diagnostics(GPU_COPY_TIMING_SAMPLE_INTERVAL);
+        diagnostics["abandonedCount"] = self.ring.abandoned_count.into();
+        diagnostics
     }
 }
 
@@ -4228,9 +4257,40 @@ mod dedicated_copy_device_tests {
 #[cfg(test)]
 mod adapter_and_gpu_timing_diagnostics_tests {
     use super::{
-        adapter_for_monitor, adapter_luid_string, GpuCopyTimingStats,
-        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, LUID,
+        adapter_for_monitor, adapter_luid_string, GpuCopyTimingRing, GpuCopyTimingStats,
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, GPU_COPY_TIMING_RING_SIZE, LUID,
     };
+
+    #[test]
+    fn a_query_that_never_resolves_does_not_stop_gpu_copy_sampling() {
+        let mut ring = GpuCopyTimingRing::default();
+        let stuck = ring.claim().expect("first sample");
+        ring.issued(stuck);
+        let mut sampled = 0;
+        for _ in 0..GPU_COPY_TIMING_RING_SIZE * 8 {
+            if let Some(index) = ring.claim() {
+                ring.issued(index);
+                if index != stuck {
+                    ring.resolved(index);
+                }
+                sampled += 1;
+            }
+        }
+        assert!(
+            sampled >= GPU_COPY_TIMING_RING_SIZE * 6,
+            "sampling continued past a stuck entry only {sampled} times"
+        );
+        let mut reissued = false;
+        for _ in 0..GPU_COPY_TIMING_RING_SIZE * 8 {
+            if let Some(index) = ring.claim() {
+                reissued |= index == stuck;
+                ring.issued(index);
+                ring.resolved(index);
+            }
+        }
+        assert!(reissued, "a stuck entry is eventually abandoned and reused");
+        assert!(ring.abandoned_count >= 1);
+    }
 
     #[test]
     fn the_output_adapter_is_the_one_that_owns_the_window_monitor() {
