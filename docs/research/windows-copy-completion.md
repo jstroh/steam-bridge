@@ -105,7 +105,10 @@ removed, the import fails with the device-lost HRESULT, and the existing
 recovery rebuilds the renderer with the option still set. This also holds when
 removal is first seen by an in-flight copy wait: once a copy has stalled or
 failed, the next import checks the host and copy devices, and reports device
-loss rather than a plain stall if either was removed.
+loss rather than a plain stall if either was removed. The copy wait itself also
+checks the host device, so host removal ends the wait as device loss without
+relying on the shared fence reading `UINT64_MAX`. A D3D11 device cannot be
+removed on demand without a real GPU reset, so that check is unit-tested.
 A synchronous import or CPU frame clears the ring's pending and newest frames,
 so an older dedicated frame can never replace it. Turning the option off first
 binds a pending frame that was never shown. If the copy device cannot wait for

@@ -210,8 +210,25 @@ fn poll_shared_texture_copy_fence(
     Ok(complete)
 }
 
+fn copy_wait_device_removed_error(
+    copy_removed: Option<&windows::core::Error>,
+    host_removed: Option<&windows::core::Error>,
+) -> Option<String> {
+    if let Some(error) = copy_removed {
+        return Some(format!(
+            "D3D11 device was removed while waiting for the Electron shared-texture copy: {error}"
+        ));
+    }
+    host_removed.map(|error| {
+        format!(
+            "D3D11 host device was removed while the dedicated copy device waited for it: {error}; the native graphics device must be restarted"
+        )
+    })
+}
+
 pub struct SharedTextureCopyWaitHandle {
     device: ID3D11Device,
+    host_device: Option<ID3D11Device>,
     completion: SharedTextureCopyCompletion,
     slot: Arc<SharedTextureCopySlot>,
     submitted_at: Instant,
@@ -363,13 +380,18 @@ impl SharedTextureCopyWaitHandle {
                     "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
                 ));
             }
-            if let Err(error) = unsafe { self.device.GetDeviceRemovedReason() } {
+            let copy_removed = unsafe { self.device.GetDeviceRemovedReason() }.err();
+            let host_removed = self
+                .host_device
+                .as_ref()
+                .and_then(|device| unsafe { device.GetDeviceRemovedReason() }.err());
+            if let Some(error) =
+                copy_wait_device_removed_error(copy_removed.as_ref(), host_removed.as_ref())
+            {
                 self.telemetry
                     .terminal_failure_count
                     .fetch_add(1, Ordering::Release);
-                return Err(format!(
-                    "D3D11 device was removed while waiting for the Electron shared-texture copy: {error}"
-                ));
+                return Err(error);
             }
             if matches!(&self.completion, SharedTextureCopyCompletion::Query { .. })
                 || !use_event_wait
@@ -2148,6 +2170,7 @@ impl WindowsD3d11Renderer {
                     self.context.Flush();
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
+                        host_device: None,
                         completion,
                         slot: reservation.into_slot(),
                         submitted_at: copy_submitted_at,
@@ -2163,6 +2186,7 @@ impl WindowsD3d11Renderer {
                     self.context.Flush();
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
+                        host_device: None,
                         completion: SharedTextureCopyCompletion::Query {
                             context: self.context.clone(),
                             query,
@@ -2549,6 +2573,7 @@ impl WindowsD3d11Renderer {
         }
         let copy_wait = SharedTextureCopyWaitHandle {
             device: dedicated.device.clone(),
+            host_device: Some(self.device.clone()),
             completion: SharedTextureCopyCompletion::Fence {
                 fence: dedicated.copy_fence.clone(),
                 fence_value: copy_value,
@@ -3973,6 +3998,7 @@ mod shared_texture_copy_slot_tests {
             }
             let wait = SharedTextureCopyWaitHandle {
                 device: renderer.device.clone(),
+                host_device: None,
                 completion: SharedTextureCopyCompletion::Query {
                     context: renderer.context.clone(),
                     query,
@@ -4213,9 +4239,22 @@ mod hardware_window_tests;
 #[cfg(test)]
 mod dedicated_copy_device_tests {
     use super::{
-        dedicated_copy_device_removed_error, is_device_lost_error, present_submitted_frame,
-        stalled_shared_texture_copy_error, DXGI_ERROR_WAS_STILL_DRAWING, DXGI_STATUS_OCCLUDED,
+        copy_wait_device_removed_error, dedicated_copy_device_removed_error, is_device_lost_error,
+        present_submitted_frame, stalled_shared_texture_copy_error, DXGI_ERROR_WAS_STILL_DRAWING,
+        DXGI_STATUS_OCCLUDED,
     };
+
+    #[test]
+    fn a_copy_wait_reports_host_device_removal_without_a_fence_sentinel() {
+        let removed = windows::core::Error::from(DXGI_ERROR_DEVICE_REMOVED);
+        assert!(copy_wait_device_removed_error(None, None).is_none());
+        let copy = copy_wait_device_removed_error(Some(&removed), None).expect("copy removal");
+        assert!(is_device_lost_error(&copy), "{copy}");
+        let host = copy_wait_device_removed_error(None, Some(&removed))
+            .expect("host removal must end the dedicated copy wait");
+        assert!(is_device_lost_error(&host), "{host}");
+        assert!(host.contains("host device"), "{host}");
+    }
 
     #[test]
     fn only_a_submitted_present_carries_the_sampled_signal_to_the_gpu() {
