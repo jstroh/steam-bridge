@@ -101,6 +101,10 @@ recovery rebuilds the renderer with the option still set. This also holds when
 removal is first seen by an in-flight copy wait: once a copy has stalled or
 failed, the next import checks the host and copy devices, and reports device
 loss rather than a plain stall if either was removed.
+A synchronous import or CPU frame clears the ring's pending and newest frames,
+so an older dedicated frame can never replace it. Turning the option off first
+binds a pending frame that was never shown. If the copy device cannot wait for
+host sampling of a slot, it skips that copy rather than overwrite the slot.
 `sharedTextureCopy.dedicatedDevice` reports whether it is requested and
 active, its copy count, creation failures and last error. `gpuTiming` then
 reports the copy device's timestamps. Evidence and the remaining hybrid-laptop

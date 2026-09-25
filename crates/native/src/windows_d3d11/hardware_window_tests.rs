@@ -435,6 +435,81 @@ fn a_visible_stall_latch_rearms_from_render_without_a_window_transition() {
     }
 }
 
+unsafe fn dedicated_renderer_with_pending_red(
+    hwnd: *mut c_void,
+) -> (WindowsD3d11Renderer, SharedProducerTexture) {
+    let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+    renderer.set_dedicated_copy_device(true);
+    let producer = create_shared_producer_texture(&renderer, 320, 200);
+    producer.paint([1.0, 0.0, 0.0, 1.0]);
+    import_and_wait(&mut renderer, &producer, (0, 0, 320, 200));
+    assert!(renderer.dedicated_copy_device_active());
+    (renderer, producer)
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
+fn newer_host_and_cpu_frames_replace_a_pending_dedicated_frame() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let green = [0u8, 255, 0, 255];
+        let red = [0u8, 0, 255, 255];
+
+        let (mut renderer, producer) = dedicated_renderer_with_pending_red(hwnd);
+        producer.paint([0.0, 1.0, 0.0, 1.0]);
+        renderer
+            .import_shared_texture(
+                producer.handle.0 as usize,
+                320,
+                200,
+                (0, 0, 320, 200),
+                (0, 0, 320, 200),
+            )
+            .expect("synchronous host import");
+        render_until_presented(&mut renderer);
+        assert_eq!(
+            read_presented_source_pixels(&renderer, &[(100, 60)])[0],
+            green,
+            "a synchronous host frame must not be replaced by the older dedicated frame"
+        );
+        drop(renderer);
+        drop(producer);
+
+        let (mut renderer, producer) = dedicated_renderer_with_pending_red(hwnd);
+        let pixels: Vec<u8> = green.iter().copied().cycle().take(320 * 200 * 4).collect();
+        renderer
+            .upload_cpu_frame(&pixels, 320, 200)
+            .expect("cpu frame");
+        render_until_presented(&mut renderer);
+        assert_eq!(
+            read_presented_source_pixels(&renderer, &[(100, 60)])[0],
+            green,
+            "a CPU frame must not be replaced by the older dedicated frame"
+        );
+        drop(renderer);
+        drop(producer);
+
+        let (mut renderer, producer) = dedicated_renderer_with_pending_red(hwnd);
+        render_until_presented(&mut renderer);
+        assert_eq!(
+            read_presented_source_pixels(&renderer, &[(100, 60)])[0],
+            red
+        );
+        producer.paint([0.0, 1.0, 0.0, 1.0]);
+        import_and_wait(&mut renderer, &producer, (0, 0, 320, 200));
+        renderer.set_dedicated_copy_device(false);
+        render_until_presented(&mut renderer);
+        assert_eq!(
+            read_presented_source_pixels(&renderer, &[(100, 60)])[0],
+            green,
+            "disabling the device keeps its newest never-shown frame"
+        );
+        drop(renderer);
+        drop(producer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
 #[test]
 #[ignore = "requires a real GPU and a visible desktop"]
 fn a_failed_attach_after_an_adapter_switch_is_terminal_and_not_retried() {

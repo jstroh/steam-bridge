@@ -1728,6 +1728,7 @@ impl WindowsD3d11Renderer {
             self.source_width = width;
             self.source_height = height;
         }
+        self.forget_dedicated_frames();
         let texture = self
             .source_texture
             .as_ref()
@@ -1834,6 +1835,7 @@ impl WindowsD3d11Renderer {
                 presentation_rect,
             );
         }
+        self.forget_dedicated_frames();
         let device1: ID3D11Device1 = self
             .device
             .cast()
@@ -2281,9 +2283,20 @@ impl WindowsD3d11Renderer {
         }
         self.dedicated_copy_requested = enabled;
         if !enabled {
+            unsafe {
+                self.bind_dedicated_copy_for_render();
+            }
             self.dedicated_copy = None;
         }
         self.source_texture = None;
+    }
+
+    fn forget_dedicated_frames(&mut self) {
+        if let Some(dedicated) = self.dedicated_copy.as_mut() {
+            dedicated.pending = None;
+            dedicated.newest = None;
+            dedicated.displayed = None;
+        }
     }
 
     pub fn dedicated_copy_device_active(&self) -> bool {
@@ -2453,47 +2466,50 @@ impl WindowsD3d11Renderer {
                 ));
             }
         }
-        let gpu_copy_sample = match dedicated.gpu_timing.as_mut() {
-            Some(timing) => timing.begin(&dedicated.context),
-            None => None,
-        };
-        if let Some(base_slot) = base_slot {
-            dedicated.context.CopyResource(
+        let mut copy_value = dedicated.next_copy_value;
+        if submission_error.is_none() {
+            let gpu_copy_sample = match dedicated.gpu_timing.as_mut() {
+                Some(timing) => timing.begin(&dedicated.context),
+                None => None,
+            };
+            if let Some(base_slot) = base_slot {
+                dedicated.context.CopyResource(
+                    &dedicated.ring[slot_index].copy_texture,
+                    &dedicated.ring[base_slot].copy_texture,
+                );
+            }
+            dedicated.context.CopySubresourceRegion(
                 &dedicated.ring[slot_index].copy_texture,
-                &dedicated.ring[base_slot].copy_texture,
+                0,
+                copy_x - presentation_x,
+                copy_y - presentation_y,
+                0,
+                &texture,
+                0,
+                Some(&D3D11_BOX {
+                    left: copy_x,
+                    top: copy_y,
+                    front: 0,
+                    right: copy_x + copy_width,
+                    bottom: copy_y + copy_height,
+                    back: 1,
+                }),
             );
+            if let Some(timing) = dedicated.gpu_timing.as_mut() {
+                timing.end(&dedicated.context, gpu_copy_sample);
+            }
+            dedicated.next_copy_value = dedicated.next_copy_value.saturating_add(1);
+            copy_value = dedicated.next_copy_value;
+            if let Err(error) = dedicated.context4.Signal(&dedicated.copy_fence, copy_value) {
+                self.shared_texture_copy_telemetry
+                    .submission_failure_count
+                    .fetch_add(1, Ordering::Release);
+                submission_error.get_or_insert(format!(
+                    "ID3D11DeviceContext4::Signal for the dedicated shared texture copy failed after submission: {error}; the native graphics device must be restarted"
+                ));
+            }
+            dedicated.context.Flush();
         }
-        dedicated.context.CopySubresourceRegion(
-            &dedicated.ring[slot_index].copy_texture,
-            0,
-            copy_x - presentation_x,
-            copy_y - presentation_y,
-            0,
-            &texture,
-            0,
-            Some(&D3D11_BOX {
-                left: copy_x,
-                top: copy_y,
-                front: 0,
-                right: copy_x + copy_width,
-                bottom: copy_y + copy_height,
-                back: 1,
-            }),
-        );
-        if let Some(timing) = dedicated.gpu_timing.as_mut() {
-            timing.end(&dedicated.context, gpu_copy_sample);
-        }
-        dedicated.next_copy_value = dedicated.next_copy_value.saturating_add(1);
-        let copy_value = dedicated.next_copy_value;
-        if let Err(error) = dedicated.context4.Signal(&dedicated.copy_fence, copy_value) {
-            self.shared_texture_copy_telemetry
-                .submission_failure_count
-                .fetch_add(1, Ordering::Release);
-            submission_error.get_or_insert(format!(
-                "ID3D11DeviceContext4::Signal for the dedicated shared texture copy failed after submission: {error}; the native graphics device must be restarted"
-            ));
-        }
-        dedicated.context.Flush();
         if submission_error.is_none() {
             dedicated.pending = Some((slot_index, copy_value));
             dedicated.newest = Some(slot_index);
