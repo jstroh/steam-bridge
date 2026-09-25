@@ -49,8 +49,9 @@ Fixed with failing-before tests or exact source traces:
   live Deck proof).
 - **Windows text.** Non-BMP characters arrive as two UTF-16 surrogate
   `WM_CHAR` messages; the Electron forwarder sent each half alone and Electron
-  44.4.5 inserted U+FFFD for each. Surrogates are now paired. Live proof is
-  open: `WINDOWS-NATIVE-CHAR-SURROGATE-001`.
+  44.4.5 inserted U+FFFD for each. Surrogates are now paired. Proven live on
+  Windows for `SendInput` surrogate pairs and the emoji panel:
+  `WINDOWS-NATIVE-CHAR-SURROGATE-001`.
 - **Callback dispatch.** User callbacks no longer run under the registry
   mutex; registering or dropping a callback from inside one deadlocked before.
 - **`init` app IDs.** Numeric, environment and object forms share one
@@ -79,6 +80,31 @@ Fixed with failing-before tests or exact source traces:
   `consumer`/`CONSUMER-*` placeholders instead of private product, repository,
   tracker, account-path or app identifiers.
 
+### 2026-09-24 Windows Electron 44.4.5 local requalification
+
+A local, not candidate-bound, Windows pass on Electron 44.4.5 at `727bf77` was
+green. See `WIN-ELECTRON-4445-LOCAL-001` for what it covers:
+
+- **Build.** The build was exact: `npm pack` from a scratch copy with the
+  addon under its prebuild name, installed as a normal directory into the
+  configured consumer. That consumer was overridden locally from its pinned
+  Electron 44.4.3 and packaged unsigned for QA.
+- **Presentation and overlay.** One standalone D3D11 host rendered at 60 FPS,
+  with presenter, native-host and renderer diagnostics agreeing on
+  `windows-d3d11`. The QA-menu Friends overlay opened, sent its callbacks and
+  closed with Escape, and a duplicate open was suppressed.
+- **Window and focus.** Maximize, minimize and restore, keyboard sizing to
+  the logical minimum, fullscreen, and focus away and back all passed.
+- **Text.** Emoji and non-BMP CJK arrived as one character each.
+- **Shutdown.** The app exited cleanly with code 0, and Steam kept running.
+
+Not covered: Steam-client launch (the direct launch still loaded Steam's
+overlay), a signed candidate, a display matrix, receipts, and mouse edge
+sizing. Injected corner drags never entered the size loop, while keyboard
+sizing worked. The public example passes a direct App ID `480` smoke, but its
+`presenter-*` actions intentionally fail on Windows, so it cannot prove Windows
+overlay routes.
+
 Verified without code changes: the `NativeBinding` interface matches all 1,153
 napi-generated functions by name, arity, parameter type and optionality; all
 210 native callback IDs match the SDK; KWin `qdbus` calls are each bounded by
@@ -87,8 +113,10 @@ and every message is still released.
 
 ## Open before release
 
-1. Windows live requalification on Electron 44.4.5, including emoji and
-   non-BMP text in a focused overlay-host field.
+1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
+   signed candidate, a Steam-client launch, the display matrix and both
+   receipts. The local pass above, including emoji and non-BMP text, is green.
+   The consumer's Electron pin must move from 44.4.3 to 44.4.5 first.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and
@@ -122,3 +150,7 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.
 - macOS Apple Silicon: `core` overlay matrix 37/37 at `44b035aa`.
+- Windows 11 x64 at `727bf77`: `npm test` 476 tests (473 pass, 3 skipped),
+  81 native tests passing with 3 hardware-only tests ignored, the local
+  Electron 44.4.5 live pass above, and the example's direct App ID `480`
+  smoke.
