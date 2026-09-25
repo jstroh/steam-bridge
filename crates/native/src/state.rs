@@ -1,5 +1,6 @@
 use napi::bindgen_prelude::Error;
 use once_cell::sync::Lazy;
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -17,6 +18,35 @@ static NEXT_CALLBACK_ID: AtomicU64 = AtomicU64::new(1);
 static CALLBACKS: Lazy<Mutex<CallbackRegistry>> =
     Lazy::new(|| Mutex::new(CallbackRegistry::default()));
 static MANUAL_DISPATCH: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+thread_local! {
+    static DISPATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+struct DispatchScope;
+
+impl DispatchScope {
+    fn enter() -> Self {
+        DISPATCH_DEPTH.with(|depth| depth.set(depth.get() + 1));
+        DispatchScope
+    }
+}
+
+impl Drop for DispatchScope {
+    fn drop(&mut self) {
+        DISPATCH_DEPTH.with(|depth| depth.set(depth.get() - 1));
+    }
+}
+
+fn wait_for_in_flight_dispatch<F: ?Sized>(callback: Option<Arc<Mutex<F>>>) {
+    let Some(callback) = callback else {
+        return;
+    };
+    if DISPATCH_DEPTH.with(Cell::get) > 0 {
+        return;
+    }
+    drop(callback.lock().unwrap_or_else(|error| error.into_inner()));
+}
+
 #[cfg(test)]
 static TEST_STATE: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
@@ -283,6 +313,7 @@ fn dispatch_callback_for_domain(domain: CallbackDomain, callback_id: i32, param:
         }
     };
     for (registration_id, callback) in snapshot {
+        let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
         let registered = CALLBACKS
             .lock()
             .expect("Steam callback registry poisoned")
@@ -290,7 +321,7 @@ fn dispatch_callback_for_domain(domain: CallbackDomain, callback_id: i32, param:
             .get(&key)
             .is_some_and(|callbacks| callbacks.contains_key(&registration_id));
         if registered {
-            let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
+            let _scope = DispatchScope::enter();
             (*callback)(param);
         }
     }
@@ -305,13 +336,14 @@ pub fn dispatch_warning_message(severity: i32, message: String) {
         .map(|(id, callback)| (*id, Arc::clone(callback)))
         .collect();
     for (registration_id, callback) in snapshot {
+        let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
         let registered = CALLBACKS
             .lock()
             .expect("Steam callback registry poisoned")
             .warning_message_hooks
             .contains_key(&registration_id);
         if registered {
-            let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
+            let _scope = DispatchScope::enter();
             (*callback)(severity, message.clone());
         }
     }
@@ -326,13 +358,14 @@ pub fn dispatch_networking_debug_output(detail_level: i32, message: String) {
         .map(|(id, callback)| (*id, Arc::clone(callback)))
         .collect();
     for (registration_id, callback) in snapshot {
+        let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
         let registered = CALLBACKS
             .lock()
             .expect("Steam callback registry poisoned")
             .networking_debug_output_hooks
             .contains_key(&registration_id);
         if registered {
-            let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
+            let _scope = DispatchScope::enter();
             (*callback)(detail_level, message.clone());
         }
     }
@@ -452,30 +485,37 @@ fn clear_callback_domain(registry: &mut CallbackRegistry, domain: CallbackDomain
 }
 
 fn unregister_callback(domain: CallbackDomain, callback_id: i32, registration_id: u64) {
-    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
-    let key = (domain, callback_id);
-    if let Some(callbacks) = registry.callbacks.get_mut(&key) {
-        callbacks.remove(&registration_id);
-        if callbacks.is_empty() {
-            registry.callbacks.remove(&key);
+    let removed = {
+        let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
+        let key = (domain, callback_id);
+        let mut removed = None;
+        if let Some(callbacks) = registry.callbacks.get_mut(&key) {
+            removed = callbacks.remove(&registration_id);
+            if callbacks.is_empty() {
+                registry.callbacks.remove(&key);
+            }
         }
-    }
+        removed
+    };
+    wait_for_in_flight_dispatch(removed);
 }
 
 fn unregister_warning_message_hook(registration_id: u64) {
-    CALLBACKS
+    let removed = CALLBACKS
         .lock()
         .expect("Steam callback registry poisoned")
         .warning_message_hooks
         .remove(&registration_id);
+    wait_for_in_flight_dispatch(removed);
 }
 
 fn unregister_networking_debug_output_hook(registration_id: u64) {
-    CALLBACKS
+    let removed = CALLBACKS
         .lock()
         .expect("Steam callback registry poisoned")
         .networking_debug_output_hooks
         .remove(&registration_id);
+    wait_for_in_flight_dispatch(removed);
 }
 
 #[cfg(test)]
@@ -557,6 +597,39 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 101);
 
         late.lock().unwrap().take();
+        clear_callbacks();
+    }
+
+    #[test]
+    fn unregistering_a_hook_waits_for_an_in_flight_dispatch() {
+        let _test = lock_test_state();
+        clear_callbacks();
+
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let registration = register_networking_debug_output_hook(move |_, _| {
+            entered_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        let dispatcher =
+            std::thread::spawn(|| dispatch_networking_debug_output(1, "message".to_string()));
+        entered_rx.recv().unwrap();
+
+        let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
+        let unregisterer = std::thread::spawn(move || {
+            drop(registration);
+            dropped_tx.send(()).unwrap();
+        });
+        let returned_while_running = dropped_rx
+            .recv_timeout(std::time::Duration::from_millis(200))
+            .is_ok();
+        release_tx.send(()).unwrap();
+        dispatcher.join().unwrap();
+        unregisterer.join().unwrap();
+        assert!(
+            !returned_while_running,
+            "unregister returned while the hook was still running"
+        );
         clear_callbacks();
     }
 
