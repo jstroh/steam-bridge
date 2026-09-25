@@ -1854,6 +1854,8 @@ export interface NativeOverlaySessionSnapshot {
   nativeFrameWaitTimeoutCount?: number;
   /** The Windows presenter rejected async DXGI waits and is using bounded polling. */
   nativeFrameWaitFallback?: boolean;
+  /** Number of times the Windows presenter left that fallback after the native waitable re-armed. */
+  nativeFrameWaitRecoveryCount?: number;
   windowsPresentDiagnosticMode?: "standard" | "nonblocking-vsync" | "nonblocking-immediate";
   nativePresentRetryCount?: number;
   inputDispatchCount?: number;
@@ -10385,6 +10387,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
   let nativeFrameWaitUnavailable = false;
   let nativeFrameWaitRecoverable = false;
   let nativeFrameWaitRecoveryObservations = 0;
+  let nativeFrameWaitRecoveryCount = 0;
   let nativeFrameWaitTimeoutCount = 0;
   let nativePresentRetryAt: number | undefined;
   let nativePresentRetryCount = 0;
@@ -10521,6 +10524,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
             nativeFrameWaitUnavailable = false;
             nativeFrameWaitRecoverable = false;
             nativeFrameWaitRecoveryObservations = 0;
+            nativeFrameWaitRecoveryCount += 1;
           }
         }
         nativeFramePending = usesWindowsStandaloneHost
@@ -10652,6 +10656,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       pumpDurationOver25MsCount,
       nativeFrameWaitTimeoutCount,
       nativeFrameWaitFallback: nativeFrameWaitUnavailable,
+      nativeFrameWaitRecoveryCount,
       ...(usesWindowsStandaloneHost ? {
         windowsPresentDiagnosticMode,
         nativePresentRetryCount,

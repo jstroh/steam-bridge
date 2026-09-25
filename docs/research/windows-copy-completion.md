@@ -61,6 +61,26 @@ The consumer forwards this object in existing low-rate diagnostics, using null
 with older addons. These counters do not identify the cause of an actually
 unfinished GPU fence or measure physical input-to-photon latency.
 
+Native host diagnostics also separate copy time from queue delay and report
+the adapter topology:
+
+- `sharedTextureCopy.gpuTiming`: GPU timestamps around one copy in every 30
+  (`sampleInterval`), read later without flushing. `meanMs`, `lastMs` and
+  `maxMs` are GPU execution time only, so completion latency minus this value
+  is time spent queued. `disjointCount` counts rejected samples.
+- `frameLatencyWait`: the bypass latch (`bypassed`, `bypassCount`,
+  `rearmCount`), timeouts that did not count because the host was iconic,
+  hidden or occluded (`expectedTimeoutCount`), the consecutive-timeout count
+  and its threshold, and `presentOccluded`.
+- `adapters`: host, shared-texture and output adapter LUIDs, with
+  `crossAdapterTexture` and `crossAdapterPresent` when both sides are known.
+  The output adapter is the parent of the swap chain's containing output and
+  is read only when diagnostics are requested.
+
+The session snapshot adds `nativeFrameWaitRecoveryCount`, the number of times
+the JavaScript scheduler left its timeout fallback after the native waitable
+re-armed.
+
 ## Validation
 
 Three regressions failed with the original logic: completed fence plus missing

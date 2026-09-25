@@ -184,8 +184,9 @@ and every message is still released.
    unexpected timeouts, and both native and JavaScript recover without timers
    on restore or occlusion end. An adapter switch now releases the old swap
    chain before attaching the new one (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`).
-   Next: report adapter and output LUIDs, and offer a dedicated copy device.
-   Live proof on an NVIDIA hybrid laptop is still required.
+   Diagnostics now report adapter LUIDs, cross-adapter present, latch and
+   re-arm counts, and sampled GPU copy time. Next: offer a dedicated copy
+   device. Live proof on an NVIDIA hybrid laptop is still required.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and

@@ -3791,7 +3791,8 @@ mod windows {
                 device_lost,
                 device_lost_count,
                 device_recovery_count,
-            } => json!({
+            } => {
+                let mut diagnostics = json!({
                 "backend": "windows-d3d11",
                 "width": renderer.width(),
                 "height": renderer.height(),
@@ -3874,7 +3875,13 @@ mod windows {
                 "sourceSampleCount": renderer.source_sample_count(),
                 "cpuUploadCount": renderer.cpu_upload_count(),
                 "sharedTextureImportCount": renderer.shared_texture_import_count(),
-            }),
+                });
+                diagnostics["frameLatencyWait"] = renderer.frame_latency_wait_diagnostics();
+                diagnostics["adapters"] = renderer.adapter_diagnostics();
+                diagnostics["sharedTextureCopy"]["gpuTiming"] =
+                    renderer.shared_texture_copy_gpu_timing_diagnostics();
+                diagnostics
+            }
         }
     }
 

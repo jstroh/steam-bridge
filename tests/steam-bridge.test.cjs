@@ -26332,9 +26332,11 @@ test("Windows frame readiness fallback recovers after counted native re-arm obse
     true,
     "a relapse into bypass restarts the consecutive observation count"
   );
+  assert.equal(session.snapshot().nativeFrameWaitRecoveryCount, 0);
   await pumpFrame();
   assert.equal(session.snapshot().nativeFrameWaitFallback, false);
   assert.equal(session.snapshot().nativeFrameWaitTimeoutCount, 1);
+  assert.equal(session.snapshot().nativeFrameWaitRecoveryCount, 1);
 
   state.framePending = true;
   await pumpFrame();

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use windows::core::{Interface, PCSTR};
 use windows::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, DXGI_STATUS_OCCLUDED, HANDLE, HMODULE,
-    HWND, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    HWND, LUID, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
@@ -21,7 +21,8 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader, D3D11_ASYNC_GETDATA_DONOTFLUSH,
     D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_COMPARISON_NEVER,
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_FENCE_FLAG_NONE, D3D11_FILTER_MIN_MAG_MIP_LINEAR,
-    D3D11_QUERY_DESC, D3D11_QUERY_EVENT, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION,
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
+    D3D11_QUERY_TIMESTAMP, D3D11_QUERY_TIMESTAMP_DISJOINT, D3D11_SAMPLER_DESC, D3D11_SDK_VERSION,
     D3D11_TEXTURE2D_DESC, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_USAGE_DEFAULT, D3D11_VIEWPORT,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
@@ -29,8 +30,8 @@ use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory6,
-    IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_ADAPTER_FLAG_SOFTWARE,
+    CreateDXGIFactory2, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIFactory2, IDXGIFactory4,
+    IDXGIFactory6, IDXGIOutput, IDXGISwapChain1, IDXGISwapChain2, DXGI_ADAPTER_FLAG_SOFTWARE,
     DXGI_CREATE_FACTORY_FLAGS, DXGI_ERROR_WAS_STILL_DRAWING, DXGI_FRAME_STATISTICS,
     DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, DXGI_MWA_NO_ALT_ENTER, DXGI_PRESENT,
     DXGI_PRESENT_DO_NOT_WAIT, DXGI_PRESENT_TEST, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
@@ -528,6 +529,188 @@ impl SourceMode {
 }
 
 pub const FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS: u32 = 3;
+const GPU_COPY_TIMING_SAMPLE_INTERVAL: u64 = 30;
+const GPU_COPY_TIMING_RING_SIZE: usize = 4;
+
+struct GpuCopyTimingEntry {
+    disjoint: ID3D11Query,
+    start: ID3D11Query,
+    end: ID3D11Query,
+    pending: bool,
+}
+
+#[derive(Default)]
+struct GpuCopyTimingStats {
+    sample_count: u64,
+    total_micros: f64,
+    last_micros: f64,
+    max_micros: f64,
+    disjoint_count: u64,
+}
+
+struct GpuCopyTiming {
+    entries: Vec<GpuCopyTimingEntry>,
+    next: usize,
+    copy_count: u64,
+    stats: GpuCopyTimingStats,
+}
+
+impl GpuCopyTiming {
+    unsafe fn new(device: &ID3D11Device) -> Option<Self> {
+        let create = |query| {
+            let mut created = None;
+            device
+                .CreateQuery(
+                    &D3D11_QUERY_DESC {
+                        Query: query,
+                        MiscFlags: 0,
+                    },
+                    Some(&mut created),
+                )
+                .ok()?;
+            created
+        };
+        let mut entries = Vec::with_capacity(GPU_COPY_TIMING_RING_SIZE);
+        for _ in 0..GPU_COPY_TIMING_RING_SIZE {
+            entries.push(GpuCopyTimingEntry {
+                disjoint: create(D3D11_QUERY_TIMESTAMP_DISJOINT)?,
+                start: create(D3D11_QUERY_TIMESTAMP)?,
+                end: create(D3D11_QUERY_TIMESTAMP)?,
+                pending: false,
+            });
+        }
+        Some(Self {
+            entries,
+            next: 0,
+            copy_count: 0,
+            stats: GpuCopyTimingStats::default(),
+        })
+    }
+
+    unsafe fn begin(&mut self, context: &ID3D11DeviceContext) -> Option<usize> {
+        self.poll(context);
+        self.copy_count = self.copy_count.saturating_add(1);
+        if (self.copy_count - 1) % GPU_COPY_TIMING_SAMPLE_INTERVAL != 0 {
+            return None;
+        }
+        let index = self.next;
+        let entry = &self.entries[index];
+        if entry.pending {
+            return None;
+        }
+        context.Begin(&entry.disjoint);
+        context.End(&entry.start);
+        Some(index)
+    }
+
+    unsafe fn end(&mut self, context: &ID3D11DeviceContext, index: Option<usize>) {
+        let Some(index) = index else {
+            return;
+        };
+        let entry = &mut self.entries[index];
+        context.End(&entry.end);
+        context.End(&entry.disjoint);
+        entry.pending = true;
+        self.next = (index + 1) % self.entries.len();
+    }
+
+    unsafe fn poll(&mut self, context: &ID3D11DeviceContext) {
+        for entry in &mut self.entries {
+            if !entry.pending {
+                continue;
+            }
+            let mut disjoint = D3D11_QUERY_DATA_TIMESTAMP_DISJOINT::default();
+            let ready = context
+                .GetData(
+                    &entry.disjoint,
+                    Some((&mut disjoint as *mut D3D11_QUERY_DATA_TIMESTAMP_DISJOINT).cast()),
+                    std::mem::size_of::<D3D11_QUERY_DATA_TIMESTAMP_DISJOINT>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+                .is_ok()
+                && disjoint.Frequency != 0;
+            if !ready {
+                continue;
+            }
+            let mut start = u64::MAX;
+            let mut end = u64::MAX;
+            let start_ready = context
+                .GetData(
+                    &entry.start,
+                    Some((&mut start as *mut u64).cast()),
+                    std::mem::size_of::<u64>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+                .is_ok();
+            let end_ready = context
+                .GetData(
+                    &entry.end,
+                    Some((&mut end as *mut u64).cast()),
+                    std::mem::size_of::<u64>() as u32,
+                    D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+                )
+                .is_ok();
+            if !start_ready || !end_ready || start == u64::MAX || end == u64::MAX {
+                continue;
+            }
+            entry.pending = false;
+            self.stats.record(start, end, disjoint);
+        }
+    }
+
+    fn diagnostics(&self) -> serde_json::Value {
+        self.stats.diagnostics(GPU_COPY_TIMING_SAMPLE_INTERVAL)
+    }
+}
+
+impl GpuCopyTimingStats {
+    fn record(&mut self, start: u64, end: u64, disjoint: D3D11_QUERY_DATA_TIMESTAMP_DISJOINT) {
+        if disjoint.Disjoint.as_bool() || end < start || disjoint.Frequency == 0 {
+            self.disjoint_count = self.disjoint_count.saturating_add(1);
+            return;
+        }
+        let micros = (end - start) as f64 * 1_000_000.0 / disjoint.Frequency as f64;
+        self.sample_count = self.sample_count.saturating_add(1);
+        self.total_micros += micros;
+        self.last_micros = micros;
+        self.max_micros = self.max_micros.max(micros);
+    }
+
+    fn diagnostics(&self, sample_interval: u64) -> serde_json::Value {
+        serde_json::json!({
+            "sampleInterval": sample_interval,
+            "sampleCount": self.sample_count,
+            "lastMs": self.last_micros / 1_000.0,
+            "meanMs": if self.sample_count > 0 {
+                self.total_micros / self.sample_count as f64 / 1_000.0
+            } else {
+                0.0
+            },
+            "maxMs": self.max_micros / 1_000.0,
+            "disjointCount": self.disjoint_count,
+        })
+    }
+}
+
+fn adapter_luid_string(luid: LUID) -> String {
+    format!("{:08x}-{:08x}", luid.HighPart as u32, luid.LowPart)
+}
+
+fn device_adapter_luid(device: &ID3D11Device) -> Option<LUID> {
+    unsafe {
+        let adapter = device.cast::<IDXGIDevice>().ok()?.GetAdapter().ok()?;
+        Some(adapter.GetDesc().ok()?.AdapterLuid)
+    }
+}
+
+fn shared_resource_adapter_luid(handle: usize) -> Option<LUID> {
+    unsafe {
+        let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).ok()?;
+        factory
+            .GetSharedResourceAdapterLuid(HANDLE(handle as *mut c_void))
+            .ok()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrameLatencyTimeoutOutcome {
@@ -715,6 +898,9 @@ pub struct WindowsD3d11Renderer {
     last_shared_texture_presentation_rect: [u32; 4],
     cpu_upload_count: u64,
     shared_texture_import_count: u64,
+    gpu_copy_timing: Option<GpuCopyTiming>,
+    host_adapter_luid: Option<LUID>,
+    texture_adapter_luid: Option<LUID>,
 }
 
 unsafe impl Send for WindowsD3d11Renderer {}
@@ -1062,7 +1248,12 @@ impl WindowsD3d11Renderer {
             last_shared_texture_presentation_rect: [0; 4],
             cpu_upload_count: 0,
             shared_texture_import_count: 0,
+            gpu_copy_timing: None,
+            host_adapter_luid: None,
+            texture_adapter_luid: None,
         };
+        renderer.gpu_copy_timing = GpuCopyTiming::new(&renderer.device);
+        renderer.host_adapter_luid = device_adapter_luid(&renderer.device);
         if attach_swap_chain {
             renderer.attach_swap_chain(hwnd)?;
         }
@@ -1427,6 +1618,7 @@ impl WindowsD3d11Renderer {
             None
         };
         if storage_recreated {
+            self.texture_adapter_luid = shared_resource_adapter_luid(handle);
             self.shared_texture_storage_recreate_count =
                 self.shared_texture_storage_recreate_count.saturating_add(1);
             let owned_desc = D3D11_TEXTURE2D_DESC {
@@ -1520,6 +1712,10 @@ impl WindowsD3d11Renderer {
             } else {
                 None
             };
+            let gpu_copy_sample = match self.gpu_copy_timing.as_mut() {
+                Some(timing) => timing.begin(&self.context),
+                None => None,
+            };
             self.context.CopySubresourceRegion(
                 &destination_texture,
                 0,
@@ -1530,6 +1726,9 @@ impl WindowsD3d11Renderer {
                 0,
                 Some(&source_box),
             );
+            if let Some(timing) = self.gpu_copy_timing.as_mut() {
+                timing.end(&self.context, gpu_copy_sample);
+            }
             match async_copy_submission {
                 Some(AsyncCopySubmission::Fence {
                     reservation,
@@ -2148,6 +2347,49 @@ impl WindowsD3d11Renderer {
 
     pub fn present_occluded(&self) -> bool {
         self.present_occluded
+    }
+
+    pub fn frame_latency_wait_diagnostics(&self) -> serde_json::Value {
+        let gate = &self.frame_latency_wait;
+        serde_json::json!({
+            "bypassed": gate.bypassed,
+            "consecutiveTimeouts": gate.consecutive_timeouts,
+            "bypassTimeoutThreshold": FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS,
+            "bypassCount": gate.bypass_count,
+            "rearmCount": gate.rearm_count,
+            "expectedTimeoutCount": gate.expected_timeout_count,
+            "presentOccluded": self.present_occluded,
+        })
+    }
+
+    pub fn shared_texture_copy_gpu_timing_diagnostics(&self) -> serde_json::Value {
+        self.gpu_copy_timing
+            .as_ref()
+            .map_or(serde_json::Value::Null, GpuCopyTiming::diagnostics)
+    }
+
+    pub fn adapter_diagnostics(&self) -> serde_json::Value {
+        let output_luid = unsafe {
+            self.swap_chain
+                .as_ref()
+                .and_then(|swap_chain| swap_chain.GetContainingOutput().ok())
+                .and_then(|output| output.GetParent::<IDXGIAdapter>().ok())
+                .and_then(|adapter| adapter.GetDesc().ok())
+                .map(|desc| desc.AdapterLuid)
+        };
+        let luid_equal = |left: Option<LUID>, right: Option<LUID>| match (left, right) {
+            (Some(left), Some(right)) => {
+                Some(left.HighPart == right.HighPart && left.LowPart == right.LowPart)
+            }
+            _ => None,
+        };
+        serde_json::json!({
+            "hostAdapterLuid": self.host_adapter_luid.map(adapter_luid_string),
+            "textureAdapterLuid": self.texture_adapter_luid.map(adapter_luid_string),
+            "outputAdapterLuid": output_luid.map(adapter_luid_string),
+            "crossAdapterPresent": luid_equal(self.host_adapter_luid, output_luid).map(|same| !same),
+            "crossAdapterTexture": luid_equal(self.host_adapter_luid, self.texture_adapter_luid).map(|same| !same),
+        })
     }
 
     pub fn frame_latency_wait_counts(&self) -> (u64, u64, u64) {
@@ -3250,6 +3492,58 @@ fn intersect_rect(
 
 #[cfg(test)]
 mod hardware_window_tests;
+
+#[cfg(test)]
+mod adapter_and_gpu_timing_diagnostics_tests {
+    use super::{
+        adapter_luid_string, GpuCopyTimingStats, D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, LUID,
+    };
+
+    #[test]
+    fn adapter_luids_format_as_stable_hex_pairs() {
+        assert_eq!(
+            adapter_luid_string(LUID {
+                LowPart: 0x0001_2f3a,
+                HighPart: 0,
+            }),
+            "00000000-00012f3a"
+        );
+        assert_eq!(
+            adapter_luid_string(LUID {
+                LowPart: 7,
+                HighPart: -1,
+            }),
+            "ffffffff-00000007"
+        );
+    }
+
+    #[test]
+    fn gpu_copy_timing_converts_ticks_and_rejects_disjoint_samples() {
+        let mut stats = GpuCopyTimingStats::default();
+        let frequency = D3D11_QUERY_DATA_TIMESTAMP_DISJOINT {
+            Frequency: 1_000_000,
+            Disjoint: false.into(),
+        };
+        stats.record(1_000, 1_250, frequency);
+        stats.record(2_000, 2_150, frequency);
+        stats.record(
+            3_000,
+            3_900,
+            D3D11_QUERY_DATA_TIMESTAMP_DISJOINT {
+                Frequency: 1_000_000,
+                Disjoint: true.into(),
+            },
+        );
+        stats.record(5_000, 4_000, frequency);
+        let diagnostics = stats.diagnostics(30);
+        assert_eq!(diagnostics["sampleCount"], 2);
+        assert_eq!(diagnostics["disjointCount"], 2);
+        assert_eq!(diagnostics["sampleInterval"], 30);
+        assert!((diagnostics["lastMs"].as_f64().unwrap() - 0.15).abs() < 1e-9);
+        assert!((diagnostics["maxMs"].as_f64().unwrap() - 0.25).abs() < 1e-9);
+        assert!((diagnostics["meanMs"].as_f64().unwrap() - 0.2).abs() < 1e-9);
+    }
+}
 
 #[cfg(test)]
 mod frame_latency_wait_gate_tests {

@@ -130,6 +130,56 @@ pub(super) unsafe fn create_shared_producer_texture(
 
 #[test]
 #[ignore = "requires a real GPU and a visible desktop"]
+fn copy_diagnostics_report_gpu_timing_and_same_adapter_luids() {
+    unsafe {
+        let hwnd = create_test_window(336, 239);
+        let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
+        let producer = create_shared_producer_texture(320, 200);
+        for _ in 0..(GPU_COPY_TIMING_SAMPLE_INTERVAL * 3 + 1) {
+            match renderer
+                .begin_import_shared_texture(
+                    producer.handle.0 as usize,
+                    320,
+                    200,
+                    (0, 0, 320, 200),
+                    (0, 0, 320, 200),
+                )
+                .expect("import")
+            {
+                SharedTextureImportSubmission::Accepted(Some(wait)) => wait.wait().expect("copy"),
+                SharedTextureImportSubmission::Accepted(None) => {}
+                SharedTextureImportSubmission::Dropped => {
+                    panic!("single in-flight copy was dropped")
+                }
+            }
+            renderer.render([0.0, 0.0, 0.0, 1.0]).expect("render");
+            pump_test_window_messages();
+        }
+        let timing = renderer.shared_texture_copy_gpu_timing_diagnostics();
+        assert_eq!(timing["sampleInterval"], GPU_COPY_TIMING_SAMPLE_INTERVAL);
+        assert!(timing["sampleCount"].as_u64().unwrap() >= 2, "{timing}");
+        assert!(timing["meanMs"].as_f64().unwrap() > 0.0, "{timing}");
+        let adapters = renderer.adapter_diagnostics();
+        assert!(adapters["hostAdapterLuid"].is_string(), "{adapters}");
+        assert_eq!(
+            adapters["textureAdapterLuid"], adapters["hostAdapterLuid"],
+            "{adapters}"
+        );
+        assert_eq!(adapters["crossAdapterTexture"], false, "{adapters}");
+        assert!(adapters["outputAdapterLuid"].is_string(), "{adapters}");
+        let wait = renderer.frame_latency_wait_diagnostics();
+        assert_eq!(wait["bypassed"], false, "{wait}");
+        assert_eq!(
+            wait["bypassTimeoutThreshold"],
+            FRAME_LATENCY_WAIT_BYPASS_TIMEOUTS
+        );
+        drop(renderer);
+        wm::DestroyWindow(hwnd);
+    }
+}
+
+#[test]
+#[ignore = "requires a real GPU and a visible desktop"]
 fn adapter_switch_attaches_a_new_swap_chain_to_the_same_window() {
     unsafe {
         let hwnd = create_test_window(336, 239);
