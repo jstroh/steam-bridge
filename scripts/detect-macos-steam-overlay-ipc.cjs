@@ -1171,7 +1171,7 @@ function runSelfTest() {
       connectionLog,
       [
         "[2026-06-30 21:45:15] [Logged Off, 0, 0] [U:1:0] CCMInterface::SetSteamID( [U:1:0] )",
-        "[2026-06-30 21:45:37] [Logged On, 4, 7] [U:1:1686541554] RecvMsgClientLogOnResponse() : processing complete"
+        "[2026-06-30 21:45:37] [Logged On, 4, 7] [U:1:12345678] RecvMsgClientLogOnResponse() : processing complete"
       ].join("\n")
     );
     fs.writeFileSync(webhelperLog, "[2026-06-30 21:45:13] Startup - webhelper launched pid: 9913 commandline: Steam Helper -steamid=0 -steampid=9706\n");
@@ -1185,7 +1185,7 @@ function runSelfTest() {
       connectionLog
     });
     assert(result.ok, "logged-in Steam client with steamid=0 webhelpers is healthy");
-    assert(result.message.includes("Logged On as [U:1:1686541554]"), "healthy steamid=0 helper reports connection-log login proof");
+    assert(result.message.includes("Logged On as [U:1:12345678]"), "healthy steamid=0 helper reports connection-log login proof");
     assert(result.message.includes("webhelper processes still use steamid=0"), "healthy steamid=0 helper is downgraded to an observation");
 
     result = detectSteamClientHealth({
@@ -1223,8 +1223,8 @@ function runSelfTest() {
     fs.writeFileSync(
       connectionLog,
       [
-        "[2026-06-30 21:45:37] [Logged On, 4, 7] [U:1:1686541554] RecvMsgClientLogOnResponse() : processing complete",
-        "[2026-06-30 21:50:45] [Logged Off, 0, 0] [U:1:1686541554] ConnectionDisconnected('Disconnected By Remote Host') : 'OK'"
+        "[2026-06-30 21:45:37] [Logged On, 4, 7] [U:1:12345678] RecvMsgClientLogOnResponse() : processing complete",
+        "[2026-06-30 21:50:45] [Logged Off, 0, 0] [U:1:12345678] ConnectionDisconnected('Disconnected By Remote Host') : 'OK'"
       ].join("\n")
     );
     result = detectSteamClientHealth({

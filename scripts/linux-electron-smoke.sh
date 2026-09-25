@@ -899,9 +899,9 @@ run_self_test() {
   self_test_temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-linux-helper.XXXXXX")"
   self_test_old_home="$HOME"
   self_test_previous_result_file="$result_file"
-  shortcut_file="$self_test_temp_home/.local/share/Steam/userdata/1686541554/config/shortcuts.vdf"
+  shortcut_file="$self_test_temp_home/.local/share/Steam/userdata/12345678/config/shortcuts.vdf"
   expected_game_id="$(python3 - <<'PY'
-appid = 3855287460
+appid = 3000000001
 print((appid << 32) | 0x02000000)
 PY
 )"
@@ -939,7 +939,7 @@ byte(TYPE_OBJECT)
 cstr("shortcuts")
 byte(TYPE_OBJECT)
 cstr("0")
-uint32("appid", 3855287460)
+uint32("appid", 3000000001)
 string("appname", "Steam Bridge Smoke")
 string("Exe", '"/tmp/SteamBridgeSmoke"')
 string("StartDir", "/tmp/")

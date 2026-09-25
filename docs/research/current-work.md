@@ -91,20 +91,24 @@ and every message is still released.
    non-BMP text in a focused overlay-host field.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
-3. Maintainer: confirm whether the Steam `userdata` directory number and the
-   shortcut app ID embedded in two POSIX smoke self-tests are synthetic.
-4. Maintainer decision: Git history still contains private product names.
-   Rewriting it needs explicit approval.
-5. Release procedure: the documentation-only publish route restores the
+3. Maintainer decision: Git history still contains private product names and
+   a Steam account number that looked real (see below). Rewriting it needs
+   explicit approval.
+4. Release procedure: the documentation-only publish route restores the
    predecessor's proven native payload only for the hard-coded `v0.1.6` tag in
    `release.yml`. For any other tag the Release run rebuilds the addons, so the
    route passes only if that rebuild is byte-identical to the previous release.
    Nothing here proves builds are reproducible; confirm it or generalize the
    restore step before relying on the route.
-6. Known low-severity items, not fixed: `startSteam()` and
+5. Known low-severity items, not fixed: `startSteam()` and
    `configureSteamElectron()` keep owned cleanup entries for resources the
    caller closed until the application closes; the Electron forwarder keys
    held keys by key code, so left and right Shift share one entry.
+
+The smoke self-tests' Steam `userdata` account number also appeared as
+`[U:1:…]` in a copied connection log with real timestamps, so it was treated
+as a real account ID and replaced with synthetic `12345678`, and the shortcut
+app ID with synthetic `3000000001`. The values are arbitrary inside each self-test.
 
 Documentation cleanup (2026-09-25): old checkpoints moved verbatim to
 [checkpoint history](checkpoint-history.md), and standing decisions moved to the
