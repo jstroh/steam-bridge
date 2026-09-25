@@ -187,8 +187,8 @@ gh workflow run publish.yml --ref v<new-version> \
   -f previous_release_tag=v<previous-version>
 ```
 
-That route accepts only a higher stable patch in the same major/minor line and
-permits changes only to the package version and package README. Any runtime,
+That route accepts only a higher stable patch in the same major/minor line,
+requires the package README to change, and permits no other change. Any runtime,
 template, helper, metadata, native, or packaged-file change requires fresh live
 proof.
 

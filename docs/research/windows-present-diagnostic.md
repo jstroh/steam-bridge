@@ -1,7 +1,7 @@
 # Windows nonblocking presentation and freshness repair
 
-This unreleased source defaults matching Windows addons to nonblocking VSync;
-it is not a published package or a confirmed fix for any particular GPU.
+Since 0.4.7, matching Windows addons default to nonblocking VSync; this is not
+a confirmed fix for any particular GPU.
 It addresses successful but slow DXGI `Present` calls while
 the frame-latency waitable object reports ready. These can hold Electron's main
 thread without triggering the existing readiness-timeout fallback.

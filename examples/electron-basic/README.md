@@ -18,6 +18,7 @@ and Windows standalone presentation each require their own applicable proof.
 | Produce candidate-bound Windows evidence | [Windows standalone release proof](#windows-standalone-release-proof) |
 | Inspect automated-run output | [Autorun logs](#autorun-logs) |
 | Follow Deck-specific checks | [Steam Deck checks](#steam-deck-checks) |
+| Interpret overlay callbacks and log signals | [Overlay signals](#overlay-signals) |
 
 Run root npm commands from the repository root. Shell blocks using backslash
 continuations are POSIX syntax; PowerShell uses a backtick or a single line.
@@ -190,7 +191,7 @@ policy, and Steam web routes.
 Install the exact candidate tarball into the consumer as a normal directory,
 not an npm link or junction. Run the actual game with
 `STEAM_BRIDGE_FPS_REPORT=1`, `STEAM_BRIDGE_DEBUG_OVERLAY_SNAPSHOT=1`, and the
-consumer's explicit ordinary-overlay QA gate. In FOV4 that gate is
+consumer's explicit ordinary-overlay QA gate. In the consumer that gate is
 `STEAM_BRIDGE_QA_OVERLAY=1`, which adds `Steam Friends Overlay (QA)` to the
 native View menu and is absent otherwise. A computer-driven controller must
 select that visible command, verify the real Steam surface and callbacks, and

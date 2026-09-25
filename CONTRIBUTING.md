@@ -77,7 +77,7 @@ failure or alter the machine merely to duplicate the full Linux CI lane.
 | Area | Responsibility |
 | --- | --- |
 | `packages/steam-bridge/src` | Managed APIs and advanced TypeScript wrappers |
-| `packages/steam-bridge/templates` | Renderer/preload integration |
+| `packages/steam-bridge/templates` | Renderer preload and macOS packaging templates |
 | `packages/steam-bridge/bin` | Consumer-facing command-line tools |
 | `crates/native` | Rust Steamworks and native presenter implementation |
 | `tests`, `scripts` | Regression coverage, package audits and QA tooling |
@@ -122,7 +122,9 @@ separate distributor concern and is not an npm publication requirement.
 
 `--require-publishable` is the tag candidate gate and deliberately runs
 before live proof, so it must remain receipt-free. An actual `--publish` must
-also receive `--live-proof-receipt <receipt.json>`. Generate that sanitized
+also receive `--live-proof-receipt <receipt.json>`, except on the
+documentation-only route below, which validates the predecessor's retained
+tarball, receipt and tag instead. Generate that sanitized
 receipt only from the exact candidate's standalone actual-game consumer proof.
 The generator requires all four exact cases (`standalone-startup`,
 `standalone-window-transitions`, `standalone-steam-overlay`, and
@@ -177,17 +179,17 @@ system location may use audit mode to prove an equivalent boundary, but the
 live release evidence still requires a successful sanitized protection record.
 
 GitHub Actions artifacts in this public repository are retained for 90 days;
-GitHub permits at most 90 days for public repositories. Before the first
-production publish, copy the exact `.tgz`, retained Windows bundle, audit JSON,
-executable-probe result, and sanitized live-proof receipt to durable immutable
-release storage, bind them to the protected `v<package-version>` tag, and keep
-the five records together. The audit and receipt JSON are not independently
+GitHub permits at most 90 days for public repositories. After publication,
+retain the exact `.tgz`, Windows bundle, audit JSON, native-load result, and
+sanitized live-proof receipt together in the stable GitHub Release for the
+protected `v<package-version>` tag, with the Windows PDB attached separately,
+as described in [the release procedure](RELEASING.md#6-retain-and-verify-the-release). The audit and receipt JSON are not independently
 signed, so their trusted workflow/release provenance is part of the evidence
 boundary. See
 [GitHub's repository Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
 
 Publication authority is an explicit maintainer decision and is not required
-to build, sign, retain, or live-test a candidate. The manual `Publish npm
+to build, retain, or live-test a candidate. The manual `Publish npm
 candidate` workflow is the approved publication boundary. Invoke it at the
 exact protected package tag, provide the successful tag-triggered `Release`
 run ID, and configure the matching sanitized live-proof receipt with
@@ -218,8 +220,9 @@ is fail-closed: the publisher validates the prior release receipt against its
 exact tarball, requires a higher stable patch in the same major/minor line, and
 compares the extracted npm packages. The published file
 inventory, package metadata other than `version`, and every code, helper,
-template, native addon, and runtime-library byte must be identical. Only
-`README.md` and the package version may differ. Any other change requires a new
+template, native addon, and runtime-library byte must be identical.
+`README.md` must change and the version must be a higher patch; nothing else
+may differ. Any other change requires a new
 live-proof receipt bound to the exact candidate.
 
 npm trusted publishing can be configured only after a package already exists.
@@ -251,7 +254,7 @@ documents [the trusted-publisher bootstrap constraint](https://docs.npmjs.com/cl
 [provenance requirements](https://docs.npmjs.com/generating-provenance-statements/).
 
 Rollback never replaces or reuses an already published version's bytes. Keep
-the last known-good version installable; build, sign, package, and live-validate
+the last known-good version installable; build, package, and live-validate
 a higher corrective candidate through the same gates; then publish it,
 deprecate the bad version with a message naming the corrected upgrade, and move
 npm dist-tags as applicable. Prefer deprecation to unpublishing; npm does not

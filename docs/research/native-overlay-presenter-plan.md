@@ -1279,6 +1279,181 @@ Pass criteria:
   persistent-host single-target, idle-parking, or no-post-close-pump invariants
   because the fallback opens lazily and may pump while a session exists.
 
+### Non-negotiable Linux/Steam sandbox decision
+
+Linux and Steam Deck Electron packages **must** start with both `--no-zygote`
+and `--no-sandbox`. Steam injects its overlay into Chromium's zygote and child
+processes unless zygote creation is disabled; Electron couples that mode to the
+no-sandbox startup path. The resulting competing overlay targets have already
+caused startup crashes and broken presentation in the real game. This is a
+known, consciously accepted security tradeoff required by the proven Linux
+Steam integration.
+
+`prepareLinuxSteamAppAfterPack()` therefore adds both switches by default, and
+`electronConfigureSteamOverlay()` keeps Linux child-process isolation enabled
+by default. Do not make these switches optional, remove them as a generic
+security hardening, or ask the consumer to opt in again. Reconsider this closed
+decision only after a replacement is proven in the actual Steam-launched game
+on Linux Desktop, Steam Deck Desktop, and Steam Deck Game Mode with child
+processes, overlay presentation, input, transitions, and shutdown all passing.
+
+### Settled Linux/Deck Application Host
+
+The current Linux/Steam Deck product path is one visible X11/GLX
+**application-host window** plus one hidden Electron offscreen renderer. It is
+the application window, not a popup, companion, overlay layer, or second
+visible surface. Window chrome, minimum size, move, resize, maximize,
+fullscreen, minimize, focus, cursor, and Steam's injected overlay all belong to
+that one host. Keep this single-host architecture after compaction.
+
+Electron 43 supplies each offscreen frame as a one-plane BGRA native pixmap.
+Steam Bridge duplicates the dma-buf descriptor, imports it through XCB DRI3,
+binds the resulting GLX pixmap with `GLX_EXT_texture_from_pixmap`, draws it into
+a retained GL texture, finishes the copy before Electron can recycle the
+producer, and destroys the temporary GLX/X11 objects. While Steam is active,
+Electron paint intentionally stops and the same host continuously presents the
+retained texture. Diagnostics name this backend
+`x11-dri3-glx-texture-from-pixmap` and count imports and failures.
+
+Closed Linux paths must not be retried as fallbacks: top-level popup/companion
+hosts; `keepAbove`; resize-time recreate or unmap/remap; nested child GLX;
+hidden-root bootstrap/reparent; direct Electron desktop GL or Vulkan;
+unmapped-proxy dual drawables; and EGLImage imported into a GLX context. The
+last path created the EGL image but crashed Mesa during GL binding/error
+inspection. Direct `glCopyImageSubData` from a texture-from-pixmap also returned
+`GL_INVALID_OPERATION`; the sampled shader/FBO copy is the proven path. A
+direct service launch is not Steam-overlay proof: launch through Steam's game
+URI so its injection environment is present.
+
+The exhaustive actual-game pass on 2026-07-25 is green for one visible host,
+1280x718 windowed content, exact 1280x800 fullscreen content and restore,
+exact 640x480 minimum, interactive direction-reversing move/resize, maximize
+and restore, minimize at 1 FPS and restore at 90 FPS, Alt+Tab/focus return,
+native keyboard/Escape routing, cursor hide/show, ordinary Steam web-overlay
+open/duplicate suppression/close, and retained-overlay presentation while
+moving, resizing, maximizing, entering fullscreen, switching focus, and
+minimizing. The same process and host survived every transition, and dma-buf
+imports reported zero failures. The Deck's X11/XRandR refresh is 89.869 Hz;
+game RAF, shared-texture import, and native presentation hold about 90 FPS. An
+absolute-deadline scheduler replaced the old fractional timeout loop that
+over-presented at 94-95 FPS. A transient post-world-entry sample measured about
+48 FPS while content was still loading; the focused steady-state rerun reached
+exactly 90 FPS. Pixel screenshots remain unavailable to remote automation in
+this session (compositor capture was denied and the remote Windows capture was
+protected), so geometry, lifecycle, callbacks, input, cadence, and import
+telemetry are proved, but no claim of screenshot-based pixel comparison is
+made.
+
+The final application-menu edit received a focused packaged-candidate
+requalification on the same date. The preserved three-group menu remained
+directly clickable after the live-game handoff, and opening File exposed its
+item without depending on React's removed root. The 1280x718 client reserved
+exactly 26 DIPs for the menu and presented an undistorted 1280x692 game canvas
+at `[0,26,1280,692]`, with the cursor hidden. Steady baseline RAF measured
+89.667 FPS; retained presentation while Steam was active measured 90.000 FPS;
+native EIS Escape closed Steam; and post-overlay RAF measured 90.003 FPS with
+unchanged menu/canvas geometry. One immediate post-menu sample contained a
+single 333 ms transition stall and was rejected; the settled focused rerun is
+the applicable result.
+
+The 2026-07-28 consumer-client requalification found one native-pixmap compatibility
+gap that page scheduling alone could not detect. Electron 43.2.0 supplied the
+standard linear dma-buf modifier as decimal string `0`; the native import guard
+rejected it, so presenter cadence advanced against a retained frame while DRI3
+import count stayed zero. [Linux's DRM UAPI](https://docs.kernel.org/6.3/gpu/drm-uapi.html#formats-and-modifiers)
+defines modifier zero as linear. The
+unreleased native repair accepts zero plus the two already-supported unspecified
+sentinels and continues to reject every other modifier. A Deck-native rebuild
+then held 89-91 shared-texture imports and 90 native presents per second with
+backend `x11-dri3-glx-texture-from-pixmap`, continuously increasing imports,
+zero failures, no bitmap fallback, and exact 90 FPS page scheduling. During the
+ordinary Friends overlay imports paused by design while retained presentation
+held 90 FPS; after native Escape, shared imports and the game resumed at 90 FPS.
+Do not accept page rAF or presenter cadence as live-game proof unless import or
+CPU-frame progress independently advances before overlay activation.
+
+The consumer now has a fail-closed schema-v2 final Linux/Deck receipt auditor at
+`scripts/linux-final-qa-receipt.mjs`, with the prior Deck-named path retained as
+a compatibility entrypoint. It binds Linux Desktop, Deck Desktop, and Deck Game
+Mode receipts to both repositories and the exact package/native binaries,
+recomputes the raw artifact manifest, enforces all 37 shared CORE rows,
+resanitizes the CDP JSONL,
+requires one ordered execution per CORE row and selected physical profile,
+fixed per-case assertion sets, and distinct state/process/evidence continuity,
+rejects private text even after rehashing, scores three settled
+baseline/active/post-close pacing samples per display profile, and rejects
+lower self-declared fixed-rate targets, dirty cleanup, stderr, crashes, or
+display drift. Desktop permits no omitted CORE rows. The separate `1280x800`
+gamescope receipt permits only the enumerated
+desktop-window capabilities to be `not-applicable`; it cannot misreport them as
+passes or omit supported Game Mode behaviors. This closes the prior prose-only
+receipt gap but does not substitute for running the exact final candidate.
+
+The schema-v2 auditor also closes the one-arbitrary-profile loophole. Desktop
+receipts require at least three distinct modes collectively proving baseline,
+maximum refresh, fixed 60 Hz, lower resolution, 100% scale, and non-100% scale.
+Role semantics are checked against logical/pixel dimensions, scale, refresh,
+and an exact hashed mode record. Every CORE row must execute once under every
+profile in canonical order with profile-isolated evidence. Deck Game Mode is
+the only one-profile lane and is fixed to its native `1280x800`, scale-1 mode.
+
+The consumer's `scripts/cross-platform-core-qa-contract.mjs` is the sole source
+of truth for the ordered 37 CORE IDs and their fixed required assertion keys.
+macOS, Windows, Linux, and both Deck adapters import and re-export that same
+immutable module object; platform-local copies are forbidden and unit coverage
+locks identity, order, uniqueness, assertion coverage, and frozen state.
+
+Retest only a scenario affected by a new edit. Run the complete Deck pass once
+all individual cases are green and immediately before a release candidate.
+The temporary CDP runner must then be restored from
+`/home/deck/consumer-qa/run-consumer-qa.sh.normal-20260723-012815`, and the final
+Steam-launched sanity check must prove port 9233 is unreachable. Keep Steam
+closed on every other platform while collecting overlay evidence.
+
+The shared closed CDP runner now has a neutral
+`scripts/linux-actual-game-qa.mjs` entrypoint and requires one explicit target:
+`linux-desktop`, `steam-deck-desktop`, or `steam-deck-game-mode`. It accepts
+only a Linux renderer and requires `isSteamDeck()` to be false for non-Deck
+Linux and true for both Deck lanes. The canonical auditor correlates that
+attestation with the receipt platform, so a real Deck cannot manufacture Linux
+Desktop evidence and a general Linux host cannot manufacture Deck evidence.
+Non-Deck Linux owns a documented physical X11/Wayland matrix across
+resolution, refresh, scale, move/resize/minimum, state/focus/fullscreen,
+overlay-active transitions, actual-game integration, renderer/native pacing,
+crashes, cleanup, and exact restoration. Automation is implemented and unit
+qualified; no physical non-Deck Linux receipt exists yet.
+
+The Windows audit found a different proof-layer gap: Steam Bridge's schema-v4
+`windows-live-proof-receipt.cjs` strongly binds the package, installed runtime,
+standalone D3D11 telemetry, manual checklist, and npm publication candidate,
+but its four coarse cases are not the consumer's canonical cross-platform
+37-CORE actual-game matrix. The consumer now owns a separate explicit
+`windows-desktop` CDP lane and `scripts/windows-final-qa-receipt.mjs` auditor.
+It requires a Windows renderer, non-Deck attestation, local loopback, stable
+Electron, the exact ordered five-case CDP stream, all 37 ordered CORE rows with
+distinct evidence and fixed assertions, pacing against measured display Hz,
+exact restoration, empty stderr, and zero crashes. Windows accepts no
+`not-applicable` CORE row. Both the new application receipt and the existing
+Steam Bridge Windows live-proof receipt are required; the package publication
+contract remains unchanged.
+
+Live execution checkpoint: the new Windows adapter's focused launch was not
+run because the Windows Steam client opened at an authentication screen. The
+automation did not interact with authentication and requested no operator
+input; Windows Steam was shut down cleanly and sole Steam ownership was
+restored to the already-authenticated Mac. The Deck host was also unreachable,
+and no qualifying physical non-Deck Linux host is configured. Do not claim a
+live pass from the unit-qualified adapters. Resume Windows only with an already
+authenticated client, Deck only when its host is reachable, and non-Deck Linux
+only on a real supported x64 desktop. On 2026-07-28 the Deck became reachable
+again and two session-scoped QA inhibitors were installed: KDE blocks power
+management/screensaver and logind independently blocks sleep, idle, and lid
+sleep. Both units were active with zero restarts. Steam started exclusively on
+the Deck, but exposed no authenticated helper or IPC session; automation did
+not interact with authentication. The game remained stopped. Resume the live
+Deck lane only after Steam is already authenticated; do not ask for or automate
+login input.
+
 ## macOS Apple Silicon Plan
 
 Primary backend: Metal host window. OpenGL can remain as a diagnostic fallback,
@@ -2666,6 +2841,63 @@ Windows gates:
   and programmatic checkout shortcut `openAndWait(...)` all completed cleanly
   through the D3D11 presenter, while real authorization remains intentionally
   unclaimed until a private InitTxn response is supplied.
+
+### Read First After Compaction: Windows Architecture
+
+This decision overrides any shortened-context inference that Windows attached
+presentation should be repaired with another popup or child-window experiment.
+
+- The requested audit covered all 794 commits in the repository (the entire
+  history available to the requested 800-commit window) and inspected the
+  Windows host commits and their recorded live failures.
+- `e1dfd73` introduced the attached Windows presenter as `WS_POPUP`.
+  `f0215bd` added a "control" comparison that was still an unparented
+  `WS_OVERLAPPEDWINDOW`. Activation, focus, bounds, message-pump, clipping, and
+  parking repairs accumulated through `6577856` without changing the second
+  top-level-window architecture. `2a24089` renamed that attached path
+  `owned-popup` and separately introduced the successful standalone shared-
+  texture game host.
+- No committed revision before the current abandoned re-entry contains
+  `WS_CHILD` or `SetParent` in the Windows native host. The real-child result was
+  a source-linked, uncommitted experiment recorded by `2a24089`: Windows made
+  geometry, clipping, move, focus, and minimize behavior automatic, but Steam
+  activated without drawing overlay pixels into the child swapchain.
+- Attached top-level presenters are a closed path. Live failures included
+  Electron chrome coverage, purple startup/Alt+Tab surfaces, tiny or partial
+  Steam surfaces, DPI seams, lost rounded corners, toolbar/menu/title-drag and
+  maximize conflicts, minimize/focus desynchronization, drag/resize flicker,
+  retained or stale pixels, hangs, and crashes. Region synchronization,
+  terminal geometry updates, timing delays, DevTools activity, and retained-
+  frame resize stretching patched symptoms and must not be retried.
+- The true attached `WS_CHILD` path is also closed unless Steam hook selection
+  or the renderer architecture materially changes. Its no-pixels result must
+  never trigger a popup fallback.
+- The proven Windows production path is one visible standalone top-level native
+  D3D host which composites a hidden Electron offscreen renderer. The consumer already
+  uses `client.overlay.startNativeOverlaySession()` in `main/main.js` and creates
+  its renderer `BrowserWindow` with `show: false`, `frame: false`, and offscreen
+  shared-texture presentation.
+- A 2026-07-26 actual-game checkout probe proved that Steam captures the exact
+  standalone host HWND while its Windows overlay is active. `GetCapture()`
+  returned that host; title-bar, resize-border, maximize/minimize, system-menu,
+  and fullscreen input did not enter the host as `WM_NCLBUTTONDOWN/UP`,
+  `WM_SYSCOMMAND`, or `WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE`. The host and overlay
+  stayed aligned, stable, focused, and near the 165 Hz display rate. Escape
+  closed the overlay, cleared capture, and the same title drag moved the window
+  immediately afterward. Classify active window management on this lane as a
+  Steam-owned modal constraint, not as an attached-surface defect. Active focus
+  round trips and externally forced display, refresh, resolution, and DPI
+  transitions remain valid stress cases.
+- Never call `ReleaseCapture()` on Steam's behalf or synthesize
+  `WM_NCLBUTTONDOWN`/`DefWindowProc` move-size loops to bypass this constraint.
+  Steam may consume the corresponding button-up event, leaving a nested native
+  loop or corrupt input state. The popup and `WS_CHILD` alternatives remain
+  closed and are not fallbacks for modal behavior.
+- Therefore test the actual consumer game-host path. Windows attached mode should
+  fail clearly rather than create any popup. During iteration, run only tests
+  and live transitions affected by the current edit. Run the full cross-
+  platform release matrix once after the implementation is stable and directly
+  before publication.
 
 ## Presenter Diagnostics
 

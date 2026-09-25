@@ -128,8 +128,9 @@ remain in flight; rejected frames are never replayed later. If a
 retain the exact producer without `texture.release()` for the
 remainder of the application process, then terminate and relaunch. Closing the
 native host/session or reconstructing the device in the same process is
-not a proven release boundary. The synchronous compatibility method has the
-same unsafe-error rule. See [texture ownership](docs/electron.md#windows-texture-ownership)
+not a proven release boundary. The synchronous `host.updateSharedTexture()`
+compatibility method has the same unsafe-error rule. See
+[texture ownership](docs/electron.md#windows-texture-ownership)
 before writing a paint handler.
 
 **Publisher credentials stay on your server.** Never ship a publisher key in

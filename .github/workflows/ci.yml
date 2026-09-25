@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   security-audit:
     name: Dependency security audit
@@ -50,6 +53,8 @@ jobs:
       - run: node scripts/assert-supported-targets.cjs
       - run: npm ci
       - run: npm test
+      - if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: STEAM_BRIDGE_REQUIRE_X11_TESTS=1 xvfb-run -a node scripts/run-native-tests.cjs
       - if: matrix.target == 'x86_64-pc-windows-msvc'
         run: node scripts/smoke-package.cjs --windows-cleanup-self-test
       - run: cargo fmt --all --check

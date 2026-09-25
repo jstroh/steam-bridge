@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const { spawnSync } = require("node:child_process");
+const { readNpmPackEntries } = require("./npm-pack-output.cjs");
 
 const repoRoot = path.resolve(__dirname, "..");
 const packageRoot = path.join(repoRoot, "packages", "steam-bridge");
@@ -4613,8 +4614,7 @@ function packPackage() {
     cwd: packageRoot,
     encoding: "utf8"
   });
-  const packages = JSON.parse(result.stdout);
-  const filename = packages[0]?.filename;
+  const filename = readNpmPackEntries(result.stdout)[0]?.filename;
   assert.equal(typeof filename, "string", "npm pack did not return a filename");
 
   const tarball = path.join(packDir, filename);

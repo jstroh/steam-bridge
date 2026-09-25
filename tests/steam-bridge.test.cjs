@@ -56,6 +56,25 @@ test("Windows release policy audits unsigned candidates without an external sign
   );
 });
 
+test("workflows keep least-privilege tokens and never interpolate refs into shell scripts", () => {
+  const ciWorkflow = readSourceFile(".github", "workflows", "ci.yml");
+  const releaseWorkflow = readSourceFile(".github", "workflows", "release.yml");
+  const publishWorkflow = readSourceFile(".github", "workflows", "publish.yml");
+
+  assert.match(ciWorkflow, /^permissions:\n {2}contents: read\n/mu);
+  for (const workflow of [ciWorkflow, releaseWorkflow, publishWorkflow]) {
+    const runBlocks = [...workflow.matchAll(/^(\s*)(?:- )?run: \|\n((?:\1 {2,}.*\n|\s*\n)*)/gmu)].map((match) => match[2]);
+    const inlineRuns = [...workflow.matchAll(/^\s*(?:- )?run: (?!\|)(.*)$/gmu)].map((match) => match[1]);
+    for (const script of [...runBlocks, ...inlineRuns]) {
+      assert.doesNotMatch(
+        script,
+        /\$\{\{\s*(?:github\.(?:ref_name|head_ref|event\.)|inputs\.)/u,
+        "workflow scripts must read refs and inputs from environment variables"
+      );
+    }
+  }
+});
+
 test("Public releases retain matching native symbols without consumer crash-service credentials", () => {
   const workflow = readSourceFile(".github", "workflows", "release.yml");
   const publisher = readSourceFile(".github", "workflows", "publish.yml");
@@ -458,7 +477,7 @@ function createKWinLifecycleWindow(properties = {}) {
     fullScreen: false,
     opacity: 0,
     resize: false,
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     frameGeometry: { x: 0, y: 0, width: 100, height: 100 },
     clientGeometry: { x: 0, y: 0, width: 100, height: 100 },
     frameGeometryChanged: createKWinScriptSignal(),
@@ -4470,6 +4489,82 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(linkScript, /mtimeMs/);
 });
 
+test("macOS overlay matrix reads the overlay environment from a module that exports it", () => {
+  const matrixScript = fs.readFileSync(path.join(repoRoot, "scripts", "macos-overlay-matrix.sh"), "utf8");
+  const requires = [
+    ...matrixScript.matchAll(/const steamBridge = require\(path\.join\(repoRoot, ((?:"[^"]+"(?:, )?)+)\)\);/g)
+  ];
+  assert.equal(requires.length, 2);
+  assert.equal((matrixScript.match(/steamBridge\.getMacOverlayEnvironment\?\.\(\)/g) || []).length, 2);
+  for (const [, segments] of requires) {
+    const modulePath = path.join(repoRoot, ...JSON.parse(`[${segments}]`));
+    assert.equal(require.resolve(modulePath), distFile("index.js"));
+  }
+  const steamworks = loadSteamWithFakeNative({});
+  assert.equal(typeof steamworks.getMacOverlayEnvironment, "function");
+  assert.equal(typeof require(path.join(repoRoot, "packages", "steam-bridge")).getMacOverlayEnvironment, "undefined");
+});
+
+test("macOS Steam launcher confines launch targets and env-file variables", (t) => {
+  if (process.platform === "win32") {
+    t.skip("the POSIX launcher is not compiled on Windows");
+    return;
+  }
+  const compiler = childProcess.spawnSync("cc", ["--version"], { encoding: "utf8" });
+  if (compiler.error || compiler.status !== 0) {
+    t.skip("no C compiler is available");
+    return;
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-launcher-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bundleDirectory = path.join(root, "Game.app", "Contents", "MacOS");
+  fs.mkdirSync(bundleDirectory, { recursive: true });
+  const launcher = path.join(bundleDirectory, "Game");
+  const built = childProcess.spawnSync(
+    "cc",
+    ["-Wall", "-Wextra", "-Werror", "-O2", "-o", launcher,
+      path.join(repoRoot, "packages", "steam-bridge", "templates", "macos-steam-env-launcher.c")],
+    { encoding: "utf8" }
+  );
+  assert.equal(built.status, 0, built.stderr);
+  fs.writeFileSync(
+    path.join(bundleDirectory, "Game.electron"),
+    '#!/bin/sh\necho "ran:$SteamAppId:$STEAM_BRIDGE_SMOKE_AUTORUN:${DYLD_INSERT_LIBRARIES:-}:$*"\n',
+    { mode: 0o755 }
+  );
+  const outside = path.join(root, "outside.sh");
+  fs.writeFileSync(outside, "#!/bin/sh\necho outside-ran\n", { mode: 0o755 });
+  fs.symlinkSync(outside, path.join(bundleDirectory, "escape"));
+  const envFile = (name, content) => {
+    const file = path.join(root, name);
+    fs.writeFileSync(file, content);
+    return file;
+  };
+  const launch = (...args) => childProcess.spawnSync(launcher, args, { cwd: bundleDirectory, encoding: "utf8" });
+
+  let result = launch("--steam-bridge-launch-env-file", envFile("ok.env", "SteamAppId=480\nSTEAM_BRIDGE_SMOKE_AUTORUN=1\n"), "arg");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "ran:480:1::arg");
+
+  for (const forbidden of ["DYLD_INSERT_LIBRARIES=/tmp/x.dylib", "ELECTRON_RUN_AS_NODE=1", "NODE_OPTIONS=--require=/tmp/x.js", "STEAM_BRIDGE_NATIVE_PATH=/tmp/x.node"]) {
+    result = launch(`--steam-bridge-launch-env-file=${envFile("forbidden.env", `${forbidden}\n`)}`);
+    assert.equal(result.status, 2, forbidden);
+    assert.equal(result.stdout, "", forbidden);
+    assert.match(result.stderr, /may not set/);
+  }
+
+  for (const target of [outside, path.join(bundleDirectory, "escape"), "/bin/sh"]) {
+    result = launch(`--steam-bridge-launch-target=${target}`, "-c", "echo escaped");
+    assert.equal(result.status, 2, target);
+    assert.equal(result.stdout, "", target);
+    assert.match(result.stderr, /must be an executable inside the launcher directory/);
+  }
+
+  result = launch("--steam-bridge-launch-target", path.join(bundleDirectory, "Game.electron"), "inside");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "ran::::inside");
+});
+
 test("native test runner preserves platform runtime-library lookup", () => {
   const {
     parseTarget,
@@ -4548,6 +4643,20 @@ test("example packager prefers the current host build over a stale target-native
   assert.equal(currentHostSources.get("steam_bridge_native.darwin-arm64.node"), localNativePath);
   assert.equal(crossTargetSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
   assert.equal(assembledReleaseSources.get("steam_bridge_native.darwin-arm64.node"), targetNativePath);
+});
+
+test("npm pack JSON output is read in both the array and name-keyed shapes", () => {
+  const { readNpmPackEntries } = require(path.join(repoRoot, "scripts", "npm-pack-output.cjs"));
+  const entry = { id: "steam-bridge@1.0.0", filename: "steam-bridge-1.0.0.tgz" };
+
+  assert.deepEqual(readNpmPackEntries(JSON.stringify([entry])), [entry]);
+  assert.deepEqual(readNpmPackEntries(JSON.stringify({ "steam-bridge": entry })), [entry]);
+  assert.deepEqual(readNpmPackEntries("null"), []);
+  for (const script of ["package-electron-example.cjs", "smoke-package.cjs", "windows-electron-builder-asar-gate.cjs"]) {
+    const source = fs.readFileSync(path.join(repoRoot, "scripts", script), "utf8");
+    assert.match(source, /readNpmPackEntries\(result\.stdout\)\[0\]/, script);
+    assert.doesNotMatch(source, /JSON\.parse\(result\.stdout\)/, script);
+  }
 });
 
 test("example packager accepts only an exact SHA-pinned package tarball", (t) => {
@@ -6362,6 +6471,28 @@ test("init rejects unsafe callback intervals before native calls or resource cle
   );
 });
 
+test("disconnected callback handles ignore events already queued for JavaScript", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const overlayEvents = [];
+  const callbackEvents = [];
+  const overlay = steam.onGameOverlayActivated((event) => overlayEvents.push(event));
+  const callback = steam.onSteamCallback(steam.SteamCallback.LicensesUpdated, (event) => callbackEvents.push(event));
+  const queuedOverlay = fake.callbacks.get(331);
+  const queuedCallback = fake.callbacks.get(steam.SteamCallback.LicensesUpdated);
+  queuedOverlay({ active: true });
+  queuedCallback({});
+  assert.equal(overlayEvents.length, 1);
+  assert.equal(callbackEvents.length, 1);
+  overlay.disconnect();
+  callback.disconnect();
+  queuedOverlay({ active: false });
+  queuedCallback({});
+  assert.equal(overlayEvents.length, 1, "an overlay event queued before disconnect is not delivered after it");
+  assert.equal(callbackEvents.length, 1, "a Steam callback queued before disconnect is not delivered after it");
+});
+
 test("callback pump failures emit one actionable warning and stop the failed timer", async (t) => {
   let callbackCount = 0;
   const warnings = [];
@@ -6507,6 +6638,38 @@ test("idempotent initSafe preserves JavaScript-owned native resources", (t) => {
 
 test("init rejects missing app IDs with an actionable error", (t) => {
   const restoreEnv = setSteamEnv();
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    restoreEnv();
+    clearSteamBridgeCache();
+  });
+
+  assert.throws(() => steam.init(), /requires an appId or STEAM_APP_ID/);
+  assert.equal(fake.calls.some((call) => call.method === "init"), false);
+});
+
+test("init rejects invalid numeric and object app IDs before touching native Steam", (t) => {
+  const restoreEnv = setSteamEnv();
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+
+  t.after(() => {
+    restoreEnv();
+    clearSteamBridgeCache();
+  });
+
+  for (const appId of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 0x1_0000_0000]) {
+    assert.throws(() => steam.init(appId), /requires a positive integer appId/);
+    assert.throws(() => steam.init({ appId }), /requires a positive integer appId/);
+  }
+  assert.throws(() => steam.init({ appId: "480" }), /requires a positive integer appId/);
+  assert.equal(fake.calls.some((call) => call.method === "init"), false);
+});
+
+test("init rejects out-of-range environment app IDs", (t) => {
+  const restoreEnv = setSteamEnv({ STEAM_APP_ID: "4294967296" });
   const fake = createFakeNative();
   const steam = loadSteamWithFakeNative(fake);
 
@@ -11802,7 +11965,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const source = scriptedWindow({
     pid: 101,
     internalId: "source-windowed",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 720 },
     clientGeometry: { x: 1, y: 28, width: 1278, height: 691 }
@@ -11957,7 +12120,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const transferredSource = scriptedWindow({
     pid: 202,
     internalId: "source-focus-transferred",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12065,7 +12228,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const preOpaqueSource = scriptedWindow({
     pid: 212,
     internalId: "source-pre-opaque",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12110,7 +12273,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   // never become independent entries.
   const originallySkippedSource = scriptedWindow({
     internalId: "source-originally-skipped",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     skipSwitcher: true,
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
@@ -12129,7 +12292,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
 
   const ambiguousSource = scriptedWindow({
     internalId: "source-ambiguous-switcher",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12157,7 +12320,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
 
   const invalidRoleSource = scriptedWindow({
     internalId: "source-invalid-role-switcher",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12177,7 +12340,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const switcherWriteOrder = [];
   const orderedSource = scriptedWindow({
     internalId: "source-switcher-order",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12339,7 +12502,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const activeRemovalSource = scriptedWindow({
     pid: 303,
     internalId: "source-active-removal",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     resize: true,
     fullScreen: false,
     frameGeometry: { x: 20, y: 20, width: 900, height: 700 },
@@ -12424,7 +12587,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const intendedSource = scriptedWindow({
     pid: 404,
     internalId: "source-intended",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
     clientGeometry: { x: 1, y: 28, width: 998, height: 671 }
@@ -12459,7 +12622,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const fullscreenSource = scriptedWindow({
     pid: 202,
     internalId: "source-fullscreen",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: true,
     frameGeometry: { x: 0, y: 0, width: 1280, height: 800 },
     clientGeometry: { x: 0, y: 0, width: 1280, height: 800 }
@@ -12532,7 +12695,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const coldWindowedSource = scriptedWindow({
     pid: 505,
     internalId: "source-cold-windowed",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
     clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
@@ -12582,7 +12745,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   const roundTripSource = scriptedWindow({
     pid: 606,
     internalId: "source-round-trip",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 0, y: 0, width: 1000, height: 700 },
     clientGeometry: { x: 0, y: 0, width: 1000, height: 700 }
@@ -12629,7 +12792,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
 
   const dragSeedSource = scriptedWindow({
     internalId: "source-drag-seed",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 20, y: 20, width: 1000, height: 700 },
     clientGeometry: { x: 21, y: 48, width: 998, height: 671 }
@@ -12670,7 +12833,7 @@ test("electron overlay installs KWin client-geometry synchronization in a KDE Wa
   // must still downgrade immediately, while a foreign instance must do nothing.
   const degradedSource = scriptedWindow({
     internalId: "source-explicit-degraded",
-    resourceClass: "fov4-steam",
+    resourceClass: "consumer-game",
     fullScreen: false,
     frameGeometry: { x: 10, y: 20, width: 1000, height: 700 },
     clientGeometry: { x: 10, y: 20, width: 1000, height: 700 }
@@ -25779,6 +25942,7 @@ test("Windows present diagnostic dispatches input before a still-blocking native
       Atomics.wait(waitArray, 0, 0, 20);
       events.push(duringPresent);
       order.push("present-end");
+      enabled = false;
     },
     isNativeOverlayHostFramePending: () => false,
     waitForNativeOverlayHostFrameReady() { throw new Error("ready queue must not enter async wait"); },
@@ -25792,7 +25956,7 @@ test("Windows present diagnostic dispatches input before a still-blocking native
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(order, ["capture", "dispatch", "present-start", "present-end", "dispatch"]);
   const snapshot = session.snapshot();
-  assert.ok(snapshot.lastPumpDurationMs >= 19, "a driver/hook ignoring nonblocking policy remains an observed stall");
+  assert.ok(snapshot.maxPumpDurationMs >= 19, "a driver/hook ignoring nonblocking policy remains an observed stall");
   assert.ok(snapshot.maxInputDispatchDelayMs >= 19, "input arriving during a stall is not claimed fixed");
   assert.equal(snapshot.inputDispatchCount, 2);
   assert.equal(snapshot.inputDispatchOverBudgetCount, 1);
@@ -31766,6 +31930,19 @@ test("native input forwarder covers keys, pointer scaling, capture, focus, and l
     type: "keyDown", keyCode: "W", modifiers: [], isAutoRepeat: false
   });
   assert.equal(webFocusCount, 1, "the first active edge focuses Electron once");
+  const sentBeforeText = sent.length;
+  assert.equal(input.forward({ ...base, kind: "char", wparam: 0xd83d }), true);
+  assert.equal(sent.length, sentBeforeText, "a high surrogate waits for its pair");
+  input.forward({ ...base, kind: "char", wparam: 0xde00 });
+  assert.deepEqual(sent.at(-1), { type: "char", keyCode: "\u{1f600}", modifiers: [] },
+    "Windows UTF-16 WM_CHAR pairs reach Chromium as one code point");
+  input.forward({ ...base, kind: "char", wparam: 0x1f600 });
+  assert.deepEqual(sent.at(-1), { type: "char", keyCode: "\u{1f600}", modifiers: [] });
+  assert.equal(input.forward({ ...base, kind: "char", wparam: 0xde00 }), false, "an unpaired low surrogate is rejected");
+  input.forward({ ...base, kind: "char", wparam: 0xd83d });
+  input.forward({ ...base, kind: "char", wparam: 0x61 });
+  assert.deepEqual(sent.at(-1), { type: "char", keyCode: "a", modifiers: [] }, "an unpaired high surrogate is dropped");
+  assert.equal(sent.length, sentBeforeText + 3);
   input.forward({ ...base, kind: "leftMouseDown", x: 400, y: 150, wparam: 1 });
   assert.deepEqual(sent.at(-1), {
     type: "mouseDown", button: "left", x: 133, y: 100, clickCount: 1, modifiers: []

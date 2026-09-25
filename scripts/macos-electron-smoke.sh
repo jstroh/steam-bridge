@@ -2924,10 +2924,10 @@ EOF
 
   temp_home="$(mktemp -d "${TMPDIR:-/tmp}/steam-bridge-macos-helper-home.XXXXXX")"
   old_home="$HOME"
-  shortcut_file="$temp_home/Library/Application Support/Steam/userdata/1686541554/config/shortcuts.vdf"
+  shortcut_file="$temp_home/Library/Application Support/Steam/userdata/12345678/config/shortcuts.vdf"
   selftest_env_file="$temp_home/steam-bridge-macos-smoke.env"
   expected_game_id="$(node - <<'NODE'
-const appid = 3855287460;
+const appid = 3000000001;
 console.log(((BigInt(appid) << 32n) | 0x02000000n).toString());
 NODE
 )"
@@ -2947,7 +2947,7 @@ byte(TYPE_OBJECT);
 cstr("shortcuts");
 byte(TYPE_OBJECT);
 cstr("0");
-uint32("appid", 3855287460);
+uint32("appid", 3000000001);
 string("appname", "Steam Bridge Smoke");
 string("Exe", '"/tmp/SteamBridgeSmoke.app/Contents/MacOS/SteamBridgeSmoke"');
 string("StartDir", "/tmp/SteamBridgeSmoke.app/Contents/MacOS/");

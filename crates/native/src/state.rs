@@ -1,13 +1,14 @@
 use napi::bindgen_prelude::Error;
 use once_cell::sync::Lazy;
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-type CallbackFn = Box<dyn FnMut(*mut c_void) + Send + 'static>;
-type WarningMessageFn = Box<dyn FnMut(i32, String) + Send + 'static>;
-type NetworkingDebugOutputFn = Box<dyn FnMut(i32, String) + Send + 'static>;
+type CallbackFn = Arc<Mutex<dyn FnMut(*mut c_void) + Send + 'static>>;
+type WarningMessageFn = Arc<Mutex<dyn FnMut(i32, String) + Send + 'static>>;
+type NetworkingDebugOutputFn = Arc<Mutex<dyn FnMut(i32, String) + Send + 'static>>;
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static GAME_SERVER_INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -17,6 +18,35 @@ static NEXT_CALLBACK_ID: AtomicU64 = AtomicU64::new(1);
 static CALLBACKS: Lazy<Mutex<CallbackRegistry>> =
     Lazy::new(|| Mutex::new(CallbackRegistry::default()));
 static MANUAL_DISPATCH: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+thread_local! {
+    static DISPATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+struct DispatchScope;
+
+impl DispatchScope {
+    fn enter() -> Self {
+        DISPATCH_DEPTH.with(|depth| depth.set(depth.get() + 1));
+        DispatchScope
+    }
+}
+
+impl Drop for DispatchScope {
+    fn drop(&mut self) {
+        DISPATCH_DEPTH.with(|depth| depth.set(depth.get() - 1));
+    }
+}
+
+fn wait_for_in_flight_dispatch<F: ?Sized>(callback: Option<Arc<Mutex<F>>>) {
+    let Some(callback) = callback else {
+        return;
+    };
+    if DISPATCH_DEPTH.with(Cell::get) > 0 {
+        return;
+    }
+    drop(callback.lock().unwrap_or_else(|error| error.into_inner()));
+}
+
 #[cfg(test)]
 static TEST_STATE: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
@@ -227,7 +257,7 @@ where
         .callbacks
         .entry((domain, callback_id))
         .or_default()
-        .insert(registration_id, Box::new(callback));
+        .insert(registration_id, Arc::new(Mutex::new(callback)));
 
     CallbackRegistration {
         domain,
@@ -244,7 +274,7 @@ where
     let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
     registry
         .warning_message_hooks
-        .insert(registration_id, Box::new(callback));
+        .insert(registration_id, Arc::new(Mutex::new(callback)));
 
     WarningMessageRegistration { registration_id }
 }
@@ -257,7 +287,7 @@ where
     let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
     registry
         .networking_debug_output_hooks
-        .insert(registration_id, Box::new(callback));
+        .insert(registration_id, Arc::new(Mutex::new(callback)));
 
     NetworkingDebugOutputRegistration { registration_id }
 }
@@ -271,25 +301,73 @@ pub fn dispatch_game_server_callback(callback_id: i32, param: *mut c_void) {
 }
 
 fn dispatch_callback_for_domain(domain: CallbackDomain, callback_id: i32, param: *mut c_void) {
-    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
-    if let Some(callbacks) = registry.callbacks.get_mut(&(domain, callback_id)) {
-        for callback in callbacks.values_mut() {
-            callback(param);
+    let key = (domain, callback_id);
+    let snapshot: Vec<(u64, CallbackFn)> = {
+        let registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
+        match registry.callbacks.get(&key) {
+            Some(callbacks) => callbacks
+                .iter()
+                .map(|(id, callback)| (*id, Arc::clone(callback)))
+                .collect(),
+            None => return,
+        }
+    };
+    for (registration_id, callback) in snapshot {
+        let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = CALLBACKS
+            .lock()
+            .expect("Steam callback registry poisoned")
+            .callbacks
+            .get(&key)
+            .is_some_and(|callbacks| callbacks.contains_key(&registration_id));
+        if registered {
+            let _scope = DispatchScope::enter();
+            (*callback)(param);
         }
     }
 }
 
 pub fn dispatch_warning_message(severity: i32, message: String) {
-    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
-    for callback in registry.warning_message_hooks.values_mut() {
-        callback(severity, message.clone());
+    let snapshot: Vec<(u64, WarningMessageFn)> = CALLBACKS
+        .lock()
+        .expect("Steam callback registry poisoned")
+        .warning_message_hooks
+        .iter()
+        .map(|(id, callback)| (*id, Arc::clone(callback)))
+        .collect();
+    for (registration_id, callback) in snapshot {
+        let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = CALLBACKS
+            .lock()
+            .expect("Steam callback registry poisoned")
+            .warning_message_hooks
+            .contains_key(&registration_id);
+        if registered {
+            let _scope = DispatchScope::enter();
+            (*callback)(severity, message.clone());
+        }
     }
 }
 
 pub fn dispatch_networking_debug_output(detail_level: i32, message: String) {
-    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
-    for callback in registry.networking_debug_output_hooks.values_mut() {
-        callback(detail_level, message.clone());
+    let snapshot: Vec<(u64, NetworkingDebugOutputFn)> = CALLBACKS
+        .lock()
+        .expect("Steam callback registry poisoned")
+        .networking_debug_output_hooks
+        .iter()
+        .map(|(id, callback)| (*id, Arc::clone(callback)))
+        .collect();
+    for (registration_id, callback) in snapshot {
+        let mut callback = callback.lock().unwrap_or_else(|error| error.into_inner());
+        let registered = CALLBACKS
+            .lock()
+            .expect("Steam callback registry poisoned")
+            .networking_debug_output_hooks
+            .contains_key(&registration_id);
+        if registered {
+            let _scope = DispatchScope::enter();
+            (*callback)(detail_level, message.clone());
+        }
     }
 }
 
@@ -407,37 +485,43 @@ fn clear_callback_domain(registry: &mut CallbackRegistry, domain: CallbackDomain
 }
 
 fn unregister_callback(domain: CallbackDomain, callback_id: i32, registration_id: u64) {
-    let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
-    let key = (domain, callback_id);
-    if let Some(callbacks) = registry.callbacks.get_mut(&key) {
-        callbacks.remove(&registration_id);
-        if callbacks.is_empty() {
-            registry.callbacks.remove(&key);
+    let removed = {
+        let mut registry = CALLBACKS.lock().expect("Steam callback registry poisoned");
+        let key = (domain, callback_id);
+        let mut removed = None;
+        if let Some(callbacks) = registry.callbacks.get_mut(&key) {
+            removed = callbacks.remove(&registration_id);
+            if callbacks.is_empty() {
+                registry.callbacks.remove(&key);
+            }
         }
-    }
+        removed
+    };
+    wait_for_in_flight_dispatch(removed);
 }
 
 fn unregister_warning_message_hook(registration_id: u64) {
-    CALLBACKS
+    let removed = CALLBACKS
         .lock()
         .expect("Steam callback registry poisoned")
         .warning_message_hooks
         .remove(&registration_id);
+    wait_for_in_flight_dispatch(removed);
 }
 
 fn unregister_networking_debug_output_hook(registration_id: u64) {
-    CALLBACKS
+    let removed = CALLBACKS
         .lock()
         .expect("Steam callback registry poisoned")
         .networking_debug_output_hooks
         .remove(&registration_id);
+    wait_for_in_flight_dispatch(removed);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     fn completed(callback_id: i32, byte: u8) -> CompletedApiCall {
         CompletedApiCall {
@@ -482,6 +566,103 @@ mod tests {
         assert_eq!(server_count.load(Ordering::SeqCst), 2);
 
         clear_game_server_callbacks();
+    }
+
+    #[test]
+    fn callbacks_may_change_registrations_while_dispatching() {
+        let _test = lock_test_state();
+        clear_callbacks();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let slot: Arc<Mutex<Option<CallbackRegistration>>> = Arc::new(Mutex::new(None));
+        let late: Arc<Mutex<Option<CallbackRegistration>>> = Arc::new(Mutex::new(None));
+        let self_slot = Arc::clone(&slot);
+        let late_slot = Arc::clone(&late);
+        let counter = Arc::clone(&calls);
+        let registration = register_callback(779, move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            let late_counter = Arc::clone(&counter);
+            *late_slot.lock().unwrap() = Some(register_callback(780, move |_| {
+                late_counter.fetch_add(100, Ordering::SeqCst);
+            }));
+            self_slot.lock().unwrap().take();
+        });
+        *slot.lock().unwrap() = Some(registration);
+
+        dispatch_callback(779, std::ptr::null_mut());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        dispatch_callback(779, std::ptr::null_mut());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        dispatch_callback(780, std::ptr::null_mut());
+        assert_eq!(calls.load(Ordering::SeqCst), 101);
+
+        late.lock().unwrap().take();
+        clear_callbacks();
+    }
+
+    #[test]
+    fn unregistering_a_hook_waits_for_an_in_flight_dispatch() {
+        let _test = lock_test_state();
+        clear_callbacks();
+
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let registration = register_networking_debug_output_hook(move |_, _| {
+            entered_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        let dispatcher =
+            std::thread::spawn(|| dispatch_networking_debug_output(1, "message".to_string()));
+        entered_rx.recv().unwrap();
+
+        let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
+        let unregisterer = std::thread::spawn(move || {
+            drop(registration);
+            dropped_tx.send(()).unwrap();
+        });
+        let returned_while_running = dropped_rx
+            .recv_timeout(std::time::Duration::from_millis(200))
+            .is_ok();
+        release_tx.send(()).unwrap();
+        dispatcher.join().unwrap();
+        unregisterer.join().unwrap();
+        assert!(
+            !returned_while_running,
+            "unregister returned while the hook was still running"
+        );
+        clear_callbacks();
+    }
+
+    #[test]
+    fn a_registration_removed_during_dispatch_is_not_invoked() {
+        let _test = lock_test_state();
+        clear_callbacks();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let first_slot: Arc<Mutex<Option<CallbackRegistration>>> = Arc::new(Mutex::new(None));
+        let second_slot: Arc<Mutex<Option<CallbackRegistration>>> = Arc::new(Mutex::new(None));
+        let first_counter = Arc::clone(&calls);
+        let first_drops_second = Arc::clone(&second_slot);
+        *first_slot.lock().unwrap() = Some(register_callback(781, move |_| {
+            first_counter.fetch_add(1, Ordering::SeqCst);
+            first_drops_second.lock().unwrap().take();
+        }));
+        let second_counter = Arc::clone(&calls);
+        let second_drops_first = Arc::clone(&first_slot);
+        *second_slot.lock().unwrap() = Some(register_callback(781, move |_| {
+            second_counter.fetch_add(1, Ordering::SeqCst);
+            second_drops_first.lock().unwrap().take();
+        }));
+
+        dispatch_callback(781, std::ptr::null_mut());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let remaining = usize::from(first_slot.lock().unwrap().is_some())
+            + usize::from(second_slot.lock().unwrap().is_some());
+        assert_eq!(remaining, 1);
+
+        first_slot.lock().unwrap().take();
+        second_slot.lock().unwrap().take();
+        clear_callbacks();
     }
 
     #[test]

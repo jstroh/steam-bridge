@@ -10,8 +10,10 @@ by the application or the person installing or operating it. Examples include:
 
 - calls to the locally installed Steam client and Valve Steamworks services;
 - opening a Steam overlay page requested by the application;
-- publisher Web API requests to an endpoint and credential explicitly supplied
-  by trusted server code; and
+- Steam Web API requests made through the library's Web API helpers, including
+  publisher requests whose endpoint and credential come from trusted server
+  code, either as options or from the documented server environment variables;
+  and
 - local diagnostic or QA output explicitly enabled by the operator.
 
 Applications that use Steam Bridge are separate products. Their developers are

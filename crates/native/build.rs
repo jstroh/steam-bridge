@@ -124,6 +124,7 @@ fn compile_windows_version_resource() {
     unreachable!("Windows version resources are compiled only for Windows targets");
 }
 
+#[cfg(target_os = "windows")]
 fn parse_windows_version(version: &str) -> [u16; 4] {
     let fields = version.split('.').collect::<Vec<_>>();
     assert!(

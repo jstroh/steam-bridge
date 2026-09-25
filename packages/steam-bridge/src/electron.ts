@@ -429,6 +429,7 @@ export function createElectronNativeInputForwarder(
   const heldAuxiliaryMouseButtons = new Set<3 | 4>();
   const lastMousePosition = { x: 0, y: 0 };
   let active = false;
+  let pendingHighSurrogate: number | undefined;
   let forwardedEventCount = 0;
   let rejectedEventCount = 0;
 
@@ -472,6 +473,7 @@ export function createElectronNativeInputForwarder(
   };
   const release = (): void => {
     releaseMouse();
+    pendingHighSurrogate = undefined;
     const keysToRelease = Array.from(heldKeys.keys());
     heldKeys.clear();
     modifiers.clear();
@@ -562,7 +564,21 @@ export function createElectronNativeInputForwarder(
         rejectedEventCount += 1;
         return false;
       }
-      return send({ type: "char", keyCode: String.fromCodePoint(event.wparam), modifiers: eventModifiers });
+      const highSurrogate = pendingHighSurrogate;
+      pendingHighSurrogate = undefined;
+      if (event.wparam >= 0xd800 && event.wparam <= 0xdbff) {
+        pendingHighSurrogate = event.wparam;
+        return true;
+      }
+      let codePoint = event.wparam;
+      if (codePoint >= 0xdc00 && codePoint <= 0xdfff) {
+        if (highSurrogate === undefined) {
+          rejectedEventCount += 1;
+          return false;
+        }
+        codePoint = 0x10000 + ((highSurrogate - 0xd800) << 10) + (codePoint - 0xdc00);
+      }
+      return send({ type: "char", keyCode: String.fromCodePoint(codePoint), modifiers: eventModifiers });
     }
     if (event.kind === "keyDown" || event.kind === "keyUp") {
       const keyCode = electronNativeKeyCode(event.wparam);

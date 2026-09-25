@@ -2869,11 +2869,22 @@ mod windows {
         }
 
         with_surface(|surface| {
-            surface.source_frame = Some(FrameUpload {
-                width,
-                height,
-                data: buffer[..expected_len].to_vec(),
-            });
+            let pixels = &buffer[..expected_len];
+            match surface.source_frame.as_mut() {
+                Some(frame) => {
+                    frame.width = width;
+                    frame.height = height;
+                    frame.data.clear();
+                    frame.data.extend_from_slice(pixels);
+                }
+                None => {
+                    surface.source_frame = Some(FrameUpload {
+                        width,
+                        height,
+                        data: pixels.to_vec(),
+                    });
+                }
+            }
             surface.source_frame_dirty = true;
         })
     }
@@ -7003,6 +7014,10 @@ mod linux {
         shared_texture_import_failure_count: u64,
         dri3_dma_buf_importer: Option<Dri3DmaBufImporter>,
         frame_draw_count: u64,
+        detectable_auto_repeat: bool,
+        pressed_keycodes: [u64; 4],
+        client_state_cache_active: bool,
+        client_state_cache: std::cell::Cell<Option<(i32, i32, bool)>>,
     }
 
     #[derive(Clone, Serialize)]
@@ -7172,9 +7187,21 @@ mod linux {
         unsafe {
             let mut configure_events = ConfigureNotifyCoalescer::default();
             let mut drawable_destroyed = false;
+            surface.client_state_cache.set(None);
+            surface.client_state_cache_active = true;
             while (surface.xlib_dispatch.pending)(surface.display) > 0 {
                 let mut event: xlib::XEvent = mem::MaybeUninit::uninit().assume_init();
                 (surface.xlib_dispatch.next_event)(surface.display, &mut event);
+                if matches!(
+                    event.get_type(),
+                    xlib::ConfigureNotify
+                        | xlib::MapNotify
+                        | xlib::UnmapNotify
+                        | xlib::ReparentNotify
+                        | xlib::DestroyNotify
+                ) {
+                    surface.client_state_cache.set(None);
+                }
                 if event.get_type() == xlib::DestroyNotify
                     && event.destroy_window.window == surface.window
                 {
@@ -7191,6 +7218,8 @@ mod linux {
                     record_linux_input_event(surface, &event);
                 }
             }
+            surface.client_state_cache_active = false;
+            surface.client_state_cache.set(None);
 
             if drawable_destroyed {
                 return Err(Error::from_reason(
@@ -7691,11 +7720,22 @@ mod linux {
         }
 
         with_surface(|surface| {
-            surface.source_frame = Some(LinuxFrameUpload {
-                width: width as c_int,
-                height: height as c_int,
-                data: buffer[..expected_len].to_vec(),
-            });
+            let pixels = &buffer[..expected_len];
+            match surface.source_frame.as_mut() {
+                Some(frame) => {
+                    frame.width = width as c_int;
+                    frame.height = height as c_int;
+                    frame.data.clear();
+                    frame.data.extend_from_slice(pixels);
+                }
+                None => {
+                    surface.source_frame = Some(LinuxFrameUpload {
+                        width: width as c_int,
+                        height: height as c_int,
+                        data: pixels.to_vec(),
+                    });
+                }
+            }
             surface.source_frame_dirty = true;
         })
     }
@@ -7995,6 +8035,7 @@ mod linux {
                         "bytes": frame.data.len(),
                     })),
                     "sourceFrameDirty": surface.source_frame_dirty,
+                    "detectableAutoRepeat": surface.detectable_auto_repeat,
                     "frameUploadCount": surface.frame_upload_count,
                     "sharedTextureImportCount": surface.shared_texture_import_count,
                     "sharedTextureImportFailureCount": surface.shared_texture_import_failure_count,
@@ -8116,6 +8157,13 @@ mod linux {
                 "Failed to open X11 display for Linux native overlay probe",
             ));
         }
+        let mut detectable_auto_repeat_supported: c_int = 0;
+        (xlib.XkbSetDetectableAutoRepeat)(
+            display,
+            xlib::True,
+            &mut detectable_auto_repeat_supported,
+        );
+        let detectable_auto_repeat = detectable_auto_repeat_supported != 0;
         if managed_host && !application_host {
             let Some(xfixes) = xfixes.as_ref() else {
                 (xlib.XCloseDisplay)(display);
@@ -8493,6 +8541,10 @@ mod linux {
             shared_texture_import_failure_count: 0,
             dri3_dma_buf_importer: None,
             frame_draw_count: 0,
+            detectable_auto_repeat,
+            pressed_keycodes: [0; 4],
+            client_state_cache_active: false,
+            client_state_cache: std::cell::Cell::new(None),
         })
     }
 
@@ -8709,7 +8761,11 @@ mod linux {
                         surface,
                         kind,
                         event_type,
-                        button.state,
+                        pointer_state_after_button(
+                            button.state,
+                            button.button,
+                            event_type == xlib::ButtonPress,
+                        ),
                         button.x,
                         button.y,
                         (kind == "mouseWheel").then_some(delta_x.unwrap_or(0)),
@@ -8725,10 +8781,20 @@ mod linux {
                 let shift = key.state & xlib::ShiftMask != 0;
                 let control = key.state & xlib::ControlMask != 0;
                 let alt = key.state & xlib::Mod1Mask != 0;
-                let key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 0);
+                let mut key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 0);
+                if key.state & xlib::Mod2Mask != 0 && keypad_keysym_depends_on_num_lock(key_symbol)
+                {
+                    key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 1);
+                }
                 let virtual_key = virtual_key_from_keysym(key_symbol);
                 let (client_width, client_height, minimized) = linux_client_state(surface);
-                let lparam = if alt { 0x2000_0000 } else { 0 };
+                let repeat = record_key_transition(
+                    &mut surface.pressed_keycodes,
+                    key.keycode,
+                    event_type == xlib::KeyPress,
+                );
+                let lparam =
+                    if alt { 0x2000_0000 } else { 0 } | if repeat { 0x4000_0000 } else { 0 };
                 push_linux_input_event(LinuxInputEvent {
                     kind: if event_type == xlib::KeyPress {
                         "keyDown"
@@ -8753,9 +8819,7 @@ mod linux {
                 });
 
                 if event_type == xlib::KeyPress {
-                    let character_symbol =
-                        (surface.xlib.XLookupKeysym)(&mut key, if shift { 1 } else { 0 });
-                    if let Some(character) = character_from_keysym(character_symbol) {
+                    if let Some(character) = key_press_character(&surface.xlib, &mut key) {
                         push_linux_input_event(LinuxInputEvent {
                             kind: "char",
                             captured_at_ms: linux_now_ms(),
@@ -8780,6 +8844,7 @@ mod linux {
             xlib::FocusIn | xlib::FocusOut => {
                 let focus = event.focus_change;
                 if focus.window == surface.window {
+                    surface.pressed_keycodes = [0; 4];
                     let (client_width, client_height, minimized) = linux_client_state(surface);
                     push_linux_input_event(LinuxInputEvent {
                         kind: if event_type == xlib::FocusIn {
@@ -8880,6 +8945,9 @@ mod linux {
     }
 
     unsafe fn linux_client_state(surface: &NativeSurface) -> (i32, i32, bool) {
+        if let Some(state) = surface.client_state_cache.get() {
+            return state;
+        }
         let mut attributes: xlib::XWindowAttributes = mem::MaybeUninit::zeroed().assume_init();
         if (surface.xlib.XGetWindowAttributes)(surface.display, surface.window, &mut attributes)
             == 0
@@ -8890,11 +8958,15 @@ mod linux {
                 false,
             );
         }
-        (
+        let state = (
             attributes.width.max(1),
             attributes.height.max(1),
             attributes.map_state != xlib::IsViewable,
-        )
+        );
+        if surface.client_state_cache_active {
+            surface.client_state_cache.set(Some(state));
+        }
+        state
     }
 
     fn record_linux_window_changed(
@@ -8940,6 +9012,20 @@ mod linux {
         }
     }
 
+    fn pointer_state_after_button(state: c_uint, button: c_uint, press: bool) -> c_uint {
+        let mask = match button {
+            1 => xlib::Button1Mask,
+            2 => xlib::Button2Mask,
+            3 => xlib::Button3Mask,
+            _ => return state,
+        };
+        if press {
+            state | mask
+        } else {
+            state & !mask
+        }
+    }
+
     fn windows_mouse_key_state(state: c_uint) -> u64 {
         u64::from(state & xlib::Button1Mask != 0)
             | (u64::from(state & xlib::Button3Mask != 0) << 1)
@@ -8973,16 +9059,115 @@ mod linux {
             keysym::XK_Insert => 0x2D,
             keysym::XK_Delete => 0x2E,
             keysym::XK_F1..=keysym::XK_F24 => 0x70 + u64::from(symbol - keysym::XK_F1),
+            keysym::XK_Pause => 0x13,
+            keysym::XK_Caps_Lock => 0x14,
+            keysym::XK_Print => 0x2C,
+            keysym::XK_Super_L => 0x5B,
+            keysym::XK_Super_R => 0x5C,
+            keysym::XK_Menu => 0x5D,
+            keysym::XK_Num_Lock => 0x90,
+            keysym::XK_Scroll_Lock => 0x91,
+            keysym::XK_KP_Enter => 0x0D,
+            keysym::XK_KP_Begin => 0x0C,
+            keysym::XK_KP_Prior => 0x21,
+            keysym::XK_KP_Next => 0x22,
+            keysym::XK_KP_End => 0x23,
+            keysym::XK_KP_Home => 0x24,
+            keysym::XK_KP_Left => 0x25,
+            keysym::XK_KP_Up => 0x26,
+            keysym::XK_KP_Right => 0x27,
+            keysym::XK_KP_Down => 0x28,
+            keysym::XK_KP_Insert => 0x2D,
+            keysym::XK_KP_Delete => 0x2E,
+            keysym::XK_KP_0..=keysym::XK_KP_9 => 0x60 + u64::from(symbol - keysym::XK_KP_0),
+            keysym::XK_KP_Multiply => 0x6A,
+            keysym::XK_KP_Add => 0x6B,
+            keysym::XK_KP_Separator => 0x6C,
+            keysym::XK_KP_Subtract => 0x6D,
+            keysym::XK_KP_Decimal => 0x6E,
+            keysym::XK_KP_Divide => 0x6F,
+            keysym::XK_semicolon => 0xBA,
+            keysym::XK_equal => 0xBB,
+            keysym::XK_comma => 0xBC,
+            keysym::XK_minus => 0xBD,
+            keysym::XK_period => 0xBE,
+            keysym::XK_slash => 0xBF,
+            keysym::XK_grave => 0xC0,
+            keysym::XK_bracketleft => 0xDB,
+            keysym::XK_backslash => 0xDC,
+            keysym::XK_bracketright => 0xDD,
+            keysym::XK_apostrophe => 0xDE,
+            keysym::XK_less | keysym::XK_greater => 0xE2,
             0x61..=0x7A => u64::from(symbol - 0x61 + 0x41),
             0x41..=0x5A | 0x30..=0x39 => u64::from(symbol),
-            0x20..=0x7E => u64::from(symbol),
             _ => 0,
         }
     }
 
+    fn record_key_transition(pressed: &mut [u64; 4], keycode: c_uint, press: bool) -> bool {
+        let index = (keycode as usize / 64) & 3;
+        let bit = 1u64 << (keycode % 64);
+        let was_pressed = pressed[index] & bit != 0;
+        if press {
+            pressed[index] |= bit;
+        } else {
+            pressed[index] &= !bit;
+        }
+        press && was_pressed
+    }
+
+    fn keypad_keysym_depends_on_num_lock(symbol: xlib::KeySym) -> bool {
+        matches!(symbol as c_uint, keysym::XK_KP_Home..=keysym::XK_KP_Delete)
+    }
+
+    unsafe fn key_press_character(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> Option<u32> {
+        let mut text = [0 as c_char; 8];
+        let mut symbol: xlib::KeySym = 0;
+        (xlib.XLookupString)(
+            key,
+            text.as_mut_ptr(),
+            text.len() as c_int,
+            &mut symbol,
+            ptr::null_mut(),
+        );
+        character_from_keysym(symbol)
+    }
+
     fn character_from_keysym(symbol: xlib::KeySym) -> Option<u32> {
-        let symbol = symbol as u32;
-        (0x20..=0x7E).contains(&symbol).then_some(symbol)
+        let Ok(symbol) = u32::try_from(symbol) else {
+            return None;
+        };
+        let character = match symbol {
+            0x20..=0x7E | 0xA0..=0xFF => symbol,
+            0x0100_0000..=0x0110_FFFF => symbol - 0x0100_0000,
+            keysym::XK_KP_0..=keysym::XK_KP_9 => u32::from(b'0') + symbol - keysym::XK_KP_0,
+            keysym::XK_KP_Multiply => u32::from(b'*'),
+            keysym::XK_KP_Add => u32::from(b'+'),
+            keysym::XK_KP_Subtract => u32::from(b'-'),
+            keysym::XK_KP_Decimal => u32::from(b'.'),
+            keysym::XK_KP_Divide => u32::from(b'/'),
+            _ => xkb_keysym_to_utf32(symbol)?,
+        };
+        (!(character < 0x20 || (0x7F..=0x9F).contains(&character)))
+            .then_some(character)
+            .filter(|character| char::from_u32(*character).is_some())
+    }
+
+    fn xkb_keysym_to_utf32(symbol: u32) -> Option<u32> {
+        type KeysymToUtf32 = unsafe extern "C" fn(u32) -> u32;
+        static XKB_KEYSYM_TO_UTF32: std::sync::OnceLock<Option<(Library, KeysymToUtf32)>> =
+            std::sync::OnceLock::new();
+        let (_, convert) = XKB_KEYSYM_TO_UTF32
+            .get_or_init(|| unsafe {
+                let library = Library::new("libxkbcommon.so.0").ok()?;
+                let convert = *library
+                    .get::<KeysymToUtf32>(b"xkb_keysym_to_utf32\0")
+                    .ok()?;
+                Some((library, convert))
+            })
+            .as_ref()?;
+        let character = unsafe { convert(symbol) };
+        (character != 0).then_some(character)
     }
 
     fn linux_now_ms() -> u64 {
@@ -10503,7 +10688,334 @@ void main() {
 
     #[cfg(test)]
     mod tests {
-        use super::{supports_dri3_pixmap_modifier, CHROMIUM_NO_DRM_MODIFIER};
+        use super::{
+            character_from_keysym, key_press_character, keypad_keysym_depends_on_num_lock, keysym,
+            pointer_state_after_button, record_key_transition, supports_dri3_pixmap_modifier,
+            virtual_key_from_keysym, windows_mouse_key_state, xlib, CHROMIUM_NO_DRM_MODIFIER,
+        };
+        use std::ptr;
+
+        #[test]
+        fn button_state_reports_windows_style_post_event_masks() {
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(0, 1, true)),
+                0x01
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(xlib::Button1Mask, 1, false)),
+                0
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(0, 3, true)),
+                0x02
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(0, 2, true)),
+                0x10
+            );
+            assert_eq!(
+                windows_mouse_key_state(pointer_state_after_button(
+                    xlib::Button1Mask | xlib::ShiftMask,
+                    3,
+                    true
+                )),
+                0x01 | 0x02 | 0x04
+            );
+            assert_eq!(
+                pointer_state_after_button(xlib::Button1Mask, 4, true),
+                xlib::Button1Mask
+            );
+        }
+
+        #[test]
+        fn held_keys_report_repeats_until_release() {
+            let mut pressed = [0u64; 4];
+            assert!(!record_key_transition(&mut pressed, 38, true));
+            assert!(record_key_transition(&mut pressed, 38, true));
+            assert!(record_key_transition(&mut pressed, 38, true));
+            assert!(!record_key_transition(&mut pressed, 39, true));
+            assert!(!record_key_transition(&mut pressed, 38, false));
+            assert!(!record_key_transition(&mut pressed, 38, true));
+            assert!(!record_key_transition(&mut pressed, 255, true));
+            assert!(record_key_transition(&mut pressed, 255, true));
+            assert!(!record_key_transition(&mut pressed, 255, false));
+            assert!(record_key_transition(&mut pressed, 39, true));
+        }
+
+        #[test]
+        fn keysym_text_covers_latin1_and_unicode_and_rejects_controls() {
+            let ch = |symbol: u64| character_from_keysym(symbol as xlib::KeySym);
+            assert_eq!(ch(0xE9), Some(0xE9));
+            assert_eq!(ch(0xDF), Some(0xDF));
+            assert_eq!(ch(0x0100_0430), Some(0x430));
+            assert_eq!(ch(0x0101_F600), Some(0x1F600));
+            assert_eq!(ch(0x0100_0080), None);
+            assert_eq!(ch(0x0100_D800), None);
+            assert_eq!(ch(u64::from(keysym::XK_Return)), None);
+            assert_eq!(ch(u64::from(keysym::XK_BackSpace)), None);
+            assert_eq!(ch(u64::from(keysym::XK_Tab)), None);
+            assert_eq!(ch(u64::from(keysym::XK_Escape)), None);
+            assert_eq!(ch(0xFE51), None);
+            if unsafe { libloading::Library::new("libxkbcommon.so.0") }.is_ok() {
+                assert_eq!(ch(0x06C1), Some(0x430));
+                assert_eq!(ch(0x07E1), Some(0x3B1));
+                assert_eq!(ch(0x20AC), Some(0x20AC));
+            }
+        }
+
+        #[test]
+        fn x11_probe_window_reports_keyboard_and_pointer_edges() {
+            use std::time::{Duration, Instant};
+            let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
+            let (Ok(xlib), Ok(xtest)) = (xlib::Xlib::open(), x11_dl::xtest::Xf86vmode::open())
+            else {
+                assert!(!require_display, "Xlib or XTest is unavailable");
+                return;
+            };
+            let control = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+            if control.is_null() {
+                assert!(!require_display, "no X11 display is available");
+                return;
+            }
+            super::open(
+                Some("Steam Bridge keyboard test".to_owned()),
+                Some(320),
+                Some(240),
+                None,
+                None,
+            )
+            .expect("open the X11 probe window");
+            let window = super::SURFACE
+                .lock()
+                .unwrap()
+                .as_ref()
+                .expect("probe surface")
+                .window;
+            let mut events: Vec<serde_json::Value> = Vec::new();
+            let mut collect = |milliseconds: u64, events: &mut Vec<serde_json::Value>| {
+                let deadline = Instant::now() + Duration::from_millis(milliseconds);
+                while Instant::now() < deadline {
+                    super::pump().expect("pump the X11 probe window");
+                    let drained: Vec<serde_json::Value> =
+                        serde_json::from_str(&super::drain_input_events_json()).unwrap();
+                    events.extend(drained);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            };
+            unsafe {
+                let mut attributes: xlib::XWindowAttributes = std::mem::zeroed();
+                let deadline = Instant::now() + Duration::from_secs(2);
+                loop {
+                    collect(20, &mut events);
+                    (xlib.XGetWindowAttributes)(control, window, &mut attributes);
+                    if attributes.map_state == xlib::IsViewable || Instant::now() > deadline {
+                        break;
+                    }
+                }
+                assert_eq!(attributes.map_state, xlib::IsViewable);
+                let (mut root_x, mut root_y, mut child) = (0, 0, 0);
+                (xlib.XTranslateCoordinates)(
+                    control,
+                    window,
+                    attributes.root,
+                    attributes.width / 2,
+                    attributes.height / 2,
+                    &mut root_x,
+                    &mut root_y,
+                    &mut child,
+                );
+                (xtest.XTestFakeMotionEvent)(control, -1, root_x, root_y, 0);
+                (xlib.XSync)(control, xlib::False);
+            }
+            collect(100, &mut events);
+            events.clear();
+
+            let key_code = |symbol: std::os::raw::c_uint| unsafe {
+                std::os::raw::c_uint::from((xlib.XKeysymToKeycode)(
+                    control,
+                    xlib::KeySym::from(symbol),
+                ))
+            };
+            let fake_key = |code: std::os::raw::c_uint, press: bool| unsafe {
+                (xtest.XTestFakeKeyEvent)(control, code, i32::from(press), 0);
+                (xlib.XSync)(control, xlib::False);
+            };
+            let of_kind = |events: &[serde_json::Value], kind: &str, wparam: u64| {
+                events
+                    .iter()
+                    .filter(|event| event["kind"] == kind && event["wparam"] == wparam)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            const REPEAT: i64 = 0x4000_0000;
+
+            let period = key_code(keysym::XK_period);
+            fake_key(period, true);
+            fake_key(period, false);
+            collect(150, &mut events);
+            let downs = of_kind(&events, "keyDown", 0xBE);
+            assert_eq!(downs.len(), 1, "{events:?}");
+            assert_eq!(downs[0]["lparam"].as_i64().unwrap() & REPEAT, 0);
+            assert_eq!(
+                of_kind(&events, "char", u64::from(b'.')).len(),
+                1,
+                "{events:?}"
+            );
+            assert_eq!(of_kind(&events, "keyUp", 0xBE).len(), 1, "{events:?}");
+            assert!(of_kind(&events, "keyDown", 0x2E).is_empty(), "{events:?}");
+
+            events.clear();
+            let letter = key_code(keysym::XK_a);
+            fake_key(letter, true);
+            collect(1300, &mut events);
+            fake_key(letter, false);
+            collect(150, &mut events);
+            let downs = of_kind(&events, "keyDown", 0x41);
+            assert!(downs.len() >= 3, "expected auto-repeat: {events:?}");
+            assert_eq!(downs[0]["lparam"].as_i64().unwrap() & REPEAT, 0);
+            assert!(downs[1..]
+                .iter()
+                .all(|event| event["lparam"].as_i64().unwrap() & REPEAT != 0));
+            assert_eq!(of_kind(&events, "keyUp", 0x41).len(), 1, "{events:?}");
+            assert_eq!(
+                of_kind(&events, "char", u64::from(b'a')).len(),
+                downs.len(),
+                "{events:?}"
+            );
+
+            events.clear();
+            unsafe {
+                (xtest.XTestFakeButtonEvent)(control, 1, 1, 0);
+                (xtest.XTestFakeButtonEvent)(control, 1, 0, 0);
+                (xlib.XSync)(control, xlib::False);
+            }
+            collect(100, &mut events);
+            assert_eq!(
+                of_kind(&events, "leftMouseDown", 0x01).len(),
+                1,
+                "{events:?}"
+            );
+            assert_eq!(of_kind(&events, "leftMouseUp", 0).len(), 1, "{events:?}");
+
+            super::close();
+            unsafe {
+                (xlib.XCloseDisplay)(control);
+            }
+        }
+
+        #[test]
+        fn x11_key_text_honours_caps_lock_shift_and_num_lock() {
+            let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
+            let Ok(xlib) = xlib::Xlib::open() else {
+                assert!(!require_display, "Xlib is unavailable");
+                return;
+            };
+            let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+            if display.is_null() {
+                assert!(!require_display, "no X11 display is available");
+                return;
+            }
+            let lookup = |symbol: std::os::raw::c_uint, state: std::os::raw::c_uint| unsafe {
+                let mut key: xlib::XKeyEvent = std::mem::zeroed();
+                key.type_ = xlib::KeyPress;
+                key.display = display;
+                key.keycode = (xlib.XKeysymToKeycode)(display, xlib::KeySym::from(symbol)).into();
+                key.state = state;
+                key_press_character(&xlib, &mut key)
+            };
+            assert_eq!(lookup(keysym::XK_a, 0), Some(u32::from(b'a')));
+            assert_eq!(lookup(keysym::XK_a, xlib::ShiftMask), Some(u32::from(b'A')));
+            assert_eq!(lookup(keysym::XK_a, xlib::LockMask), Some(u32::from(b'A')));
+            assert_eq!(lookup(keysym::XK_1, xlib::LockMask), Some(u32::from(b'1')));
+            assert_eq!(
+                lookup(keysym::XK_KP_Home, xlib::Mod2Mask),
+                Some(u32::from(b'7'))
+            );
+            assert_eq!(lookup(keysym::XK_KP_Home, 0), None);
+            let mut supported = 0;
+            unsafe {
+                (xlib.XkbSetDetectableAutoRepeat)(display, xlib::True, &mut supported);
+                (xlib.XCloseDisplay)(display);
+            }
+            assert_ne!(supported, 0);
+        }
+
+        fn vk(symbol: std::os::raw::c_uint) -> u64 {
+            virtual_key_from_keysym(symbol as xlib::KeySym)
+        }
+
+        #[test]
+        fn punctuation_keysyms_map_to_windows_oem_virtual_keys() {
+            assert_eq!(vk(keysym::XK_semicolon), 0xBA);
+            assert_eq!(vk(keysym::XK_equal), 0xBB);
+            assert_eq!(vk(keysym::XK_comma), 0xBC);
+            assert_eq!(vk(keysym::XK_minus), 0xBD);
+            assert_eq!(vk(keysym::XK_period), 0xBE);
+            assert_eq!(vk(keysym::XK_slash), 0xBF);
+            assert_eq!(vk(keysym::XK_grave), 0xC0);
+            assert_eq!(vk(keysym::XK_bracketleft), 0xDB);
+            assert_eq!(vk(keysym::XK_backslash), 0xDC);
+            assert_eq!(vk(keysym::XK_bracketright), 0xDD);
+            assert_eq!(vk(keysym::XK_apostrophe), 0xDE);
+            assert_eq!(vk(keysym::XK_less), 0xE2);
+        }
+
+        #[test]
+        fn printable_keysyms_never_alias_navigation_or_function_keys() {
+            for symbol in 0x20..=0x7E {
+                let key = vk(symbol);
+                let letter_or_digit = (0x30..=0x39).contains(&symbol)
+                    || (0x41..=0x5A).contains(&symbol)
+                    || (0x61..=0x7A).contains(&symbol);
+                if symbol == keysym::XK_space {
+                    assert_eq!(key, 0x20);
+                } else if !letter_or_digit {
+                    assert!(
+                        key == 0 || key >= 0xBA,
+                        "keysym {symbol:#x} mapped to non-OEM virtual key {key:#x}"
+                    );
+                }
+            }
+            assert_eq!(vk(keysym::XK_a), 0x41);
+            assert_eq!(vk(keysym::XK_Z), 0x5A);
+            assert_eq!(vk(keysym::XK_7), 0x37);
+        }
+
+        #[test]
+        fn keypad_and_lock_keysyms_map_to_windows_virtual_keys() {
+            assert_eq!(vk(keysym::XK_KP_0), 0x60);
+            assert_eq!(vk(keysym::XK_KP_9), 0x69);
+            assert_eq!(vk(keysym::XK_KP_Multiply), 0x6A);
+            assert_eq!(vk(keysym::XK_KP_Add), 0x6B);
+            assert_eq!(vk(keysym::XK_KP_Subtract), 0x6D);
+            assert_eq!(vk(keysym::XK_KP_Decimal), 0x6E);
+            assert_eq!(vk(keysym::XK_KP_Divide), 0x6F);
+            assert_eq!(vk(keysym::XK_KP_Enter), 0x0D);
+            assert_eq!(vk(keysym::XK_KP_Home), 0x24);
+            assert_eq!(vk(keysym::XK_KP_Delete), 0x2E);
+            assert_eq!(vk(keysym::XK_Caps_Lock), 0x14);
+            assert_eq!(vk(keysym::XK_Num_Lock), 0x90);
+            assert!(keypad_keysym_depends_on_num_lock(
+                keysym::XK_KP_Home as xlib::KeySym
+            ));
+            assert!(keypad_keysym_depends_on_num_lock(
+                keysym::XK_KP_Delete as xlib::KeySym
+            ));
+            assert!(!keypad_keysym_depends_on_num_lock(
+                keysym::XK_KP_Divide as xlib::KeySym
+            ));
+        }
+
+        #[test]
+        fn keypad_keysyms_produce_text_characters() {
+            let ch = |symbol: std::os::raw::c_uint| character_from_keysym(symbol as xlib::KeySym);
+            assert_eq!(ch(keysym::XK_KP_0), Some(u32::from(b'0')));
+            assert_eq!(ch(keysym::XK_KP_9), Some(u32::from(b'9')));
+            assert_eq!(ch(keysym::XK_KP_Decimal), Some(u32::from(b'.')));
+            assert_eq!(ch(keysym::XK_KP_Divide), Some(u32::from(b'/')));
+            assert_eq!(ch(keysym::XK_KP_Home), None);
+            assert_eq!(ch(keysym::XK_period), Some(u32::from(b'.')));
+        }
 
         #[test]
         fn dri3_pixmap_import_accepts_linear_and_unspecified_modifiers() {

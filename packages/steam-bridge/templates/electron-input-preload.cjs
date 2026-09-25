@@ -581,7 +581,7 @@ if (process.isMainFrame !== false) {
     };
   };
 
-  // Migration bridge for already-deployed Client-PX bundles. This is not a
+  // Migration bridge for already-deployed consumer bundles. This is not a
   // 0.4 npm API: it preserves the shell/client protocol while pinned and
   // cached game deployments advance independently.
   const legacyButton = (button) => ({

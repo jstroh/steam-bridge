@@ -4812,7 +4812,7 @@ and reject post-close overlay reactivation.
 ## 2026-07-19 Apple Silicon Requalification
 
 The current signed arm64 package was exercised on the physical Retina Mac at
-`Jeromys-MacBook-Pro.local`. Steam launch/injection, Metal presenter readiness,
+the local Apple Silicon QA machine. Steam launch/injection, Metal presenter readiness,
 direct web activation, and exact native window geometry passed. The app owns
 its window-state policy; Steam Bridge follows the content rectangle and now
 treats Electron `isSimpleFullScreen()` as fullscreen in addition to native
@@ -4873,10 +4873,10 @@ fallback was weakened to obtain the pass.
 Exact signed/notarized/stapled RC85 fingerprint
 `826a3605dae51ca40f413f7f7d5868bafe5253b333853c031dc8074e2639d73b`
 passed the focused scale-1 live-display case at
-`/private/tmp/fov4-macos-qa-rc85-scale1-display-live-clamp-01`. The preceding
+`/private/tmp/consumer-macos-qa-rc85-scale1-display-live-clamp-01`. The preceding
 failure was isolated to the external QA driver retaining a scale-1 window
 origin after switching to a 1168x730 low-Retina mode, leaving the resize corner
-off-screen. FOV4 commit `694636d` clamps the staging origin to the temporary
+off-screen. The consumer commit `694636d` clamps the staging origin to the temporary
 mode while preserving full gesture travel. The corrected case proved real
 title movement and corner resize, passive and active Steam transitions, exact
 same-child alignment, healthy pixels and cadence, exact display restoration,
