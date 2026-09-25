@@ -18,6 +18,7 @@ and Windows standalone presentation each require their own applicable proof.
 | Produce candidate-bound Windows evidence | [Windows standalone release proof](#windows-standalone-release-proof) |
 | Inspect automated-run output | [Autorun logs](#autorun-logs) |
 | Follow Deck-specific checks | [Steam Deck checks](#steam-deck-checks) |
+| Interpret overlay callbacks and log signals | [Overlay signals](#overlay-signals) |
 
 Run root npm commands from the repository root. Shell blocks using backslash
 continuations are POSIX syntax; PowerShell uses a backtick or a single line.

@@ -80,10 +80,10 @@ runtime and packaged application you ship.
 Windows ARM, Linux ARM, Intel macOS, Rosetta, and universal macOS packages are
 not supported. A browser page alone cannot initialize the native Steam client.
 
-General non-Deck Linux remains a separate physical X11/Wayland qualification lane.
-General non-Deck Linux desktop is a separate release-evidence lane and is **not green**
-without its own physical-host receipt. Deck Desktop/Game Mode and CI results
-do not qualify every Linux distribution, compositor, and driver.
+General non-Deck Linux desktop is a separate physical X11/Wayland release-evidence
+lane and is **not green** without its own physical-host receipt. Deck
+Desktop/Game Mode and CI results do not qualify every Linux distribution,
+compositor, and driver.
 
 ### macOS Apple Silicon Only
 
