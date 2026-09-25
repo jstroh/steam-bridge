@@ -1720,12 +1720,7 @@ impl WindowsD3d11Renderer {
         replacement.present_budget_ms = self.present_budget_ms;
         let context_lock = self.shared_texture_context_lock.clone();
         let _context_guard = lock_shared_texture_context(&context_lock)?;
-        self.context.ClearState();
-        self.context.Flush();
-        self.render_target = None;
-        self.source_view = None;
-        self.source_texture = None;
-        self.swap_chain = None;
+        self.release_swap_chain_for_replacement();
 
         match replacement.attach_swap_chain(hwnd) {
             Ok(()) => {
@@ -1742,6 +1737,20 @@ impl WindowsD3d11Renderer {
                 Err(error)
             }
         }
+    }
+
+    unsafe fn release_swap_chain_for_replacement(&mut self) {
+        self.render_target = None;
+        self.source_view = None;
+        self.source_texture = None;
+        self.swap_chain = None;
+        if !self.frame_latency_waitable_object.is_invalid() {
+            let _ = CloseHandle(self.frame_latency_waitable_object);
+            self.frame_latency_waitable_object = HANDLE::default();
+        }
+        self.frame_latency_ready_permits = 0;
+        self.context.ClearState();
+        self.context.Flush();
     }
 
     pub unsafe fn render(&mut self, clear_color: [f32; 4]) -> Result<Option<i32>, String> {
@@ -3238,6 +3247,9 @@ fn intersect_rect(
     let bottom = (first.1 + first.3).min(second.1 + second.3);
     (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
 }
+
+#[cfg(test)]
+mod hardware_window_tests;
 
 #[cfg(test)]
 mod frame_latency_wait_gate_tests {

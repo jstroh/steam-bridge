@@ -182,10 +182,10 @@ and every message is still released.
    `WIN-FRAME-WAIT-BYPASS-LATCH-001`. Done: expected iconic, hidden or
    occluded timeouts no longer latch, a latch needs three consecutive
    unexpected timeouts, and both native and JavaScript recover without timers
-   on restore or occlusion end. Next: release the old swap chain before an
-   adapter switch (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`), report adapter and
-   output LUIDs, and offer a dedicated copy device. Live proof on an NVIDIA
-   hybrid laptop is still required.
+   on restore or occlusion end. An adapter switch now releases the old swap
+   chain before attaching the new one (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`).
+   Next: report adapter and output LUIDs, and offer a dedicated copy device.
+   Live proof on an NVIDIA hybrid laptop is still required.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and
