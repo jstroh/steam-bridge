@@ -161,9 +161,12 @@ and every message is still released.
    `WIN-OVERLAY-RESUME-HOLD-001` covers the 5-second frozen frame after every
    overlay close. A one-rig A/B (5000, 250 and 0 ms) found no correctness
    failure without the hold. It did find a few slow copies and two single
-   Present stalls under 200 ms at resume. The default stays at 5000 ms until
-   the same A/B passes on more GPUs and displays, and until Steam's
-   `overlayNeedsPresent` is measured as a possible state signal.
+   Present stalls under 200 ms at resume. A follow-up decision A/B on the
+   same rig passed 500 ms, with no stall, slow copy or artifact. 250 ms had
+   one 137 ms Present stall, and the 5000 ms hold often froze on a fading
+   overlay frame. The consumer now overrides the delay to 500 ms. The
+   default stays at 5000 ms until the A/B passes on more GPUs and displays
+   and a post-close state signal is found.
    The consumer now pins Electron 44.4.5, which needs a new Windows runtime
    epoch before release.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
