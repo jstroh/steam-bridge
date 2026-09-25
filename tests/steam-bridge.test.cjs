@@ -26015,6 +26015,36 @@ test("a suspended Windows host with the overlay active keeps the timer cadence i
   );
 });
 
+test("an older Windows addon without the suspended query keeps display-synchronized pumping", async (t) => {
+  let hostPumps = 0;
+  const { fake } = createPresentDiagnosticTestNative(t, "nonblocking-vsync", {
+    isNativeOverlayHostFramePending: () => false,
+  });
+  delete fake.isNativeOverlayHostPresentationSuspended;
+  const pumpFrame = fake.pumpNativeOverlayHostFrame;
+  fake.pumpNativeOverlayHostFrame = function (...args) {
+    hostPumps += 1;
+    return pumpFrame.apply(this, args);
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 20 });
+  t.after(() => session.close());
+  session.updateFrame({ data: Buffer.from([1, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  fake.callbacks.get(331)({ active: true, app_id: 480 });
+  await new Promise((resolve) => setImmediate(resolve));
+  session.updateFrame({ data: Buffer.from([2, 0, 0, 0]), width: 1, height: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const pumpsBefore = hostPumps;
+  const busyUntil = performance.now() + 100;
+  while (performance.now() < busyUntil) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(session.isOpen(), true);
+  assert.equal(session.snapshot().lastError, undefined);
+  assert.ok(hostPumps - pumpsBefore > 30, `an older addon kept its previous scheduling (${hostPumps - pumpsBefore} pumps)`);
+});
+
 test("Windows present diagnostic busy retries yield even with an always-ready waitable and keep the newest frame", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);
