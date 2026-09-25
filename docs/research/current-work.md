@@ -175,6 +175,14 @@ and every message is still released.
    20-36 ms completion floor at 3440x1440@50. Next: a hybrid-GPU run, GPU
    timestamps around the copy, and an A/B that moves the copy off the host's
    render/Present context.
+   Cause found on 2026-09-25: one 25 ms frame-wait timeout (minimize,
+   occlusion, F11, overlay or a zone load) permanently latches
+   `frameLatencyWaitBypassed`; ungated presents then queue ahead of the copy
+   on the same context, and cross-adapter present lengthens that queue. See
+   `WIN-FRAME-WAIT-BYPASS-LATCH-001`. Planned fixes: recover from the latch
+   and ignore expected iconic/occluded timeouts, move the copy to a dedicated
+   device, release the old swap chain before an adapter switch
+   (`WIN-ADAPTER-SWITCH-SWAPCHAIN-001`), and report adapter and output LUIDs.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and
