@@ -149,14 +149,21 @@ impl Drop for SharedProducerTexture {
 }
 
 pub(super) unsafe fn create_shared_producer_texture(
+    renderer: &WindowsD3d11Renderer,
     width: u32,
     height: u32,
 ) -> SharedProducerTexture {
+    let host_luid = renderer.host_adapter_luid.expect("renderer adapter LUID");
+    let factory: IDXGIFactory4 =
+        CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).expect("DXGI factory");
+    let adapter: IDXGIAdapter = factory
+        .EnumAdapterByLuid(host_luid)
+        .expect("renderer adapter by LUID");
     let mut device = None;
     let mut context = None;
     D3D11CreateDevice(
-        None,
-        D3D_DRIVER_TYPE_HARDWARE,
+        &adapter,
+        D3D_DRIVER_TYPE_UNKNOWN,
         HMODULE::default(),
         D3D11_CREATE_DEVICE_BGRA_SUPPORT,
         Some(&[D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0]),
@@ -258,7 +265,7 @@ fn dedicated_copy_device_presents_full_and_dirty_rect_frames() {
             renderer.dedicated_copy_requested,
             "new renderers inherit the process flag"
         );
-        let producer = create_shared_producer_texture(320, 200);
+        let producer = create_shared_producer_texture(&renderer, 320, 200);
         let inside = (100, 60);
         let outside = (10, 10);
 
@@ -331,7 +338,7 @@ fn copy_diagnostics_report_gpu_timing_and_same_adapter_luids() {
     unsafe {
         let hwnd = create_test_window(336, 239);
         let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
-        let producer = create_shared_producer_texture(320, 200);
+        let producer = create_shared_producer_texture(&renderer, 320, 200);
         for _ in 0..(GPU_COPY_TIMING_SAMPLE_INTERVAL * 3 + 1) {
             match renderer
                 .begin_import_shared_texture(
@@ -435,7 +442,7 @@ fn adapter_switch_attaches_a_new_swap_chain_to_the_same_window() {
         let hwnd = create_test_window(336, 239);
         let mut renderer = WindowsD3d11Renderer::new(hwnd, 320, 200).expect("renderer");
         renderer.render([0.0, 0.0, 0.0, 1.0]).expect("first render");
-        let producer = create_shared_producer_texture(320, 200);
+        let producer = create_shared_producer_texture(&renderer, 320, 200);
         for attempt in 1..=3 {
             renderer
                 .switch_to_shared_texture_adapter(
