@@ -155,10 +155,13 @@ and every message is still released.
 1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
    signed candidate launched through Steam, the display matrix and both
    receipts. The local pass above, including emoji and non-BMP text and a
-   local Steam-client shortcut launch, is green. Maintainer question: is a
-   5-second frozen frame after every overlay close an acceptable default for
-   `windowsSharedTextureResumeDelayMs`, or should it be measured down on this
-   Steam client?
+   local Steam-client shortcut launch, is green.
+   `WIN-OVERLAY-RESUME-HOLD-001` covers the 5-second frozen frame after every
+   overlay close. A one-rig A/B (5000, 250 and 0 ms) found no correctness
+   failure without the hold. It did find a few slow copies and two single
+   Present stalls under 200 ms at resume. The default stays at 5000 ms until
+   the same A/B passes on more GPUs and displays, and until Steam's
+   `overlayNeedsPresent` is measured as a possible state signal.
    The consumer now pins Electron 44.4.5, which needs a new Windows runtime
    epoch before release.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
