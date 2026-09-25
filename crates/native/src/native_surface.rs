@@ -1666,6 +1666,8 @@ mod windows {
     const MODAL_PRESENT_INTERVAL_MS: u32 = 16;
     const VK_TAB_CODE: i32 = 0x09;
     const VK_SHIFT_CODE: i32 = 0x10;
+    const VK_MENU_CODE: i32 = 0x12;
+    const VK_F4_CODE: i32 = 0x73;
     const VK_CONTROL_CODE: i32 = 0x11;
     const VK_ALT_CODE: i32 = 0x12;
     const VK_CAPS_LOCK_CODE: i32 = 0x14;
@@ -1809,6 +1811,7 @@ mod windows {
         present_after_modal_loop: bool,
         modal_size_move_active: bool,
         overlay_shortcut_down: bool,
+        overlay_close_shortcut_down: bool,
         overlay_active: bool,
         steam_dialog_baseline: SteamDialogWindowList,
         adopted_steam_dialog: Option<AdoptedSteamDialog>,
@@ -3561,6 +3564,7 @@ mod windows {
             present_after_modal_loop: false,
             modal_size_move_active: false,
             overlay_shortcut_down: false,
+            overlay_close_shortcut_down: false,
             overlay_active: false,
             steam_dialog_baseline: SteamDialogWindowList::default(),
             adopted_steam_dialog: None,
@@ -4431,6 +4435,21 @@ mod windows {
         GetForegroundWindow() == surface.hwnd
     }
 
+    fn overlay_close_shortcut_edge(
+        alt_state: u16,
+        f4_state: u16,
+        has_foreground: bool,
+        overlay_active: bool,
+        was_down: bool,
+    ) -> (bool, bool) {
+        if !overlay_active || !has_foreground {
+            return (false, false);
+        }
+        let down = alt_state & 0x8000 != 0 && f4_state & 0x8000 != 0;
+        let signaled = alt_state & 0x8001 != 0 && f4_state & 0x8001 != 0;
+        (signaled && !was_down, down)
+    }
+
     unsafe fn poll_overlay_shortcut(surface: &mut NativeSurface) {
         let tab_state = async_key_state(VK_TAB_CODE);
         let shift_state = async_key_state(VK_SHIFT_CODE)
@@ -4444,6 +4463,17 @@ mod windows {
             record_overlay_shortcut(surface.hwnd);
         }
         surface.overlay_shortcut_down = shortcut_down;
+        let (close_requested, close_down) = overlay_close_shortcut_edge(
+            async_key_state(VK_MENU_CODE),
+            async_key_state(VK_F4_CODE),
+            has_foreground,
+            surface.overlay_active,
+            surface.overlay_close_shortcut_down,
+        );
+        surface.overlay_close_shortcut_down = close_down;
+        if close_requested {
+            SendMessageW(surface.hwnd, WM_CLOSE, 0, 0);
+        }
     }
 
     unsafe fn async_key_state(virtual_key: i32) -> u16 {
@@ -6414,11 +6444,51 @@ mod windows {
             clamp_outer_rect_to_work_area, corrected_outer_size, geometry_residual,
             geometry_satisfies_constraints, logical_pixels_to_physical,
             menu_text_without_mnemonics, minimum_menu_dpi, minimum_track_outer_size,
-            normalize_windows_display_refresh_rate, physical_pixels_to_logical, positive_rect_size,
-            rect_from_position_size, residual_requires_correction, residual_within_tolerance,
+            normalize_windows_display_refresh_rate, overlay_close_shortcut_edge,
+            physical_pixels_to_logical, positive_rect_size, rect_from_position_size,
+            residual_requires_correction, residual_within_tolerance,
             set_standalone_logical_client_size, set_standalone_min_client_size,
             standalone_logical_client_size, standalone_min_client_size, OuterClampPlan, RECT,
         };
+
+        #[test]
+        fn alt_f4_closes_the_host_while_the_steam_overlay_swallows_keys() {
+            const DOWN: u16 = 0x8000;
+            const TAPPED: u16 = 0x0001;
+            assert_eq!(
+                overlay_close_shortcut_edge(DOWN, DOWN, true, true, false),
+                (true, true),
+                "Alt+F4 held over the active overlay requests a close"
+            );
+            assert_eq!(
+                overlay_close_shortcut_edge(DOWN, TAPPED, true, true, false),
+                (true, false),
+                "a tap between two polls still requests a close"
+            );
+            assert_eq!(
+                overlay_close_shortcut_edge(DOWN, DOWN, true, true, true),
+                (false, true),
+                "a held shortcut requests one close"
+            );
+            assert_eq!(
+                overlay_close_shortcut_edge(DOWN, DOWN, true, false, false),
+                (false, false),
+                "without the overlay the window message path owns Alt+F4"
+            );
+            assert_eq!(
+                overlay_close_shortcut_edge(DOWN, DOWN, false, true, false),
+                (false, false),
+                "Alt+F4 aimed at another window is ignored"
+            );
+            assert_eq!(
+                overlay_close_shortcut_edge(0, DOWN, true, true, false),
+                (false, false)
+            );
+            assert_eq!(
+                overlay_close_shortcut_edge(DOWN, 0, true, true, false),
+                (false, false)
+            );
+        }
 
         #[test]
         fn windows_display_refresh_rejects_driver_default_sentinels() {
