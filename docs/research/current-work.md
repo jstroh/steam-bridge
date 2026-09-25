@@ -104,9 +104,9 @@ Not covered: Steam-client launch (the direct launch still loaded Steam's
 overlay), a signed candidate, a display matrix, and receipts. For automation:
 an elevated foreground utility makes UIPI silently drop injected input, so
 check the foreground owner and the host's message counters before trusting
-a `SendInput` result. The public example passes a direct App ID `480` smoke, but its
-`presenter-*` actions intentionally fail on Windows, so it cannot prove Windows
-overlay routes.
+a `SendInput` result. The public example passes a direct App ID `480` smoke,
+but its `presenter-*` actions intentionally fail on Windows, so it cannot
+prove Windows overlay routes.
 
 Verified without code changes: the `NativeBinding` interface matches all 1,153
 napi-generated functions by name, arity, parameter type and optionality; all
@@ -119,7 +119,8 @@ and every message is still released.
 1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
    signed candidate, a Steam-client launch, the display matrix and both
    receipts. The local pass above, including emoji and non-BMP text, is green.
-   The consumer's Electron pin must move from 44.4.3 to 44.4.5 first.
+   The consumer now pins Electron 44.4.5, which needs a new Windows runtime
+   epoch before release.
 2. A live Linux Desktop and Steam Deck keyboard case, as described in the
    ledger entry.
 3. Maintainer decision: Git history still contains private product names and
