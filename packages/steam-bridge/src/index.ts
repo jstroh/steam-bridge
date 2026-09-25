@@ -9642,9 +9642,12 @@ export function getNativeOverlayHostDiagnostics(): NativeOverlayHostDiagnostics 
 export function onMicroTxnAuthorizationResponse(
   handler: (event: MicroTxnAuthorizationResponse) => void
 ): CallbackHandle {
-  return wrapCallbackHandle(native().registerMicroTxnAuthorizationResponse((event) => {
-    handler(normalizeMicroTxnEvent(event));
-  }));
+  return connectNativeCallback(
+    (deliver) => native().registerMicroTxnAuthorizationResponse(deliver),
+    (event) => {
+      handler(normalizeMicroTxnEvent(event));
+    }
+  );
 }
 
 export function onLegacyMicroTxnAuthorizationResponse(
@@ -9656,9 +9659,12 @@ export function onLegacyMicroTxnAuthorizationResponse(
 }
 
 export function onGameOverlayActivated(handler: (event: GameOverlayActivated) => void): CallbackHandle {
-  return wrapCallbackHandle(native().registerGameOverlayActivated((event) => {
-    handler(normalizeGameOverlayEvent(event));
-  }));
+  return connectNativeCallback(
+    (deliver) => native().registerGameOverlayActivated(deliver),
+    (event) => {
+      handler(normalizeGameOverlayEvent(event));
+    }
+  );
 }
 
 export function onSteamServersConnected(handler: (event: SteamServersConnectedEvent) => void): CallbackHandle {
@@ -9686,10 +9692,11 @@ export function onSteamCallback(
   handler: (event: unknown) => void
 ): CallbackHandle {
   const callbackId = resolveSteamCallbackId(steamCallback);
-  return wrapCallbackHandle(
-    native().registerSteamCallback(callbackId, (event) => {
+  return connectNativeCallback(
+    (deliver) => native().registerSteamCallback(callbackId, deliver),
+    (event) => {
       handler(normalizeCallbackEvent(callbackId, event));
-    })
+    }
   );
 }
 
@@ -9703,10 +9710,11 @@ function onGameServerSteamCallback(
   handler: (event: unknown) => void
 ): CallbackHandle {
   const callbackId = resolveSteamCallbackId(steamCallback);
-  return wrapCallbackHandle(
-    native().registerGameServerSteamCallback(callbackId, (event) => {
+  return connectNativeCallback(
+    (deliver) => native().registerGameServerSteamCallback(callbackId, deliver),
+    (event) => {
       handler(normalizeCallbackEvent(callbackId, event));
-    })
+    }
   );
 }
 
@@ -21017,10 +21025,11 @@ export const client = {
     return native().clientGetIpcCallCount();
   },
   registerWarningMessageHook(handler: (event: UtilsWarningMessage) => void): CallbackHandle {
-    return wrapCallbackHandle(
-      native().clientRegisterWarningMessageHook((event) => {
+    return connectNativeCallback(
+      (deliver) => native().clientRegisterWarningMessageHook(deliver),
+      (event: NativeUtilsWarningMessage) => {
         handler(normalizeUtilsWarningMessage(event));
-      })
+      }
     );
   },
   shutdownIfAllPipesClosed(): boolean {
@@ -21030,20 +21039,22 @@ export const client = {
     return native().clientRunFrameDeprecated();
   },
   registerPostApiResultInProcessHook(handler: () => void): CallbackHandle {
-    return wrapCallbackHandle(
-      native().clientRegisterPostApiResultInProcessHook(() => {
+    return connectNativeCallback(
+      (deliver) => native().clientRegisterPostApiResultInProcessHook(deliver),
+      () => {
         handler();
-      })
+      }
     );
   },
   registerCheckCallbackRegisteredInProcessHook(
     handler: (event: SteamClientCallbackRegistrationCheck) => void,
     registered = true
   ): CallbackHandle {
-    return wrapCallbackHandle(
-      native().clientRegisterCheckCallbackRegisteredInProcessHook((event) => {
+    return connectNativeCallback(
+      (deliver) => native().clientRegisterCheckCallbackRegisteredInProcessHook(deliver, registered ? 1 : 0),
+      (event) => {
         handler(normalizeSteamClientCallbackRegistrationCheck(event));
-      }, registered ? 1 : 0)
+      }
     );
   },
   destroyAllInterfaces(): boolean {
@@ -24976,10 +24987,11 @@ export const networking = {
       detailLevel: number,
       handler: (event: NetworkingDebugOutput) => void
     ): CallbackHandle {
-      return wrapCallbackHandle(
-        native().networkingUtilsRegisterDebugOutputHook(detailLevel, (event) => {
+      return connectNativeCallback(
+        (deliver) => native().networkingUtilsRegisterDebugOutputHook(detailLevel, deliver),
+        (event: NativeNetworkingDebugOutput) => {
           handler(normalizeNetworkingDebugOutput(event));
-        })
+        }
       );
     }
   }
@@ -26263,10 +26275,11 @@ export const utils = {
     return native().utilsGetIpcCallCount();
   },
   registerWarningMessageHook(handler: (event: UtilsWarningMessage) => void): CallbackHandle {
-    return wrapCallbackHandle(
-      native().utilsRegisterWarningMessageHook((event) => {
+    return connectNativeCallback(
+      (deliver) => native().utilsRegisterWarningMessageHook(deliver),
+      (event: NativeUtilsWarningMessage) => {
         handler(normalizeUtilsWarningMessage(event));
-      })
+      }
     );
   },
   isApiCallCompleted(apiCall: bigint | number | string): UtilsApiCallCompletion {
@@ -32146,9 +32159,21 @@ function normalizeSteamClientCallbackRegistrationCheck(
   };
 }
 
-function wrapCallbackHandle(handle: NativeCallbackHandle): CallbackHandle {
+function connectNativeCallback<TArgs extends unknown[]>(
+  register: (deliver: (...args: TArgs) => void) => NativeCallbackHandle,
+  handler: (...args: TArgs) => void
+): CallbackHandle {
+  let connected = true;
+  const handle = register((...args) => {
+    if (connected) {
+      handler(...args);
+    }
+  });
   return {
-    disconnect: () => handle.disconnect()
+    disconnect: () => {
+      connected = false;
+      handle.disconnect();
+    }
   };
 }
 

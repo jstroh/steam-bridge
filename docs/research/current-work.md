@@ -55,6 +55,8 @@ Fixed with failing-before tests or exact source traces:
   `WINDOWS-NATIVE-CHAR-SURROGATE-001`.
 - **Callback dispatch.** User callbacks no longer run under the registry
   mutex; registering or dropping a callback from inside one deadlocked before.
+  Unregistering waits for an in-flight hook, and a disconnected JavaScript
+  handle ignores events Steam had already queued for the JavaScript thread.
 - **`init` app IDs.** Numeric, environment and object forms share one
   validator (positive integer, at most `0xffffffff`).
 - **macOS launcher.** The launcher compiled into consumer apps no longer runs

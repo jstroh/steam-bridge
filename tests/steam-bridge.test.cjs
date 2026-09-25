@@ -6471,6 +6471,28 @@ test("init rejects unsafe callback intervals before native calls or resource cle
   );
 });
 
+test("disconnected callback handles ignore events already queued for JavaScript", (t) => {
+  const fake = createFakeNative();
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+  const overlayEvents = [];
+  const callbackEvents = [];
+  const overlay = steam.onGameOverlayActivated((event) => overlayEvents.push(event));
+  const callback = steam.onSteamCallback(steam.SteamCallback.LicensesUpdated, (event) => callbackEvents.push(event));
+  const queuedOverlay = fake.callbacks.get(331);
+  const queuedCallback = fake.callbacks.get(steam.SteamCallback.LicensesUpdated);
+  queuedOverlay({ active: true });
+  queuedCallback({});
+  assert.equal(overlayEvents.length, 1);
+  assert.equal(callbackEvents.length, 1);
+  overlay.disconnect();
+  callback.disconnect();
+  queuedOverlay({ active: false });
+  queuedCallback({});
+  assert.equal(overlayEvents.length, 1, "an overlay event queued before disconnect is not delivered after it");
+  assert.equal(callbackEvents.length, 1, "a Steam callback queued before disconnect is not delivered after it");
+});
+
 test("callback pump failures emit one actionable warning and stop the failed timer", async (t) => {
   let callbackCount = 0;
   const warnings = [];
