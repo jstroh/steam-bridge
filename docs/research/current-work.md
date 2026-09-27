@@ -12,12 +12,13 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Prepare the next release from `main` at `9ec1faa`, containing the merged
-whole-codebase review (#17) and Windows presentation repairs (#18). Review
-the original reports and later local QA before freezing any candidate. Preserve
+Qualify the immutable `v0.4.10` candidate at
+`ef0a536fd28fe77ecfdb7571625742b9f609952c`, containing the merged whole-codebase
+review (#17), Windows presentation repairs (#18), and narrow review fixes.
+The original reports and later local QA have been reconciled. Preserve
 the minimize/background recovery, adapter-switch fixes, optional dedicated
-copy device, and measured one-frame queue improvement. Source metadata is
-prepared for `0.4.10`; no new tag, candidate or publication has been made yet.
+copy device, and measured one-frame queue improvement. The tag and candidate
+artifacts exist; npm and the stable GitHub Release have not been published.
 
 ### Current review corrections
 
@@ -50,10 +51,32 @@ prepared for `0.4.10`; no new tag, candidate or publication has been made yet.
   the already-published `0.4.9` tag or transfer clearance to different bytes.
 
 The retained QA summaries have been reconciled with raw results and build
-hashes; independent review and local checks of the narrow corrections passed.
-Next: commit and verify exact-source CI, then build the immutable candidate.
-Publication remains conditional on exact
-candidate CI, protected actual-game proof and Microsoft/hash verification.
+hashes; independent review, local checks, main CI and exact-tag CI passed.
+Later hybrid tests reused the cleared executable, which currently identifies
+Electron 44.4.3; their launch route supports that runtime inference but lacks
+per-run executable attestation. Those tests do not qualify Electron 44.4.5.
+
+### Immutable candidate inventory
+
+- Source/main CI: `36292187153`; tag CI: `36292417095`; tag-push Release:
+  `36292417069`. All succeeded for the exact candidate source above.
+- The canonical package gate, all three native targets, and matching Windows
+  symbols were downloaded without rebuilding. The package/bundle/addon hashes
+  were independently checked and the publish-artifact verifier passed in
+  verification-only mode.
+- npm tarball SHA-256:
+  `f4d4b7efe898eef14828c191b0ff4dce031ac1320ef1fac455a4fe82371a733f`.
+- Windows addon SHA-256:
+  `f6c5a686d2ec0694020b9fd0402ac8303eb5bf3c042e467f470ec76faf8fd081`.
+- Windows bundle SHA-256:
+  `9650a5a4e0ce1d4e0aa09314b53a59f59d7853c5ccd9f0723bac8a1c40dd3279`.
+- Verified addon/PDB debug ID: `6cc0954d-3219-43a8-a8ff-220313a8bd3a-1`.
+
+The retained earlier Microsoft-reviewed addon was independently found to match
+`9c6ba67b...ade0f874`; it is not the new candidate. Next: obtain review of the
+new exact addon and protected actual-game proof on the frozen candidate with
+Electron 44.4.5. Do not rebuild, retag, transfer prior clearance or reuse a prior
+receipt. Do not publish until those gates are satisfied.
 
 ## Standing decisions
 
@@ -268,8 +291,10 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   tests ignored); Linux native-surface tests passed 11/11 under Xvfb. Full
   Windows npm test passed (484 JavaScript tests, 3 skipped), as did formatting,
   native check, API coverage, platform check, dependency audit and diff check.
-  Exact corrected-tree CI/package smoke and candidate-bound live proof remain
-  pending.
+  Exact corrected-tree and tag CI/package smoke also passed. Two focused
+  actual-device tests passed separately: output ownership without a swap chain,
+  and copy timing/adapter diagnostics. They do not replace candidate-bound
+  actual-game live proof, which remains pending.
 - CI green on every job at `a27b9cc`. Locally: `npm test` 476/476, native tests
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.

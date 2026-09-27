@@ -63,6 +63,12 @@ not erase the older failed cadence comparisons.
   prove recovery on the affected NVIDIA hybrid topology or a live adapter
   replacement with the Steam overlay loaded. A later addon was blocked by
   Smart App Control; earlier successful hashes do not clear that file.
+- The retained cleared executable contains `Electron/44.4.3`, and the later
+  hybrid test reports/launcher reuse it while replacing the app archive and
+  addon. Fresh packaging logs mentioning 44.4.5 do not attest that those new
+  executables actually ran. Treat the historical runtime identification as a
+  strong inference from the retained launch route, not per-run hash proof;
+  it does not qualify the 44.4.5 release candidate.
 
 **Repeat only when:** the candidate bytes are frozen, presentation/copy/adapter
 or suspended-host scheduling changes, or a focused regression appears. Preserve
