@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-09-24
+Last reviewed: 2026-09-26
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -27,6 +27,51 @@ history remains in the linked platform documents.
   exists only upstream, record its exact commit/TODO instead of testing another
   prerelease. Any product-owner release exception must be exact, executable,
   evidence-bound, receipt-visible, and preserve every unaffected gate.
+
+### Hybrid-GPU recovery and queue-depth evidence reconciliation (2026-09-26)
+
+Status: `OPEN` for exact-candidate qualification. Retained local QA reports
+and raw diagnostic samples supplement `WIN-FRAME-WAIT-BYPASS-LATCH-001`,
+`WIN-CURSOR-LAG-QUEUE-DEPTH-001` and `WIN-DXGI-ASYNC-WAIT-001` below; they do
+not erase the older failed cadence comparisons.
+
+- The original hybrid-GPU investigation reproduced a one-time wait timeout
+  latching the bypass after minimize, full coverage, some fullscreen/overlay
+  transitions and world entry. Visible-window copies then took 16-31 ms while
+  native presentation still reported 60 FPS. Multiple instances were not an
+  independent failure: overlapping windows could trigger the per-instance
+  latch. Ordinary focus loss without the latch did not reproduce the slowdown.
+- `7987d63` recovered through former latch triggers on a hybrid AMD laptop,
+  but introduced an active-overlay/minimized busy loop. `bacc50b` retesting
+  measured main-process CPU p50 0.2% (previously about one full core), no latch
+  on restore or uncover, and healthy high-refresh delivery.
+- Later `2d2baa0` QA retained a one-frame queue with both dedicated-copy modes:
+  approximately 60 fresh/native FPS at 60 Hz and 164/162 at 165 Hz, copy p95
+  1.4-1.5 ms, and cursor p50 about 66.7 ms, matching the pre-latch baseline.
+  World entry, minimize/restore, repeated focus/window changes and idle were
+  healthy. Some break-test summary rows said FAIL because their parser expected
+  an obsolete diagnostics schema; final structured samples instead report
+  59-60 fresh/native FPS, no bypass, no device loss and no copy timeout. This
+  corrects those harness verdicts, not an actual failed runtime measurement.
+- Preserve latency one. Restoring two on the repaired path had a measured
+  one-refresh cursor-latency cost; the old cadence test alone is not evidence
+  that such a rollback is safe. Current source qualification must evaluate
+  responsiveness and fresh-frame cadence together, not repeated Presents alone.
+- The local reports/build logs identify revisions and addon hashes, but the
+  run records do not attest the loaded addon hash. They are meaningful
+  source-linked QA, not a protected immutable-candidate receipt. They do not
+  prove recovery on the affected NVIDIA hybrid topology or a live adapter
+  replacement with the Steam overlay loaded. A later addon was blocked by
+  Smart App Control; earlier successful hashes do not clear that file.
+
+**Repeat only when:** the candidate bytes are frozen, presentation/copy/adapter
+or suspended-host scheduling changes, or a focused regression appears. Preserve
+the existing 60 Hz NVIDIA-hybrid recovery criteria, and measure fresh delivery,
+copy completion, CPU while overlay-active/minimized, cursor latency and actual
+cadence together. Do not replay superseded one-timeout or busy-loop failures as
+current findings. References: [renderer](../../crates/native/src/windows_d3d11.rs),
+[hardware regressions](../../crates/native/src/windows_d3d11/hardware_window_tests.rs),
+[checkpoint](current-work.md#current-review-corrections).
 
 ### Active product-owner release exception
 

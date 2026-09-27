@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-25
+Last reviewed: 2026-09-26
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,11 +12,48 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Deep review of the whole repository on branch `claude/fervent-gauss-17k8a8`
-(from `7beb49e`, package `0.4.9`), fixing every confirmed finding, so the branch
-can pass to another reviewer and then to a final release. Source behavior
-changes only where a failing-before test or an exact source trace proves the
-defect.
+Prepare the next release from `main` at `9ec1faa`, containing the merged
+whole-codebase review (#17) and Windows presentation repairs (#18). Review
+the original reports and later local QA before freezing any candidate. Preserve
+the minimize/background recovery, adapter-switch fixes, optional dedicated
+copy device, and measured one-frame queue improvement. Source metadata is
+prepared for `0.4.10`; no new tag, candidate or publication has been made yet.
+
+### Current review corrections
+
+- Linux keypad virtual keys now use Xlib's modifier-aware lookup for keypad
+  navigation/digit keys. Num Lock plus Shift must agree with the text path;
+  ordinary physical key mapping, repeat handling and punctuation stay intact.
+  The new four-modifier-state press/release regression and all 11 Linux
+  native-surface tests passed under isolated Xvfb.
+- Windows output-adapter diagnostics now cache discovery per renderer,
+  monitor and display-topology generation. Refresh on display/settings events,
+  a stale DXGI factory, monitor changes, or renderer/swap-chain replacement.
+  Cache missing results and the containing-output fallback too. Monitor-owner
+  discovery remains first, including on hybrid GPUs whose swap chain cannot
+  report its containing output. This changes diagnostics, not device selection,
+  copy ownership, the two-copy bound, Present flags or frame-wait recovery.
+- An initial proposal to restore maximum frame latency two was withdrawn
+  before commit. The older cadence comparison is not evidence that depth one
+  is defective with the newly repaired gating. Later hybrid-laptop QA at
+  `2d2baa0` measured cursor latency back at the pre-latch baseline and healthy
+  fresh delivery at 60 and 165 Hz. Keep depth one and its regression test;
+  qualify cadence and responsiveness together on the immutable candidate.
+- Local QA at `7987d63` found an active-overlay/minimized main-thread spin;
+  the `bacc50b` retest reports CPU p50 0.2% instead of about one core, healthy
+  restore, and no latch. Those newer results supersede the earlier failure;
+  they are source-linked local evidence, not a new release receipt.
+- Microsoft cleared the submitted local QA addon from `7987d63`, not every
+  later build. Its reference SHA-256 is
+  `9c6ba67b1c98e6cef5289f3d3b304eff7e1d64027458f6df319f9367ade0f874`.
+  A new candidate must be independently hashed and qualified; do not reuse
+  the already-published `0.4.9` tag or transfer clearance to different bytes.
+
+The retained QA summaries have been reconciled with raw results and build
+hashes; independent review and local checks of the narrow corrections passed.
+Next: commit and verify exact-source CI, then build the immutable candidate.
+Publication remains conditional on exact
+candidate CI, protected actual-game proof and Microsoft/hash verification.
 
 ## Standing decisions
 
@@ -115,7 +152,7 @@ behaviours were observed; details are in the ledger row:
 - The intentional 5-second `windowsSharedTextureResumeDelayMs` hold freezes
   the game image after every overlay close.
 
-Not covered: a signed candidate, a display matrix, and receipts. For automation:
+Not covered: an immutable release candidate, a display matrix, and receipts. For automation:
 an elevated foreground utility makes UIPI silently drop injected input, so
 check the foreground owner and the host's message counters before trusting
 a `SendInput` result. The public example passes a direct App ID `480` smoke,
@@ -155,7 +192,7 @@ and every message is still released.
 ## Open before release
 
 1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
-   signed candidate launched through Steam, the display matrix and both
+   protected immutable candidate launched through Steam, the display matrix and both
    receipts. The local pass above, including emoji and non-BMP text and a
    local Steam-client shortcut launch, is green.
    `WIN-OVERLAY-RESUME-HOLD-001` covers the 5-second frozen frame after every
@@ -224,6 +261,15 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- Main `9ec1faa`: all CI jobs passed; local `npm test` passed 484 JavaScript
+  tests (3 skipped) and 98 native tests (13 hardware tests ignored). Platform,
+  native formatting/check, API coverage and dependency audit passed.
+- Current narrow correction: Windows native tests passed 101/101 (13 hardware
+  tests ignored); Linux native-surface tests passed 11/11 under Xvfb. Full
+  Windows npm test passed (484 JavaScript tests, 3 skipped), as did formatting,
+  native check, API coverage, platform check, dependency audit and diff check.
+  Exact corrected-tree CI/package smoke and candidate-bound live proof remain
+  pending.
 - CI green on every job at `a27b9cc`. Locally: `npm test` 476/476, native tests
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.
