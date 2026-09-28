@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-09-26
+Last reviewed: 2026-09-28
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -70,6 +70,184 @@ not erase the older failed cadence comparisons.
   strong inference from the retained launch route, not per-run hash proof;
   it does not qualify the 44.4.5 release candidate.
 
+The immutable `0.4.10` addon subsequently received a clean Microsoft Smart App
+Control analyst reply. On 2026-09-27 its submission-history record was matched
+to SHA-256 `f6c5a686d2ec0694020b9fd0402ac8303eb5bf3c042e467f470ec76faf8fd081`,
+source `ef0a536` and the frozen tag build. This settles that exact addon's
+review identity only; the new consumer runtime and protected actual-game
+receipt remain separate gates.
+
+The subsequent candidate preparation confirmed that distinction: canonical
+bundle fingerprint and tarball installation passed, but no live launch was
+attempted. The chosen consumer44.4.5 EXE matched a prior Code Integrity3077
+block and was submitted separately. On 2026-09-27 its own clean analyst reply
+was observed, its submission-history hash binding verified, and the retained
+read-only file rehashed with matching size. That resolves the review gate,
+not actual protected launch. The older missing reviewed EXE is superseded as
+the target. Repeat the protected actual-game proof only after other-host
+Steam/helper isolation is confirmed, operator elevation/authentication is
+available, and isolated copied bytes and candidate protection are verified.
+No security protection was disabled or bypassed; no live receipt existed at that stage.
+
+The subsequent 2026-09-28 continuation proved owner-right protection of the
+already-staged consumer and an Interactive/Limited launch without elevation.
+A scratch ASAR placement error was fixed only in a fresh isolated package,
+after retaining the failed attempt. The exact native payload then loaded and
+the standalone D3D11 host produced its first shared texture. Steam interrupted
+qualification with an explicit `Logged In Elsewhere` logoff; application auth
+timed out and the Steam pipe reported a fatal connection failure. This is an
+external-session blocker, not a renderer pass or proof of a Bridge regression.
+The temporary shortcut/task were cleaned up and candidate hashes reverified.
+Repeat only after account-session isolation and stable Steam continuity are
+established; keep failed raw logs and never generate a receipt from them.
+
+After the operator authorized remote Steam closure, a remaining macOS IPC
+helper was stopped and macOS/Deck process isolation independently verified.
+An unchanged-candidate protected Limited-token smoke then reached actual
+gameplay and ordinary Friends-overlay open/Escape-close, exited zero and left
+Steam alive. At 60 Hz, 134 actual-canvas game samples had 59.9 FPS median
+paint/fresh/native delivery; 42 overlay samples had 54.9 FPS median native
+presentation, below the 57 FPS requirement. There were no device losses or
+frame-wait timeouts. Remote streaming remained active, so neither causation
+nor clean performance qualification is established. Keep the below-gate result;
+repeat only after the measurement environment is isolated, with the remaining
+window/display and raw-stderr gates intact. Temporary launch state was cleaned
+up and final protection/content audits passed. No release receipt was issued.
+
+After the operator disconnected remote streaming, a fresh unchanged-byte,
+no-CDP retest at 60 Hz measured 59.9 FPS game paint/fresh, 59.8 native and
+58.9 active-overlay native medians (307 actual-canvas game and 115 overlay
+records). Renderer RAF stayed near 60 during overlay; discarded paint counters
+at zero must not be confused with zero renderer RAF. DPI changed from 250% to
+125% and desktop Steam windows were minimized, so the improvement cannot be
+attributed to streaming alone. Actual module hashes and the main process's
+Limited/Medium token were attested. Basic window transitions and enforced
+640x480 sizing recovered; modal system-menu Size paused the JS pump as already
+documented, then resumed on completion/cancel. Five JavaScript readiness
+promises returned false (timeout, unavailability or stale generation are
+possible); the separate legacy renderer timeout counter stayed zero, which
+does not prove zero asynchronous DXGI timeouts. There was no final
+fallback/bypass, no device loss and no slow/failed/timed-out copies. Exit was
+zero, Steam survived, cleanup restored prior launch state, and final candidate
+protection/content audits passed. Final normal-size restoration and complete
+manual/display coverage were not proved. Raw stderr matches Bridge's exact
+Valve-startup classifier; the consumer's literal-empty-stderr/CDP contract is
+a separate unresolved tooling blocker, not permission to filter raw evidence.
+The aggregate masks a bounded post-minimize windowed interval: 12 samples had
+fresh/native medians of 55/52.95 FPS, repeatedly remaining near 50-54 native FPS
+until a fullscreen transition. Isolate minimize/restore without preceding
+overlay/title/maximize activity and observe recovery without another window
+transition before attributing cause or treating it as settled.
+
+The isolated follow-up reproduced the deficit on the same protected bytes,
+without preceding overlay/title/maximize/fullscreen/resize activity. At 60 Hz
+and 125% DPI, baseline native median was 59.9 FPS; one minimize/restore followed
+by a minute without window changes or repeated capture produced game
+paint/fresh/native medians of 59.9/55.5/53.5 FPS. Excluding the first two warmup
+samples diagnostically still leaves 36 recurring pump/render/fresh gaps over
+100 ms and 261 repeated refreshes; final-30-second native median remains
+53.75 FPS. This initially appeared to be a local recovery finding; the later
+pointer-only control below supersedes the minimize-required interpretation.
+It is not proof of a version regression. The app exited zero, Steam survived, temporary
+launch state was restored, and protection/content audits passed. Publication
+was held then. Repeat only with a discriminating diagnostic or an explicitly
+authorized repair; do not rerun unchanged minimize tests for confidence.
+No passing receipt was issued. Repeat only to complete missing qualification
+or isolate a specific remaining variable; do not replay this as a failed
+Parsec-free pacing test or as a proven Parsec root cause.
+
+The subsequent diagnosis located a caption-button-hover confound. On the same
+protected candidate at 60 Hz / 125% DPI, a pointer-only A/control/B/A/B/A run
+never minimized, clicked a caption button or changed window size/state.
+Client and plain-caption controls held approximately 59.9 FPS. Hovering the
+minimize button, with its visible native tooltip, twice reduced native delivery
+to approximately 53 FPS and fresh delivery to 55-55.7 FPS, with recurring
+matching pump/paint/fresh gaps over 100 ms. Each return to the client restored
+59.9 FPS without a graphics reset; all 64 settled final-recovery records added
+zero such gaps. Target remained 60, focus true, minimized false and capture
+null. The directly queried DefWindowProc hit-test value was non-discriminating
+between plain caption and the button; actual pointer actions and the observed
+tooltip identify the region. The complete extended second-hover interval is
+preserved with an unexplained capture-failure caveat, separate from its bounded
+controlled reproduction. Do not discard that uncertainty or combine overlapping
+measurement windows into a release pass.
+
+A separate 30-second native message-loop trace contained 18 recurring long
+spans, about 1.65 seconds apart. Fourteen were main-thread PeekMessage calls
+taking 124-129 ms wall time and only about 5.5-6.5 ms CPU, each with pending sent
+messages. Non-client mouse leave/move and an unidentified private message
+followed. A separate CPU profile found no JavaScript/GC hotspot. Microsoft
+documents that [PeekMessage dispatches sent messages and internal events](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew)
+before returning; the captured boundary therefore does not prove a particular
+window procedure or injected hook owns the wait. Renderer RAF remained near
+60 while main-process frame delivery paused and then arrived in bursts.
+Bridge delegates unhandled caption messages to DefWindowProc and implements no
+caption tooltip. A subsequent 30-second raw-protobuf trace (the ordinary JSON
+export drops native sample packets) captured 601 main-thread native samples,
+17 long PeekMessage spans and 42 overlapping stacks. Verified matching system
+DLL identities place 31 leaves in NtUserUpdateLayeredWindow and 11 in
+ZwDelayExecution through SleepEx. All pass through the injected Steam message
+hook, which establishes call-path participation, not ownership of the delay.
+Exact public USER32 symbol resolution then identified
+`__xxxTooltipCallback -> CreateTooltipWindow -> AnimateWindow -> AnimateBlend`.
+The PDB GUID and DBI age match the trace and DLL; Info age 3 versus image/DBI
+age 1 satisfies Microsoft's own
+[OpenValidate4 matching rule](https://github.com/microsoft/microsoft-pdb/blob/master/PDB/dbi/pdb.cpp#L783-L816).
+An independent PE x64 runtime-function table check confirms the five tooltip
+and animation PCs lie inside functions starting at the named public symbols,
+not merely near their exports. Thus Windows caption-tooltip fade work is the
+captured main-thread blockage. The recurrence trigger and a safe scoped remedy
+remain `OPEN`; do not disable global UI/security settings or infer a Steam-hook
+bug solely from its caller frame. The
+hover trigger is reproduced, while the minimize-required interpretation of
+these local September 28 runs is `SUPERSEDED`. This approximately
+53-native/55-fresh result does not explain or replace the original reporter's
+approximately 19.5-fresh/60-native hybrid-copy/bypass problem; the existing
+minimize/background and adapter repairs remain relevant. The attempted
+ordinary Alt-Tab restore control was inconclusive
+because tool activation dismissed the switcher; do not call it a passing
+alternate restore route. All runs were closed and owned launch state cleaned
+up, with unchanged candidate bytes and protections. No passing receipt existed then.
+
+Two focused controls narrowed the remedy without changing the frozen inputs.
+A 30-second getter-null experiment suppressed 106 host-diagnostic reads while
+preserving target, focus, visibility and viewport; 18 long PeekMessage stalls
+and approximately 56 FPS fresh delivery remained. The original getter was
+restored. Thus its direct hit-test read is not necessary to trigger the stall;
+do not remove diagnostics as the claimed fix.
+
+A separate protected, source-linked local prototype consumed only
+`WM_NCMOUSEHOVER` with `HTMINBUTTON` and added recording for that event in the existing
+ring. Build, unit, symbol and protection checks passed, but actual-game hover
+still produced recurring long pump gaps and reduced delivery. Its recent ring
+contained only 25 records and no matching hover event. Client-pointer recovery
+restored cadence. This interception experiment is `DIAGNOSTIC-ONLY / REJECTED`,
+not a fix, and its source changes were removed while retaining local artifacts.
+Unit tests of a message predicate do not prove Windows delivers that message.
+Do not repeat this unchanged filter or disable global tooltip/security settings.
+
+The maintainer subsequently accepted the caption-tooltip limitation for release.
+A new unchanged-candidate, no-debugger protected run completed ordinary native
+window/menu/resize/minimum-size/focus/fullscreen/overlay checks and returned to
+the original 1280x720 size. Resize used native System Menu Size and keyboard
+input; the controller's rejected out-of-window pointer destinations do not prove
+border dragging. Full unfiltered logs passed the existing schema-7 validator:
+380 game samples at 59.9 paint/fresh/native median FPS and 52 overlay samples at
+59.0 native FPS on a 60 Hz display. Two JavaScript readiness promises returned false,
+but no final fallback/bypass; renderer wait timeouts stayed zero. Clean shutdown,
+Steam continuity, candidate hashes/protection and owned-state restoration passed.
+This supplies the Bridge four-case receipt, not a full consumer display matrix
+or a tooltip fix. The known issue remains accepted, not repaired. The gated
+publisher succeeded after maintainer approval. Independent registry byte,
+signature and provenance verification passed, and all six GitHub artifacts were
+downloaded and matched before stable publication. The release-scoped proof
+secret was removed afterward. See the current checkpoint.
+
+Repeat this diagnosis only for a discriminating native-stack/handler capture,
+another explicitly scoped causal control, or an authorized repair. Do not
+repeat unchanged minimize/restore tests, blame the shader, disable a security
+product or replace frame scheduling based on the hover evidence alone.
+
 **Repeat only when:** the candidate bytes are frozen, presentation/copy/adapter
 or suspended-host scheduling changes, or a focused regression appears. Preserve
 the existing 60 Hz NVIDIA-hybrid recovery criteria, and measure fresh delivery,
@@ -78,6 +256,53 @@ cadence together. Do not replay superseded one-timeout or busy-loop failures as
 current findings. References: [renderer](../../crates/native/src/windows_d3d11.rs),
 [hardware regressions](../../crates/native/src/windows_d3d11/hardware_window_tests.rs),
 [checkpoint](current-work.md#current-review-corrections).
+
+### WIN-HIGH-REFRESH-PRESENT-001 — OPEN
+
+A 2026-09-27 focused diagnostic tested the installed published `0.4.9` addon
+on Electron 44.4.3, Windows 11 build 26200 and an AMD hybrid laptop. The process
+was Steam-launched at Normal priority, with the Steam overlay module and exact
+published addon verified. One uncontaminated 30-second foreground interval at
+165 Hz recorded 4,950 admitted paints/completed copies (165.0 FPS), 4,936 native
+and DXGI Presents (164.53 FPS), approximately 164.8 measured refreshes/s, seven
+additional repeated refreshes and no additional drops, copy failures or wait
+timeouts. Bypass and JavaScript fallback remained false; latest copy completion
+was 1.169 ms. Aligned renderer rAF was 165.02 FPS with no interval over 25 ms.
+This did not reproduce the reported sustained source/presentation mismatch.
+
+An external desktop-mode/DPI transition then changed the output to 60 Hz and
+latched one JavaScript wait timeout into the old runtime's bypass/fallback,
+changing sync interval from one to zero. Exclude that mixed interval from the
+165 Hz result. A later 60-second PresentMon 2.6.0 trace of the latched state
+recorded 59.915 displayed FPS in Hardware Composed: Independent Flip, no dropped
+records and 0.298 ms median Present API time, but 79.87 ms median
+Present-to-display delay. Foreground copy samples reached 16.3-26.7 ms. Stable
+FPS did not establish low latency; these are not physical input-to-photon
+measurements. The CSV alone does not prove zero trace-event loss.
+
+After the remote session ended, a fresh Steam launch and separately excluded
+world-entry warmup preceded a full-minute retest. Its 60.0521245-second native
+interval held 164.973 fresh FPS, 164.174 native/DXGI FPS and 164.774 measured
+refreshes/s. It added two bounded admission drops and 36 repeated refreshes,
+with no timeout, device/copy failure, fallback or Present budget overrun. The
+maximum Present remained 5.6569 ms; separate rAF measured 165.0136 FPS with a
+12.2 ms maximum interval. No input was generated, so this is not input-latency
+evidence. Every sampled boundary retained 165 Hz, foreground and no overlay.
+
+This is old-runtime diagnostic evidence, not immutable `0.4.10` qualification,
+a 165 Hz OS trace, or proof on the affected 200 Hz hardware. The second trace
+elevation request was canceled and not retried. The tracing utility and game
+exited, temporary debugging ended and the original desktop mode was restored;
+no runtime files or security settings changed.
+
+**Repeat only when:** a stable 165 Hz desktop mode can be maintained for the
+whole OS trace, candidate bytes are being explicitly compared, presentation
+code changes, or a targeted transition is needed. Keep source-frame delivery,
+submission, displayed cadence and latency separate, and do not interpret a
+mixed-refresh aggregate as a high-refresh regression. Architecture and related
+recovery evidence: [Windows host](native-overlay-presenter-plan.md#read-first-after-compaction-windows-architecture),
+`WIN-FRAME-WAIT-BYPASS-LATCH-001` and the hybrid reconciliation above. Raw local
+artifacts remain outside tracked/public files.
 
 ### Active product-owner release exception
 
