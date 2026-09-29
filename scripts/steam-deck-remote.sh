@@ -648,7 +648,7 @@ cmd_key() {
 }
 
 wait_for_web_overlay_closed() {
-  CLOSE_WAIT_SECONDS="${1:-2.5}" python3 - <<'PY'
+  RESULT_FILE="$1" CLOSE_WAIT_SECONDS="${2:-2.5}" python3 - <<'PY'
 import os
 import sys
 import time
@@ -723,7 +723,6 @@ cmd_web_close() {
   done
 
   use_default_display
-  RESULT_FILE="$result_file"
   use_first_xauthority
   if ! command -v xdotool >/dev/null 2>&1; then
     echo 'No xdotool web overlay close helper found on Deck.' >&2
@@ -816,7 +815,7 @@ PY
   close_score="$3"
   echo "Detected Steam web close control (score=$close_score)."
   xdotool mousemove "$click_x" "$click_y" click 1
-  wait_for_web_overlay_closed 3.0 || true
+  wait_for_web_overlay_closed "$result_file" 3.0 || true
 }
 
 cmd_wait_shortcut_open() {
@@ -1597,7 +1596,8 @@ cmd_write_wrapper() {
   fi
 
   mkdir -p "$(dirname -- "$wrapper_path")" || exit
-  cat > "$env_file" || exit
+  (umask 077 && cat > "$env_file") || exit
+  chmod 600 "$env_file" || exit
   write_wrapper_script > "$wrapper_path" || exit
   chmod +x "$wrapper_path"
 }
@@ -1753,6 +1753,10 @@ write_self_test_stub() {
   chmod +x "$self_test_stubs/$1"
 }
 
+self_test_process_running() {
+  kill -0 "$1" 2>/dev/null && ! ps -o stat= -p "$1" 2>/dev/null | grep -q '^Z'
+}
+
 run_helper_under_test() {
   DISPLAY= XAUTHORITY= DBUS_SESSION_BUS_ADDRESS= PATH="$self_test_stubs:$PATH" SELF_TEST_ROOT="$self_test_root" HOME="$self_test_root/home" bash "$self_test_script" "$@"
 }
@@ -1892,11 +1896,22 @@ exit 0'
   printf '%s\n' "APP_ID=480" "WEB_URL=''" | run_helper_under_test write-wrapper --wrapper-path "$self_test_root/wrapper/run-smoke-autorun.sh" --env-file "$self_test_root/wrapper/run-smoke-autorun.env" || self_test_fail "write-wrapper exited non-zero."
   [ "$(cat "$self_test_root/wrapper/run-smoke-autorun.env")" = "APP_ID=480
 WEB_URL=''" ] || self_test_fail "write-wrapper must write the runner's env lines unchanged."
+  case "$(ls -l "$self_test_root/wrapper/run-smoke-autorun.env")" in
+    -rw-------*) ;;
+    *) self_test_fail "The wrapper env file can carry the control token and must be private to its owner." ;;
+  esac
   [ -x "$self_test_root/wrapper/run-smoke-autorun.sh" ] || self_test_fail "The Steam shortcut wrapper must be executable."
   bash -n "$self_test_root/wrapper/run-smoke-autorun.sh" || self_test_fail "The Steam shortcut wrapper must parse."
   for expected in 'OVERLAY_GAME_ID="${OVERLAY_GAME_ID:-$APP_ID}"' 'export SteamOverlayGameId="$OVERLAY_GAME_ID"' 'export STEAM_BRIDGE_SMOKE_CONTROL_SERVER="$CONTROL_SERVER"' 'export STEAM_BRIDGE_SMOKE_CONTROL_FILE="$CONTROL_FILE"' 'export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN="$CONTROL_TOKEN"' 'exec systemd-inhibit --what=sleep --why="Steam Bridge smoke" ./SteamBridgeSmoke --no-sandbox'; do
     grep -Fq -- "$expected" "$self_test_root/wrapper/run-smoke-autorun.sh" || self_test_fail "The Steam shortcut wrapper is missing: $expected"
   done
+
+  mkdir -p "$self_test_root/web-close.json.diagnostics"
+  printf '%s\n' '{"type":"event:callback:overlay-activated","payload":{"active":true}}' '{"type":"event:callback:overlay-activated","payload":{"active":false}}' > "$self_test_root/web-close.json.diagnostics/lifecycle.jsonl"
+  (unset RESULT_FILE; wait_for_web_overlay_closed "$self_test_root/web-close.json" 0.5) || self_test_fail "The web close wait must read the lifecycle log of the result file it is given."
+  if (unset RESULT_FILE; wait_for_web_overlay_closed "$self_test_root/missing.json" 0.2); then
+    self_test_fail "The web close wait must fail without a recorded close."
+  fi
 
   (sleep 30 >/dev/null 2>&1 & echo "$!" > "$self_test_root/inhibit.pid")
   inhibit_pid="$(cat "$self_test_root/inhibit.pid")"
@@ -1904,10 +1919,10 @@ WEB_URL=''" ] || self_test_fail "write-wrapper must write the runner's env lines
   [ "$output" = "Previous Deck smoke runtime cleaned." ] || self_test_fail "cleanup must report a clean runtime."
   [ ! -f "$self_test_root/inhibit.pid" ] || self_test_fail "cleanup must remove the inhibitor pid file."
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    kill -0 "$inhibit_pid" 2>/dev/null || break
+    self_test_process_running "$inhibit_pid" || break
     sleep 0.1
   done
-  if kill -0 "$inhibit_pid" 2>/dev/null; then
+  if self_test_process_running "$inhibit_pid"; then
     kill "$inhibit_pid" 2>/dev/null
     self_test_fail "cleanup must stop the recorded sleep inhibitor."
   fi

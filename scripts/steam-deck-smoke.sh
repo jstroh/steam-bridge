@@ -1560,21 +1560,24 @@ run_self_test() {
     echo "Self-test failed: Deck remote helper self-test failed." >&2
     exit 1
   fi
-  if ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_SERVER="$CONTROL_SERVER"' ||
-    ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_FILE="$CONTROL_FILE"' ||
-    ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN="$CONTROL_TOKEN"'; then
+  local wrapper_source prepare_wrapper_source
+  wrapper_source="$(sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local")"
+  prepare_wrapper_source="$(sed -n '/^prepare_remote_wrapper()/,/^}/p' "$0")"
+  if ! grep -Fq <<<"$wrapper_source" 'export STEAM_BRIDGE_SMOKE_CONTROL_SERVER="$CONTROL_SERVER"' ||
+    ! grep -Fq <<<"$wrapper_source" 'export STEAM_BRIDGE_SMOKE_CONTROL_FILE="$CONTROL_FILE"' ||
+    ! grep -Fq <<<"$wrapper_source" 'export STEAM_BRIDGE_SMOKE_CONTROL_TOKEN="$CONTROL_TOKEN"'; then
     echo "Self-test failed: Steam shortcut wrapper must forward bounded localhost control configuration." >&2
     exit 1
   fi
-  if ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'export SteamOverlayGameId="$OVERLAY_GAME_ID"'; then
+  if ! grep -Fq <<<"$wrapper_source" 'export SteamOverlayGameId="$OVERLAY_GAME_ID"'; then
     echo "Self-test failed: Steam shortcut wrapper must export configurable SteamOverlayGameId." >&2
     exit 1
   fi
-  if ! sed -n '/^write_wrapper_script()/,/^}/p' "$remote_helper_local" | grep -Fq 'OVERLAY_GAME_ID="${OVERLAY_GAME_ID:-$APP_ID}"'; then
+  if ! grep -Fq <<<"$wrapper_source" 'OVERLAY_GAME_ID="${OVERLAY_GAME_ID:-$APP_ID}"'; then
     echo "Self-test failed: Steam shortcut wrapper must default overlay game ID to the app ID." >&2
     exit 1
   fi
-  if ! sed -n '/^prepare_remote_wrapper()/,/^}/p' "$0" | grep -Fq 'remote_helper write-wrapper --wrapper-path "$remote_wrapper_path" --env-file "$remote_wrapper_env_file"'; then
+  if ! grep -Fq <<<"$prepare_wrapper_source" 'remote_helper write-wrapper --wrapper-path "$remote_wrapper_path" --env-file "$remote_wrapper_env_file"'; then
     echo "Self-test failed: Steam shortcut wrapper config must be written by the Deck helper." >&2
     exit 1
   fi
@@ -1630,7 +1633,7 @@ run_self_test() {
     echo "Self-test failed: Deck close verification must require no post-close presenter pumping." >&2
     exit 1
   fi
-  if ! grep -Fq "wait_for_web_overlay_closed 3.0 || true" "$remote_helper_local"; then
+  if ! grep -Fq "wait_for_web_overlay_closed \"\$result_file\" 3.0 || true" "$remote_helper_local"; then
     echo "Self-test failed: Web close probe must wait for close evidence after clicking the Steam web close control." >&2
     exit 1
   fi

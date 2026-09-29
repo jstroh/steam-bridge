@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-28
+Last reviewed: 2026-09-29
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -377,7 +377,14 @@ runner, on branch `claude/steam-deck-remote-helper` from `35164c3`.
   without exporting it, so its close wait never read the lifecycle log and
   always waited the full 3 seconds. It was kept unchanged for the byte-for-byte
   runner comparison and is now passed to the wait, which returns as soon as
-  the lifecycle log records the close.
+  the lifecycle log records the close. The wait now takes the result file as
+  an argument, and the helper self-test covers both outcomes.
+- **Self-test fixes, 2026-09-29:** the inhibitor-cleanup check treated a
+  killed but unreaped (zombie) `sleep` as still running, so it failed where
+  init does not reap orphans; it now ignores zombies. The runner's wrapper
+  checks piped `sed` into `grep -q` under `pipefail`, which could fail on
+  SIGPIPE; they now grep captured text. The wrapper env file, which can carry
+  the smoke control token, is now written owner-only (`0600`).
 
 ## Open consumer and platform follow-ups
 
@@ -452,6 +459,10 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-09-29, main `aceeb4c` merged with the Deck helper branch plus the fixes
+  above, on Linux: helper, runner and matrix self-tests, `npm test`
+  (487/487 JavaScript plus native tests), `package:smoke`, `check:platform`,
+  `native:fmt`, `api:check`, and `git diff --check`. No product code changed.
 - Release 0.4.10: exact-tag CI/build and protected schema-7 four-case proof
   passed; npm signature/attestation and 89-file identity checks passed; all six
   GitHub assets matched independent downloads and the Windows symbols pair.
