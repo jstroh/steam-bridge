@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-25
+Last reviewed: 2026-09-28
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,11 +12,201 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Deep review of the whole repository on branch `claude/fervent-gauss-17k8a8`
-(from `7beb49e`, package `0.4.9`), fixing every confirmed finding, so the branch
-can pass to another reviewer and then to a final release. Source behavior
-changes only where a failing-before test or an exact source trace proves the
-defect.
+The maintainer accepted the Windows caption-tooltip hover limitation as
+non-blocking and requested release of the unchanged frozen `v0.4.10` candidate.
+Do not continue tooltip experiments as a release prerequisite or include the
+rejected filter. A fresh protected actual-game run on the exact candidate and
+Electron 44.4.5 completed the seventeen manual checks and the four schema-7
+cases, ending at the original 1280x720 size and position. Native System Menu
+Size and keyboard input proved resize/minimum-size behavior; controller-bounded
+pointer-border attempts are not claimed as successful. The ordinary Friends
+overlay was observed over the game and closed with Escape. Complete unfiltered
+logs pass the frozen receipt validator: 380 game samples at 59.9 median paint/fresh/
+native FPS and 52 overlay samples at 59.0 median native FPS on a 60 Hz display.
+Two JavaScript readiness promises returned false, with no final fallback/bypass;
+the separate renderer wait-timeout count remained zero. All runtime/package
+hashes and protections passed after clean exit. Owned QA state was restored.
+
+The passing receipt hash is
+`4443e024ea220ef013f64aa22197cc087f03887b002f014907b68aa94d7a3e4d`.
+Only its sanitized compressed form was configured for the protected publisher.
+[Publish run 36381702276](https://github.com/jstroh/steam-bridge/actions/runs/36381702276)
+was dispatched once from the immutable tag using Release run 36292417069. The
+maintainer approved the protected environment, and the publisher succeeded at
+08:13:19 UTC. npm's initial processing delay resolved: an independent registry
+download matches all frozen tarball bytes and all 89 package files, including
+all three native targets. Registry signature and provenance verification passed,
+binding the immutable tag, source and exact publisher invocation; `latest` is
+0.4.10. The [stable GitHub Release](https://github.com/jstroh/steam-bridge/releases/tag/v0.4.10)
+was published at 08:27:05 UTC after all six assets were independently downloaded
+and matched by size/hash. The downloaded PDB matches the published addon and the
+downloaded schema-7 receipt validates. The release-scoped proof secret was then
+removed; the sanitized proof remains durably attached. Do not dispatch or publish
+again. The tag and bytes remain
+unchanged. The consumer's separate production build/signing/display gates are
+not satisfied by this Bridge receipt.
+
+Historical diagnosis: a controlled 30-second getter-null experiment suppressed
+106 native host diagnostic reads, but the trace still recorded 18 long
+PeekMessage stalls and fresh delivery stayed near 56 FPS; the getter is not a
+necessary cause. Its original descriptor was restored and all QA launch state
+cleaned up. Target, display, focus and viewport stayed unchanged.
+
+A narrowly scoped `WM_NCMOUSEHOVER`/`HTMINBUTTON` prototype was rejected by
+live evidence and removed from production source. The isolated build passed
+102 native tests (13 hardware tests ignored), 485 JavaScript tests (3 skipped),
+native check/format, platform/API and symbol checks. Protected actual gameplay
+still reproduced recurring long pump gaps on pointer-only Minimize hover;
+the diagnostic ring contained no matching hover event and had not filled.
+Returning the pointer to the client restored healthy cadence. This public
+message is not the observed tooltip callback interception point. Retain the
+experimental binary, diff and raw evidence locally, not as release proof.
+No global UI/security setting or frame/GPU policy was changed. A safe scoped
+remedy remains open; do not ship ineffective interception or consume unrelated
+nonclient messages. Preserve frozen candidate bytes below.
+
+The qualified immutable `v0.4.10` candidate is at
+`ef0a536fd28fe77ecfdb7571625742b9f609952c`, containing the merged whole-codebase
+review (#17), Windows presentation repairs (#18), and narrow review fixes.
+The original reports and later local QA have been reconciled. Preserve
+the minimize/background recovery, adapter-switch fixes, optional dedicated
+copy device, and measured one-frame queue improvement. The tag and candidate
+artifacts are durably retained in the verified npm and stable GitHub releases.
+
+### Current review corrections
+
+- Linux keypad virtual keys now use Xlib's modifier-aware lookup for keypad
+  navigation/digit keys. Num Lock plus Shift must agree with the text path;
+  ordinary physical key mapping, repeat handling and punctuation stay intact.
+  The new four-modifier-state press/release regression and all 11 Linux
+  native-surface tests passed under isolated Xvfb.
+- Windows output-adapter diagnostics now cache discovery per renderer,
+  monitor and display-topology generation. Refresh on display/settings events,
+  a stale DXGI factory, monitor changes, or renderer/swap-chain replacement.
+  Cache missing results and the containing-output fallback too. Monitor-owner
+  discovery remains first, including on hybrid GPUs whose swap chain cannot
+  report its containing output. This changes diagnostics, not device selection,
+  copy ownership, the two-copy bound, Present flags or frame-wait recovery.
+- An initial proposal to restore maximum frame latency two was withdrawn
+  before commit. The older cadence comparison is not evidence that depth one
+  is defective with the newly repaired gating. Later hybrid-laptop QA at
+  `2d2baa0` measured cursor latency back at the pre-latch baseline and healthy
+  fresh delivery at 60 and 165 Hz. Keep depth one and its regression test;
+  qualify cadence and responsiveness together on the immutable candidate.
+- Local QA at `7987d63` found an active-overlay/minimized main-thread spin;
+  the `bacc50b` retest reports CPU p50 0.2% instead of about one core, healthy
+  restore, and no latch. Those newer results supersede the earlier failure;
+  they are source-linked local evidence, not a new release receipt.
+- Microsoft cleared the submitted local QA addon from `7987d63`, not every
+  later build. Its reference SHA-256 is
+  `9c6ba67b1c98e6cef5289f3d3b304eff7e1d64027458f6df319f9367ade0f874`.
+  A new candidate must be independently hashed and qualified; do not reuse
+  the already-published `0.4.9` tag or transfer clearance to different bytes.
+
+The retained QA summaries have been reconciled with raw results and build
+hashes; independent review, local checks, main CI and exact-tag CI passed.
+Later hybrid tests reused the cleared executable, which currently identifies
+Electron 44.4.3; their launch route supports that runtime inference but lacks
+per-run executable attestation. Those tests do not qualify Electron 44.4.5.
+
+### Immutable candidate inventory
+
+- Source/main CI: `36292187153`; tag CI: `36292417095`; tag-push Release:
+  `36292417069`. All succeeded for the exact candidate source above.
+- The canonical package gate, all three native targets, and matching Windows
+  symbols were downloaded without rebuilding. The package/bundle/addon hashes
+  were independently checked and the publish-artifact verifier passed in
+  verification-only mode.
+- npm tarball SHA-256:
+  `f4d4b7efe898eef14828c191b0ff4dce031ac1320ef1fac455a4fe82371a733f`.
+- Windows addon SHA-256:
+  `f6c5a686d2ec0694020b9fd0402ac8303eb5bf3c042e467f470ec76faf8fd081`.
+- Windows bundle SHA-256:
+  `9650a5a4e0ce1d4e0aa09314b53a59f59d7853c5ccd9f0723bac8a1c40dd3279`.
+- Verified addon/PDB debug ID: `6cc0954d-3219-43a8-a8ff-220313a8bd3a-1`.
+
+The retained earlier Microsoft-reviewed addon was independently found to match
+`9c6ba67b...ade0f874`; it is not the new candidate. On 2026-09-27, the new
+candidate's full `f6c5a686...af8fd081` hash, size, source and build were verified
+in Microsoft's submission history alongside its clean Smart App Control
+analyst reply. Generic pending/in-progress portal labels are not blockers.
+Protected actual-game proof on the frozen candidate with Electron 44.4.5 now
+passed as recorded above. Do not rebuild, retag, transfer prior clearance or
+reuse a prior receipt. Post-publication identity and provenance verification passed.
+
+The 2026-09-27 continuation extracted and fingerprint-verified the canonical
+bundle and installed the frozen tarball in isolated staging. The retained
+Electron44.4.5 consumer QA executable subsequently received its own clean
+Smart App Control analyst reply; its exact submission binding, full file hash
+and size were verified independently. The earlier missing executable is no
+longer the target. The operator then confirmed other-host Steam/helper isolation
+and availability for elevation/authentication. A reviewed isolated consumer
+assembler completed, independently verifying every runtime and packaged file
+and all 89 Bridge files against the frozen tarball. The already-staged consumer
+was protected using the documented owner-right Apply/Audit route, with no
+elevation or security-policy changes; an Interactive/Limited launch succeeded.
+A scratch ASAR native-placement defect was corrected in a fresh QA directory,
+preserving the rejected attempt. Exact native loading and standalone D3D11
+startup then succeeded, but Steam explicitly logged the account off with
+`Logged In Elsewhere` during qualification. After authorized remote-client/helper
+isolation, an unchanged-candidate smoke reached actual gameplay and ordinary
+Friends-overlay open/Escape-close, then exited zero with Steam surviving.
+Gameplay paint/fresh/native medians were 59.9 FPS at 60 Hz; overlay native
+median was 54.9 FPS, below the required 57. After the operator disconnected
+remote streaming, a fresh unchanged-byte run without CDP measured 59.9 FPS
+game paint/fresh, 59.8 native and 58.9 active-overlay native medians. DPI and
+desktop-window coverage also changed, so streaming-only causation is unproven.
+The exact Limited process and loaded modules were attested. Basic native
+window transitions and the 640x480 minimum recovered; complete display/manual
+coverage and final normal-size restoration were unproved by that earlier run.
+Raw stderr matches
+the Bridge Valve-startup classifier, but the consumer's literal-empty-stderr
+contract conflicts with its mandatory CDP evidence and needs explicit resolution.
+Five JavaScript readiness promises returned false (which may mean timeout,
+unavailability or a stale generation), while the separate legacy renderer
+timeout counter stayed zero; that does not establish zero asynchronous DXGI
+timeouts. Neither fallback nor bypass remained active.
+
+The local September 28 post-minimize deficit has been causally narrowed: the pointer was
+left over the minimize button. A fresh pointer-only A/control/B/A/B/A run on
+unchanged protected bytes, without minimizing or any other window transition,
+held 59.9 FPS in the client and over plain caption, fell to about 53 native /
+55 fresh FPS over the minimize button, and recovered to 59.9 on each return to
+the client. A visible Minimize tooltip accompanied the failing hover. All
+64 settled final-recovery samples had zero new gaps over 100 ms. Preserve the
+earlier failed measurements, but supersede the minimize-required causal claim;
+no version-to-version regression has been established.
+This approximately 53-native/55-fresh hover result does not explain or replace
+the original reporter's approximately 19.5-fresh/60-native hybrid-copy/bypass
+problem; preserve the existing minimize/background and adapter repairs.
+
+A separate short Chromium trace places recurring 124-129 ms stalls inside
+main-thread PeekMessage with pending sent messages; non-client mouse messages
+follow each stall. V8 profiles show no corresponding JavaScript/GC hotspot.
+The renderer RAF remains healthy while main-process frame delivery pauses and
+then bursts. A follow-up raw-protobuf native trace captured 601 main-thread
+stack samples and 17 long PeekMessage spans. All 42 overlapping samples pass
+through USER32 `__xxxTooltipCallback -> CreateTooltipWindow -> AnimateWindow
+-> AnimateBlend`, ending in a layered-window update or explicit SleepEx wait.
+Microsoft public PDB identity was matched using its documented implementation's
+GUID/Info-age/DBI-age rule, and PE x64 runtime-function boundaries independently
+confirm the tooltip and animation addresses belong to those functions. This
+local stall is Windows caption-tooltip fade work on the frame-delivery thread;
+the Steam hook is a caller, not demonstrated to own the delay. Why the tooltip
+is repeatedly recreated and the appropriate scoped remedy remain open. No
+shader, frame-queue, copy-device or restore-policy change follows from this
+finding. The raw records and a bounded
+second-hover slice are retained alongside an explicit capture-interruption
+caveat for the extended observation. See the
+[reconciled diagnostic evidence](test-findings-ledger.md#hybrid-gpu-recovery-and-queue-depth-evidence-reconciliation-2026-09-26).
+
+These diagnostic runs exited zero with Steam surviving. Temporary shortcut/task
+state was removed and final protection/content audits passed. Publication was
+held during diagnosis; the later accepted limitation and successful exact-candidate
+receipt are recorded above. Respect the presentation/lifecycle scope boundary
+and do not treat the earlier diagnostic instrumentation or preparation as a
+passing live receipt. No released runtime change, candidate rebuild or retag
+followed from the tooltip experiment.
 
 ## Standing decisions
 
@@ -115,7 +305,7 @@ behaviours were observed; details are in the ledger row:
 - The intentional 5-second `windowsSharedTextureResumeDelayMs` hold freezes
   the game image after every overlay close.
 
-Not covered: a signed candidate, a display matrix, and receipts. For automation:
+Not covered: an immutable release candidate, a display matrix, and receipts. For automation:
 an elevated foreground utility makes UIPI silently drop injected input, so
 check the foreground owner and the host's message counters before trusting
 a `SendInput` result. The public example passes a direct App ID `480` smoke,
@@ -152,12 +342,13 @@ napi-generated functions by name, arity, parameter type and optionality; all
 their timeouts; networking batch-receive errors need corrupted Steam structs
 and every message is still released.
 
-## Open before release
+## Open consumer and platform follow-ups
 
-1. Candidate-bound Windows release proof on Electron 44.4.5. It needs a
-   signed candidate launched through Steam, the display matrix and both
-   receipts. The local pass above, including emoji and non-BMP text and a
-   local Steam-client shortcut launch, is green.
+1. The Bridge candidate-bound Windows four-case proof on Electron 44.4.5 passed
+   as recorded above. A consuming game's changed production package still needs
+   its own protected launch, display matrix and required receipts. Earlier local
+   emoji/non-BMP input evidence and the new Bridge receipt do not replace those
+   separate consumer gates.
    `WIN-OVERLAY-RESUME-HOLD-001` covers the 5-second frozen frame after every
    overlay close. A one-rig A/B (5000, 250 and 0 ms) found no correctness
    failure without the hold. It did find a few slow copies and two single
@@ -224,6 +415,38 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- Release 0.4.10: exact-tag CI/build and protected schema-7 four-case proof
+  passed; npm signature/attestation and 89-file identity checks passed; all six
+  GitHub assets matched independent downloads and the Windows symbols pair.
+  The final documentation/recovery update passed `package:smoke`, whitespace
+  checks and an independent privacy/accuracy review. The Windows tooltip hover
+  limitation remains explicitly accepted, not fixed.
+
+- A focused installed-`0.4.9` high-refresh diagnostic on Windows 11 / AMD hybrid
+  hardware held 165.0 fresh FPS and 164.53 native/DXGI FPS for an uncontaminated
+  30-second interval at 165 Hz. A subsequent external desktop-mode/DPI change
+  moved the display to 60 Hz and latched the old JavaScript wait fallback.
+  A later PresentMon trace measured 59.915 displayed FPS but about 79.87 ms
+  median Present-to-display delay. This is old-runtime diagnostic evidence,
+  not a candidate pass or physical input-latency measurement. After the remote
+  session ended, a clean restart and uninterrupted minute at 165 Hz held
+  164.973 fresh / 164.174 native-DXGI FPS, with two admission drops, 36 repeated
+  refreshes, no fallback and no Present budget overruns. The second trace
+  elevation request was canceled, so this minute uses built-in/DXGI evidence,
+  not a 165 Hz OS trace. The game/debug listener exited and the original desktop
+  mode was restored; see `WIN-HIGH-REFRESH-PRESENT-001` in the ledger.
+
+- Main `9ec1faa`: all CI jobs passed; local `npm test` passed 484 JavaScript
+  tests (3 skipped) and 98 native tests (13 hardware tests ignored). Platform,
+  native formatting/check, API coverage and dependency audit passed.
+- Current narrow correction: Windows native tests passed 101/101 (13 hardware
+  tests ignored); Linux native-surface tests passed 11/11 under Xvfb. Full
+  Windows npm test passed (484 JavaScript tests, 3 skipped), as did formatting,
+  native check, API coverage, platform check, dependency audit and diff check.
+  Exact corrected-tree and tag CI/package smoke also passed. Two focused
+  actual-device tests passed separately: output ownership without a swap chain,
+  and copy timing/adapter diagnostics. They do not replace candidate-bound
+  actual-game live proof; that separate proof subsequently passed as recorded above.
 - CI green on every job at `a27b9cc`. Locally: `npm test` 476/476, native tests
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.

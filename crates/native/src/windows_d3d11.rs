@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::slice;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -41,7 +42,7 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
     DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
-use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+use windows::Win32::Graphics::Gdi::{MonitorFromWindow, HMONITOR, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOERROR};
 use windows::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, ResetEvent, WaitForSingleObjectEx,
@@ -991,26 +992,52 @@ impl DedicatedCopyDevice {
     }
 }
 
-fn adapter_for_monitor<M: PartialEq>(
-    monitor: &M,
-    outputs: impl IntoIterator<Item = (LUID, M)>,
-) -> Option<LUID> {
-    outputs
-        .into_iter()
-        .find(|(_, output_monitor)| output_monitor == monitor)
-        .map(|(luid, _)| luid)
+static OUTPUT_ADAPTER_TOPOLOGY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub fn invalidate_output_adapter_topology() {
+    OUTPUT_ADAPTER_TOPOLOGY_GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
-unsafe fn output_adapter_luid_for_window(hwnd: HWND) -> Option<LUID> {
-    if hwnd.0.is_null() {
-        return None;
+struct OutputAdapterCache<F> {
+    key: Option<(isize, u64)>,
+    factory: Option<F>,
+    luid: Option<LUID>,
+}
+
+impl<F> Default for OutputAdapterCache<F> {
+    fn default() -> Self {
+        Self {
+            key: None,
+            factory: None,
+            luid: None,
+        }
     }
-    let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-    if monitor.is_invalid() {
-        return None;
+}
+
+impl<F> OutputAdapterCache<F> {
+    fn resolve(
+        &mut self,
+        monitor: isize,
+        generation: u64,
+        is_current: impl FnOnce(&F) -> bool,
+        query: impl FnOnce() -> (Option<F>, Option<LUID>),
+    ) -> Option<LUID> {
+        let key = (monitor, generation);
+        if self.key == Some(key) && self.factory.as_ref().is_none_or(is_current) {
+            return self.luid;
+        }
+        let (factory, luid) = query();
+        self.key = Some(key);
+        self.factory = factory;
+        self.luid = luid;
+        luid
     }
-    let factory: IDXGIFactory2 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).ok()?;
-    let mut outputs = Vec::new();
+}
+
+unsafe fn output_adapter_luid_for_monitor(
+    factory: &IDXGIFactory2,
+    monitor: HMONITOR,
+) -> Option<LUID> {
     let mut adapter_index = 0;
     while let Ok(adapter) = factory.EnumAdapters1(adapter_index) {
         adapter_index += 1;
@@ -1021,11 +1048,13 @@ unsafe fn output_adapter_luid_for_window(hwnd: HWND) -> Option<LUID> {
         while let Ok(output) = adapter.EnumOutputs(output_index) {
             output_index += 1;
             if let Ok(output_desc) = output.GetDesc() {
-                outputs.push((adapter_desc.AdapterLuid, output_desc.Monitor));
+                if output_desc.Monitor == monitor {
+                    return Some(adapter_desc.AdapterLuid);
+                }
             }
         }
     }
-    adapter_for_monitor(&monitor, outputs)
+    None
 }
 
 fn adapter_luid_string(luid: LUID) -> String {
@@ -1254,6 +1283,7 @@ pub struct WindowsD3d11Renderer {
     gpu_copy_timing: Option<GpuCopyTiming>,
     host_adapter_luid: Option<LUID>,
     texture_adapter_luid: Option<LUID>,
+    output_adapter_cache: RefCell<OutputAdapterCache<IDXGIFactory2>>,
     window: HWND,
     swap_chain_attach_failure: Option<String>,
     dedicated_copy: Option<DedicatedCopyDevice>,
@@ -1612,6 +1642,7 @@ impl WindowsD3d11Renderer {
             gpu_copy_timing: None,
             host_adapter_luid: None,
             texture_adapter_luid: None,
+            output_adapter_cache: RefCell::default(),
             window: HWND(hwnd),
             swap_chain_attach_failure: None,
             dedicated_copy: None,
@@ -1632,6 +1663,7 @@ impl WindowsD3d11Renderer {
     }
 
     unsafe fn attach_swap_chain(&mut self, hwnd: *mut c_void) -> Result<(), String> {
+        *self.output_adapter_cache.get_mut() = OutputAdapterCache::default();
         let dxgi_device: IDXGIDevice = self
             .device
             .cast()
@@ -1671,10 +1703,9 @@ impl WindowsD3d11Renderer {
         let swap_chain2: IDXGISwapChain2 = swap_chain
             .cast()
             .map_err(|error| format!("IDXGISwapChain1 to IDXGISwapChain2 failed: {error}"))?;
-        // Two frames preserve CPU/GPU parallelism while the async wait keeps
-        // Electron's message thread free. Controlled physical-input traces
-        // showed fewer missed refreshes than a one-frame queue with either
-        // timer polling or the same worker-wakeup scheduler.
+        // One queued frame avoids an extra refresh of input latency with the
+        // repaired waitable gate. Keep the asynchronous worker so Electron's
+        // message thread remains free.
         swap_chain2
             .SetMaximumFrameLatency(MAXIMUM_FRAME_LATENCY)
             .map_err(|error| format!("IDXGISwapChain2::SetMaximumFrameLatency failed: {error}"))?;
@@ -3137,14 +3168,32 @@ impl WindowsD3d11Renderer {
 
     pub fn adapter_diagnostics(&self) -> serde_json::Value {
         let output_luid = unsafe {
-            output_adapter_luid_for_window(self.window).or_else(|| {
-                self.swap_chain
-                    .as_ref()
-                    .and_then(|swap_chain| swap_chain.GetContainingOutput().ok())
-                    .and_then(|output| output.GetParent::<IDXGIAdapter>().ok())
-                    .and_then(|adapter| adapter.GetDesc().ok())
-                    .map(|desc| desc.AdapterLuid)
-            })
+            let monitor = MonitorFromWindow(self.window, MONITOR_DEFAULTTONEAREST);
+            if self.window.0.is_null() || monitor.is_invalid() {
+                None
+            } else {
+                self.output_adapter_cache.borrow_mut().resolve(
+                    monitor.0 as isize,
+                    OUTPUT_ADAPTER_TOPOLOGY_GENERATION.load(Ordering::Relaxed),
+                    |factory| factory.IsCurrent().as_bool(),
+                    || {
+                        let factory =
+                            CreateDXGIFactory2::<IDXGIFactory2>(DXGI_CREATE_FACTORY_FLAGS(0)).ok();
+                        let luid = factory
+                            .as_ref()
+                            .and_then(|factory| output_adapter_luid_for_monitor(factory, monitor))
+                            .or_else(|| {
+                                self.swap_chain
+                                    .as_ref()
+                                    .and_then(|swap_chain| swap_chain.GetContainingOutput().ok())
+                                    .and_then(|output| output.GetParent::<IDXGIAdapter>().ok())
+                                    .and_then(|adapter| adapter.GetDesc().ok())
+                                    .map(|desc| desc.AdapterLuid)
+                            });
+                        (factory, luid)
+                    },
+                )
+            }
         };
         let luid_equal = |left: Option<LUID>, right: Option<LUID>| match (left, right) {
             (Some(left), Some(right)) => {
@@ -4323,9 +4372,10 @@ mod dedicated_copy_device_tests {
 #[cfg(test)]
 mod adapter_and_gpu_timing_diagnostics_tests {
     use super::{
-        adapter_for_monitor, adapter_luid_string, GpuCopyTimingRing, GpuCopyTimingStats,
+        adapter_luid_string, GpuCopyTimingRing, GpuCopyTimingStats, OutputAdapterCache,
         D3D11_QUERY_DATA_TIMESTAMP_DISJOINT, GPU_COPY_TIMING_RING_SIZE, LUID,
     };
+    use std::cell::Cell;
 
     #[test]
     fn a_query_that_never_resolves_does_not_stop_gpu_copy_sampling() {
@@ -4359,19 +4409,114 @@ mod adapter_and_gpu_timing_diagnostics_tests {
     }
 
     #[test]
-    fn the_output_adapter_is_the_one_that_owns_the_window_monitor() {
-        let integrated = LUID {
+    fn output_adapter_snapshots_reuse_successful_and_missing_lookups() {
+        for luid in [
+            Some(LUID {
+                LowPart: 1,
+                HighPart: 0,
+            }),
+            None,
+        ] {
+            let mut cache = OutputAdapterCache::default();
+            let queries = Cell::new(0);
+            for _ in 0..100 {
+                let result = cache.resolve(
+                    10,
+                    0,
+                    |current| *current,
+                    || {
+                        queries.set(queries.get() + 1);
+                        (Some(true), luid)
+                    },
+                );
+                assert_eq!(result, luid);
+            }
+            assert_eq!(queries.get(), 1);
+        }
+    }
+
+    #[test]
+    fn output_adapter_cache_refreshes_on_monitor_topology_and_factory_changes() {
+        let mut cache = OutputAdapterCache::default();
+        let queries = Cell::new(0);
+        let query = |cache: &mut OutputAdapterCache<bool>, monitor, generation, current| {
+            cache
+                .resolve(
+                    monitor,
+                    generation,
+                    |_| current,
+                    || {
+                        queries.set(queries.get() + 1);
+                        (
+                            Some(true),
+                            Some(LUID {
+                                LowPart: queries.get(),
+                                HighPart: 0,
+                            }),
+                        )
+                    },
+                )
+                .expect("adapter")
+                .LowPart
+        };
+        assert_eq!(query(&mut cache, 10, 0, true), 1);
+        assert_eq!(query(&mut cache, 10, 0, true), 1);
+        assert_eq!(query(&mut cache, 20, 0, true), 2);
+        assert_eq!(query(&mut cache, 20, 0, true), 2);
+        assert_eq!(query(&mut cache, 20, 1, true), 3);
+        assert_eq!(query(&mut cache, 20, 1, false), 4);
+        assert_eq!(query(&mut cache, 20, 1, true), 4);
+        cache = OutputAdapterCache::default();
+        assert_eq!(query(&mut cache, 20, 1, true), 5);
+    }
+
+    #[test]
+    fn failed_output_adapter_refresh_clears_stale_results_without_retrying_every_snapshot() {
+        let mut cache = OutputAdapterCache::default();
+        let luid = LUID {
             LowPart: 1,
             HighPart: 0,
         };
-        let discrete = LUID {
+        assert_eq!(
+            cache.resolve(10, 0, |current| *current, || (Some(true), Some(luid))),
+            Some(luid)
+        );
+        assert_eq!(
+            cache.resolve(10, 1, |current| *current, || (None, None)),
+            None
+        );
+        for _ in 0..100 {
+            assert_eq!(
+                cache.resolve(10, 1, |_| panic!("no factory"), || panic!("cached miss")),
+                None
+            );
+        }
+        assert_eq!(
+            cache.resolve(10, 2, |current| *current, || (Some(true), Some(luid))),
+            Some(luid)
+        );
+    }
+
+    #[test]
+    fn a_fallback_output_adapter_is_cached_even_without_a_factory() {
+        let mut cache = OutputAdapterCache::<bool>::default();
+        let luid = LUID {
             LowPart: 2,
             HighPart: 0,
         };
-        let outputs = [(discrete, 30), (integrated, 10), (integrated, 20)];
-        let found = adapter_for_monitor(&20, outputs).expect("monitor owner");
-        assert_eq!((found.LowPart, found.HighPart), (1, 0));
-        assert!(adapter_for_monitor(&40, outputs).is_none());
+        assert_eq!(
+            cache.resolve(10, 0, |_| true, || (None, Some(luid))),
+            Some(luid)
+        );
+        assert_eq!(
+            cache.resolve(
+                10,
+                0,
+                |_| panic!("no factory"),
+                || panic!("cached fallback")
+            ),
+            Some(luid)
+        );
     }
 
     #[test]

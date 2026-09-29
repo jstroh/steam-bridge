@@ -4959,6 +4959,7 @@ mod windows {
             return 0;
         }
         if matches!(message, WM_DISPLAYCHANGE | WM_SETTINGCHANGE) {
+            windows_d3d11::invalidate_output_adapter_topology();
             reconcile_standalone_window_with_work_area(hwnd);
             render_retained_frame_from_window_message(hwnd, true, false);
         }
@@ -8968,12 +8969,7 @@ mod linux {
                 let shift = key.state & xlib::ShiftMask != 0;
                 let control = key.state & xlib::ControlMask != 0;
                 let alt = key.state & xlib::Mod1Mask != 0;
-                let mut key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 0);
-                if key.state & xlib::Mod2Mask != 0 && keypad_keysym_depends_on_num_lock(key_symbol)
-                {
-                    key_symbol = (surface.xlib.XLookupKeysym)(&mut key, 1);
-                }
-                let virtual_key = virtual_key_from_keysym(key_symbol);
+                let virtual_key = key_event_virtual_key(&surface.xlib, &mut key);
                 let (client_width, client_height, minimized) = linux_client_state(surface);
                 let repeat = record_key_transition(
                     &mut surface.pressed_keycodes,
@@ -9307,7 +9303,19 @@ mod linux {
         matches!(symbol as c_uint, keysym::XK_KP_Home..=keysym::XK_KP_Delete)
     }
 
+    unsafe fn key_event_virtual_key(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> u64 {
+        let mut symbol = (xlib.XLookupKeysym)(key, 0);
+        if keypad_keysym_depends_on_num_lock(symbol) {
+            symbol = key_event_keysym(xlib, key);
+        }
+        virtual_key_from_keysym(symbol)
+    }
+
     unsafe fn key_press_character(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> Option<u32> {
+        character_from_keysym(key_event_keysym(xlib, key))
+    }
+
+    unsafe fn key_event_keysym(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> xlib::KeySym {
         let mut text = [0 as c_char; 8];
         let mut symbol: xlib::KeySym = 0;
         (xlib.XLookupString)(
@@ -9317,7 +9325,7 @@ mod linux {
             &mut symbol,
             ptr::null_mut(),
         );
-        character_from_keysym(symbol)
+        symbol
     }
 
     fn character_from_keysym(symbol: xlib::KeySym) -> Option<u32> {
@@ -10876,9 +10884,10 @@ void main() {
     #[cfg(test)]
     mod tests {
         use super::{
-            character_from_keysym, key_press_character, keypad_keysym_depends_on_num_lock, keysym,
-            pointer_state_after_button, record_key_transition, supports_dri3_pixmap_modifier,
-            virtual_key_from_keysym, windows_mouse_key_state, xlib, CHROMIUM_NO_DRM_MODIFIER,
+            character_from_keysym, key_event_virtual_key, key_press_character,
+            keypad_keysym_depends_on_num_lock, keysym, pointer_state_after_button,
+            record_key_transition, supports_dri3_pixmap_modifier, virtual_key_from_keysym,
+            windows_mouse_key_state, xlib, CHROMIUM_NO_DRM_MODIFIER,
         };
         use std::ptr;
 
@@ -11125,6 +11134,70 @@ void main() {
                 (xlib.XCloseDisplay)(display);
             }
             assert_ne!(supported, 0);
+        }
+
+        #[test]
+        fn x11_keypad_virtual_keys_follow_modifier_aware_lookup() {
+            let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
+            let Ok(xlib) = xlib::Xlib::open() else {
+                assert!(!require_display, "Xlib is unavailable");
+                return;
+            };
+            let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+            if display.is_null() {
+                assert!(!require_display, "no X11 display is available");
+                return;
+            }
+            let lookup = |symbol, state, event_type| unsafe {
+                let mut key: xlib::XKeyEvent = std::mem::zeroed();
+                key.type_ = event_type;
+                key.display = display;
+                key.keycode = (xlib.XKeysymToKeycode)(display, xlib::KeySym::from(symbol)).into();
+                key.state = state;
+                (
+                    key_event_virtual_key(&xlib, &mut key),
+                    key_press_character(&xlib, &mut key),
+                )
+            };
+            for state in [
+                0,
+                xlib::ShiftMask,
+                xlib::Mod2Mask,
+                xlib::Mod2Mask | xlib::ShiftMask,
+            ] {
+                for event_type in [xlib::KeyPress, xlib::KeyRelease] {
+                    for (symbol, navigation, digit, text) in [
+                        (keysym::XK_KP_Home, 0x24, 0x67, b'7'),
+                        (keysym::XK_KP_Left, 0x25, 0x64, b'4'),
+                        (keysym::XK_KP_Delete, 0x2E, 0x6E, b'.'),
+                    ] {
+                        let expected = if state == xlib::Mod2Mask {
+                            (digit, Some(u32::from(text)))
+                        } else {
+                            (navigation, None)
+                        };
+                        assert_eq!(
+                            lookup(symbol, state, event_type),
+                            expected,
+                            "keysym {symbol:#x}, state {state:#x}, event {event_type}"
+                        );
+                    }
+                    for (symbol, expected) in [
+                        (keysym::XK_a, 0x41),
+                        (keysym::XK_1, 0x31),
+                        (keysym::XK_period, 0xBE),
+                    ] {
+                        assert_eq!(
+                            lookup(symbol, state, event_type).0,
+                            expected,
+                            "non-keypad keysym {symbol:#x}, state {state:#x}, event {event_type}"
+                        );
+                    }
+                }
+            }
+            unsafe {
+                (xlib.XCloseDisplay)(display);
+            }
         }
 
         fn vk(symbol: std::os::raw::c_uint) -> u64 {
