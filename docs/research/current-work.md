@@ -342,6 +342,43 @@ napi-generated functions by name, arity, parameter type and optionality; all
 their timeouts; networking batch-receive errors need corrupted Steam structs
 and every message is still released.
 
+### 2026-09-25 Steam Deck remote helper
+
+Goal: lasting SSH access to the Deck in Game and Desktop Mode through the
+runner, on branch `claude/steam-deck-remote-helper` from `35164c3`.
+
+- **Helper.** `scripts/steam-deck-remote.sh` now holds every Deck session step
+  the runner used to send as inline shell: environment and display selection,
+  capture, input, focus and state probes, close verification, the shortcut
+  wrapper, keep-awake, launch and cleanup. The runner installs it when its
+  content changes (`cmp`, then an atomic `mv`) and calls it. A fake-SSH
+  comparison against `35164c3` found no change in the seven Python blocks, the
+  wrapper, the env-file bytes (including URLs with `?`, `&` and spaces), the
+  remote step order, or the runner output.
+- **Preflight** also reports the SteamOS release, session mode, Desktop panel
+  power, the six runner tools and `/dev/uinput` access. `check_ssh` used to
+  succeed even when SSH failed, because it read `$?` after an `if`; it now
+  returns the SSH status.
+- **Access between runs:** `npm run steam-deck:remote -- <command>`,
+  `--mode capture`, `session game|desktop` (`steamos-session-select gamescope`
+  or `plasma-wayland`; plain `plasma` starts Plasma X11), and `wake-display`.
+- **Live, in the 13:19-13:39 UTC game-lock window:** the helper switched
+  Desktop -> Game -> Desktop through `steamos-session-select`, about 8 s each
+  way, with a Gamescope capture in Game Mode (`DECK-SESSION-SELECT-001`).
+  The matrix `shortcut-friends` case (App ID `480`, the package already on the
+  Deck) then passed with both the new runner and the old one, with matching
+  artifacts (`DECK-HOST-001`). Steam was shut down again afterwards. Earlier
+  live checks were preflight, status, capture and cleanup. Other ledger rows
+  from today: `DECK-DESKTOP-DPMS-CAPTURE-001`, `DECK-STEAM-GAME-LOCK-001`,
+  `DECK-STEAM-COLD-LAUNCH-001`.
+- **Game lock:** the Deck shares one Steam account with other machines. Run
+  nothing that starts Steam on the Deck without the account's game lock.
+- **Fixed after the comparison:** the web-close probe set `RESULT_FILE`
+  without exporting it, so its close wait never read the lifecycle log and
+  always waited the full 3 seconds. It was kept unchanged for the byte-for-byte
+  runner comparison and is now passed to the wait, which returns as soon as
+  the lifecycle log records the close.
+
 ## Open consumer and platform follow-ups
 
 1. The Bridge candidate-bound Windows four-case proof on Electron 44.4.5 passed
@@ -447,6 +484,11 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   actual-device tests passed separately: output ownership without a swap chain,
   and copy timing/adapter diagnostics. They do not replace candidate-bound
   actual-game live proof; that separate proof subsequently passed as recorded above.
+- Steam Deck remote helper branch on macOS: runner, helper and matrix
+  self-tests, `npm test` (477/477 JavaScript plus native tests),
+  `package:smoke`, and `git diff --check`. Live on the Deck (SteamOS 3.8.11)
+  at `c0e047b`: both session switches and the `shortcut-friends` case with the
+  new and the old runner.
 - CI green on every job at `a27b9cc`. Locally: `npm test` 476/476, native tests
   including the X11 tests under Xvfb, `npm run api:check`,
   `npm run check:platform`, and `git diff --check`.
