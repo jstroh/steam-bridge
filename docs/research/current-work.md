@@ -31,15 +31,21 @@ and a local transport. The full Windows checks passed 484 JavaScript tests
 checking, platform/API coverage, native format/check and whitespace. No live
 Deck session or Steam client was changed in this review.
 
-Dependency auditing also found vulnerable transitive build tools. Only the
+Dependency auditing also found vulnerable transitive build tools. For that
+remediation, only the
 lockfile records for `brace-expansion` (1.1.21, 2.1.7 and 5.0.12) and `fast-uri`
 (3.1.8) changed; their dependency shapes and root dependency versions are intact.
 The updated lockfile audits with zero vulnerabilities. A fresh Linux source
 fixture with the changed helper/runner/lockfile passed `package:smoke`; the
 Windows dependency install, build and typecheck also pass after the updates.
-This work changes repository
-QA tools and development dependencies; the frozen published 0.4.10 tag and
-artifacts remain authoritative for that release.
+Main CI `36695993346` passed the three platform jobs and dependency audit, but
+its package job stopped at `check:electron:latest`: upstream stable had moved
+to 44.5.1. The QA example and lockfile now pin 44.5.1; the Windows ASAR fixture
+derives its version from that example. A clean Windows install, the latest-pin
+gate, full Windows checks and a fresh Linux `package:smoke` fixture all pass.
+These are automated repository checks, not new live qualification on 44.5.1.
+This work changes repository QA tools and development dependencies; the frozen
+published 0.4.10 tag and artifacts remain authoritative for that release.
 
 The maintainer accepted the Windows caption-tooltip hover limitation as
 non-blocking and requested release of the unchanged frozen `v0.4.10` candidate.
@@ -488,6 +494,11 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-09-30 incoming-main review: the four helper corrections above have
+  failing-before coverage. With the QA example on Electron 44.5.1, full
+  Windows tests, typecheck, platform/API checks, native format/check, the
+  latest-pin gate, zero-vulnerability dependency audit and fresh Linux
+  `package:smoke` pass. No live Deck session or release artifacts were changed.
 - 2026-09-29, main `aceeb4c` merged with the Deck helper branch plus the fixes
   above, on Linux: helper, runner and matrix self-tests, `npm test`
   (487/487 JavaScript plus native tests), `package:smoke`, `check:platform`,
