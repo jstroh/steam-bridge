@@ -32,8 +32,8 @@ checking, platform/API coverage, native format/check and whitespace. No live
 Deck session or Steam client was changed in this review.
 
 Dependency auditing also found vulnerable transitive build tools. For that
-remediation, only the
-lockfile records for `brace-expansion` (1.1.21, 2.1.7 and 5.0.12) and `fast-uri`
+remediation, only the lockfile records for `brace-expansion` (1.1.21, 2.1.7 and
+5.0.12) and `fast-uri`
 (3.1.8) changed; their dependency shapes and root dependency versions are intact.
 The updated lockfile audits with zero vulnerabilities. A fresh Linux source
 fixture with the changed helper/runner/lockfile passed `package:smoke`; the
@@ -44,6 +44,10 @@ to 44.5.1. The QA example and lockfile now pin 44.5.1; the Windows ASAR fixture
 derives its version from that example. A clean Windows install, the latest-pin
 gate, full Windows checks and a fresh Linux `package:smoke` fixture all pass.
 These are automated repository checks, not new live qualification on 44.5.1.
+The follow-up [main CI run](https://github.com/jstroh/steam-bridge/actions/runs/36697016603)
+at `c379a76` passed all nine jobs: Windows x64, Apple Silicon macOS, Linux x64
+with isolated Xvfb, package smoke, four Node runtime versions and dependency
+security auditing. The incoming-main review is complete.
 This work changes repository QA tools and development dependencies; the frozen
 published 0.4.10 tag and artifacts remain authoritative for that release.
 
