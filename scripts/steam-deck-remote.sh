@@ -705,6 +705,8 @@ clear_kwin_overview_if_active() {
     fi
     sleep 0.1
   done
+  echo 'KWin overview did not close before the web close probe.' >&2
+  return 1
 }
 
 cmd_web_close() {
@@ -722,22 +724,32 @@ cmd_web_close() {
     esac
   done
 
+  if [ -z "$result_file" ]; then
+    echo 'web-close requires --result-file.' >&2
+    return 2
+  fi
   use_default_display
   use_first_xauthority
   if ! command -v xdotool >/dev/null 2>&1; then
     echo 'No xdotool web overlay close helper found on Deck.' >&2
     exit 127
   fi
-  clear_kwin_overview_if_active
-  set -- $(xdotool getdisplaygeometry)
-  display_width="${1:-1280}"
-  display_height="${2:-800}"
+  clear_kwin_overview_if_active || return
+  display_geometry="$(xdotool getdisplaygeometry)" || return
+  set -- $display_geometry
+  if [ "$#" -ne 2 ] || [[ ! "$1" =~ ^[1-9][0-9]*$ ]] || [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+    echo 'Steam web close probe could not read the display geometry.' >&2
+    return 1
+  fi
+  display_width="$1"
+  display_height="$2"
   host_window="$(xdotool search --name 'Steam Bridge Native Overlay' 2>/dev/null | tail -n 1 || true)"
   if [ -z "$host_window" ]; then
     echo 'Steam web close probe could not find the native overlay host.' >&2
     exit 1
   fi
-  eval "$(xdotool getwindowgeometry --shell "$host_window" 2>/dev/null || true)"
+  host_geometry="$(xdotool getwindowgeometry --shell "$host_window" 2>/dev/null)" || return
+  eval "$host_geometry"
   host_x="${X:-0}"
   host_y="${Y:-0}"
   host_width="${WIDTH:-$display_width}"
@@ -749,8 +761,11 @@ cmd_web_close() {
     echo 'Steam web close probe requires spectacle and ffmpeg.' >&2
     exit 127
   fi
-  spectacle -b -n -o "$close_image" >/dev/null 2>&1
-  ffmpeg -v error -y -i "$close_image" -f rawvideo -pix_fmt gray "$close_gray"
+  spectacle -b -n -o "$close_image" >/dev/null 2>&1 || return
+  if ! ffmpeg -v error -y -i "$close_image" -f rawvideo -pix_fmt gray "$close_gray"; then
+    rm -f "$close_image" "$close_gray"
+    return 1
+  fi
   close_point="$(python3 - "$close_gray" "$display_width" "$display_height" "$host_x" "$host_y" "$host_width" "$host_height" <<'PY'
 import sys
 from pathlib import Path
@@ -807,14 +822,14 @@ if best is None:
 score, _bright, click_x, click_y = best
 print(f'{click_x} {click_y} {score}')
 PY
-)"
+)" || { rm -f "$close_image" "$close_gray"; return 1; }
   rm -f "$close_image" "$close_gray"
   set -- $close_point
   click_x="$1"
   click_y="$2"
   close_score="$3"
   echo "Detected Steam web close control (score=$close_score)."
-  xdotool mousemove "$click_x" "$click_y" click 1
+  xdotool mousemove "$click_x" "$click_y" click 1 || return
   wait_for_web_overlay_closed "$result_file" 3.0 || true
 }
 
@@ -1345,6 +1360,18 @@ target_process_live() {
   esac
 }
 
+stop_recorded_inhibitor() {
+  local pid_file="$1" inhibit_pid
+  if [ -f "$pid_file" ]; then
+    inhibit_pid="$(cat "$pid_file" 2>/dev/null || true)"
+    if [[ "$inhibit_pid" =~ ^[1-9][0-9]{0,9}$ ]] &&
+      [ "$inhibit_pid" -gt 1 ] && [ "$inhibit_pid" -le 2147483647 ]; then
+      kill -- "$inhibit_pid" >/dev/null 2>&1 || true
+    fi
+    rm -f -- "$pid_file"
+  fi
+}
+
 cmd_cleanup() {
   local app_dir="$default_app_dir" inhibit_pid_file="$default_inhibit_pid_file"
   while [ "$#" -gt 0 ]; do
@@ -1372,14 +1399,7 @@ cmd_cleanup() {
       [ "$executable" = "$app_dir/SteamBridgeSmoke" ] || continue
       kill "${process_dir##*/}" >/dev/null 2>&1 || true
     done
-    if [ -f "$inhibit_pid_file" ]; then
-      inhibit_pid="$(cat "$inhibit_pid_file" 2>/dev/null || true)"
-      case "$inhibit_pid" in
-        *[!0-9]*|'') ;;
-        *) kill "$inhibit_pid" >/dev/null 2>&1 || true ;;
-      esac
-      rm -f "$inhibit_pid_file"
-    fi
+    stop_recorded_inhibitor "$inhibit_pid_file"
     for overlay_pid in $(pgrep -x gameoverlayui 2>/dev/null || true); do
       target_pid="$(tr '\000' '\n' < "/proc/$overlay_pid/cmdline" 2>/dev/null | awk 'previous == "-pid" { print; exit } { previous = $0 }')"
       case "$target_pid" in
@@ -1440,7 +1460,7 @@ cmd_keep_awake() {
       if command -v systemd-inhibit >/dev/null 2>&1; then nohup systemd-inhibit --what=sleep --why='Steam Bridge smoke' sleep "$seconds" >/tmp/steam-bridge-smoke-inhibit.log 2>&1 & echo $! > "$pid_file"; else echo 'systemd-inhibit not found; skipping sleep inhibitor' >&2; fi
       ;;
     stop)
-      if [ -f "$pid_file" ]; then kill $(cat "$pid_file") >/dev/null 2>&1 || true; rm -f "$pid_file"; fi
+      stop_recorded_inhibitor "$pid_file"
       ;;
     *)
       echo "keep-awake requires start or stop." >&2
@@ -1762,7 +1782,7 @@ run_helper_under_test() {
 }
 
 run_self_test() {
-  local python_bin block_count output inhibit_pid
+  local python_bin block_count output inhibit_pid invalid_pid
   self_test_script="$0"
   self_test_root="$(mktemp -d "${TMPDIR:-/tmp}/steam-deck-remote-self-test.XXXXXX")"
   self_test_stubs="$self_test_root/bin"
@@ -1783,6 +1803,8 @@ exit 3'
 case "$1" in
   getdisplaygeometry) grep -qx "${DISPLAY:-}" "$SELF_TEST_ROOT/displays" 2>/dev/null && echo "1280 800" && exit 0; exit 1 ;;
   search) grep -qx "$3" "$SELF_TEST_ROOT/windows" 2>/dev/null && echo 4242 && exit 0; exit 1 ;;
+  getwindowgeometry) printf "%s\n" WINDOW=4242 X=0 Y=0 WIDTH=1280 HEIGHT=800 SCREEN=0 ;;
+  mousemove) [ ! -f "$SELF_TEST_ROOT/input-fails" ] || exit 1 ;;
   getwindowfocus) echo 4242 ;;
   getwindowname) echo "Steam Bridge Electron Smoke" ;;
   getwindowpid) echo 1234 ;;
@@ -1812,7 +1834,7 @@ exit 0'
   "--dpms on") echo on > "$SELF_TEST_ROOT/dpms" ;;
 esac
 exit 0'
-  for tool in xprop wmctrl xwininfo gnome-screenshot; do
+  for tool in xprop wmctrl xwininfo gnome-screenshot qdbus qdbus6; do
     write_self_test_stub "$tool" 'exit 1'
   done
 
@@ -1911,6 +1933,61 @@ WEB_URL=''" ] || self_test_fail "write-wrapper must write the runner's env lines
   (unset RESULT_FILE; wait_for_web_overlay_closed "$self_test_root/web-close.json" 0.5) || self_test_fail "The web close wait must read the lifecycle log of the result file it is given."
   if (unset RESULT_FILE; wait_for_web_overlay_closed "$self_test_root/missing.json" 0.2); then
     self_test_fail "The web close wait must fail without a recorded close."
+  fi
+
+  printf '%s\n' 'kill() { printf "%s\n" "$*" >> "$SELF_TEST_ROOT/kill.log"; }' > "$self_test_root/record-kill.sh"
+  for invalid_pid in '' 0 1 000 -1 '12 34' '123 -1' 2147483648 999999999999999999999999; do
+    for cleanup_command in keep-awake cleanup; do
+      printf '%s\n' "$invalid_pid" > "$self_test_root/invalid-inhibit.pid"
+      : > "$self_test_root/kill.log"
+      if [ "$cleanup_command" = keep-awake ]; then
+        BASH_ENV="$self_test_root/record-kill.sh" run_helper_under_test keep-awake stop --pid-file "$self_test_root/invalid-inhibit.pid" >/dev/null || self_test_fail "Stopping an invalid inhibitor record must succeed without sending signals."
+      else
+        BASH_ENV="$self_test_root/record-kill.sh" run_helper_under_test cleanup --app-dir "$self_test_root/app" --inhibit-pid-file "$self_test_root/invalid-inhibit.pid" >/dev/null || self_test_fail "Cleanup must safely discard an invalid inhibitor record."
+      fi
+      [ ! -s "$self_test_root/kill.log" ] || self_test_fail "Invalid inhibitor PID '$invalid_pid' sent a signal during $cleanup_command."
+    done
+  done
+  printf '%s\n' 12345 > "$self_test_root/valid-inhibit.pid"
+  : > "$self_test_root/kill.log"
+  BASH_ENV="$self_test_root/record-kill.sh" run_helper_under_test keep-awake stop --pid-file "$self_test_root/valid-inhibit.pid" || self_test_fail "Stopping a valid inhibitor record failed."
+  [ "$(cat "$self_test_root/kill.log")" = '-- 12345' ] || self_test_fail "The inhibitor stop must signal exactly the recorded positive PID."
+
+  python_bin="$(command -v python3 || true)"
+  if [ -n "$python_bin" ]; then
+    echo desktop > "$self_test_root/session"
+    printf '%s\n' :0 > "$self_test_root/displays"
+    printf '%s\n' 'Steam Bridge Native Overlay' > "$self_test_root/windows"
+    write_self_test_stub ffmpeg 'for output; do :; done
+: > "$output"'
+    for capture_failures in 1 0; do
+      echo "$capture_failures" > "$self_test_root/spectacle-failures"
+      : > "$self_test_root/xdotool.log"
+      if run_helper_under_test web-close --result-file "$self_test_root/web-close.json" >/dev/null 2>&1; then
+        self_test_fail "The web close probe must fail when its capture or close-glyph detection fails."
+      fi
+      if grep -Fq 'xdotool mousemove' "$self_test_root/xdotool.log"; then
+        self_test_fail "A failed web close probe must not send pointer input."
+      fi
+    done
+    if run_helper_under_test web-close >/dev/null 2>&1; then
+      self_test_fail "The web close probe must require its result file."
+    fi
+    write_self_test_stub ffmpeg 'for output; do :; done
+python3 -c "import pathlib,sys; pixels=bytearray(1280*800); center_x,center_y=1010,100
+for offset in range(-5,6):
+ for sign in (-1,1): pixels[(center_y+offset)*1280+center_x+sign*offset]=200
+pixels[(center_y-5)*1280+center_x-5]=0
+pathlib.Path(sys.argv[1]).write_bytes(pixels)" "$output"'
+    : > "$self_test_root/xdotool.log"
+    output="$(run_helper_under_test web-close --result-file "$self_test_root/web-close.json")" || self_test_fail "A valid web close capture must send its detected pointer input."
+    grep -Fq 'Detected Steam web close control' <<< "$output" || self_test_fail "The valid close probe must retain its detection result."
+    [ "$(grep -Ec 'xdotool mousemove [0-9]+ [0-9]+ click 1$' "$self_test_root/xdotool.log")" = 1 ] || self_test_fail "A valid close probe must send exactly one detected-coordinate click."
+    touch "$self_test_root/input-fails"
+    if run_helper_under_test web-close --result-file "$self_test_root/web-close.json" >/dev/null 2>&1; then
+      self_test_fail "The close probe must propagate a pointer-input failure."
+    fi
+    rm -f "$self_test_root/input-fails"
   fi
 
   (sleep 30 >/dev/null 2>&1 & echo "$!" > "$self_test_root/inhibit.pid")

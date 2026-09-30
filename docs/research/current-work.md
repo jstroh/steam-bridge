@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-29
+Last reviewed: 2026-09-30
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -11,6 +11,35 @@ Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
 ## Active goal
+
+Review of incoming main `b6ccfe3` found and corrected four Deck-helper issues:
+the inhibitor stop expanded malformed PID-file contents into `kill` arguments;
+capture/close-glyph failures could continue to pointer input and return success;
+an identical installed helper without executable permission was treated as
+current; and remaining quiet-grep self-test pipelines could fail on producer
+SIGPIPE under `pipefail`. Both inhibitor cleanup routes now validate one bounded
+positive PID and quote it. Web-close requires its result file and valid display
+geometry, propagates capture/detection/input errors and refuses an uncleared KWin
+overview. The installer repairs executable permission atomically. Piped source
+assertions consume their complete input without changing their conditions.
+
+Failing-before tests reproduced malformed-PID signaling, a successful result
+after failed capture/detection, and the non-executable helper installation. The
+expanded helper, host-runner and overlay-matrix self-tests pass with stub input
+and a local transport. The full Windows checks passed 484 JavaScript tests
+(three existing skips), 101 native tests (13 existing hardware ignores), type
+checking, platform/API coverage, native format/check and whitespace. No live
+Deck session or Steam client was changed in this review.
+
+Dependency auditing also found vulnerable transitive build tools. Only the
+lockfile records for `brace-expansion` (1.1.21, 2.1.7 and 5.0.12) and `fast-uri`
+(3.1.8) changed; their dependency shapes and root dependency versions are intact.
+The updated lockfile audits with zero vulnerabilities. A fresh Linux source
+fixture with the changed helper/runner/lockfile passed `package:smoke`; the
+Windows dependency install, build and typecheck also pass after the updates.
+This work changes repository
+QA tools and development dependencies; the frozen published 0.4.10 tag and
+artifacts remain authoritative for that release.
 
 The maintainer accepted the Windows caption-tooltip hover limitation as
 non-blocking and requested release of the unchanged frozen `v0.4.10` candidate.

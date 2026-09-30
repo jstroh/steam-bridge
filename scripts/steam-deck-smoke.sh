@@ -518,7 +518,7 @@ ensure_remote_helper() {
   local helper_q helper_dir_q install_result
   helper_q="$(quote_arg "$remote_helper_path")"
   helper_dir_q="$(quote_arg "$(dirname -- "$remote_helper_path")")"
-  install_result="$(remote_exec "set -e; mkdir -p $helper_dir_q; staged=\"\$(mktemp $helper_q.XXXXXX)\"; cat > \"\$staged\"; if cmp -s \"\$staged\" $helper_q; then rm -f \"\$staged\"; echo current; else chmod 0755 \"\$staged\"; mv -f \"\$staged\" $helper_q; echo installed; fi" < "$remote_helper_local")" || return
+  install_result="$(remote_exec "set -e; mkdir -p $helper_dir_q; staged=\"\$(mktemp $helper_q.XXXXXX)\"; cat > \"\$staged\"; if cmp -s \"\$staged\" $helper_q && test -x $helper_q; then rm -f \"\$staged\"; echo current; else chmod 0755 \"\$staged\"; mv -f \"\$staged\" $helper_q; echo installed; fi" < "$remote_helper_local")" || return
   if [ "$install_result" = "installed" ]; then
     echo "Installed Deck helper at $host:$remote_helper_path" >&2
   fi
@@ -1595,25 +1595,25 @@ run_self_test() {
     echo "Self-test failed: Visual toggle probes must capture Deck overlay state." >&2
     exit 1
   fi
-  if ! sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -Fq 'remote_helper state > "$local_path" 2>&1 || true'; then
+  if ! sed -n '/^capture_deck_overlay_state()/,/^}/p' "$0" | grep -F 'remote_helper state > "$local_path" 2>&1 || true' >/dev/null; then
     echo "Self-test failed: Deck overlay state must come from the Deck helper." >&2
     exit 1
   fi
-  if sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -Fq "pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper'"; then
+  if sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -F "pgrep -af '[S]teamBridgeSmoke|[g]ameoverlayui|[s]teamwebhelper'" >/dev/null; then
     echo "Self-test failed: Deck overlay state must not retain full process command lines." >&2
     exit 1
   fi
-  if ! sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -Fq "sed 's/=.*$/=<redacted>/'"; then
+  if ! sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -F "sed 's/=.*$/=<redacted>/'" >/dev/null; then
     echo "Self-test failed: Deck overlay state must redact captured environment values." >&2
     exit 1
   fi
-  if ! sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -Fq 'use_game_app_display'; then
+  if ! sed -n '/^cmd_state()/,/^}/p' "$remote_helper_local" | grep -F 'use_game_app_display' >/dev/null; then
     echo "Self-test failed: Deck overlay state must read the app display in Game Mode." >&2
     exit 1
   fi
-  if ! sed -n '/^run_helper()/,/^}/p' "$0" | grep -Fq 'remote_helper launch --app-dir "$remote_app_dir" -- "$@"' ||
-    ! sed -n '/^cmd_launch()/,/^}/p' "$remote_helper_local" | grep -Fq 'use_default_display' ||
-    ! sed -n '/^use_default_display()/,/^}/p' "$remote_helper_local" | grep -Fq 'export DISPLAY="${DISPLAY:-:0}"'; then
+  if ! sed -n '/^run_helper()/,/^}/p' "$0" | grep -F 'remote_helper launch --app-dir "$remote_app_dir" -- "$@"' >/dev/null ||
+    ! sed -n '/^cmd_launch()/,/^}/p' "$remote_helper_local" | grep -F 'use_default_display' >/dev/null ||
+    ! sed -n '/^use_default_display()/,/^}/p' "$remote_helper_local" | grep -F 'export DISPLAY="${DISPLAY:-:0}"' >/dev/null; then
     echo "Self-test failed: Deck helper runs must inherit the graphical session environment." >&2
     exit 1
   fi
@@ -1641,15 +1641,15 @@ run_self_test() {
     echo "Self-test failed: Web close probe must use one Steam web close-control click." >&2
     exit 1
   fi
-  if ! awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -Fq "clear_kwin_overview_if_active"; then
+  if ! awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -F "clear_kwin_overview_if_active" >/dev/null; then
     echo "Self-test failed: Web close probe must clear KWin overview before clicking the Steam web close control." >&2
     exit 1
   fi
-  if ! awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -Fq 'Detected Steam web close control'; then
+  if ! awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -F 'Detected Steam web close control' >/dev/null; then
     echo "Self-test failed: Web close probe must detect the Steam close glyph before clicking." >&2
     exit 1
   fi
-  if awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -Eq 'host_(width|height) \* [0-9]+ / 100'; then
+  if awk '/^cmd_web_close[(][)]/ { inside=1 } /^cmd_wait_shortcut_open[(][)]/ { inside=0 } inside' "$remote_helper_local" | grep -E 'host_(width|height) \* [0-9]+ / 100' >/dev/null; then
     echo "Self-test failed: Web close probe must not use a fixed percentage click target." >&2
     exit 1
   fi
@@ -1657,37 +1657,37 @@ run_self_test() {
     echo "Self-test failed: Deck launch path must clear transient desktop shell state before visual proofs." >&2
     exit 1
   fi
-  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -Fq 'remote_helper screenshot "$remote_path"'; then
+  if ! sed -n '/^capture_deck_screenshot()/,/^}/p' "$0" | grep -F 'remote_helper screenshot "$remote_path"' >/dev/null; then
     echo "Self-test failed: Deck screenshots must come from the Deck helper." >&2
     exit 1
   fi
-  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -Fq 'gamescopectl screenshot'; then
+  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -F 'gamescopectl screenshot' >/dev/null; then
     echo "Self-test failed: Game Mode screenshots must use Gamescope capture." >&2
     exit 1
   fi
-  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -Fq 'game_mode_active' ||
-    ! sed -n '/^game_mode_active()/,/^}/p' "$remote_helper_local" | grep -Fq 'gamescope-session.service'; then
+  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -F 'game_mode_active' >/dev/null ||
+    ! sed -n '/^game_mode_active()/,/^}/p' "$remote_helper_local" | grep -F 'gamescope-session.service' >/dev/null; then
     echo "Self-test failed: Screenshot capture must select its tool from the active Deck session." >&2
     exit 1
   fi
-  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -Fq 'Spectacle screenshot was not written after three attempts.'; then
+  if ! sed -n '/^cmd_screenshot()/,/^}/p' "$remote_helper_local" | grep -F 'Spectacle screenshot was not written after three attempts.' >/dev/null; then
     echo "Self-test failed: Desktop screenshot capture must retry transient Spectacle failures." >&2
     exit 1
   fi
-  if ! awk '/^run_visual_capture[(][)]/ { inside=1 } /^wait_for_deck_shortcut_overlay_open[(][)]/ { inside=0 } inside' "$0" | grep -Fq 'send_deck_overlay_escape_probe'; then
+  if ! awk '/^run_visual_capture[(][)]/ { inside=1 } /^wait_for_deck_shortcut_overlay_open[(][)]/ { inside=0 } inside' "$0" | grep -F 'send_deck_overlay_escape_probe' >/dev/null; then
     echo "Self-test failed: Game Mode close capture must support SteamUI Escape input." >&2
     exit 1
   fi
-  if ! sed -n '/^send_steamui_escape()/,/^}/p' "$remote_helper_local" | grep -Fq 'use_newest_xauthority' ||
-    ! sed -n '/^use_newest_xauthority()/,/^}/p' "$remote_helper_local" | grep -Fq 'XAUTHORITY='; then
+  if ! sed -n '/^send_steamui_escape()/,/^}/p' "$remote_helper_local" | grep -F 'use_newest_xauthority' >/dev/null ||
+    ! sed -n '/^use_newest_xauthority()/,/^}/p' "$remote_helper_local" | grep -F 'XAUTHORITY=' >/dev/null; then
     echo "Self-test failed: SteamUI Escape input must discover the active X11 authority for SSH-driven probes." >&2
     exit 1
   fi
-  if ! sed -n '/^send_steamui_escape()/,/^}/p' "$remote_helper_local" | grep -Fq 'xdotool getdisplaygeometry'; then
+  if ! sed -n '/^send_steamui_escape()/,/^}/p' "$remote_helper_local" | grep -F 'xdotool getdisplaygeometry' >/dev/null; then
     echo "Self-test failed: SteamUI Escape input must authenticate its target display before sending input." >&2
     exit 1
   fi
-  if ! sed -n '/^persistent_presenter_parking_required()/,/^}/p' "$0" | grep -Fq 'is_presenter_product_action && uses_persistent_presenter'; then
+  if ! sed -n '/^persistent_presenter_parking_required()/,/^}/p' "$0" | grep -F 'is_presenter_product_action && uses_persistent_presenter' >/dev/null; then
     echo "Self-test failed: Raw Game Mode routes must not require managed presenter parking events." >&2
     exit 1
   fi
@@ -1695,15 +1695,15 @@ run_self_test() {
     echo "Self-test failed: Deck launch paths and explicit cleanup mode must share exact runtime cleanup." >&2
     exit 1
   fi
-  if ! sed -n '/^cleanup_deck_smoke_runtime()/,/^}/p' "$0" | grep -Fq 'remote_helper cleanup --app-dir "$remote_app_dir" --inhibit-pid-file "$remote_inhibit_pid_file"'; then
+  if ! sed -n '/^cleanup_deck_smoke_runtime()/,/^}/p' "$0" | grep -F 'remote_helper cleanup --app-dir "$remote_app_dir" --inhibit-pid-file "$remote_inhibit_pid_file"' >/dev/null; then
     echo "Self-test failed: Deck runtime cleanup must run in the Deck helper." >&2
     exit 1
   fi
-  if ! sed -n '/^cmd_cleanup()/,/^}/p' "$remote_helper_local" | grep -Fq 'target_process_live'; then
+  if ! sed -n '/^cmd_cleanup()/,/^}/p' "$remote_helper_local" | grep -F 'target_process_live' >/dev/null; then
     echo "Self-test failed: Deck runtime cleanup must classify process state." >&2
     exit 1
   fi
-  if ! sed -n '/^target_process_live()/,/^}/p' "$remote_helper_local" | grep -Fq "Z|X|'') return 1"; then
+  if ! sed -n '/^target_process_live()/,/^}/p' "$remote_helper_local" | grep -F "Z|X|'') return 1" >/dev/null; then
     echo "Self-test failed: Deck runtime cleanup must treat zombie and exited targets as non-live." >&2
     exit 1
   fi
@@ -1743,11 +1743,34 @@ run_self_test() {
     echo "Self-test failed: Deck session shell must live in steam-deck-remote.sh; inline remote_exec callers: $inline_remote_callers" >&2
     exit 1
   fi
-  if ! sed -n '/^ensure_remote_helper()/,/^}/p' "$0" | grep -Fq 'cmp -s' ||
-    ! sed -n '/^ensure_remote_helper()/,/^}/p' "$0" | grep -Fq 'mv -f'; then
+  if ! sed -n '/^ensure_remote_helper()/,/^}/p' "$0" | grep -F 'cmp -s' >/dev/null ||
+    ! sed -n '/^ensure_remote_helper()/,/^}/p' "$0" | grep -F 'mv -f' >/dev/null; then
     echo "Self-test failed: Deck helper installation must replace the helper atomically only when it changed." >&2
     exit 1
   fi
+  (
+    local helper_install_dir helper_before
+    helper_install_dir="$(mktemp -d "${TMPDIR:-/tmp}/steam-deck-helper-install-self-test.XXXXXX")"
+    trap 'rm -rf "$helper_install_dir"' EXIT
+    host="deck@example.invalid"
+    remote_helper_path="$helper_install_dir/helper with spaces.sh"
+    remote_helper_ready="0"
+    remote_exec() { bash -c "$1"; }
+    cp "$remote_helper_local" "$remote_helper_path"
+    chmod 0600 "$remote_helper_path"
+    ensure_remote_helper
+    if [ ! -x "$remote_helper_path" ] || ! cmp -s "$remote_helper_local" "$remote_helper_path"; then
+      echo "Self-test failed: Identical helper content with lost executable permission must be repaired." >&2
+      exit 1
+    fi
+    helper_before="$(ls -id "$remote_helper_path")"
+    remote_helper_ready="0"
+    ensure_remote_helper
+    if [ "$(ls -id "$remote_helper_path")" != "$helper_before" ]; then
+      echo "Self-test failed: An unchanged executable helper must not be replaced." >&2
+      exit 1
+    fi
+  )
   check_ssh_status=0
   (remote_exec() { return 255; }; check_ssh) >/dev/null 2>&1 || check_ssh_status=$?
   if [ "$check_ssh_status" != "255" ]; then
