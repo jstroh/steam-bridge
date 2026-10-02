@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-09-30
+Last reviewed: 2026-10-01
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -11,6 +11,33 @@ Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
 ## Active goal
+
+Fix the confirmed Linux/Deck F13-F24 conversion gap without changing the global
+keymap or public input payload. The standard evdev map names these physical
+keys FK13-FK24, but its symbols are media actions or NoSymbol; symbol-only
+conversion emitted virtual key zero. The repair caches the active server's XKB
+key names and rescues only unresolved media/missing symbols on those exact
+physical keys. Recognized remaps, printable text, keypad modifiers and dedicated
+media keys retain their existing behavior. Core and XKB mapping/name/device
+notifications refresh the cache; no server query or allocation was added per key.
+Held-key virtual identities remain pinned through repeats and release, so a
+mapping change cannot strand the previous key; focus changes clear that state.
+
+The isolated Xvfb/XTest regression failed before the repair with F13 press and
+release both reporting zero. It now verifies all twelve down/up pairs through
+the real X11/GLX host, alongside punctuation, auto-repeat and pointer edges.
+All 62 Linux native tests pass under isolated Xvfb; synthetic XKB name/device
+notifications also replace a stale cache from the actual server. This is not
+actual Steam Deck gameplay qualification or an actual live layout-switch test.
+Windows `npm test`, platform/type/API checks, native format/check and native
+tests pass (101 native passed, 13 existing hardware ignores). Linux package smoke
+also passes in an isolated source fixture. A separately identified private Linux
+addon was built; it requires at most GLIBC 2.39, not a generic Linux release
+baseline. Next: qualify the private consumer candidate on the Deck and record
+exact limitations. The public CI/package gate still needs verification after push.
+No release tag, published package, Steam configuration or global keymap changed.
+
+### Completed incoming-main review
 
 Review of incoming main `b6ccfe3` found and corrected four Deck-helper issues:
 the inhibitor stop expanded malformed PID-file contents into `kill` arguments;

@@ -72,6 +72,14 @@ application-host model) and
 attachment. These APIs own presentation resources, not your application's game
 logic, menu policy, or render loop.
 
+The Linux native host preserves F13-F24 legacy action keys even when the active
+evdev keymap exposes media symbols or no symbol. It uses exact physical XKB
+names FK13-FK24 only when symbol conversion is unresolved; recognized remaps and
+dedicated media keys retain their existing behavior. Mapping notifications
+refresh the cached names, and held keys keep their initial virtual key until
+release. This does not alter the user's keymap or supply controller bindings;
+qualify trusted down/up and gameplay actions on the target device.
+
 Windows attached child/popup presentation is unsupported. Direct Chromium
 hooking, WGL, in-process GPU, and DirectComposition-off switches are diagnostic
 comparisons, not production fallbacks. Do not choose one merely because a

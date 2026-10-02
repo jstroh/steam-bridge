@@ -7203,7 +7203,10 @@ mod linux {
         dri3_dma_buf_importer: Option<Dri3DmaBufImporter>,
         frame_draw_count: u64,
         detectable_auto_repeat: bool,
+        xkb_event_base: Option<c_int>,
+        extended_function_keys: [u8; 256],
         pressed_keycodes: [u64; 4],
+        pressed_virtual_keys: [u8; 256],
         client_state_cache_active: bool,
         client_state_cache: std::cell::Cell<Option<(i32, i32, bool)>>,
     }
@@ -7380,6 +7383,15 @@ mod linux {
             while (surface.xlib_dispatch.pending)(surface.display) > 0 {
                 let mut event: xlib::XEvent = mem::MaybeUninit::uninit().assume_init();
                 (surface.xlib_dispatch.next_event)(surface.display, &mut event);
+                if refresh_linux_keyboard_mapping(
+                    &surface.xlib,
+                    surface.display,
+                    surface.xkb_event_base,
+                    &mut surface.extended_function_keys,
+                    &event,
+                ) {
+                    continue;
+                }
                 if matches!(
                     event.get_type(),
                     xlib::ConfigureNotify
@@ -8352,6 +8364,8 @@ mod linux {
             &mut detectable_auto_repeat_supported,
         );
         let detectable_auto_repeat = detectable_auto_repeat_supported != 0;
+        let xkb_event_base = select_keyboard_mapping_events(&xlib, display);
+        let extended_function_keys = extended_function_keys_from_display(&xlib, display);
         if managed_host && !application_host {
             let Some(xfixes) = xfixes.as_ref() else {
                 (xlib.XCloseDisplay)(display);
@@ -8730,7 +8744,10 @@ mod linux {
             dri3_dma_buf_importer: None,
             frame_draw_count: 0,
             detectable_auto_repeat,
+            xkb_event_base,
+            extended_function_keys,
             pressed_keycodes: [0; 4],
+            pressed_virtual_keys: [0; 256],
             client_state_cache_active: false,
             client_state_cache: std::cell::Cell::new(None),
         })
@@ -8969,12 +8986,15 @@ mod linux {
                 let shift = key.state & xlib::ShiftMask != 0;
                 let control = key.state & xlib::ControlMask != 0;
                 let alt = key.state & xlib::Mod1Mask != 0;
-                let virtual_key = key_event_virtual_key(&surface.xlib, &mut key);
+                let resolved_virtual_key =
+                    key_event_virtual_key(&surface.xlib, &mut key, &surface.extended_function_keys);
                 let (client_width, client_height, minimized) = linux_client_state(surface);
-                let repeat = record_key_transition(
+                let (virtual_key, repeat) = record_linux_key_transition(
                     &mut surface.pressed_keycodes,
+                    &mut surface.pressed_virtual_keys,
                     key.keycode,
                     event_type == xlib::KeyPress,
+                    resolved_virtual_key,
                 );
                 let lparam =
                     if alt { 0x2000_0000 } else { 0 } | if repeat { 0x4000_0000 } else { 0 };
@@ -9028,6 +9048,7 @@ mod linux {
                 let focus = event.focus_change;
                 if focus.window == surface.window {
                     surface.pressed_keycodes = [0; 4];
+                    surface.pressed_virtual_keys = [0; 256];
                     let (client_width, client_height, minimized) = linux_client_state(surface);
                     push_linux_input_event(LinuxInputEvent {
                         kind: if event_type == xlib::FocusIn {
@@ -9303,12 +9324,136 @@ mod linux {
         matches!(symbol as c_uint, keysym::XK_KP_Home..=keysym::XK_KP_Delete)
     }
 
-    unsafe fn key_event_virtual_key(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> u64 {
+    fn record_linux_key_transition(
+        pressed: &mut [u64; 4],
+        virtual_keys: &mut [u8; 256],
+        keycode: c_uint,
+        press: bool,
+        resolved_virtual_key: u64,
+    ) -> (u64, bool) {
+        let Some(held_virtual_key) = virtual_keys.get_mut(keycode as usize) else {
+            return (resolved_virtual_key, false);
+        };
+        let was_pressed = pressed[keycode as usize / 64] & (1u64 << (keycode % 64)) != 0;
+        let repeat = record_key_transition(pressed, keycode, press);
+        let virtual_key = if was_pressed {
+            u64::from(*held_virtual_key)
+        } else {
+            resolved_virtual_key
+        };
+        *held_virtual_key = if press { virtual_key as u8 } else { 0 };
+        (virtual_key, repeat)
+    }
+
+    const XKB_USE_CORE_KBD: c_uint = 0x0100;
+    const XKB_KEY_NAMES_MASK: c_uint = 1 << 9;
+
+    fn extended_function_key_from_name(name: [c_char; 4]) -> u8 {
+        let name = name.map(|byte| byte as u8);
+        match name {
+            [b'F', b'K', b'1', digit @ b'3'..=b'9'] => 0x7C + digit - b'3',
+            [b'F', b'K', b'2', digit @ b'0'..=b'4'] => 0x83 + digit - b'0',
+            _ => 0,
+        }
+    }
+
+    unsafe fn extended_function_keys_from_display(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+    ) -> [u8; 256] {
+        let mut keys = [0; 256];
+        let keyboard = (xlib.XkbGetMap)(display, 0, XKB_USE_CORE_KBD);
+        if keyboard.is_null() {
+            return keys;
+        }
+        let fetched = (xlib.XkbGetNames)(display, XKB_KEY_NAMES_MASK, keyboard) == 0;
+        let names = (*keyboard).names;
+        if fetched && !names.is_null() && !(*names).keys.is_null() {
+            for code in (*keyboard).min_key_code..=(*keyboard).max_key_code {
+                keys[usize::from(code)] =
+                    extended_function_key_from_name((*(*names).keys.add(usize::from(code))).name);
+            }
+        }
+        (xlib.XkbFreeKeyboard)(keyboard, 0, xlib::True);
+        keys
+    }
+
+    unsafe fn select_keyboard_mapping_events(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+    ) -> Option<c_int> {
+        let (mut opcode, mut event_base, mut error_base, mut major, mut minor) = (0, 0, 0, 1, 0);
+        if (xlib.XkbQueryExtension)(
+            display,
+            &mut opcode,
+            &mut event_base,
+            &mut error_base,
+            &mut major,
+            &mut minor,
+        ) == 0
+        {
+            return None;
+        }
+        let mask =
+            xlib::XkbNewKeyboardNotifyMask | xlib::XkbMapNotifyMask | xlib::XkbNamesNotifyMask;
+        ((xlib.XkbSelectEvents)(display, XKB_USE_CORE_KBD, mask, mask) != 0).then_some(event_base)
+    }
+
+    unsafe fn refresh_linux_keyboard_mapping(
+        xlib: &xlib::Xlib,
+        display: *mut xlib::Display,
+        xkb_event_base: Option<c_int>,
+        extended_function_keys: &mut [u8; 256],
+        event: &xlib::XEvent,
+    ) -> bool {
+        if event.get_type() == xlib::MappingNotify {
+            let mut mapping = event.mapping;
+            (xlib.XRefreshKeyboardMapping)(&mut mapping);
+            if mapping.request == xlib::MappingKeyboard {
+                *extended_function_keys = extended_function_keys_from_display(xlib, display);
+            }
+            return true;
+        }
+        if Some(event.get_type()) != xkb_event_base {
+            return false;
+        }
+        let keyboard = &*(event as *const xlib::XEvent).cast::<xlib::XkbAnyEvent>();
+        match keyboard.xkb_type {
+            xlib::XkbMapNotify => {
+                let mut mapping = *(event as *const xlib::XEvent).cast::<xlib::XkbMapNotifyEvent>();
+                (xlib.XkbRefreshKeyboardMapping)(&mut mapping);
+            }
+            xlib::XkbNewKeyboardNotify | xlib::XkbNamesNotify => {}
+            _ => return true,
+        }
+        *extended_function_keys = extended_function_keys_from_display(xlib, display);
+        true
+    }
+
+    unsafe fn key_event_virtual_key(
+        xlib: &xlib::Xlib,
+        key: &mut xlib::XKeyEvent,
+        extended_function_keys: &[u8; 256],
+    ) -> u64 {
         let mut symbol = (xlib.XLookupKeysym)(key, 0);
         if keypad_keysym_depends_on_num_lock(symbol) {
             symbol = key_event_keysym(xlib, key);
         }
-        virtual_key_from_keysym(symbol)
+        virtual_key_from_keysym_and_physical_key(
+            symbol,
+            extended_function_keys
+                .get(key.keycode as usize)
+                .copied()
+                .unwrap_or(0),
+        )
+    }
+
+    fn virtual_key_from_keysym_and_physical_key(symbol: xlib::KeySym, physical_key: u8) -> u64 {
+        let virtual_key = virtual_key_from_keysym(symbol);
+        if virtual_key == 0 && (symbol == 0 || (0x1008_0000..=0x1008_FFFF).contains(&symbol)) {
+            return u64::from(physical_key);
+        }
+        virtual_key
     }
 
     unsafe fn key_press_character(xlib: &xlib::Xlib, key: &mut xlib::XKeyEvent) -> Option<u32> {
@@ -10884,12 +11029,134 @@ void main() {
     #[cfg(test)]
     mod tests {
         use super::{
-            character_from_keysym, key_event_virtual_key, key_press_character,
+            character_from_keysym, extended_function_key_from_name,
+            extended_function_keys_from_display, key_event_virtual_key, key_press_character,
             keypad_keysym_depends_on_num_lock, keysym, pointer_state_after_button,
-            record_key_transition, supports_dri3_pixmap_modifier, virtual_key_from_keysym,
-            windows_mouse_key_state, xlib, CHROMIUM_NO_DRM_MODIFIER,
+            record_key_transition, record_linux_key_transition, refresh_linux_keyboard_mapping,
+            select_keyboard_mapping_events, supports_dri3_pixmap_modifier, virtual_key_from_keysym,
+            virtual_key_from_keysym_and_physical_key, windows_mouse_key_state, xlib,
+            CHROMIUM_NO_DRM_MODIFIER,
         };
         use std::ptr;
+
+        #[test]
+        fn held_key_repeats_and_release_keep_the_original_mapping_until_the_next_press() {
+            let mut pressed = [0; 4];
+            let mut virtual_keys = [0; 256];
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, true, 0x7C),
+                (0x7C, false)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, true, 0),
+                (0x7C, true)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, false, 0),
+                (0x7C, false)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, true, 0x41),
+                (0x41, false)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, false, 0x7C),
+                (0x41, false)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, true, 0),
+                (0, false)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 191, false, 0x7C),
+                (0, false)
+            );
+            assert_eq!(
+                record_linux_key_transition(&mut pressed, &mut virtual_keys, 256, true, 0),
+                (0, false)
+            );
+        }
+
+        #[test]
+        fn extended_function_key_names_are_exact_and_bounded() {
+            let from_name =
+                |name: [u8; 4]| extended_function_key_from_name(name.map(|byte| byte as _));
+            for number in 13..=24 {
+                assert_eq!(
+                    from_name([b'F', b'K', b'0' + number / 10, b'0' + number % 10]),
+                    0x70 + number - 1
+                );
+            }
+            for name in [*b"FK12", *b"FK25", *b"FK1\0", *b"I191", *b"AE01", [255; 4]] {
+                assert_eq!(from_name(name), 0);
+            }
+        }
+
+        #[test]
+        fn extended_physical_keys_only_rescue_unmapped_media_or_missing_symbols() {
+            let vk = |symbol, physical| virtual_key_from_keysym_and_physical_key(symbol, physical);
+            for symbol in [0, 0x1008_FF81, 0x1008_FFB2, 0x1008_FFB0, 0x1008_1020] {
+                assert_eq!(vk(symbol, 0x7C), 0x7C);
+                assert_eq!(vk(symbol, 0), 0);
+            }
+            assert_eq!(vk(keysym::XK_Escape.into(), 0x7C), 0x1B);
+            assert_eq!(vk(keysym::XK_F24.into(), 0x7C), 0x87);
+            assert_eq!(vk(keysym::XK_period.into(), 0x7C), 0xBE);
+            assert_eq!(vk(0x0100_0430, 0x7C), 0);
+            assert_eq!(vk(0xFE51, 0x7C), 0);
+        }
+
+        #[test]
+        fn x11_extended_key_names_are_read_from_the_active_server() {
+            let require_display = std::env::var_os("STEAM_BRIDGE_REQUIRE_X11_TESTS").is_some();
+            let Ok(xlib) = xlib::Xlib::open() else {
+                assert!(!require_display, "Xlib is unavailable");
+                return;
+            };
+            let display = unsafe { (xlib.XOpenDisplay)(ptr::null()) };
+            if display.is_null() {
+                assert!(!require_display, "no X11 display is available");
+                return;
+            }
+            let physical_keys = unsafe { extended_function_keys_from_display(&xlib, display) };
+            for index in 0..12 {
+                assert_eq!(physical_keys[191 + index], 0x7C + index as u8);
+                for event_type in [xlib::KeyPress, xlib::KeyRelease] {
+                    let mut key: xlib::XKeyEvent = unsafe { std::mem::zeroed() };
+                    key.type_ = event_type;
+                    key.display = display;
+                    key.keycode = 191 + index as u32;
+                    assert_eq!(
+                        unsafe { key_event_virtual_key(&xlib, &mut key, &physical_keys) },
+                        u64::from(0x7C + index as u8)
+                    );
+                }
+            }
+            assert_eq!(physical_keys[38], 0);
+            let event_base = unsafe { select_keyboard_mapping_events(&xlib, display) }
+                .expect("select XKB mapping events");
+            for xkb_type in [xlib::XkbNamesNotify, xlib::XkbNewKeyboardNotify] {
+                let mut event: xlib::XEvent = unsafe { std::mem::zeroed() };
+                unsafe {
+                    let keyboard = (&mut event as *mut xlib::XEvent).cast::<xlib::XkbAnyEvent>();
+                    (*keyboard).type_ = event_base;
+                    (*keyboard).display = display;
+                    (*keyboard).xkb_type = xkb_type;
+                }
+                let mut stale = [0xFF; 256];
+                assert!(unsafe {
+                    refresh_linux_keyboard_mapping(
+                        &xlib,
+                        display,
+                        Some(event_base),
+                        &mut stale,
+                        &event,
+                    )
+                });
+                assert_eq!(stale, physical_keys);
+            }
+            unsafe { (xlib.XCloseDisplay)(display) };
+        }
 
         #[test]
         fn button_state_reports_windows_style_post_event_masks() {
@@ -11060,6 +11327,29 @@ void main() {
             assert_eq!(of_kind(&events, "keyUp", 0xBE).len(), 1, "{events:?}");
             assert!(of_kind(&events, "keyDown", 0x2E).is_empty(), "{events:?}");
 
+            for index in 0..12 {
+                events.clear();
+                fake_key(191 + index, true);
+                fake_key(191 + index, false);
+                collect(40, &mut events);
+                let virtual_key = u64::from(0x7C + index);
+                assert_eq!(
+                    of_kind(&events, "keyDown", virtual_key).len(),
+                    1,
+                    "F{}: {events:?}",
+                    13 + index
+                );
+                assert_eq!(
+                    of_kind(&events, "keyUp", virtual_key).len(),
+                    1,
+                    "{events:?}"
+                );
+                assert!(
+                    of_kind(&events, "char", virtual_key).is_empty(),
+                    "{events:?}"
+                );
+            }
+
             events.clear();
             let letter = key_code(keysym::XK_a);
             fake_key(letter, true);
@@ -11155,7 +11445,7 @@ void main() {
                 key.keycode = (xlib.XKeysymToKeycode)(display, xlib::KeySym::from(symbol)).into();
                 key.state = state;
                 (
-                    key_event_virtual_key(&xlib, &mut key),
+                    key_event_virtual_key(&xlib, &mut key, &[0; 256]),
                     key_press_character(&xlib, &mut key),
                 )
             };
