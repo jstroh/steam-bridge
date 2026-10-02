@@ -52,7 +52,10 @@ errors against the two older matchers. They now accept optional trailing commas,
 with no generated API/argument change; Rust 1.99 formatting is applied. Corrected
 Windows native check, full npm/native tests, format and API coverage pass;
 the corrected Linux fixture passes all 62 native tests under Xvfb and package
-smoke. Next: verify follow-up CI. The exact Deck-tested native
+smoke. Follow-up CI `36958046242` at `36a5bfe` passed all nine jobs, including
+all three native targets, isolated Linux Xvfb, package smoke, dependency security
+and Node 18/20/22/24 compatibility. Next: continue the separate virtual-controller
+configuration diagnosis and consumer incoming-code review. The exact Deck-tested native
 source remains `f8e01cb`; later formatting/matcher work is not a transferred
 candidate-bound live receipt.
 No release tag, published package, Steam configuration or global keymap changed.
