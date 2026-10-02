@@ -7576,7 +7576,7 @@ pub fn inventory_inspect_item(item_token: String) -> Result<Option<i32>, Error> 
 }
 
 macro_rules! game_server_inventory_wrapper {
-    ($js_name:literal, $fn_name:ident, $client_fn:ident($($arg:ident: $arg_ty:ty),*) -> $return_ty:ty) => {
+    ($js_name:literal, $fn_name:ident, $client_fn:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $return_ty:ty) => {
         #[napi(js_name = $js_name)]
         pub fn $fn_name($($arg: $arg_ty),*) -> Result<$return_ty, Error> {
             with_game_server_inventory(|| $client_fn($($arg),*))
@@ -7600,7 +7600,7 @@ game_server_inventory_wrapper!(
     inventory_get_result_item_property(
         result_handle: i32,
         item_index: u32,
-        property_name: Option<String>
+        property_name: Option<String>,
     ) -> Option<String>
 );
 game_server_inventory_wrapper!(
@@ -7668,7 +7668,7 @@ game_server_inventory_wrapper!(
     game_server_inventory_exchange_items,
     inventory_exchange_items(
         generate: Vec<InventoryItemQuantity>,
-        destroy: Vec<InventoryInstanceQuantity>
+        destroy: Vec<InventoryInstanceQuantity>,
     ) -> Option<i32>
 );
 game_server_inventory_wrapper!(
@@ -7677,7 +7677,7 @@ game_server_inventory_wrapper!(
     inventory_transfer_item_quantity(
         source_item_id: BigInt,
         quantity: u32,
-        destination_item_id: Option<BigInt>
+        destination_item_id: Option<BigInt>,
     ) -> Option<i32>
 );
 game_server_inventory_wrapper!(
@@ -7696,7 +7696,7 @@ game_server_inventory_wrapper!(
     inventory_trade_items(
         trade_partner_steam_id64: BigInt,
         give: Vec<InventoryInstanceQuantity>,
-        get: Vec<InventoryInstanceQuantity>
+        get: Vec<InventoryInstanceQuantity>,
     ) -> Option<i32>
 );
 game_server_inventory_wrapper!(
@@ -7714,7 +7714,7 @@ game_server_inventory_wrapper!(
     game_server_inventory_get_item_definition_property,
     inventory_get_item_definition_property(
         definition: i32,
-        property_name: Option<String>
+        property_name: Option<String>,
     ) -> Option<String>
 );
 
@@ -7817,7 +7817,11 @@ game_server_inventory_wrapper!(
 game_server_inventory_wrapper!(
     "gameServerInventoryRemoveProperty",
     game_server_inventory_remove_property,
-    inventory_remove_property(update_handle: BigInt, item_id: BigInt, property_name: String) -> bool
+    inventory_remove_property(
+        update_handle: BigInt,
+        item_id: BigInt,
+        property_name: String,
+    ) -> bool
 );
 game_server_inventory_wrapper!(
     "gameServerInventorySetPropertyString",
@@ -7826,7 +7830,7 @@ game_server_inventory_wrapper!(
         update_handle: BigInt,
         item_id: BigInt,
         property_name: String,
-        value: String
+        value: String,
     ) -> bool
 );
 game_server_inventory_wrapper!(
@@ -7836,7 +7840,7 @@ game_server_inventory_wrapper!(
         update_handle: BigInt,
         item_id: BigInt,
         property_name: String,
-        value: bool
+        value: bool,
     ) -> bool
 );
 game_server_inventory_wrapper!(
@@ -7846,7 +7850,7 @@ game_server_inventory_wrapper!(
         update_handle: BigInt,
         item_id: BigInt,
         property_name: String,
-        value: BigInt
+        value: BigInt,
     ) -> bool
 );
 game_server_inventory_wrapper!(
@@ -7856,7 +7860,7 @@ game_server_inventory_wrapper!(
         update_handle: BigInt,
         item_id: BigInt,
         property_name: String,
-        value: f64
+        value: f64,
     ) -> bool
 );
 game_server_inventory_wrapper!(
@@ -13643,7 +13647,7 @@ pub fn networking_sockets_create_fake_udp_port(
 }
 
 macro_rules! game_server_networking_sockets_wrapper {
-    ($js_name:literal, $fn_name:ident, $client_fn:ident($($arg:ident: $arg_ty:ty),*) -> $return_ty:ty) => {
+    ($js_name:literal, $fn_name:ident, $client_fn:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $return_ty:ty) => {
         #[napi(js_name = $js_name)]
         pub fn $fn_name($($arg: $arg_ty),*) -> Result<$return_ty, Error> {
             with_game_server_networking_sockets(|| $client_fn($($arg),*))
@@ -13656,7 +13660,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_create_listen_socket_ip,
     networking_sockets_create_listen_socket_ip(
         address: NetworkingIpAddress,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13664,7 +13668,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_connect_by_ip_address,
     networking_sockets_connect_by_ip_address(
         address: NetworkingIpAddress,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13672,7 +13676,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_create_listen_socket_p2p,
     networking_sockets_create_listen_socket_p2p(
         local_virtual_port: Option<i32>,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13681,7 +13685,7 @@ game_server_networking_sockets_wrapper!(
     networking_sockets_connect_p2p(
         identity: NetworkingIdentity,
         remote_virtual_port: Option<i32>,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13691,16 +13695,13 @@ game_server_networking_sockets_wrapper!(
         signaling_pointer: BigInt,
         peer_identity: Option<NetworkingIdentity>,
         remote_virtual_port: Option<i32>,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsReceivedP2pCustomSignal",
     game_server_networking_sockets_received_p2p_custom_signal,
-    networking_sockets_received_p2p_custom_signal(
-        message: Buffer,
-        context_pointer: BigInt
-    ) -> bool
+    networking_sockets_received_p2p_custom_signal(message: Buffer, context_pointer: BigInt) -> bool
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsAcceptConnection",
@@ -13714,7 +13715,7 @@ game_server_networking_sockets_wrapper!(
         connection: u32,
         reason: Option<i32>,
         debug: Option<String>,
-        enable_linger: Option<bool>
+        enable_linger: Option<bool>,
     ) -> bool
 );
 game_server_networking_sockets_wrapper!(
@@ -13748,13 +13749,15 @@ game_server_networking_sockets_wrapper!(
     networking_sockets_send_message_to_connection(
         connection: u32,
         data: Buffer,
-        send_flags: Option<i32>
+        send_flags: Option<i32>,
     ) -> NetworkingSocketSendResult
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsSendMessages",
     game_server_networking_sockets_send_messages,
-    networking_sockets_send_messages(messages: Vec<NetworkingSocketOutgoingMessage>) -> Vec<NetworkingSocketSendResult>
+    networking_sockets_send_messages(
+        messages: Vec<NetworkingSocketOutgoingMessage>,
+    ) -> Vec<NetworkingSocketSendResult>
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsFlushMessagesOnConnection",
@@ -13766,7 +13769,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_receive_messages_on_connection,
     networking_sockets_receive_messages_on_connection(
         connection: u32,
-        max_messages: Option<u32>
+        max_messages: Option<u32>,
     ) -> Vec<NetworkingMessage>
 );
 game_server_networking_sockets_wrapper!(
@@ -13777,22 +13780,28 @@ game_server_networking_sockets_wrapper!(
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetConnectionRealTimeStatus",
     game_server_networking_sockets_get_connection_real_time_status,
-    networking_sockets_get_connection_real_time_status(connection: u32) -> Option<NetworkingConnectionRealTimeStatus>
+    networking_sockets_get_connection_real_time_status(
+        connection: u32,
+    ) -> Option<
+        NetworkingConnectionRealTimeStatus,
+    >
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetConnectionRealTimeStatusWithLanes",
     game_server_networking_sockets_get_connection_real_time_status_with_lanes,
     networking_sockets_get_connection_real_time_status_with_lanes(
         connection: u32,
-        max_lanes: Option<u32>
-    ) -> Option<NetworkingConnectionRealTimeStatusWithLanes>
+        max_lanes: Option<u32>,
+    ) -> Option<
+        NetworkingConnectionRealTimeStatusWithLanes,
+    >
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetDetailedConnectionStatus",
     game_server_networking_sockets_get_detailed_connection_status,
     networking_sockets_get_detailed_connection_status(
         connection: u32,
-        max_bytes: Option<u32>
+        max_bytes: Option<u32>,
     ) -> Option<String>
 );
 game_server_networking_sockets_wrapper!(
@@ -13806,7 +13815,7 @@ game_server_networking_sockets_wrapper!(
     networking_sockets_create_socket_pair(
         use_network_loopback: bool,
         identity1: Option<NetworkingIdentity>,
-        identity2: Option<NetworkingIdentity>
+        identity2: Option<NetworkingIdentity>,
     ) -> Option<NetworkingSocketPair>
 );
 game_server_networking_sockets_wrapper!(
@@ -13815,7 +13824,7 @@ game_server_networking_sockets_wrapper!(
     networking_sockets_configure_connection_lanes(
         connection: u32,
         priorities: Vec<i32>,
-        weights: Option<Vec<u32>>
+        weights: Option<Vec<u32>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13858,7 +13867,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_receive_messages_on_poll_group,
     networking_sockets_receive_messages_on_poll_group(
         poll_group: u32,
-        max_messages: Option<u32>
+        max_messages: Option<u32>,
     ) -> Vec<NetworkingMessage>
 );
 game_server_networking_sockets_wrapper!(
@@ -13871,7 +13880,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_find_relay_auth_ticket_for_server,
     networking_sockets_find_relay_auth_ticket_for_server(
         identity: NetworkingIdentity,
-        remote_virtual_port: Option<i32>
+        remote_virtual_port: Option<i32>,
     ) -> i32
 );
 game_server_networking_sockets_wrapper!(
@@ -13880,7 +13889,7 @@ game_server_networking_sockets_wrapper!(
     networking_sockets_connect_to_hosted_dedicated_server(
         identity: NetworkingIdentity,
         remote_virtual_port: Option<i32>,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13903,7 +13912,7 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_create_hosted_dedicated_server_listen_socket,
     networking_sockets_create_hosted_dedicated_server_listen_socket(
         local_virtual_port: Option<i32>,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
@@ -13917,7 +13926,9 @@ game_server_networking_sockets_wrapper!(
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetCertificateRequest",
     game_server_networking_sockets_get_certificate_request,
-    networking_sockets_get_certificate_request(max_bytes: Option<u32>) -> NetworkingCertificateResult
+    networking_sockets_get_certificate_request(
+        max_bytes: Option<u32>,
+    ) -> NetworkingCertificateResult
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsSetCertificate",
@@ -13944,13 +13955,15 @@ game_server_networking_sockets_wrapper!(
     game_server_networking_sockets_create_listen_socket_p2p_fake_ip,
     networking_sockets_create_listen_socket_p2p_fake_ip(
         idx_fake_port: Option<i32>,
-        options: Option<Vec<NetworkingConfigValue>>
+        options: Option<Vec<NetworkingConfigValue>>,
     ) -> u32
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsGetRemoteFakeIpForConnection",
     game_server_networking_sockets_get_remote_fake_ip_for_connection,
-    networking_sockets_get_remote_fake_ip_for_connection(connection: u32) -> NetworkingRemoteFakeIpResult
+    networking_sockets_get_remote_fake_ip_for_connection(
+        connection: u32,
+    ) -> NetworkingRemoteFakeIpResult
 );
 game_server_networking_sockets_wrapper!(
     "gameServerNetworkingSocketsCreateFakeUdpPort",

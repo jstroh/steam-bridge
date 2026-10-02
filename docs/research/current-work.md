@@ -27,14 +27,34 @@ The isolated Xvfb/XTest regression failed before the repair with F13 press and
 release both reporting zero. It now verifies all twelve down/up pairs through
 the real X11/GLX host, alongside punctuation, auto-repeat and pointer edges.
 All 62 Linux native tests pass under isolated Xvfb; synthetic XKB name/device
-notifications also replace a stale cache from the actual server. This is not
-actual Steam Deck gameplay qualification or an actual live layout-switch test.
+notifications also replace a stale cache from the actual server. A private
+consumer on actual Deck Game Mode now received all twelve trusted down/up pairs
+from a kernel-uinput keyboard while the original media/NoSymbol keymap remained
+unchanged. F19 also worked during gameplay and after ordinary overlay B-close
+with native/browser focus restored. Original installed files, symlinks and modes
+were restored exactly; the temporary keyboard/pad service, socket and debugger
+tunnel were removed. This is focused key conversion proof, not full gameplay,
+built-in HID, actual live layout-switch or release-candidate qualification.
 Windows `npm test`, platform/type/API checks, native format/check and native
 tests pass (101 native passed, 13 existing hardware ignores). Linux package smoke
 also passes in an isolated source fixture. A separately identified private Linux
 addon was built; it requires at most GLIBC 2.39, not a generic Linux release
-baseline. Next: qualify the private consumer candidate on the Deck and record
-exact limitations. The public CI/package gate still needs verification after push.
+baseline. The virtual generic pad still produced no legacy D-pad key during
+gameplay despite both controllers reporting the Gameplay set; direct keyboard
+F19 on the same candidate worked. Do not treat conversion alone as fixing that
+separate unqualified controller/configuration path or alter user bindings.
+
+CI `36956812710` passed unit/native tests, isolated Linux Xvfb, package smoke,
+dependency audit and all four Node compatibility jobs, but every platform stopped
+at formatting: Rust stable advanced to 1.99 on October 1 and now formats wrapper
+macro arguments with trailing commas. Formatting alone reproduced 31 compile
+errors against the two older matchers. They now accept optional trailing commas,
+with no generated API/argument change; Rust 1.99 formatting is applied. Corrected
+Windows native check, full npm/native tests, format and API coverage pass;
+the corrected Linux fixture passes all 62 native tests under Xvfb and package
+smoke. Next: verify follow-up CI. The exact Deck-tested native
+source remains `f8e01cb`; later formatting/matcher work is not a transferred
+candidate-bound live receipt.
 No release tag, published package, Steam configuration or global keymap changed.
 
 ### Completed incoming-main review
