@@ -677,6 +677,15 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-03 source CI at `0b07a8e` completed: Windows, Linux (including
+  isolated Xvfb), Apple Silicon macOS, package smoke and all four Node runtime
+  jobs pass. The dependency audit fails on GHSA-ch52-4w7c-c8xp, propagated into
+  eight high-severity development/build-tool findings. Production-only audit
+  is clean. All published http-cache-semantics versions remain affected with no
+  patched version; no compatible lock-only update fixes the chain. Do not force
+  a builder downgrade or override its downloader across a breaking major API.
+  No audit bypass, package publication or release qualification followed.
+  See `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` in the findings ledger.
 - 2026-10-03 reviewed input source at `e1d2495`: full Windows npm test passes
   492 JavaScript tests (three existing skips) and 101 native tests (13 hardware
   ignores), plus platform, native format/check, API and whitespace gates. Eight
