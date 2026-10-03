@@ -45,7 +45,8 @@ canonicalization against its older pinned package is idempotent with this
 corrected generator. Matched private revision 2.4 emits the correct physical
 commands on actual Game Mode; corrected virtual X/Y helpers use kernel xpad
 letter aliases rather than misleading geometric aliases. See
-`INPUT-LEGACY-MENU-VIEW-001`. The library source is local, not published/repinned.
+`INPUT-LEGACY-MENU-VIEW-001`. The library source is committed for source push;
+no corrected npm package has been published or repinned.
 
 Original installed objects, symlinks and modes were restored exactly. Owned
 input, inhibitor, capture, server and debugger resources are stopped; Wayland
@@ -676,6 +677,16 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-03 reviewed input source at `e1d2495`: full Windows npm test passes
+  492 JavaScript tests (three existing skips) and 101 native tests (13 hardware
+  ignores), plus platform, native format/check, API and whitespace gates. Eight
+  actual service/preload tests preserve both strict renderer polling and advanced
+  manual compatibility. A fresh Git-archive Linux fixture passes build and complete
+  package smoke using a retained Linux native payload only for package loading;
+  this is not new native or candidate-bound live proof. The native Windows package
+  smoke hits the already-recorded POSIX-permission environment limitation; no host
+  security or permission policy was changed. Source push does not publish, repin,
+  transfer old live qualification or satisfy the remaining consumer/device gates.
 - 2026-09-30 incoming-main review: the four helper corrections above have
   failing-before coverage. With the QA example on Electron 44.5.1, full
   Windows tests, typecheck, platform/API checks, native format/check, the
