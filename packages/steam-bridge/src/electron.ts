@@ -25,6 +25,7 @@ export type ElectronSteamInputFrame<TDefinition extends SteamInputDefinition = S
   ElectronSteamInputValue<SteamInputFrame<TDefinition>>;
 
 export interface ElectronSteamInputTransportOptions {
+  requestCorrelation?: boolean;
   /** Dedicated MessagePort bootstrap channel. Defaults to `steam-bridge:steam-input`. */
   channel?: string;
   /** Test/embedding hook. Normal Electron applications should omit this. */
@@ -33,9 +34,9 @@ export interface ElectronSteamInputTransportOptions {
 
 export interface ElectronSteamInputTransport<TDefinition extends SteamInputDefinition = SteamInputDefinition> {
   /** Poll Steam Input exactly once and publish the newest frame without an unbounded IPC queue. */
-  update(): SteamInputFrame<TDefinition>;
+  update(requestId?: number): SteamInputFrame<TDefinition>;
   /** Publish an already-polled frame when the application owns the game-frame scheduler. */
-  publish(frame: SteamInputFrame<TDefinition>): void;
+  publish(frame: SteamInputFrame<TDefinition>, requestId?: number): void;
   getDiagnostics(): ElectronSteamInputTransportDiagnostics;
   close(): void;
   readonly closed: boolean;
@@ -104,9 +105,9 @@ export interface ElectronSteamInputPreloadOptions {
 }
 
 export interface ElectronSteamInputIpcMain {
-  on(channel: string, listener: (event: ElectronSteamInputRequestEvent) => void): unknown;
-  off?(channel: string, listener: (event: ElectronSteamInputRequestEvent) => void): unknown;
-  removeListener?(channel: string, listener: (event: ElectronSteamInputRequestEvent) => void): unknown;
+  on(channel: string, listener: (event: ElectronSteamInputRequestEvent, requestId?: number) => void): unknown;
+  off?(channel: string, listener: (event: ElectronSteamInputRequestEvent, requestId?: number) => void): unknown;
+  removeListener?(channel: string, listener: (event: ElectronSteamInputRequestEvent, requestId?: number) => void): unknown;
 }
 
 export interface ElectronSteamInputRequestEvent {
@@ -306,10 +307,11 @@ export function createElectronSteamInputService<TDefinition extends SteamInputDe
 
   const trusted = (): boolean => !webContents.isDestroyed?.() && (options.isTrusted?.(webContents) ?? true);
   const active = (): boolean => options.isActive?.() ?? true;
-  const complete = (published: boolean): void => {
+  const complete = (published: boolean, requestId?: number): void => {
     if (webContents.isDestroyed?.()) return;
     try {
-      webContents.send(completionChannel, published);
+      if (requestId === undefined) webContents.send(completionChannel, published);
+      else webContents.send(completionChannel, published, requestId);
     } catch (error) {
       failedRequestCount += 1;
       emitElectronSteamInputWarning(
@@ -333,24 +335,26 @@ export function createElectronSteamInputService<TDefinition extends SteamInputDe
     if (!trusted()) return;
     transport = createElectronSteamInputTransport(session, webContents, {
       channel: options.channel,
+      requestCorrelation: options.requestCorrelation ?? false,
       createMessageChannel: options.createMessageChannel
     });
   };
-  const update = (): SteamInputFrame<TDefinition> | null => {
+  const update = (requestId?: number): SteamInputFrame<TDefinition> | null => {
     if (isClosed || requestInProgress || !trusted() || !active() || !transport || transport.closed) return null;
     requestInProgress = true;
     try {
-      return transport.update();
+      return transport.update(requestId);
     } finally {
       requestInProgress = false;
     }
   };
-  const onRequest = (event: ElectronSteamInputRequestEvent): void => {
+  const onRequest = (event: ElectronSteamInputRequestEvent, requestId?: number): void => {
     if (event.sender !== webContents) return;
     requestCount += 1;
     let published = false;
     try {
-      published = update() != null;
+      published = (requestId === undefined || (Number.isSafeInteger(requestId) && requestId > 0))
+        && update(requestId) != null;
       if (!published) skippedRequestCount += 1;
     } catch (error) {
       failedRequestCount += 1;
@@ -358,7 +362,7 @@ export function createElectronSteamInputService<TDefinition extends SteamInputDe
     } finally {
       // A published MessagePort frame clears renderer backpressure directly.
       // The fallback IPC is needed only when no frame was delivered.
-      if (!published) complete(false);
+      if (!published) complete(false, requestId);
     }
   };
   const onFinishedLoad = (): void => {
@@ -707,6 +711,7 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
   let isClosed = false;
   let inFlightSequence: string | null = null;
   let pendingFrame: ElectronSteamInputFrame<TDefinition> | null = null;
+  let pendingRequestId: number | undefined;
   let lastPublishedSequence: string | null = null;
   let lastAcknowledgedSequence: string | null = null;
   let publishedFrameCount = 0;
@@ -717,10 +722,12 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
   const sendPendingFrame = (): void => {
     if (isClosed || inFlightSequence != null || pendingFrame == null) return;
     const frame = pendingFrame;
+    const requestId = pendingRequestId;
     pendingFrame = null;
+    pendingRequestId = undefined;
     inFlightSequence = frame.sequence;
     try {
-      mainPort.postMessage({ type: "frame", version: 1, frame });
+      mainPort.postMessage({ type: "frame", version: 1, frame, ...(requestId === undefined ? {} : { requestId }) });
       sentFrameCount += 1;
     } catch (error) {
       inFlightSequence = null;
@@ -751,6 +758,7 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     if (isClosed) return;
     isClosed = true;
     pendingFrame = null;
+    pendingRequestId = undefined;
     inFlightSequence = null;
     webContents.off?.("destroyed", onDestroyed);
     webContents.off?.("render-process-gone", onDestroyed);
@@ -790,7 +798,8 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
     webContents.on?.("destroyed", onDestroyed);
     webContents.on?.("render-process-gone", onDestroyed);
     webContents.on?.("did-start-navigation", onNavigation);
-    webContents.postMessage(channel, { type: "connect", version: 1 }, [messageChannel.port1]);
+    webContents.postMessage(channel, { type: "connect", version: 1,
+      ...(options.requestCorrelation ? { requestCorrelationVersion: 1 } : {}) }, [messageChannel.port1]);
   } catch (error) {
     closeTransport();
     try {
@@ -802,12 +811,12 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
   }
 
   const transport: ElectronSteamInputTransport<TDefinition> = {
-    update(): SteamInputFrame<TDefinition> {
+    update(requestId?: number): SteamInputFrame<TDefinition> {
       const frame = session.update();
-      transport.publish(frame);
+      transport.publish(frame, requestId);
       return frame;
     },
-    publish(frame: SteamInputFrame<TDefinition>): void {
+    publish(frame: SteamInputFrame<TDefinition>, requestId?: number): void {
       if (isClosed) return;
       const serialized = serializeElectronSteamInputFrame(frame);
       if (!isElectronSteamInputFrame(serialized)) {
@@ -822,6 +831,7 @@ export function createElectronSteamInputTransport<TDefinition extends SteamInput
       lastPublishedSequence = serialized.sequence;
       if (pendingFrame != null) coalescedFrameCount += 1;
       pendingFrame = serialized;
+      pendingRequestId = requestId;
       sendPendingFrame();
     },
     getDiagnostics(): ElectronSteamInputTransportDiagnostics {

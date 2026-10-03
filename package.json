@@ -53,7 +53,7 @@
     "native:test": "node scripts/run-native-tests.cjs",
     "native:link": "npm run native:link -w steam-bridge",
     "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run steam-input:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
-    "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs"
+    "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs tests/electron-input-lifecycle.test.cjs"
   },
   "devDependencies": {
     "@electron/asar": "4.3.0",

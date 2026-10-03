@@ -196,7 +196,7 @@ function renderControllerLayout(
     movementGroup +
     `\t"group" { "id" "24" "mode" "trigger" "inputs" { ${button("edge", b.leftTrigger)} } }\n` +
     `\t"group" { "id" "25" "mode" "trigger" "inputs" { ${button("edge", b.rightTrigger)} } }\n` +
-    `\t"group" { "id" "26" "mode" "switches" "inputs" { ${button("button_escape", b.view)} ${button("button_menu", b.menu)} ${button("left_bumper", b.leftBumper)} ${button("right_bumper", b.rightBumper)} } }\n` +
+    `\t"group" { "id" "26" "mode" "switches" "inputs" { ${button("button_escape", b.menu)} ${button("button_menu", b.view)} ${button("left_bumper", b.leftBumper)} ${button("right_bumper", b.rightBumper)} } }\n` +
     `\t"group" { "id" "27" "mode" "joystick_mouse" "inputs" { ${button("click", b.pointerClick)} } "settings" { "output_joystick" "2" } }\n` +
     `\t"preset" { "id" "0" "name" "${actionSetName}" "group_source_bindings" { ${sourceBindings} } }\n` +
     `\t"settings" { "left_trackpad_mode" "0" "right_trackpad_mode" "0" }\n}\n`;

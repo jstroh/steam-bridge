@@ -25,6 +25,12 @@ if (process.isMainFrame !== false) {
   let captureDom = false;
   let domListenersInstalled = false;
   let requestPending = false;
+  let requestSequence = 0;
+  let pendingRequestId = null;
+  let requestCorrelation = false;
+  let steamFocusListenersInstalled = false;
+  let inputContextEpoch = null;
+  let inputContextActive = true;
   let steamPort;
   let steamInput = null;
   let wheelX = 0;
@@ -300,15 +306,37 @@ if (process.isMainFrame !== false) {
     try { steamPort.close(); } catch {}
     steamPort = undefined;
     requestPending = false;
+    pendingRequestId = null;
     steamInput = null;
   };
-  ipcRenderer.on(CONNECT_CHANNEL, (event) => {
+  const invalidateSteamInput = () => {
+    steamInput = null;
+    requestPending = false;
+    pendingRequestId = null;
+  };
+  ipcRenderer.on("steam-bridge:input-context", (_event, context) => {
+    if (!context || typeof context.epoch !== "string" || !/^(0|[1-9]\d{0,19})$/.test(context.epoch)
+      || typeof context.active !== "boolean") return;
+    if (inputContextEpoch !== context.epoch || inputContextActive !== context.active) invalidateSteamInput();
+    inputContextEpoch = context.epoch;
+    inputContextActive = context.active;
+  });
+  ipcRenderer.on(CONNECT_CHANNEL, (event, bootstrap) => {
     const [nextPort, ...extraPorts] = event.ports || [];
     for (const port of extraPorts) {
       try { port.close(); } catch {}
     }
     if (!nextPort) return;
     closeSteamPort();
+    requestCorrelation = bootstrap && bootstrap.requestCorrelationVersion === 1;
+    if (!steamFocusListenersInstalled) {
+      steamFocusListenersInstalled = true;
+      window.addEventListener("blur", invalidateSteamInput, true);
+      window.addEventListener("focus", invalidateSteamInput, true);
+      document.addEventListener("visibilitychange", invalidateSteamInput, true);
+      document.addEventListener("freeze", invalidateSteamInput, true);
+      document.addEventListener("resume", invalidateSteamInput, true);
+    }
     steamPort = nextPort;
     nextPort.onmessage = (messageEvent) => {
       if (steamPort !== nextPort) return;
@@ -318,9 +346,13 @@ if (process.isMainFrame !== false) {
         closeSteamPort();
         return;
       }
-      steamInput = frame;
-      requestPending = false;
-      if (hasSteamActionActivity(frame.primaryController)) recordActivity("steam-input", now());
+      const current = !requestCorrelation || (pendingRequestId !== null && message.requestId === pendingRequestId);
+      if (current && inputContextActive && document.hasFocus() && document.visibilityState === "visible"
+        && (inputContextEpoch === null || frame.inputEpoch === inputContextEpoch)) {
+        steamInput = frame;
+        if (hasSteamActionActivity(frame.primaryController)) recordActivity("steam-input", now());
+      } else if (current) steamInput = null;
+      if (current) { requestPending = false; pendingRequestId = null; }
       try {
         nextPort.postMessage({ type: "ack", sequence: frame.sequence });
       } catch {
@@ -329,7 +361,13 @@ if (process.isMainFrame !== false) {
     };
     nextPort.start && nextPort.start();
   });
-  ipcRenderer.on(COMPLETE_CHANNEL, () => { requestPending = false; });
+  ipcRenderer.on(COMPLETE_CHANNEL, (_event, published, requestId) => {
+    if (!requestCorrelation || requestId === pendingRequestId) {
+      if (published === false) steamInput = null;
+      requestPending = false;
+      pendingRequestId = null;
+    }
+  });
   ipcRenderer.on(NATIVE_INPUT_CHANNEL, (_event, value) => {
     if (
       !captureDom || !value || value.version !== 1 ||
@@ -372,9 +410,12 @@ if (process.isMainFrame !== false) {
   });
 
   const requestSteamFrame = () => {
-    if (!steamPort || requestPending || !document.hasFocus() || document.visibilityState !== "visible") return;
+    if (!steamPort || requestPending || !inputContextActive || !document.hasFocus() || document.visibilityState !== "visible") return;
     requestPending = true;
-    ipcRenderer.send(REQUEST_CHANNEL);
+    if (requestCorrelation) {
+      pendingRequestId = ++requestSequence;
+      ipcRenderer.send(REQUEST_CHANNEL, pendingRequestId);
+    } else ipcRenderer.send(REQUEST_CHANNEL);
   };
   const clampAxis = (value) => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
   const clampButton = (value) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;

@@ -119,6 +119,17 @@ For a main-thread game, call the managed action session's `update()` once per
 game frame. For renderer-owned gameplay, let `connectActionInput()` service
 renderer requests. Do not add a second polling loop.
 
+`connectActionInput()` enables request correlation by default. The advanced
+`createElectronSteamInputService()` retains legacy/manual frame scheduling by
+default; set `requestCorrelation: true` for renderer-owned polling. Explicit
+`requestCorrelation: false` selects compatibility mode in either API. That
+manual/non-correlated mode cannot provide strict delayed-frame rejection.
+Keep the service and input preload on the same package version. With correlation
+enabled, stale replies cannot retire newer requests, and a refused current poll
+clears cached actions. Native-host focus and ownership boundaries must also
+invalidate the producer and consumer input state; sequence advancement alone
+does not prove a fresh post-focus sample.
+
 **Windows textures have an ownership contract.** Prefer
 `host.updateSharedTextureAsync(descriptor)`. A resolved promise permits
 release of that event's Electron producer; `false` means the frame was rejected

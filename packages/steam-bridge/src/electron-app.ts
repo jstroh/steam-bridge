@@ -124,7 +124,10 @@ export function configureSteamElectron(
       serviceOptions: ElectronSteamInputServiceOptions = {}
     ): SteamElectronActionInput<TDefinition> {
       ensureOpen();
-      const service = createElectronSteamInputService(session, ipcMain, webContents, serviceOptions);
+      const service = createElectronSteamInputService(session, ipcMain, webContents, {
+        ...serviceOptions,
+        requestCorrelation: serviceOptions.requestCorrelation ?? true
+      });
       const connection: SteamElectronActionInput<TDefinition> = own({
         get closed(): boolean {
           return service.closed;

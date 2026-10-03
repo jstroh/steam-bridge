@@ -32354,6 +32354,9 @@ test("legacy layout generator owns device-correct controller source profiles", (
   assert.doesNotMatch(first.files["controller_switch_joycon_left.vdf"], /(?:dpad|trigger|right_joystick|trackpad) active/);
   for (const controllerType of layouts.STEAM_LEGACY_CONTROLLER_TYPES) {
     const source = first.files[`${controllerType}.vdf`];
+    const switches = source.split(/\r?\n/u).find(line => line.includes('"id" "26"'));
+    assert.equal(switches.match(/"button_escape".*?"binding" "([^"]+)"/u)?.[1], spec.bindings.menu, `${controllerType} Start/Menu uses the escape source`);
+    assert.equal(switches.match(/"button_menu".*?"binding" "([^"]+)"/u)?.[1], spec.bindings.view, `${controllerType} Select/View uses the menu source`);
     assert.match(source, /"id" "23" "mode" "dpad"/u);
     assert.match(source, /"click"[^\n]+"binding" "key_press LEFT_SHIFT"/u);
     assert.doesNotMatch(source, /"id" "23" "mode" "joystick_move"/u);
@@ -32364,6 +32367,9 @@ test("legacy layout generator owns device-correct controller source profiles", (
   const analogAssets = layouts.generateSteamLegacyLayoutAssets({ ...spec, analogMovement: true });
   for (const controllerType of layouts.STEAM_LEGACY_CONTROLLER_TYPES) {
     const source = analogAssets.files[`${controllerType}.vdf`];
+    const switches = source.split(/\r?\n/u).find(line => line.includes('"id" "26"'));
+    assert.equal(switches.match(/"button_escape".*?"binding" "([^"]+)"/u)?.[1], spec.bindings.menu);
+    assert.equal(switches.match(/"button_menu".*?"binding" "([^"]+)"/u)?.[1], spec.bindings.view);
     assert.match(source, /"id" "23" "mode" "joystick_move"/u);
     assert.match(source, /"click"[^\n]+"binding" "key_press LEFT_SHIFT"/u);
     assert.doesNotMatch(source, /"id" "23" "mode" "dpad"/u);

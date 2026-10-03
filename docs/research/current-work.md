@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-03
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -11,6 +11,134 @@ Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
 ## Active goal
+
+A fresh private consumer pass on actual Deck Game Mode admits an additive,
+exact-version QA chord contract. Ordered Control/Shift/terminal bindings now
+reach all fourteen action terminals, with cursorless shell/world entry,
+acknowledged Menu-to-Gameplay handoff, hotbar changes, trigger-modified mirrors,
+bags/top-bar entry and ordinary gameplay. Consumer and host release ownership
+distinguish synthetic focus cleanup from real neutral; all-terminal offline
+regressions pass. Production capability/defaults remain unchanged and the native
+identity/deduplication prototype remains disabled. These results do not qualify
+built-in HID, every gameplay semantic action or populated items. A subsequent
+matched virtual-pad run proves one ordinary overlay held-direction quarantine
+and neutral/fresh-press recovery, not the complete terminal/device matrix.
+
+Actual stick activation admitted a standard Chromium slot and moved the world.
+The earlier empty-pad observation was not a proven absent analog provider.
+Admission also changed consumer prompts from ABXY to positional arrows. The
+consumer repair queries exact handles only for native identities and uses
+bounded standard raw-family fallbacks otherwise. Actual changed-byte Game Mode
+proof identifies Valve's virtual Xbox emulator (28de:11ff), retains ABXY after
+stick admission, and retains it through disconnect/reconnect with a changed
+Chromium slot. Unknown/nonstandard devices remain positional. Exact identity
+regressions reject unrelated Steam controllers sharing a numeric slot. Startup
+SDK hints and emulator labels do not qualify underlying hardware or arbitrary
+custom remapping. Never match these namespaces numerically or suppress raw pads.
+See `DECK-CONSUMER-CHORD-ADMISSION-001` and `DECK-CONSUMER-PROMPT-NAMESPACE-001`.
+
+Another confirmed generator defect inverted physical Start/Menu and Select/View.
+Valve's installed templates identify button_escape as Start and button_menu as
+Select. The generic generator now uses menu/view respectively, with both analog
+and digital source-profile tests for all sixteen controller types. A consumer
+canonicalization against its older pinned package is idempotent with this
+corrected generator. Matched private revision 2.4 emits the correct physical
+commands on actual Game Mode; corrected virtual X/Y helpers use kernel xpad
+letter aliases rather than misleading geometric aliases. See
+`INPUT-LEGACY-MENU-VIEW-001`. The library source is local, not published/repinned.
+
+Original installed objects, symlinks and modes were restored exactly. Owned
+input, inhibitor, capture, server and debugger resources are stopped; Wayland
+Desktop, closed Steam and display-on state are verified. The raw video fully
+decodes, but older capture metadata lacks encoder-EOS attestation and late
+markers fall outside its duration. The edited diagnostic excludes those markers
+and labels a separate passive visible-world ending; it is not a release receipt.
+New captures observe encoder EOS and fully decode. A short edited follow-up
+uses a same-recording visible-game ending, not substituted pixels. Consumer QA
+helpers now fail missing EOS and safely resume an exact interrupted restore.
+No binding reset, global keymap change or publication occurred. Do not
+repeat the unchanged black text-dialog experiment or suspend without a wake path.
+
+Next consumer scope: RT still defaults to a mouse click. A new typed
+selected/nearest visible NPC route reuses range/dispatch and GUI ownership. On
+actual Game Mode with a private trigger-emulation layout, RT opens one nearby
+NPC window after browser stick admission, stays quarantined across dialog close
+while held, and reopens on neutral/repress. The first immediate RT sample had no
+browser pad/action; its initialization cause is not established. Chat correctly
+owns RT but exposes keyboard-emulated Back being swallowed by native text.
+A matched QA-only terminal reservation now retains ignored holds until release,
+and separates cleanup-only history from unreleased state. Independent held/focus/
+target/history regressions pass; repaired text bytes still need device retest.
+Legacy-only admission remains gated because its older reset/neutral path can
+spill held input into gameplay. Shipped defaults are unchanged. The short video
+preserves failures, uses a same-recording visible-world ending and fully decodes;
+late markers outside the source duration are excluded. The original tree and
+Desktop/closed-Steam baseline are exactly restored. See
+`DECK-CONSUMER-CURSORLESS-NPC-001` and `DECK-CONSUMER-TEXT-BACK-001`.
+
+### Earlier transport diagnostics
+
+The latest controlled Game Mode diagnostic distinguishes configuration identity
+from emission: unique native Gameplay probes have a bound origin, the current
+set, revision 2.3 and SDK down/up on an injected Xbox-compatible device. F19
+emits no renderer key; a fresh candidate with Ctrl+Shift+F7 emits trusted keys.
+Held F7 generates multiple downs with `repeat=false`; Shift and Control release
+before F7. Consumer admission must latch the terminal key until its release.
+This probe adds a native Gameplay action and performs diagnostic SDK reads, so
+it does not qualify unchanged legacy defaults, built-in HID, modifier overlap,
+native deduplication or a release. Original installation and Wayland/closed-Steam
+state are restored. See `DECK-GAMEPLAY-CHORD-DIAGNOSTIC-001` before a live rerun.
+
+Qualify the local Electron input lifecycle correction; it is not published.
+Renderer requests and their coalesced MessagePort frames now retain an optional
+correlation ID. A stale pre-focus frame or failed completion cannot retire a
+newer request. Gamepad-only preloads invalidate on browser focus, visibility,
+freeze/resume and a producer context epoch. A matched refused poll also clears
+cached held actions, even without a consumer-specific context message.
+A matched new-epoch frame rejected before separate context IPC now clears the
+old cached held state too. Unmatched stale replies still cannot clear a newer
+cache or retire its request. Eight tests execute the actual compiled service and
+standalone preload together; all pass. The advanced service preserves legacy
+manual scheduling by default and honors explicit false; managed connectActionInput
+defaults to strict correlation. Renderer-owned advanced consumers must explicitly
+opt into correlation. Manual/non-correlated mode lacks strict stale-frame proof.
+The current Windows JavaScript suite is 495 tests: 492 pass and three existing
+skips. Full npm/native tests (101 native
+pass, 13 hardware ignores), platform/type/API, native format/check and whitespace
+pass. A fresh Linux source fixture with the current JavaScript/template and
+recovery notes passes package smoke using a retained Linux native payload only
+for package loading. That is not new native or candidate-bound live proof.
+Old request/bootstrap forms remain accepted, but a mixed old non-correlated producer cannot provide
+the new strict stale-frame guarantee. Consumer rollout must pair matching bytes.
+
+An extended actual Deck Game Mode consumer pass used private current JavaScript
+plus the separately identified Linux key addon below. Controller-only shell
+navigation, cancellation, scrolling, reconnect and ordinary overlay recovery
+worked. Legacy gameplay delivery remained unqualified for injected generic and
+Xbox-compatible profiles. A full-screen native text request showed black pixels
+and later left action data inactive until app relaunch; ordinary overlay-only
+recovery passed separately. Missing callback evidence is not cancellation proof.
+See `DECK-NATIVE-TEXT-UI-001` and `DECK-VIRTUAL-PAD-LEGACY-001`. Real built-in HID
+and suspend/resume remain open. The consumer also fixed and device-tested its
+separate missing loading-cancellation UI. No user binding or published byte
+changed. Exact original installed files/modes were restored and temporary
+input/debugger/client-serving state was removed. Plasma Wayland Desktop and the
+closed Steam baseline were verified after the session switch.
+
+### Settled Linux extended-key correction
+
+A later private consumer QA assembler accidentally reused the published old
+Linux addon while updating its archive and JavaScript. That run's negative
+stock-map result is not a regression against the corrected addon below.
+With the intended unpacked native hash and ASAR integrity metadata verified,
+the corrected private candidate again delivered trusted F19/F20 gameplay keys
+and consumer UI actions on actual Game Mode. The consumer now gates swaps and
+launches on explicit archive/native/SDK identities. Original installation and
+Wayland/closed-Steam state were restored. Selected Gameplay configuration and
+controller-to-key delivery remain separate open gates: manifest acceptance,
+Menu origins and a Gameplay set handle do not establish its selected groups.
+Do not reset player layouts or enable native gameplay to bypass that gap.
+See `DECK-CANDIDATE-NATIVE-IDENTITY-001` and `DECK-VIRTUAL-PAD-LEGACY-001`.
 
 Fix the confirmed Linux/Deck F13-F24 conversion gap without changing the global
 keymap or public input payload. The standard evdev map names these physical
