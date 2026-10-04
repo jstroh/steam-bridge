@@ -56,11 +56,11 @@
     "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs tests/electron-input-lifecycle.test.cjs"
   },
   "devDependencies": {
-    "@electron/asar": "4.3.0",
+    "@electron/asar": "4.3.1",
     "@electron/packager": "^20.3.0",
     "@emnapi/runtime": "1.11.3",
-    "@napi-rs/cli": "3.9.0",
-    "@sentry/cli": "3.7.0",
+    "@napi-rs/cli": "3.9.1",
+    "@sentry/cli": "3.8.0",
     "electron-builder": "26.15.3",
     "tar": "7.5.22",
     "terser": "^5.51.2",
