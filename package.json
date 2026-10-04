@@ -53,7 +53,10 @@
     "native:test": "node scripts/run-native-tests.cjs",
     "native:link": "npm run native:link -w steam-bridge",
     "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run steam-input:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
-    "test:unit": "npm run build && node --test tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs tests/electron-input-lifecycle.test.cjs"
+    "test:unit": "npm run build && node --test tests/build-cache-policy.test.cjs tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs tests/electron-input-lifecycle.test.cjs"
+  },
+  "overrides": {
+    "http-cache-semantics": "$http-cache-semantics"
   },
   "devDependencies": {
     "@electron/asar": "4.3.0",
@@ -62,6 +65,7 @@
     "@napi-rs/cli": "3.9.0",
     "@sentry/cli": "3.7.0",
     "electron-builder": "26.15.3",
+    "http-cache-semantics": "file:./vendor/http-cache-semantics",
     "tar": "7.5.22",
     "terser": "^5.51.2",
     "typescript": "6.0.3"

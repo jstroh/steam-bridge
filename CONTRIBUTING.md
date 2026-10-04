@@ -72,6 +72,13 @@ test host. Native Windows has a known Unix-fixture limitation tracked as
 failure or alter the machine merely to duplicate the full Linux CI lane.
 `git diff --check` is required for every slice, including documentation.
 
+The root build tooling selects a locally versioned `http-cache-semantics`
+derivative to repair the verified stale-cache reuse defect without changing
+the stable downloader API. It is not shipped in the runtime npm package.
+See [the patch provenance and retirement conditions](vendor/http-cache-semantics/BRIDGE_PATCH.md).
+The installed-source and downloader regressions are part of `npm test`; do not
+replace them with a clean advisory-range report alone.
+
 ## Repository map
 
 | Area | Responsibility |

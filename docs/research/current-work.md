@@ -12,6 +12,35 @@ Standing architecture decisions live in the
 
 ## Active goal
 
+A new controlled Linux discovery comparison narrows the consumer's cold first-
+stick failure to an upstream virtual-device grouping defect. The actual tagged
+Chromium factory gives different virtual input parents the same prefix;
+`GamepadDeviceLinux::IsSameDevice` then aliases them and the last opened joydev
+descriptor replaces the earlier one. An isolated actual Electron44.4.5/
+Chromium152.0.7977.130 window on Deck, with Steam, Bridge and consumer code absent,
+confirms loss of one of two kernel-uinput virtual controllers. Both kernel axes
+change, but only one virtual browser slot remains responsive. The lost controller
+works after a singleton reconnect. A display-on repeat preserves the failure;
+the earlier DPMS-off sampling caveat is retained. Physical built-in input was
+not actuated, and this does not qualify every consumer startup failure.
+
+A small upstream source trial keeps virtual input parents distinct and passes
+the failing-before invariant while preserving physical USB joydev/evdev/hidraw
+pairing. It is not applied to a shipping runtime. Chromium main still uses the
+same prefix operation; Electron44.5.1 pins the same Chromium version, so a blind
+upgrade is not established as a fix. The private probe and both virtual devices
+are retired; the installed consumer was untouched and Steam stayed closed.
+See `LINUX-VIRTUAL-GAMEPAD-COLLISION-001` before another live admission trace.
+
+Next repair choice is pending: an owned Linux native controller/emulation
+backend, preserving exact identity, custom layouts, non-Steam browser devices,
+deduplication and physical held-input quarantine, or a private patched Electron
+runtime followed by a full candidate-bound retest. No runtime/source transport
+is enabled by this evidence. Keep the unresolved native gameplay prototype off,
+and do not change global udev rules, player bindings or browser privacy gates.
+
+### Earlier consumer admission evidence
+
 A fresh private consumer pass on actual Deck Game Mode admits an additive,
 exact-version QA chord contract. Ordered Control/Shift/terminal bindings now
 reach all fourteen action terminals, with cursorless shell/world entry,
@@ -677,6 +706,26 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-04 compatible build-cache repair: the root development dependency now
+  selects the explicitly versioned local `4.3.0-steam-bridge.1` derivative, with
+  BSD license/provenance retained. A synchronous revalidation guard rejects the
+  known `max-stale` and response-no-cache bypasses without changing stable
+  builder/downloader APIs. Seven of eighteen policy cases failed before; all
+  eighteen and serialized controls pass after. The exact upstream128-test suite
+  and eight actual downloader/TLS loopback controls pass. The repository's24-case
+  gate follows the real builder dependency chain and checks the installed bytes,
+  proxy, timeout, retry, mirror, checksum and artifact-cache behavior.
+  Full Windows npm/native, platform/API, native formatting/check and whitespace
+  pass:519 JavaScript tests (516 passes/three skips),101 native passes/13 ignores.
+  Only the root, old policy and new local policy lock records change. Windows
+  lock-only audit and a fresh locked Linux install report zero vulnerabilities;
+  Linux policy tests and complete package smoke pass, with its lock unchanged.
+  The retained Linux addon is used for loading only, not a new native/device
+  qualification. Exact-development-floor/all-platform CI remains pending source
+  push. No published runtime payload, downloader-major override, audit exception,
+  system security policy or release qualification changes. See the
+  [repair receipt](build-cache-policy-remedy-review-2026-10-04.json) and
+  [provenance/retirement conditions](../../vendor/http-cache-semantics/BRIDGE_PATCH.md).
 - 2026-10-04 upstream-cache recheck: npm published http-cache-semantics 4.3.0,
   but its integrity-verified source does not change the reported max-stale
   reuse branch. Isolated actual-module comparisons against installed 4.2.0
@@ -693,7 +742,8 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   still requires downloader major 3; the major-5 toolchain is an uninstalled alpha.
   This is compatibility evidence, not a completed security repair or live exploit.
   See the [downloader comparison](build-downloader-compatibility-review-2026-10-04.json).
-  The blocker remains open; see the sanitized [source review receipt](cache-policy-security-review-2026-10-04.json)
+  The unchanged upstream and raw-major rejection remains valid; the later local
+  compatible repair is recorded above. See the sanitized [source review receipt](cache-policy-security-review-2026-10-04.json)
   and `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` in the ledger.
   Full Windows npm/native tests, platform/API, native formatting/check and
   whitespace checks pass. An isolated Linux Git-archive fixture with these
