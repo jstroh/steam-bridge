@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-03
+Last reviewed: 2026-10-04
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -677,12 +677,29 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-04 upstream-cache recheck: npm published http-cache-semantics 4.3.0,
+  but its integrity-verified source does not change the reported max-stale
+  reuse branch. Isolated actual-module comparisons against installed 4.2.0
+  reproduce the same shared-cookie, proxy-revalidate and response-no-cache
+  counterexamples in both versions, including serialized policy round trips.
+  The three ordinary/revalidation controls also agree. The advisory currently
+  lists affected versions only through 4.2.0, but that range is not evidence
+  that 4.3.0 remedies the observed behavior. No repository dependency update,
+  downloader override, audit suppression or publication was performed. The
+  blocker remains open; see the sanitized [source review receipt](cache-policy-security-review-2026-10-04.json)
+  and `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` in the ledger.
+  Full Windows npm/native tests, platform/API, native formatting/check and
+  whitespace checks pass. An isolated Linux Git-archive fixture with these
+  documentation changes passes complete package smoke after a fresh locked
+  npm ci; its lockfile hash is unchanged. The retained Linux addon is used
+  only for package loading, not new native or candidate-bound live proof.
 - 2026-10-03 source CI at `0b07a8e` completed: Windows, Linux (including
   isolated Xvfb), Apple Silicon macOS, package smoke and all four Node runtime
   jobs pass. The dependency audit fails on GHSA-ch52-4w7c-c8xp, propagated into
   eight high-severity development/build-tool findings. Production-only audit
-  is clean. All published http-cache-semantics versions remain affected with no
-  patched version; no compatible lock-only update fixes the chain. Do not force
+  is clean. As of that check, latest http-cache-semantics was affected 4.2.0
+  with no patched version; the separate 4.3.0 source recheck above retains the
+  blocker. Do not force
   a builder downgrade or override its downloader across a breaking major API.
   No audit bypass, package publication or release qualification followed.
   See `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` in the findings ledger.

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-04",
+  "findingId": "CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001",
+  "status": "open-new-upstream-version-does-not-remedy-observed-counterexamples",
+  "scope": "Source-only public npm package comparison and synthetic cache-policy execution; no real requests, credentials, shared cache or live exploit",
+  "sourceBase": "c024aa1a2ecc1a5c3888d972549bfc3bd29ebd03",
+  "upstream": {
+    "version": "4.3.0",
+    "publishedAt": "2026-10-04T02:56:05.593Z",
+    "registry": "https://registry.npmjs.org/http-cache-semantics/4.3.0",
+    "tarball": "https://registry.npmjs.org/http-cache-semantics/-/http-cache-semantics-4.3.0.tgz",
+    "integrity": "sha512-M5t5LlJpS1UHMjvwRQVdFHvPISGeLAxNcrWuJkeGh0KxsqCHZ1O3NXZU/8x7cD0BDcGW8kapxMKTvwlqrNkHkA==",
+    "tarballIntegrityVerified": true,
+    "onlyRegularContainedArchiveFiles": true,
+    "entryCount": 4,
+    "installOrLifecycleScriptsRun": false,
+    "reportedGitHead": "b1d4bd682fbab0252985de45219f4e7497c0067c",
+    "indexSha256": "ede1cc404a492fa348eb9d97a3007a0d72aa717bd22cd86a56bd0824c19729ca",
+    "sourceDiff": "Adds cached status and Vary matching improvements; does not change the reported max-stale security-reuse branch"
+  },
+  "installed": {
+    "version": "4.2.0",
+    "indexSha256": "01b7d66c854b2fe53ac05c98feb6e0d64722ab8898a778e2d2426a8b468d178f",
+    "developmentDependencyRoute": "electron-builder26.15.3 -> app-builder-lib26.15.3 -> @electron/get3.1.0 -> got11.8.6 -> cacheable-request7.0.4 -> http-cache-semantics4.2.0"
+  },
+  "comparison": {
+    "fixture": "GET https://cache.example.test/fixture; synthetic headers only, shared:true, response Age10; new request max-stale=999999 except the explicit request-no-cache control",
+    "versionsTested": [ "4.2.0", "4.3.0" ],
+    "casesPerVersion": 6,
+    "serializedRoundTripAlsoChecked": true,
+    "assertions": 24,
+    "resultsIdenticalAcrossVersions": true,
+    "cases": [
+      { "id": "shared-cookie-no-public", "responseCacheControl": "max-age=600", "syntheticCookie": true, "maxAge": 0, "reusedWithoutRevalidation": true, "disposition": "counterexample-persists" },
+      { "id": "shared-proxy-revalidate", "responseCacheControl": "max-age=600, proxy-revalidate", "maxAge": 0, "reusedWithoutRevalidation": true, "disposition": "counterexample-persists" },
+      { "id": "response-no-cache", "responseCacheControl": "no-cache", "maxAge": 0, "reusedWithoutRevalidation": true, "disposition": "counterexample-persists" },
+      { "id": "must-revalidate-control", "responseCacheControl": "max-age=0, must-revalidate", "maxAge": 0, "reusedWithoutRevalidation": false, "disposition": "control" },
+      { "id": "ordinary-public-stale-control", "responseCacheControl": "public, max-age=0", "maxAge": 0, "reusedWithoutRevalidation": true, "disposition": "control" },
+      { "id": "request-no-cache-control", "responseCacheControl": "public, max-age=600", "requestCacheControl": "no-cache", "maxAge": 600, "reusedWithoutRevalidation": false, "disposition": "control" }
+    ]
+  },
+  "advisory": {
+    "id": "GHSA-ch52-4w7c-c8xp",
+    "url": "https://github.com/advisories/GHSA-ch52-4w7c-c8xp",
+    "rangeObserved": "<=4.2.0",
+    "patchedVersionListed": "None",
+    "upstreamReport": "https://github.com/kornelski/http-cache-semantics/issues/56",
+    "interpretation": "Version-range metadata and a new version number are not proof that implementation behavior is repaired"
+  },
+  "verification": {
+    "windowsFullNpmTest": "Passed, including native tests: 101 passed and 13 existing hardware ignores",
+    "windowsJavaScriptTests": { "tests": 495, "passed": 492, "failed": 0, "skipped": 3 },
+    "windowsPlatformNativeFormattingNativeCheckApiAndDiffChecks": "Passed",
+    "linuxPackageSmoke": "Passed from an isolated Git-archive source fixture containing the documentation delta, after fresh locked npm ci",
+    "linuxDependencyLockSha256BeforeAndAfterInstall": "e82e96c8961579e606e2cba39cd24a7750310015c2f9becad0456a2a707efbec",
+    "linuxAddonUsedForPackageLoadingOnlySha256": "d71229854384cd4e1e5cfeb2913d71c00670f6c5b2ab95f82f24097d0c7cc72a",
+    "notNewNativeOrLiveQualification": true,
+    "linuxInstallAuditReportedHighFindings": 1,
+    "auditIsNotGreen": true
+  },
+  "notChanged": [ "repository package.json", "repository package-lock.json", "repository installed dependencies", "production runtime", "public API", "native binaries", "security or audit gates", "release qualification" ],
+  "notPerformed": [ "network exploit", "credential access", "upstream4.3 dependency installation", "major downloader override", "audit suppression", "native/game live launch", "package publication" ],
+  "repeatOnlyWhen": "A source-verified compatible patch rejects the counterexamples and preserves the controls, or a separately scoped downloader migration supplies equivalent timeout/proxy/cache/download coverage"
+}
