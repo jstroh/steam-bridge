@@ -685,8 +685,15 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   The three ordinary/revalidation controls also agree. The advisory currently
   lists affected versions only through 4.2.0, but that range is not evidence
   that 4.3.0 remedies the observed behavior. No repository dependency update,
-  downloader override, audit suppression or publication was performed. The
-  blocker remains open; see the sanitized [source review receipt](cache-policy-security-review-2026-10-04.json)
+  downloader override, audit suppression or publication was performed. An
+  actual-module loopback comparison now rejects a raw downloader-major-5 override:
+  it ignores the builder's request timeout and explicit HTTP proxy agent, and its
+  HTTP503 error no longer matches the builder's retry predicate. The checksum
+  and artifact-cache controls pass in both versions. The stable v26 registry tag
+  still requires downloader major 3; the major-5 toolchain is an uninstalled alpha.
+  This is compatibility evidence, not a completed security repair or live exploit.
+  See the [downloader comparison](build-downloader-compatibility-review-2026-10-04.json).
+  The blocker remains open; see the sanitized [source review receipt](cache-policy-security-review-2026-10-04.json)
   and `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` in the ledger.
   Full Windows npm/native tests, platform/API, native formatting/check and
   whitespace checks pass. An isolated Linux Git-archive fixture with these

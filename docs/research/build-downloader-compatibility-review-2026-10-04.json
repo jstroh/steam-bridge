@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-04",
+  "findingId": "CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001",
+  "sourceBase": "39ccb31bcd8100d2cef2b1adb4072067b7a9e91e",
+  "status": "open-raw-downloader-major-override-rejected-by-actual-module-evidence",
+  "scope": "Existing installed registry modules, synthetic loopback HTTP origin/proxy and scratch files only; no external requests, credentials or live exploit in the comparison",
+  "toolVersions": { "electronBuilder": "26.15.3", "installedBuilderDownloader": "3.1.0", "comparisonDownloader": "5.0.0", "node": "24.19.0" },
+  "sources": {
+    "app-builder-lib/out/util/electronGet.js": "3452ca5b9a2f29dd6460f0cc9937be2dc1bbbf36809f410649a015b35a607b48",
+    "get3/dist/cjs/GotDownloader.js": "9173d2564e6685674e9b52807f5fa9ce65d60507357bd41716611074c595f7c0",
+    "get5/dist/FetchDownloader.js": "38a0d3afe5dc45248283b0aa919c6c5ee49e658ee8cd3971747612682f87506b"
+  },
+  "comparisons": [
+    { "case": "request-timeout", "fixture": "220ms local response delay and timeout.request=40ms; got retry disabled", "get3": "rejects ETIMEDOUT", "get5": "completes because got timeout options are ignored", "incompatible": true },
+    { "case": "explicit-http-proxy-agent", "fixture": "Local HttpProxyAgent and distinguishable synthetic proxy/origin payloads", "get3": "one proxy request and proxy bytes", "get5": "zero proxy requests and direct origin bytes", "incompatible": true },
+    { "case": "server-error-retry-classification", "fixture": "Local HTTP503 response", "get3": "HTTPError response.statusCode=503 matches current builder retry predicate", "get5": "HTTPError response.status=503 does not match current builder predicate", "incompatible": true },
+    { "case": "artifact-cache-and-checksum-controls", "fixture": "Generic artifact with supplied SHA256 and ReadWrite cache; two downloads followed by a Bypass download with deliberately incorrect checksum", "get3": "one request for the two valid downloads; payload exact; rejects wrong checksum", "get5": "same controls pass", "incompatible": false }
+  ],
+  "interpretation": "Eight actual-module cases reproduce three contract failures and preserve checksum/artifact-cache controls. A raw get5 override is rejected, not a completed compatible migration. The comparison does not model every request option, TLS/proxy configuration, Node development-floor behavior or platform package output.",
+  "upstreamRegistryObservation": { "latestBuilder": "26.15.3", "v26BuilderTag": "26.17.0", "v26DownloaderDependency": "^3.0.0", "nextBuilder": "27.0.0-alpha.9", "nextDownloaderDependency": "^5.0.0", "alphaNotInstalled": true },
+  "primarySources": ["https://github.com/electron/get/releases/tag/v5.0.0", "https://github.com/electron/get/releases/tag/v4.0.0", "https://registry.npmjs.org/app-builder-lib/26.17.0", "https://registry.npmjs.org/app-builder-lib/27.0.0-alpha.9"],
+  "verification": {
+    "comparisonCases": 8,
+    "comparisonExitCode": 0,
+    "diffAndReceiptJsonChecks": "Passed",
+    "linuxPackageSmoke": "Passed in a fresh Git-archive source fixture with the documentation delta and retained locked dependencies",
+    "lockSha256MatchesDependencyFixture": "e82e96c8961579e606e2cba39cd24a7750310015c2f9becad0456a2a707efbec",
+    "retainedLinuxAddonUsedForPackageLoadingOnlySha256": "d71229854384cd4e1e5cfeb2913d71c00670f6c5b2ab95f82f24097d0c7cc72a",
+    "notNewNativeOrCandidateBoundLiveProof": true,
+    "securityAuditBlockerUnchanged": true
+  },
+  "unchanged": ["package.json", "package-lock.json", "installed dependencies", "production APIs and runtime", "native binaries", "security audit policy", "release qualification"],
+  "repeatOnlyWhen": "A source-verified repair or compatible downloader/toolchain candidate changes the relevant behavior. Qualify equivalent timeouts, explicit and environment proxies, retry/error behavior, TLS, mirrors, checksums, artifact cache modes and supported development hosts; do not repeat the unchanged raw-override comparison."
+}
