@@ -11,24 +11,37 @@ Upstream source: commit `b1d4bd682fbab0252985de45219f4e7497c0067c`, matching the
 [4.3.0 npm artifact](https://registry.npmjs.org/http-cache-semantics/4.3.0).
 The original `index.js` SHA-256 is
 `ede1cc404a492fa348eb9d97a3007a0d72aa717bd22cd86a56bd0824c19729ca`.
-The corrected source SHA-256 is
-`f42f7737958de7759c6676b62677ca444dbd9fa97e913371a65edd9ef3e1b15c`.
+The corrected `4.3.0-steam-bridge.2` source SHA-256 is
+`07116662fec83d8b195aec37b7893c8b2234b60cb60830420fe0689b718026d0`.
 
-The only implementation change strengthens `evaluateRequest`'s synchronous
-revalidation guard. Non-storable responses, response `no-cache`, shared
+The implementation strengthens the synchronous revalidation guard and applies
+the same restriction to both stale-response extension helpers. Non-storable
+responses, response `no-cache`, shared
 `proxy-revalidate`, and shared cookie responses without the library's existing
 explicit public/immutable opt-in cannot become hits through `max-stale` or
-`stale-while-revalidate`. Public and private-cache controls, serialization,
-validators and the public API remain intact. This addresses the observed
+`stale-while-revalidate` or `stale-if-error`. Stale shared `s-maxage` responses
+also require validation; fresh shared and private-cache controls remain intact.
+Failed validation cannot reuse content for a different URL, host, method or
+Vary selection, or override request `no-cache`/Pragma. Successful matching 304
+validation still works. Serialization, validators and the public API remain
+intact. This addresses the observed
 [advisory counterexamples](https://github.com/advisories/GHSA-ch52-4w7c-c8xp)
 with code, not an audit exception or a downloader-major override.
 
 The exact upstream 128-test suite passed on the corrected source. The repository
 regressions additionally exercise the real builder dependency chain, policy
-round trips, request timeouts, explicit proxies, retry classification, mirrors,
+round trips, failed/successful validation, request timeouts, explicit proxies,
+retry classification, mirrors,
 checksums and artifact-cache modes. Isolated loopback TLS checks also confirmed
 default certificate rejection and successful verification with an explicit
 test CA; no system trust or security setting was changed.
+
+The actual cached downloader rejects 503 fallback for `no-cache`,
+`must-revalidate` and stale shared `s-maxage`, but retains explicitly permitted
+public fallback and successful conditional 304 body reuse. Sixteen added cases
+fail against the preceding local patch; all fifty repository cases and the
+unchanged upstream suite pass on this revision. The constraints follow
+[RFC 9111](https://www.rfc-editor.org/rfc/rfc9111.html#section-4.2.4).
 
 Remove this override only after a replacement's implementation rejects the
 counterexamples and preserves the controls. A clean version-range audit alone

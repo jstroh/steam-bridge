@@ -19,9 +19,9 @@ const request = { url: "https://cache.example.test/fixture", method: "GET", head
 test("the actual builder downloader loads the explicitly versioned corrected policy", () => {
   const metadata = JSON.parse(fs.readFileSync(path.join(path.dirname(policyPath), "package.json"), "utf8"));
   assert.equal(metadata.name, "http-cache-semantics");
-  assert.equal(metadata.version, "4.3.0-steam-bridge.1");
+  assert.equal(metadata.version, "4.3.0-steam-bridge.2");
   assert.equal(createHash("sha256").update(fs.readFileSync(policyPath)).digest("hex"),
-    "f42f7737958de7759c6676b62677ca444dbd9fa97e913371a65edd9ef3e1b15c");
+    "07116662fec83d8b195aec37b7893c8b2234b60cb60830420fe0689b718026d0");
 });
 
 const cases = [
@@ -58,16 +58,109 @@ for (const item of cases) test(`cache policy: ${item.id}`, () => {
   }
 });
 
+const extensionCases = [
+  { id: "shared cookie", cc: "max-age=600", headers: { "set-cookie": "synthetic=fixture" }, shared: true, reuse: false },
+  { id: "shared proxy-revalidate", cc: "max-age=600, proxy-revalidate", shared: true, reuse: false },
+  { id: "response no-cache shared", cc: "no-cache", shared: true, reuse: false },
+  { id: "response no-cache private", cc: "no-cache", shared: false, reuse: false },
+  { id: "response no-store", cc: "no-store, max-age=600", shared: true, reuse: false },
+  { id: "request no-store", cc: "public, max-age=0", requestCc: "no-store", shared: true, reuse: false },
+  { id: "shared private response", cc: "private, max-age=600", shared: true, reuse: false },
+  { id: "must-revalidate", cc: "max-age=0, must-revalidate", shared: true, reuse: false },
+  { id: "shared stale s-maxage", cc: "public, s-maxage=1, max-age=600", shared: true, reuse: false },
+  { id: "shared fresh s-maxage", cc: "public, s-maxage=600", shared: true, reuse: true },
+  { id: "public stale", cc: "public, max-age=0", shared: true, reuse: true },
+  { id: "private cookie", cc: "max-age=0", headers: { "set-cookie": "synthetic=fixture" }, shared: false, reuse: true },
+  { id: "explicit public cookie", cc: "public, max-age=0", headers: { "set-cookie": "synthetic=fixture" }, shared: true, reuse: true },
+  { id: "explicit immutable cookie", cc: "immutable, max-age=0", headers: { "set-cookie": "synthetic=fixture" }, shared: true, reuse: true },
+  { id: "private proxy-revalidate", cc: "max-age=0, proxy-revalidate", shared: false, reuse: true },
+  { id: "private cache private response", cc: "private, max-age=0", shared: false, reuse: true },
+  { id: "private s-maxage", cc: "max-age=0, s-maxage=1", shared: false, reuse: true },
+  { id: "expired extension windows", cc: "public, max-age=0", window: 1, shared: true, reuse: false },
+];
+for (const item of extensionCases) test(`cache extensions: ${item.id}`, () => {
+  const first = { ...request, headers: { ...request.headers, "cache-control": item.requestCc || "" } };
+  const extension = item.window ?? 600;
+  const policy = new CachePolicy(first, { status: 200, headers: { age: "10", etag: '"synthetic"',
+    ...item.headers, "cache-control": `${item.cc}, stale-if-error=${extension}, stale-while-revalidate=${extension}` } },
+  { shared: item.shared });
+  for (const candidate of [policy, CachePolicy.fromObject(policy.toObject())]) {
+    assert.equal(candidate.useStaleWhileRevalidate(), item.reuse);
+    for (const status of [500, 502, 503, 504]) {
+      const result = candidate.revalidatedPolicy(first, { status, headers: {} });
+      assert.equal(result.modified, !item.reuse);
+      assert.equal(result.matches, item.reuse);
+      assert.equal(result.policy === candidate, item.reuse);
+    }
+    if (item.reuse) assert.equal(candidate.revalidatedPolicy(first, undefined).policy, candidate);
+    else assert.throws(() => candidate.revalidatedPolicy(first, undefined), /Response headers missing/);
+    const changed = candidate.revalidatedPolicy(first, { status: 200, headers: {} });
+    assert.equal(changed.modified, true);
+    assert.equal(changed.matches, false);
+    if (candidate.storable()) {
+      const headers = candidate.revalidationHeaders(first);
+      assert.equal(headers["if-none-match"], '"synthetic"');
+      const validated = candidate.revalidatedPolicy({ ...first, headers }, { status: 304, headers: { etag: '"synthetic"' } });
+      assert.equal(validated.modified, false);
+      assert.equal(validated.matches, true);
+      assert.equal(validated.policy.responseHeaders().etag, '"synthetic"');
+    }
+  }
+});
+
+const failedRequestCases = [
+  { id: "request no-cache", headers: { "cache-control": "no-cache" } },
+  { id: "request pragma no-cache", headers: { pragma: "no-cache" } },
+  { id: "different URL", url: "https://cache.example.test/other" },
+  { id: "different host", headers: { host: "other.example.test" } },
+  { id: "different method", method: "POST" },
+  { id: "Vary mismatch", headers: { accept: "different" } },
+];
+for (const item of failedRequestCases) test(`failed validation cannot bypass ${item.id}`, () => {
+  const policy = new CachePolicy(request, { status: 200, headers: { age: "10", vary: "accept",
+    "cache-control": "public, max-age=0, stale-if-error=600" } });
+  const next = { ...request, ...item, headers: { ...request.headers, ...item.headers } };
+  for (const candidate of [policy, CachePolicy.fromObject(policy.toObject())]) {
+    const result = candidate.revalidatedPolicy(next, { status: 503, headers: {} });
+    assert.equal(result.modified, true);
+    assert.equal(result.matches, false);
+    assert.notEqual(result.policy, candidate);
+    assert.throws(() => candidate.revalidatedPolicy(next, undefined), /Response headers missing/);
+  }
+});
+
+test("shared stale s-maxage cannot be overridden by request max-stale", () => {
+  const policy = new CachePolicy(request, { status: 200, headers: { age: "10",
+    "cache-control": "public, max-age=600, s-maxage=1" } });
+  for (const candidate of [policy, CachePolicy.fromObject(policy.toObject())]) {
+    const result = candidate.evaluateRequest({ ...request, headers: { ...request.headers, "cache-control": "max-stale=600" } });
+    assert.equal(result.response, undefined);
+    assert.equal(result.revalidation.synchronous, true);
+  }
+});
+
 test("corrected policy preserves the real get3 downloader contracts", async (t) => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "steam-bridge-build-cache-"));
   const payload = Buffer.from("public synthetic downloader contract fixture\n");
   const checksum = createHash("sha256").update(payload).digest("hex");
   const counts = new Map(); const timers = new Set(); let proxyRequests = 0;
+  const conditionalRequests = new Set();
   const oldProgress = process.env.ELECTRON_GET_NO_PROGRESS;
   process.env.ELECTRON_GET_NO_PROGRESS = "1";
   const origin = http.createServer((req, res) => {
     counts.set(req.url, (counts.get(req.url) || 0) + 1);
-    if (req.url === "/slow") {
+    if (req.url?.startsWith("/cached-")) {
+      const cc = req.url === "/cached-public" ? "public, max-age=0" :
+        req.url === "/cached-must-revalidate" ? "max-age=0, must-revalidate" :
+        req.url === "/cached-s-maxage" ? "public, s-maxage=1, max-age=600" : "no-cache";
+      if (counts.get(req.url) === 1) {
+        res.writeHead(200, { "cache-control": `${cc}, stale-if-error=600`, age: "10", etag: '"synthetic"' });
+        res.end(payload);
+      } else if (req.url === "/cached-304") {
+        if (req.headers["if-none-match"] === '"synthetic"') conditionalRequests.add(req.url);
+        res.writeHead(304, { etag: '"synthetic"' }); res.end();
+      } else { res.writeHead(503); res.end("synthetic unavailable"); }
+    } else if (req.url === "/slow") {
       const timer = setTimeout(() => { timers.delete(timer); res.end(payload); }, 180); timers.add(timer);
     } else if (req.url === "/503") { res.writeHead(503); res.end("synthetic unavailable"); }
     else res.end(payload);
@@ -99,6 +192,25 @@ test("corrected policy preserves the real get3 downloader contracts", async (t) 
     await t.test("HTTP503 retains builder retry classification", async () => {
       await assert.rejects(new api.GotDownloader().download(originUrl + "/503", path.join(root, "503.bin"),
         { quiet: true, retry: { limit: 0 } }), error => error.name === "HTTPError" && error.response.statusCode === 503);
+    });
+    await t.test("actual cached downloader refuses forbidden error fallback and retains permitted reuse", async () => {
+      for (const route of ["/cached-no-cache", "/cached-must-revalidate", "/cached-s-maxage", "/cached-public", "/cached-304"]) {
+        const cache = new Map(); const downloader = new api.GotDownloader();
+        const options = { quiet: true, cache, retry: { limit: 0 } };
+        const target = path.join(root, route.slice(1) + ".bin");
+        await downloader.download(originUrl + route, target, options);
+        assert.deepEqual(await fsp.readFile(target), payload);
+        assert.ok(cache.size > 0);
+        if (route === "/cached-public" || route === "/cached-304") {
+          await downloader.download(originUrl + route, target, options);
+          assert.deepEqual(await fsp.readFile(target), payload);
+        } else {
+          await assert.rejects(downloader.download(originUrl + route, target, options),
+            error => error.name === "HTTPError" && error.response.statusCode === 503);
+        }
+        assert.equal(counts.get(route), 2);
+      }
+      assert.equal(conditionalRequests.has("/cached-304"), true);
     });
     await t.test("mirror, artifact caches and bad checksums retain their contracts", async () => {
       const config = artifact("/artifact");

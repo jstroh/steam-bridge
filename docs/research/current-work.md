@@ -706,6 +706,24 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-04 follow-up build-cache guard review: sixteen added failing-before
+  cases expose forbidden extension/error fallback, request/Vary mismatches and
+  stale shared s-maxage reuse in the preceding local patch. The explicitly
+  versioned `.2` derivative applies a common restriction to evaluateRequest and
+  both stale-extension helpers, and validates request matching/no-cache before
+  error fallback. All fifty repository cases pass, including the actual cached
+  downloader's 503 rejection, permitted public fallback and conditional 304
+  reuse. The unchanged exact upstream128-test suite passes. Only the local
+  policy version lock record changes; stable builder/get versions remain intact.
+  Full Windows545 JavaScript tests (542 passes/three skips),101 native passes/
+  13 ignores and all normal gates pass. Fresh locked Linux installation passes
+  all50 policy cases and complete package smoke with an unchanged lock, using
+  the retained native payload for loading only. Eight actual canonical
+  downloader/TLS checks pass. Consumer build-only integration also passes its
+  focused installed-source/downloader checks and fresh Linux lock install;
+  its separate lint-tool braces advisory remains unpatched. Source push and
+  current-byte CI are next. Earlier nine-job CI below qualifies `.1`, not these changed bytes.
+  This is build-tool source proof, not a new device, native or release receipt.
 - 2026-10-04 compatible build-cache repair: the root development dependency now
   selects the explicitly versioned local `4.3.0-steam-bridge.1` derivative, with
   BSD license/provenance retained. A synchronous revalidation guard rejects the
@@ -721,8 +739,11 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   lock-only audit and a fresh locked Linux install report zero vulnerabilities;
   Linux policy tests and complete package smoke pass, with its lock unchanged.
   The retained Linux addon is used for loading only, not a new native/device
-  qualification. Exact-development-floor/all-platform CI remains pending source
-  push. No published runtime payload, downloader-major override, audit exception,
+  qualification. Source `8f81b19` is pushed and its remote hash verified. CI
+  [37225511429](https://github.com/jstroh/steam-bridge/actions/runs/37225511429)
+  passed all nine jobs, including all native targets, package smoke, npm/Rust
+  security audit, the Node22.13 development floor and packed Node18/20/22/24
+  runtime compatibility. No published runtime payload, downloader-major override, audit exception,
   system security policy or release qualification changes. See the
   [repair receipt](build-cache-policy-remedy-review-2026-10-04.json) and
   [provenance/retirement conditions](../../vendor/http-cache-semantics/BRIDGE_PATCH.md).

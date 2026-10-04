@@ -1,6 +1,6 @@
 {
     "name": "http-cache-semantics",
-    "version": "4.3.0-steam-bridge.1",
+    "version": "4.3.0-steam-bridge.2",
     "description": "Parses Cache-Control and other headers. Helps building correct HTTP caches and proxies",
     "repository": {
         "type": "git",
