@@ -1,1 +1,2 @@
 vendor/http-cache-semantics/* text eol=lf
+vendor/sprintf-js/** text eol=lf

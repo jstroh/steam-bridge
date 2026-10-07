@@ -24,7 +24,10 @@ The newly reviewed formatter advisory also blocks the build dependency graph.
 A scoped build-only sprintf-js derivative bounds only numeric precision while
 preserving Get3, global-agent3, Roarr2 and the existing cache-policy repair.
 The focused62 formatter/upstream/cache checks and lock audit pass. Ordinary
-clean-source CI and three-target Release preflight are next; no local native
+clean-source CI and three-target Release preflight need a corrected checkout:
+the initial Windows run converted the new vendor source/tests to CRLF and
+failed both strict raw-hash assertions. Explicit LF attributes now preserve
+the reviewed bytes without relaxing those assertions. No local native
 prototype build is used as release evidence. No new tag, npm publication,
 consuming-app deployment or Steam promotion yet.
 
@@ -733,8 +736,12 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   the builder/Get3/proxy/logger versions. All62 focused formatter, unchanged
   upstream and cache/downloader cases pass afterward; the lock audit reports
   zero vulnerabilities, and latest-Electron/platform/whitespace checks pass.
-  Full current-source CI, native artifacts and exact-byte Microsoft review
-  remain separate pending gates.
+  Initial source a19196a passes eight of nine CI jobs, including both other
+  native targets, package smoke and security. Windows CI and Release preflight
+  fail only the two formatter/upstream raw-hash checks; reproducing CRLF bytes
+  yields both observed hashes. Explicit vendor LF attributes repair checkout
+  identity; fresh CI/preflight remain pending. Native artifacts and exact-byte
+  Microsoft review remain separate pending gates.
 - 2026-10-04 follow-up build-cache guard review: sixteen added failing-before
   cases expose forbidden extension/error fallback, request/Vary mismatches and
   stale shared s-maxage reuse in the preceding local patch. The explicitly
