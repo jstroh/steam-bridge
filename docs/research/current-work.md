@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-04
+Last reviewed: 2026-10-06
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -11,6 +11,24 @@ Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
 ## Active goal
+
+Prepare stable 0.4.11 from the corrected committed input, preload and layout
+source. The QA example moves to Electron44.6.0 to satisfy current source CI;
+this does not upgrade a consuming application's production runtime. Preserve
+the uncommitted native Linux controller prototype but exclude its lib.rs,
+native.ts and new module changes from the release commit and artifacts.
+Microsoft exact-byte review precedes any consuming application's Steam release.
+New native artifacts require their own review and protected candidate-bound
+four-case proof; prior 0.4.10 clearance and source CI are not transferred.
+The newly reviewed formatter advisory also blocks the build dependency graph.
+A scoped build-only sprintf-js derivative bounds only numeric precision while
+preserving Get3, global-agent3, Roarr2 and the existing cache-policy repair.
+The focused62 formatter/upstream/cache checks and lock audit pass. Ordinary
+clean-source CI and three-target Release preflight are next; no local native
+prototype build is used as release evidence. No new tag, npm publication,
+consuming-app deployment or Steam promotion yet.
+
+### Retained unqualified Linux controller research
 
 A new controlled Linux discovery comparison narrows the consumer's cold first-
 stick failure to an upstream virtual-device grouping defect. The actual tagged
@@ -706,6 +724,17 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-06 source preparation: package/root/lock versions agree at0.4.11;
+  the example, derived Windows ASAR fixture and exact Electron lock record
+  agree at44.6.0, verified against the public registry. This metadata check
+  does not prove a locally installed smoke executable. Seven of nine formatter
+  regressions fail before the repair, including the real asynchronous Roarr
+  child exiting on RangeError. The three-line licensed derivative preserves
+  the builder/Get3/proxy/logger versions. All62 focused formatter, unchanged
+  upstream and cache/downloader cases pass afterward; the lock audit reports
+  zero vulnerabilities, and latest-Electron/platform/whitespace checks pass.
+  Full current-source CI, native artifacts and exact-byte Microsoft review
+  remain separate pending gates.
 - 2026-10-04 follow-up build-cache guard review: sixteen added failing-before
   cases expose forbidden extension/error fallback, request/Vary mismatches and
   stale shared s-maxage reuse in the preceding local patch. The explicitly
