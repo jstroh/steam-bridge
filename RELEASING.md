@@ -169,33 +169,79 @@ npm run release:configure-publish-proof -- \
 This stores only the sanitized, compressed release proof in the protected
 GitHub environment. Delete the release-scoped secret after publication.
 
-Use the verifier from the approved release source. A later local verifier repair
-does not update an immutable tag's generator or publisher, retrofit an old
-receipt, or authorize replacing that tag or its frozen artifacts.
+Use the verifier from the separately approved, immutable publishing-tools
+source. A verifier repair does not alter the candidate tag, frozen artifacts or
+their build provenance, and cannot retrofit an old receipt. Both the tooling
+and the candidate must pass their own exact tag-push CI gates.
 
 ## 5. Publish the exact audited npm tarball
 
-Dispatch the publisher from the immutable tag and supply the successful
-tag-triggered `Release` run ID:
+Dispatch from an explicitly approved immutable tooling tag containing this
+workflow and the reviewed verifier. Pin its full commit and successful tag-push
+CI run independently from the candidate tag, full commit, original successful
+tag-push `Release` run/attempt and candidate tag CI:
 
 ```sh
-gh workflow run publish.yml --ref v<version> \
+gh workflow run publish.yml --ref <approved-tooling-tag> \
+  -f tooling_tag=<approved-tooling-tag> \
+  -f tooling_commit=<full-tooling-sha> \
+  -f tooling_ci_run_id=<tooling-tag-ci-run-id> \
   -f release_run_id=<tag-release-run-id> \
+  -f release_run_attempt=<frozen-release-attempt> \
+  -f release_ci_run_id=<candidate-tag-ci-run-id> \
+  -f release_commit=<full-candidate-sha> \
   -f release_tag=v<version>
 ```
 
 Use `-f npm_tag=<dist-tag>` only for an intentional prerelease. The
 `npm-production` environment supplies the human approval boundary. The workflow
-checks the tag, commit, successful CI run, Release provenance, tarball, retained
-Windows bundle, audit, and live-proof receipt before publishing the privately
-copied tarball with npm provenance.
+checks workflow/dispatch/checkout identity and both exact source epochs before
+installing dependencies or downloading candidate artifacts. Annotated tags are
+peeled to commits. Run IDs, attempts, canonical workflow IDs/paths, repository,
+event, tags, commits and success are checked; tag mappings and run bindings are
+rechecked before publication. The downloaded audit must identify the pinned
+candidate commit/tag. Existing tarball, retained Windows bundle, signature and
+schema8 live-proof gates still apply before publishing the privately copied
+tarball. No repacking or rebuilding is performed.
+
+The retained `steam-bridge-publish-epochs-<publish-run-attempt>` artifact records the independent
+source/run bindings. npm provenance identifies the publishing workflow's tooling
+ref/commit; it does not claim that tooling built the older candidate. Keep the
+candidate's original Release audit/artifact provenance alongside it. The tooling
+tag may equal the candidate tag only when both sources and their CI proof really
+match. Never override GitHub identity variables to imitate the candidate.
+
+Creating a tooling tag, dispatching publication or changing protected-environment
+allowed refs/trusted-publisher settings requires separate maintainer approval.
+Do not change those settings automatically. A tooling tag outside the `v*`
+Release trigger can obtain ordinary CI without rebuilding the frozen native
+payload; it is not a new candidate or authority to transfer old proof.
+
+GitHub's workflow-run REST metadata can expose only a short ref name and a bare
+workflow path. Those fields alone cannot distinguish a tag push from a historical
+same-named branch push. Select genuine tag-triggered CI IDs using the retained
+original event/checkout evidence; do not label ambiguous metadata as full-ref
+attestation. The validator still requires the exact pinned commit, canonical
+workflow, successful push run and tag-name match. This limitation does not relax
+candidate-byte or schema8 proof requirements.
+
+Both epoch snapshots must be uploaded successfully before the irreversible npm
+publish, and a final continuity check then runs immediately before publication.
+An artifact-retention failure stops publication. An uncertain npm result requires
+registry/run reconciliation, not automatic republication.
 
 For a documentation-only patch whose package bytes are otherwise identical,
 the fail-closed predecessor-proof route may be used:
 
 ```sh
-gh workflow run publish.yml --ref v<new-version> \
+gh workflow run publish.yml --ref <approved-tooling-tag> \
+  -f tooling_tag=<approved-tooling-tag> \
+  -f tooling_commit=<full-tooling-sha> \
+  -f tooling_ci_run_id=<tooling-tag-ci-run-id> \
   -f release_run_id=<tag-release-run-id> \
+  -f release_run_attempt=<frozen-release-attempt> \
+  -f release_ci_run_id=<candidate-tag-ci-run-id> \
+  -f release_commit=<full-candidate-sha> \
   -f release_tag=v<new-version> \
   -f previous_release_tag=v<previous-version>
 ```
@@ -210,10 +256,15 @@ proof.
 After publication:
 
 1. Download the npm package independently and verify its version, signature,
-   provenance, file inventory, and native/runtime hashes against the candidate.
+   publishing-tooling provenance, file inventory and native/runtime hashes.
+   Reconcile the retained publication epoch proof with the candidate's original
+   Release/audit provenance; do not equate tooling and candidate commits.
 2. Create the stable GitHub Release for `v<version>` and retain the canonical
    `.tgz`, Windows bundle, audit JSON, native-load result, and sanitized live
-   receipt together. Download `native-symbols-windows-<commit-sha>` from the same
+   receipt together. Also retain both JSON files from the exact publish-attempt
+   `steam-bridge-publish-epochs-<attempt>` artifact
+   alongside the release before Actions retention expires. Download
+   `native-symbols-windows-<commit-sha>` from the same
    tag-triggered run, reverify its PDB against the retained Windows addon with
    `scripts/verify-windows-native-symbols.cjs`, and attach the PDB separately.
 3. Confirm the intended npm dist-tag resolves to the new version.

@@ -93,7 +93,7 @@ if (windowsCleanupSelfTestOnly) {
   run("node", [path.join(repoRoot, "scripts", "windows-live-proof-receipt.cjs"), "--self-test"], {
     cwd: repoRoot
   });
-  run("node", ["--test", path.join(repoRoot, "tests", "windows-consumer-package-binding.test.cjs")], { cwd: repoRoot });
+  run("node", ["--test", path.join(repoRoot, "tests", "windows-consumer-package-binding.test.cjs"), path.join(repoRoot, "tests", "publish-epochs.test.cjs")], { cwd: repoRoot });
   run("node", [path.join(repoRoot, "examples", "electron-basic", "native-binding-probe.cjs")], {
     cwd: repoRoot
   });
@@ -734,15 +734,14 @@ function runWindowsSmokeHelperStaticChecks() {
     "environment: npm-production",
     'test "$GITHUB_REF_TYPE" = "tag"',
     'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
-    "Verify exact tag commit passed CI",
-    "actions/workflows/ci.yml/runs",
-    '-f branch="$RELEASE_TAG"',
-    '-f head_sha="$GITHUB_SHA"',
-    "run.head_branch === process.env.RELEASE_TAG",
-    "run.head_sha === process.env.GITHUB_SHA",
-    'run.event === "push"',
-    'run.status === "completed"',
-    'run.conclusion === "success"',
+    "Verify dispatched tooling identity",
+    "ref: ${{ github.sha }}",
+    "Verify exact tooling and candidate epochs",
+    "node scripts/verify-publish-epochs.cjs",
+    "--previous-proof publish-epoch-proof.json",
+    '--release-commit "$RELEASE_COMMIT"',
+    "TOOLING_CI_RUN_ID",
+    "RELEASE_CI_RUN_ID",
     "node scripts/publish-release-candidate.cjs",
     "--live-proof-receipt windows-live-proof-receipt.json",
     "previous_release_tag",
@@ -758,7 +757,7 @@ function runWindowsSmokeHelperStaticChecks() {
       !publishWorkflow.includes("npm run release:publish-candidate"),
     "Release workflows must invoke argument-bearing Node CLIs directly instead of relying on npm argument forwarding"
   );
-  const matchingCiGateIndex = publishWorkflow.indexOf("- name: Verify exact tag commit passed CI");
+  const matchingCiGateIndex = publishWorkflow.indexOf("- name: Verify exact tooling and candidate epochs");
   const candidateDownloadIndex = publishWorkflow.indexOf("- name: Download exact audited candidate");
   const npmPublishIndex = publishWorkflow.indexOf("- name: Publish exact verified bytes");
   assert.ok(

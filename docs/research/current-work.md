@@ -102,6 +102,9 @@ gate; it does not qualify a device or retrofit the frozen candidate. Linux and
 dependency audit pass; package smoke stops at the latest-Electron gate because
 the QA example is44.6.0 while current stable is44.7.0. A separate QA-example-only
 update decision is pending; the frozen bundle and consumer runtime stay unchanged.
+The reviewed fixture follow-up is pushed asaeac5cf with remote hash verified;
+exact-source CI37735728865 results are recorded below. Its separate latest-
+Electron failure is not permission to restart the run or transfer platform proof.
 Independent review findings on archive termination and redundant consumer
 payload rereads are corrected. A final independent13-case synthetic archive
 matrix passes, including valid PAX/GNU long paths and empty files; no residual
@@ -114,9 +117,30 @@ does not retrofit that workflow; do not retag, replace frozen bytes, silently
 reuse schema7 proof or claim publication readiness. Maintainer source/tooling
 epoch reconciliation is needed before protected live qualification/publication.
 See `WIN-CONSUMER-PACKAGE-BINDING-001` in the findings ledger.
-Next: push the reviewed fixture follow-up, resolve the QA example decision and
-verify exact-source CI, then reconcile the
-release tooling epoch before protected exact-consumer proof and publication.
+CI37735728865 is now terminal: Windows, macOS, Linux and dependency audit pass;
+only the separate QA-example latest-version gate fails and Node matrix is skipped.
+The maintainer now explicitly approves the workflow-only split, review, commit
+and push. Local corrected publication source pins immutable tooling dispatch/
+workflow/checkout independently from original candidate Release/source/CI. It
+checks canonical workflow/repository/ref-name/SHA/status/attempt evidence before
+dependencies and artifact download, peels annotated tags and rechecks before
+publication. The actual publisher additionally rejects a candidate audit whose
+full source SHA differs from the explicit approved candidate pin. Source-binding
+snapshots must be retained successfully before npm publication; a third fresh
+continuity check follows retention. OIDC identity variables and protections are
+unchanged. All62 epoch regressions and previous32 complete-package cases pass;
+the actual verifier self-test rejects a mismatched source pin. Independent
+same-epoch proof also passes. Independent final source/docs/retention review
+finds no residual actionable defect in that delta; the original tag-ref evidence
+limitation below remains open. All94 data-only tests/self-tests, three workflow/
+support invariants, parsed workflow/ten-input limit and whitespace checks pass.
+GitHub REST bare/short-ref metadata does not independently attest a full original
+tag ref; do not turn an ambiguous same-named branch run into tag-push proof.
+Genuine original event/checkout evidence remains an operational prerequisite,
+as does an explicitly approved immutable tooling tag with exact-source green CI.
+No environment/OIDC change, new tag, dispatch or publication occurs.
+Next: finish the approved scoped workflow source push/review/CI, resolve the
+QA-example question, then require protected exact-consumer proof before publication.
 No local native prototype build is used as release evidence. No consuming-app
 deployment or Steam promotion is authorized by this publication decision.
 Normal signed gates remain intact; this exception is not an Authenticode claim,

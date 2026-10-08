@@ -198,28 +198,34 @@ boundary. See
 Publication authority is an explicit maintainer decision and is not required
 to build, retain, or live-test a candidate. The manual `Publish npm
 candidate` workflow is the approved publication boundary. Invoke it at the
-exact protected package tag, provide the successful tag-triggered `Release`
-run ID, and configure the matching sanitized live-proof receipt with
+separately approved immutable publishing-tools tag, pin its full commit and
+successful tag-push CI, and independently pin the candidate tag/full commit,
+original successful tag-push `Release` run/attempt and candidate tag CI. Configure
+the matching sanitized live-proof receipt with
 `npm run release:configure-publish-proof -- --audit-manifest <audit.json>
 --tarball <candidate.tgz> --receipt <receipt.json> --repo <owner/repo>`. Schema 8
 binds the complete normal-directory Bridge install to the audited TGZ, with
 exact package metadata and no arbitrary file exclusions. The configurator and
 publisher independently inventory that TGZ; changed JavaScript/preloads, missing
 or extra files and older receipts cannot satisfy this gate. Consumer Electron
-provenance remains separate. The workflow rejects any source
-run that is not a successful tag-triggered `Release` run for the same tag and
-commit, downloads that run's canonical artifact, revalidates its tarball,
+provenance remains separate. The workflow verifies dispatch/workflow/checkout
+identity before dependencies and verifies canonical workflow IDs/paths,
+repository, tag, full commit, event, success and attempts separately for both
+epochs. It rechecks tag/run bindings before publication, binds the audit to the
+candidate's pinned commit/tag, downloads the original run's canonical artifact
+and revalidates its tarball,
 retained Windows bundle, audit, and receipt, and publishes only the privately
 copied verified tarball. It runs in the tag-restricted `npm-production`
 environment with OIDC permission, a required deployment approval, and
-provenance enabled. Dispatch it from the tag so the environment policy and
-workflow ref agree:
-
-```sh
-gh workflow run publish.yml --ref v<package-version> \
-  -f release_run_id=<tag-release-run-id> \
-  -f release_tag=v<package-version>
-```
+provenance enabled. The tooling tag must be allowed by the existing protected
+environment policy. Follow the complete dispatch command in
+[the release procedure](RELEASING.md#5-publish-the-exact-audited-npm-tarball).
+Creating a tooling tag, changing allowed refs/trusted-publisher settings or
+dispatching publication requires separate explicit approval; a workflow repair
+does not grant it. npm provenance identifies the publishing-tooling source,
+while the original candidate Release/audit and retained publication epoch proof
+identify the independently frozen build source. Never override GitHub identity
+variables or present those two commits as the same source.
 
 Delete `STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64` from the environment after
 the publish completes. A stale receipt cannot validate a later candidate, but

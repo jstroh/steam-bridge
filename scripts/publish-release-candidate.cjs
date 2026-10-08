@@ -43,7 +43,7 @@ function main() {
         "[--previous-tarball <steam-bridge-previous.tgz> " +
         "--previous-live-proof-receipt <windows-live-proof-receipt.json> " +
         "--previous-release-tag <vX.Y.Z>] " +
-        "[--require-publishable|--publish --release-tag <vX.Y.Z>] [--tag <npm-tag>]"
+        "[--require-publishable|--publish --release-tag <vX.Y.Z> --release-commit <full-sha>] [--tag <npm-tag>]"
     );
   }
   const tarball = path.resolve(tarballArg);
@@ -56,9 +56,15 @@ function main() {
   const previousTarballArg = readArg("--previous-tarball");
   const previousLiveProofReceiptArg = readArg("--previous-live-proof-receipt");
   const previousReleaseTag = readArg("--previous-release-tag");
+  const releaseCommit = readArg("--release-commit");
+  if (publishRequested) {
+    assert.ok(readArg("--release-tag"), "Publishing requires an explicit candidate release tag.");
+    assert.ok(releaseCommit, "Publishing requires an explicit candidate release commit.");
+  }
   const verified = verifyReleaseCandidate(tarball, auditManifest, {
     requirePublishable,
     releaseTag: readArg("--release-tag") || process.env.GITHUB_REF_NAME || "",
+    releaseCommit,
     bundleArchive: bundleArchiveArg ? path.resolve(bundleArchiveArg) : undefined
   });
   console.log(`Verified canonical npm release candidate ${path.basename(tarball)} sha256=${verified.sha256}`);
@@ -416,6 +422,7 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
   assertNonEmptyFile(tarball, "release tarball");
   assertNonEmptyFile(auditManifest, "package audit manifest");
   const audit = readJsonFile(auditManifest, "package audit manifest");
+  if (options.releaseCommit !== undefined) verifyReleaseSource(audit, options.releaseCommit);
   assert.equal(audit.schemaVersion, 2, "unsupported package audit schema");
   assert.equal(audit.executableProbe?.ok, true, "package audit is missing a successful final executable probe");
   const nativeBinding = audit.package?.nativeBinding;
@@ -611,6 +618,11 @@ function verifyReleaseCandidate(tarball, auditManifest, options = {}) {
   actual.packageVersion = audit.package?.version;
   actual.candidateBinding = candidateBinding;
   return actual;
+}
+
+function verifyReleaseSource(audit, releaseCommit) {
+  assert.match(releaseCommit, /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/, "Invalid full candidate release commit.");
+  assert.equal(audit?.release?.gitCommit?.toLowerCase(), releaseCommit, "Package audit source differs from the pinned candidate release commit.");
 }
 
 function assertTrustedAuthenticodeEvidence(signature, fileName) {
@@ -818,6 +830,12 @@ function selfTest() {
       })}\n`
     );
     assert.equal(verifyReleaseCandidate(tarball, audit).sha256, expected.sha256);
+    assert.equal(verifyReleaseCandidate(tarball, audit, {
+      releaseCommit: "0123456789abcdef0123456789abcdef01234567"
+    }).sha256, expected.sha256);
+    assert.throws(() => verifyReleaseCandidate(tarball, audit, {
+      releaseCommit: "f".repeat(40)
+    }), /audit source differs/);
     const publishableCandidate = verifyReleaseCandidate(tarball, audit, {
       requirePublishable: true,
       releaseTag: "v0.1.0",
@@ -1229,4 +1247,4 @@ function readArg(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-module.exports = { verifyDocumentationOnlySuccessor, verifyReleaseCandidate };
+module.exports = { verifyDocumentationOnlySuccessor, verifyReleaseCandidate, verifyReleaseSource };

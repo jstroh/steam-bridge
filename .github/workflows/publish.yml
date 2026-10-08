@@ -11,6 +11,30 @@ on:
         description: Exact package tag, for example v0.1.0
         required: true
         type: string
+      release_commit:
+        description: Full immutable candidate commit SHA
+        required: true
+        type: string
+      release_ci_run_id:
+        description: Successful candidate tag-push CI run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Exact frozen candidate Release run attempt
+        required: true
+        type: string
+      tooling_tag:
+        description: Immutable reviewed publishing-tools tag used for dispatch
+        required: true
+        type: string
+      tooling_commit:
+        description: Full reviewed publishing-tools commit SHA
+        required: true
+        type: string
+      tooling_ci_run_id:
+        description: Successful publishing-tools tag-push CI run ID
+        required: true
+        type: string
       npm_tag:
         description: npm dist-tag; leave empty for a stable release
         required: false
@@ -30,59 +54,45 @@ jobs:
     name: Publish verified npm tarball
     environment: npm-production
     runs-on: ubuntu-latest
+    env:
+      TOOLING_TAG: ${{ inputs.tooling_tag }}
+      TOOLING_COMMIT: ${{ inputs.tooling_commit }}
+      TOOLING_CI_RUN_ID: ${{ inputs.tooling_ci_run_id }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_COMMIT: ${{ inputs.release_commit }}
+      RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+      RELEASE_RUN_ATTEMPT: ${{ inputs.release_run_attempt }}
+      RELEASE_CI_RUN_ID: ${{ inputs.release_ci_run_id }}
     steps:
+      - name: Verify dispatched tooling identity
+        run: |
+          [[ "$TOOLING_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$TOOLING_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ ]]
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_NAME" = "$TOOLING_TAG"
+          test "$GITHUB_REF" = "refs/tags/$TOOLING_TAG"
+          test "$GITHUB_SHA" = "$TOOLING_COMMIT"
+          test "$GITHUB_WORKFLOW_SHA" = "$TOOLING_COMMIT"
+          test "$GITHUB_WORKFLOW_REF" = "$GITHUB_REPOSITORY/.github/workflows/publish.yml@refs/tags/$TOOLING_TAG"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           package-manager-cache: false
           registry-url: https://registry.npmjs.org
+      - name: Verify exact tooling and candidate epochs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node scripts/verify-publish-epochs.cjs > publish-epoch-proof.json
       - name: Install release tooling
         run: |
           node -e "const [major, minor] = require('node:child_process').execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim().split('.').map(Number); if (major < 11 || (major === 11 && minor < 15)) throw new Error('npm 11.15.0 or newer is required')"
           npm ci --ignore-scripts
-      - name: Verify tag and source Release run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          test "$GITHUB_REF_TYPE" = "tag"
-          test "$GITHUB_REF_NAME" = "$RELEASE_TAG"
-          test "$(gh run view "$RELEASE_RUN_ID" --json workflowName --jq .workflowName)" = "Release"
-          test "$(gh run view "$RELEASE_RUN_ID" --json event --jq .event)" = "push"
-          test "$(gh run view "$RELEASE_RUN_ID" --json conclusion --jq .conclusion)" = "success"
-          test "$(gh run view "$RELEASE_RUN_ID" --json headBranch --jq .headBranch)" = "$RELEASE_TAG"
-          test "$(gh run view "$RELEASE_RUN_ID" --json headSha --jq .headSha)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-      - name: Verify exact tag commit passed CI
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          successful_ci_runs="$(
-            gh api --method GET \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
-              -f branch="$RELEASE_TAG" \
-              -f event=push \
-              -f head_sha="$GITHUB_SHA" \
-              -f status=success \
-              -F per_page=100 \
-            | node -e '
-                const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-                const count = payload.workflow_runs.filter((run) =>
-                  run.head_branch === process.env.RELEASE_TAG &&
-                  run.head_sha === process.env.GITHUB_SHA &&
-                  run.event === "push" &&
-                  run.status === "completed" &&
-                  run.conclusion === "success"
-                ).length;
-                process.stdout.write(String(count));
-              '
-          )"
-          test "$successful_ci_runs" -ge 1
       - name: Download exact audited candidate
         env:
           GH_TOKEN: ${{ github.token }}
@@ -115,14 +125,28 @@ jobs:
           mapfile -t previous_receipts < <(find previous -type f -name 'windows-live-proof-receipt.json')
           test "${#previous_tarballs[@]}" -eq 1
           test "${#previous_receipts[@]}" -eq 1
+      - name: Recheck publication source bindings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-publish-epochs.cjs --previous-proof publish-epoch-proof.json > publish-epoch-final-proof.json
+      - name: Retain independent publication source bindings
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: steam-bridge-publish-epochs-${{ github.run_attempt }}
+          path: |
+            publish-epoch-proof.json
+            publish-epoch-final-proof.json
+          if-no-files-found: error
       - name: Publish exact verified bytes
         env:
+          GH_TOKEN: ${{ github.token }}
           NPM_CONFIG_ACCESS: public
           NPM_CONFIG_PROVENANCE: "true"
           NPM_TAG: ${{ inputs.npm_tag }}
           PREVIOUS_RELEASE_TAG: ${{ inputs.previous_release_tag }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          node scripts/verify-publish-epochs.cjs --previous-proof publish-epoch-final-proof.json > /dev/null
           mapfile -t tarballs < <(find candidate -type f -name '*.tgz')
           mapfile -t bundles < <(find candidate -type f -name '*-win-unpacked.tar')
           mapfile -t audits < <(find candidate -type f -name 'steam-bridge-windows-package-audit.json')
@@ -135,6 +159,7 @@ jobs:
             --audit-manifest "${audits[0]}"
             --publish
             --release-tag "$RELEASE_TAG"
+            --release-commit "$RELEASE_COMMIT"
           )
           if [[ -n "$PREVIOUS_RELEASE_TAG" ]]; then
             mapfile -t previous_tarballs < <(find previous -type f -name 'steam-bridge-*.tgz')
