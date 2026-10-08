@@ -679,7 +679,7 @@ function selfTest() {
       "changed file"
     )
   );
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-release-candidate-self-test-"));
+  const tempRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "steam-bridge-release-candidate-self-test-"));
   try {
     const tarball = path.join(tempRoot, "steam-bridge-0.1.0.tgz");
     const bundleArchive = path.join(tempRoot, "steam-bridge-0.1.0-windows-x64-win-unpacked.tar");

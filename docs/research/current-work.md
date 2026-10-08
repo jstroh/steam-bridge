@@ -88,13 +88,20 @@ Its isolated synthetic self-test needs no repository dependency resolution.
 The frozen0.4.11 TGZ remains89files/35925686content bytes, fingerprint
 67b39b8862fa5923a8e5447dad5ee43d8b4c7bdac621f70f957924e45e407669.
 This read-only inventory is not consumer verification or a live receipt.
-All31 binding cases, the full data-only Windows package-gate checks, no-emit
-typecheck, platform and whitespace checks pass. No local native tests, package
-smoke, build or new real receipt was run for this repair. The maintainer now
-approves the recommended scoped checker/tests/docs commit and push, excluding
-the native prototype, private artifacts and unrelated cache evidence. Exact-
-committed-source CI, including package smoke, remains a source gate; it does
-not qualify a device or retrofit the frozen candidate.
+The maintainer-approved scoped checker/tests/docs repair is pushed as449dc38,
+excluding the native prototype, private artifacts and unrelated cache evidence.
+Its exact-source CI37734552772 ends with Windows/macOS publisher self-test
+fixtures using OS temporary-directory aliases rather than physical paths. The follow-up
+canonicalizes only that owned fixture root; production link rejection stays
+intact. The new cross-platform alias regression and all32 binding cases, full
+data-only Windows package-gate checks and whitespace checks pass. Independent
+actual-source testing reproduces the original failure and corrected success.
+No local native tests, package smoke, build or new real receipt was run for this
+repair. Exact-committed-source CI, including package smoke, remains a source
+gate; it does not qualify a device or retrofit the frozen candidate. Linux and
+dependency audit pass; package smoke stops at the latest-Electron gate because
+the QA example is44.6.0 while current stable is44.7.0. A separate QA-example-only
+update decision is pending; the frozen bundle and consumer runtime stay unchanged.
 Independent review findings on archive termination and redundant consumer
 payload rereads are corrected. A final independent13-case synthetic archive
 matrix passes, including valid PAX/GNU long paths and empty files; no residual
@@ -107,7 +114,8 @@ does not retrofit that workflow; do not retag, replace frozen bytes, silently
 reuse schema7 proof or claim publication readiness. Maintainer source/tooling
 epoch reconciliation is needed before protected live qualification/publication.
 See `WIN-CONSUMER-PACKAGE-BINDING-001` in the findings ledger.
-Next: complete the approved scoped source push and its CI, then reconcile the
+Next: push the reviewed fixture follow-up, resolve the QA example decision and
+verify exact-source CI, then reconcile the
 release tooling epoch before protected exact-consumer proof and publication.
 No local native prototype build is used as release evidence. No consuming-app
 deployment or Steam promotion is authorized by this publication decision.

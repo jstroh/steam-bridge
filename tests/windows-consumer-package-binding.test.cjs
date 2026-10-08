@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 const tar = require("tar");
 const zlib = require("node:zlib");
+const { spawnSync } = require("node:child_process");
 const {
   inspectCandidatePackage,
   verifyInstalledPackage,
@@ -56,6 +57,19 @@ test("canonical inventory reads only pinned archive bytes without mutable extrac
     fs.mkdtempSync = originalMkdir;
     fs.writeFileSync = originalWrite;
   }
+}));
+
+test("publisher self-test uses physical temporary storage even when the OS temp path is an alias", () => fixture(({ root }) => {
+  const physical = path.join(root, "physical-temp");
+  const alias = path.join(root, "alias-temp");
+  fs.mkdirSync(physical);
+  fs.symlinkSync(physical, alias, process.platform === "win32" ? "junction" : "dir");
+  const result = spawnSync(process.execPath, [path.resolve(__dirname, "../scripts/publish-release-candidate.cjs"), "--self-test"], {
+    env: { ...process.env, TEMP: alias, TMP: alias, TMPDIR: alias },
+    encoding: "utf8", timeout: 30000, windowsHide: true
+  });
+  assert.equal(result.status, 0, "Publisher self-test must canonicalize its owned temporary root: " + result.stderr);
+  assert.match(result.stdout, /Release-candidate publish verifier self-test passed/);
 }));
 
 for (const file of ["dist/electron.js", "templates/electron-input-preload.cjs", "package.json", "README.md"]) {
