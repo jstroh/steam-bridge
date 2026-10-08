@@ -55,7 +55,7 @@ function main() {
   console.log(`${CANDIDATE_BINDING_PREFIX}${JSON.stringify(binding)}`);
 }
 
-function inspectCandidateDirectory(root) {
+function inspectCandidateDirectory(root, expectedInventory) {
   const resolvedRoot = path.resolve(root);
   const rootStats = fs.lstatSync(resolvedRoot, { bigint: true });
   assert.ok(rootStats.isDirectory() && !rootStats.isSymbolicLink(), "Candidate root must be a real directory.");
@@ -63,41 +63,19 @@ function inspectCandidateDirectory(root) {
   const files = [];
   const seenPortablePaths = new Set();
   const seenRealDirectories = new Set();
+  const expectedFiles = expectedInventory ? new Map(expectedInventory.map(file => [file.relativePath, file])) : null;
+  const expectedDirectories = new Set();
+  for (const file of expectedInventory || []) {
+    const components = file.relativePath.split("/");
+    for (let length = 1; length < components.length; length++) expectedDirectories.add(components.slice(0, length).join("/"));
+  }
 
   walk(resolvedRoot, "");
   files.sort((left, right) => Buffer.compare(Buffer.from(left.relativePath), Buffer.from(right.relativePath)));
   assert.ok(files.length > 0, "Candidate directory must contain at least one file.");
   assert.ok(files.length <= 0xffffffff, "Candidate bundle has too many files for fingerprint schema 1.");
-
-  const digest = crypto.createHash("sha256");
-  digest.update(Buffer.from(`${BUNDLE_CONTENT_ALGORITHM}\0`, "utf8"));
-  const fileCount = Buffer.alloc(4);
-  fileCount.writeUInt32BE(files.length);
-  digest.update(fileCount);
-  let totalSize = 0;
-  for (const file of files) {
-    const relativeBytes = Buffer.from(file.relativePath, "utf8");
-    const pathLength = Buffer.alloc(4);
-    pathLength.writeUInt32BE(relativeBytes.length);
-    const size = Buffer.alloc(8);
-    size.writeBigUInt64BE(BigInt(file.size));
-    digest.update(Buffer.from([0x46]));
-    digest.update(pathLength);
-    digest.update(relativeBytes);
-    digest.update(size);
-    digest.update(Buffer.from(file.sha256, "hex"));
-    totalSize += file.size;
-    assert.ok(Number.isSafeInteger(totalSize), "Candidate bundle total size exceeds the safe integer range.");
-  }
-
   return {
-    fingerprint: {
-      schemaVersion: 1,
-      algorithm: BUNDLE_CONTENT_ALGORITHM,
-      fileCount: files.length,
-      totalSize,
-      sha256: digest.digest("hex")
-    },
+    fingerprint: fingerprintFileInventory(files),
     files
   };
 
@@ -124,8 +102,14 @@ function inspectCandidateDirectory(root) {
       const stats = fs.lstatSync(absolutePath, { bigint: true });
       assert.equal(stats.isSymbolicLink(), false, `Candidate contains a symbolic link or junction: ${relativePath}`);
       if (stats.isDirectory()) {
+        if (expectedFiles) assert.ok(expectedDirectories.has(relativePath), "Consumer package contains an extra directory.");
         walk(absolutePath, relativePath);
       } else if (stats.isFile()) {
+        if (expectedFiles) {
+          const expected = expectedFiles.get(relativePath);
+          assert.ok(expected, "Complete consumer package differs from the canonical TGZ.");
+          assert.equal(stats.size, BigInt(expected.size), "Complete consumer package differs from the canonical TGZ.");
+        }
         assert.equal(stats.nlink, 1n, `Candidate contains a hard-linked file: ${relativePath}`);
         const stableFile = hashStableFile(absolutePath, stats, relativePath);
         files.push({
@@ -138,6 +122,41 @@ function inspectCandidateDirectory(root) {
       }
     }
   }
+}
+
+function fingerprintFileInventory(files) {
+  assert.ok(Array.isArray(files) && files.length > 0 && files.length <= 0xffffffff, "Candidate inventory file count is invalid.");
+  const ordered = [...files].sort((left, right) => Buffer.compare(Buffer.from(left.relativePath), Buffer.from(right.relativePath)));
+  const seen = new Set();
+  const digest = crypto.createHash("sha256");
+  digest.update(Buffer.from(`${BUNDLE_CONTENT_ALGORITHM}\0`, "utf8"));
+  const fileCount = Buffer.alloc(4);
+  fileCount.writeUInt32BE(ordered.length);
+  digest.update(fileCount);
+  let totalSize = 0;
+  for (const file of ordered) {
+    assert.deepEqual(Object.keys(file).sort(), ["relativePath", "sha256", "size"]);
+    validatePortableRelativePath(file.relativePath);
+    for (const component of file.relativePath.split("/")) validatePathComponent(component);
+    const key = file.relativePath.normalize("NFC").toLowerCase();
+    assert.ok(!seen.has(key), "Candidate inventory contains a portable path collision.");
+    seen.add(key);
+    assert.ok(Number.isSafeInteger(file.size) && file.size >= 0, "Candidate inventory file size is invalid.");
+    assert.match(file.sha256, /^[a-f0-9]{64}$/);
+    const relativeBytes = Buffer.from(file.relativePath, "utf8");
+    const pathLength = Buffer.alloc(4);
+    pathLength.writeUInt32BE(relativeBytes.length);
+    const size = Buffer.alloc(8);
+    size.writeBigUInt64BE(BigInt(file.size));
+    digest.update(Buffer.from([0x46]));
+    digest.update(pathLength);
+    digest.update(relativeBytes);
+    digest.update(size);
+    digest.update(Buffer.from(file.sha256, "hex"));
+    totalSize += file.size;
+    assert.ok(Number.isSafeInteger(totalSize), "Candidate bundle total size exceeds the safe integer range.");
+  }
+  return { schemaVersion: 1, algorithm: BUNDLE_CONTENT_ALGORITHM, fileCount: ordered.length, totalSize, sha256: digest.digest("hex") };
 }
 
 function fingerprintCandidateDirectory(root) {
@@ -393,8 +412,9 @@ function hashStableFile(filePath, expectedStats, relativePath) {
     const digest = crypto.createHash("sha256");
     const buffer = Buffer.allocUnsafe(1024 * 1024);
     let size = 0;
-    for (;;) {
-      const count = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+    while (BigInt(size) <= before.size) {
+      const remaining = before.size - BigInt(size) + 1n;
+      const count = fs.readSync(descriptor, buffer, 0, Number(remaining < BigInt(buffer.length) ? remaining : BigInt(buffer.length)), null);
       if (count === 0) {
         break;
       }
@@ -403,6 +423,7 @@ function hashStableFile(filePath, expectedStats, relativePath) {
     }
     const after = fs.fstatSync(descriptor, { bigint: true });
     assertStableFileIdentity(before, after, relativePath);
+    assertStableFileIdentity(before, fs.lstatSync(filePath, { bigint: true }), relativePath, true);
     assert.equal(BigInt(size), after.size, `Candidate file changed size while hashing: ${relativePath}`);
     return {
       size,
@@ -688,6 +709,7 @@ module.exports = {
   canonicalJson,
   createCandidateBinding,
   fingerprintCandidateDirectory,
+  fingerprintFileInventory,
   hashCanonicalJson,
   inspectCandidateDirectory,
   validateCandidateBinding,

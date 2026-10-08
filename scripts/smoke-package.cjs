@@ -93,6 +93,7 @@ if (windowsCleanupSelfTestOnly) {
   run("node", [path.join(repoRoot, "scripts", "windows-live-proof-receipt.cjs"), "--self-test"], {
     cwd: repoRoot
   });
+  run("node", ["--test", path.join(repoRoot, "tests", "windows-consumer-package-binding.test.cjs")], { cwd: repoRoot });
   run("node", [path.join(repoRoot, "examples", "electron-basic", "native-binding-probe.cjs")], {
     cwd: repoRoot
   });
@@ -617,8 +618,11 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   assert.ok(
     windowsAsarGate.includes("windows-live-proof-receipt.cjs") &&
+      windowsAsarGate.includes("windows-consumer-package-binding.cjs") &&
+      windowsAsarGate.includes("windows-consumer-tar.cjs") &&
+      windowsAsarGate.includes("windows-consumer-tar.LICENSE") &&
       windowsAsarGate.includes("windows-release-candidate-fingerprint.cjs"),
-    "Windows ASAR gate must package the candidate fingerprint and live-proof receipt tools"
+    "Windows ASAR gate must package the full consumer-binding receipt tools and locked archive-reader/license"
   );
   for (const expected of [
     "IMAGE_FILE_MACHINE_AMD64",

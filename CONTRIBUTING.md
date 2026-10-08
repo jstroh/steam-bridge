@@ -201,7 +201,12 @@ candidate` workflow is the approved publication boundary. Invoke it at the
 exact protected package tag, provide the successful tag-triggered `Release`
 run ID, and configure the matching sanitized live-proof receipt with
 `npm run release:configure-publish-proof -- --audit-manifest <audit.json>
---receipt <receipt.json> --repo <owner/repo>`. The workflow rejects any source
+--tarball <candidate.tgz> --receipt <receipt.json> --repo <owner/repo>`. Schema 8
+binds the complete normal-directory Bridge install to the audited TGZ, with
+exact package metadata and no arbitrary file exclusions. The configurator and
+publisher independently inventory that TGZ; changed JavaScript/preloads, missing
+or extra files and older receipts cannot satisfy this gate. Consumer Electron
+provenance remains separate. The workflow rejects any source
 run that is not a successful tag-triggered `Release` run for the same tag and
 commit, downloads that run's canonical artifact, revalidates its tarball,
 retained Windows bundle, audit, and receipt, and publishes only the privately

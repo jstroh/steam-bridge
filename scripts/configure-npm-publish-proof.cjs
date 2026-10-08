@@ -15,6 +15,7 @@ const {
   createSelfTestProfile,
   validateLiveProofReceipt
 } = require("./windows-live-proof-receipt.cjs");
+const { inspectCandidatePackage, verifyReceiptConsumerInventory } = require("./windows-consumer-package-binding.cjs");
 
 const SECRET_NAME = "STEAM_BRIDGE_WINDOWS_LIVE_PROOF_GZIP_BASE64";
 const DEFAULT_ENVIRONMENT = "npm-production";
@@ -31,7 +32,9 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const audit = readJson(options.auditManifest, "package audit manifest");
   const receiptBytes = readStableFile(options.receipt, "Windows live-proof receipt");
-  const prepared = prepareSecretValue(audit, receiptBytes);
+  const expectedPackage = inspectCandidatePackage(options.tarball, audit.package.tarball.sha256);
+  if (audit.package.tarball.size !== undefined) assert.equal(expectedPackage.binding.tarball.size, audit.package.tarball.size);
+  const prepared = prepareSecretValue(audit, receiptBytes, expectedPackage);
   const { secretValue, validated } = prepared;
   assert.ok(
     Buffer.byteLength(secretValue, "utf8") <= MAX_SECRET_BYTES,
@@ -66,6 +69,7 @@ function main() {
 function parseArgs(args) {
   const options = {
     auditManifest: "",
+    tarball: "",
     receipt: "",
     repo: "",
     environment: DEFAULT_ENVIRONMENT,
@@ -77,7 +81,7 @@ function parseArgs(args) {
       options.dryRun = true;
       continue;
     }
-    if (!["--audit-manifest", "--receipt", "--repo", "--environment"].includes(name)) {
+    if (!["--audit-manifest", "--tarball", "--receipt", "--repo", "--environment"].includes(name)) {
       throw new Error(`Unknown option: ${name}`);
     }
     const value = args[index + 1];
@@ -86,12 +90,14 @@ function parseArgs(args) {
     }
     index += 1;
     if (name === "--audit-manifest") options.auditManifest = path.resolve(value);
+    if (name === "--tarball") options.tarball = path.resolve(value);
     if (name === "--receipt") options.receipt = path.resolve(value);
     if (name === "--repo") options.repo = value;
     if (name === "--environment") options.environment = value;
   }
   assert.ok(options.auditManifest, "--audit-manifest is required.");
   assert.ok(options.receipt, "--receipt is required.");
+  assert.ok(options.tarball, "--tarball is required.");
   assert.match(options.repo, /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "--repo must be owner/name.");
   assert.match(options.environment, /^[A-Za-z0-9_.-]{1,255}$/, "Invalid GitHub environment name.");
   return options;
@@ -126,10 +132,12 @@ function encodeReceipt(bytes) {
   return zlib.gzipSync(bytes, { level: 9, mtime: 0 }).toString("base64");
 }
 
-function prepareSecretValue(audit, receiptBytes) {
+function prepareSecretValue(audit, receiptBytes, expectedPackage) {
   const receipt = parseJson(receiptBytes, "Windows live-proof receipt");
   const candidateBinding = createCandidateBinding(audit);
   const validated = validateLiveProofReceipt(receipt, candidateBinding);
+  assert.ok(expectedPackage, "Canonical consumer package binding is required.");
+  verifyReceiptConsumerInventory(validated, expectedPackage);
   return { candidateBinding, secretValue: encodeReceipt(receiptBytes), validated };
 }
 
@@ -140,6 +148,8 @@ function runSelfTest() {
     parseArgs([
       "--audit-manifest",
       "audit.json",
+      "--tarball",
+      "candidate.tgz",
       "--receipt",
       "receipt.json",
       "--repo",
@@ -150,6 +160,7 @@ function runSelfTest() {
     ]),
     {
       auditManifest: path.resolve("audit.json"),
+      tarball: path.resolve("candidate.tgz"),
       receipt: path.resolve("receipt.json"),
       repo: "owner/repo",
       environment: "production",
@@ -158,7 +169,7 @@ function runSelfTest() {
   );
   assert.throws(() => parseArgs([]), /--audit-manifest is required/);
   assert.throws(
-    () => parseArgs(["--audit-manifest", "audit.json", "--receipt", "receipt.json", "--repo", "invalid"]),
+    () => parseArgs(["--audit-manifest", "audit.json", "--tarball", "candidate.tgz", "--receipt", "receipt.json", "--repo", "invalid"]),
     /owner\/name/
   );
   assert.throws(
@@ -173,7 +184,14 @@ function runSelfTest() {
   );
   const receipt = assembleLiveProofReceipt(candidateBinding, profiles, "2026-07-15T00:00:00.000Z", true);
   const receiptBytes = Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`, "utf8");
-  const prepared = prepareSecretValue(audit, receiptBytes);
+  const expectedBinding = profiles[0].installedRuntime.packageBinding;
+  const expectedPackage = { binding: expectedBinding, files: Object.entries(profiles[0].installedRuntime.files).map(([relativePath, file]) => ({ relativePath, size: file.bytes, sha256: file.sha256 })) };
+  const prepared = prepareSecretValue(audit, receiptBytes, expectedPackage);
+  assert.throws(() => prepareSecretValue(audit, receiptBytes), /binding is required/);
+  assert.throws(() => prepareSecretValue(audit, receiptBytes, { ...expectedPackage, binding: { ...expectedBinding,
+    contentFingerprint: { ...expectedBinding.contentFingerprint, sha256: "0".repeat(64) }
+  } }), /differs from the canonical TGZ/);
+  assert.throws(() => prepareSecretValue(audit, receiptBytes, { ...expectedPackage, files: expectedPackage.files.map(file => ({ ...file, sha256: "0".repeat(64) })) }), /native-file evidence differs/);
   assert.deepEqual(prepared.candidateBinding, candidateBinding);
   assert.equal(prepared.validated.receiptSha256, receipt.receiptSha256);
   assert.deepEqual(zlib.gunzipSync(Buffer.from(prepared.secretValue, "base64")), receiptBytes);

@@ -18,6 +18,7 @@ const {
   PROFILE_CONTRACTS,
   readAndValidateLiveProofReceipt
 } = require("./windows-live-proof-receipt.cjs");
+const { inspectCandidatePackage, verifyReceiptConsumerPackage } = require("./windows-consumer-package-binding.cjs");
 
 const MAX_BUNDLE_ARCHIVE_BYTES = 4 * 1024 * 1024 * 1024;
 
@@ -127,6 +128,10 @@ function validateLiveProofForPublish(publishRequested, receiptArg, candidateBind
   let receipt = receiptArg
     ? readAndValidateLiveProofReceipt(path.resolve(receiptArg), candidateBinding)
     : null;
+  if (receipt) {
+    assert.ok(options.candidateTarball, "Live proof requires the canonical candidate TGZ.");
+    verifyReceiptConsumerPackage(receipt, options.candidateTarball);
+  }
   if (hasPriorTarball) {
     receipt = verifyDocumentationOnlySuccessor(
       options.previousTarball,
@@ -161,6 +166,7 @@ function verifyDocumentationOnlySuccessor(
     previousReleaseTag,
     "previous live-proof receipt does not belong to the requested release tag"
   );
+  verifyReceiptConsumerPackage(receipt, previousTarball);
   const previousHash = hashStableRegularFile(previousTarball, "previous npm tarball");
   assert.equal(
     previousHash.sha256,
@@ -678,8 +684,15 @@ function selfTest() {
     const tarball = path.join(tempRoot, "steam-bridge-0.1.0.tgz");
     const bundleArchive = path.join(tempRoot, "steam-bridge-0.1.0-windows-x64-win-unpacked.tar");
     const audit = path.join(tempRoot, "audit.json");
-    const bytes = Buffer.from("canonical publish bytes");
-    fs.writeFileSync(tarball, bytes);
+    const packageRoot = path.join(tempRoot, "canonical-package");
+    fs.mkdirSync(packageRoot);
+    writeJson(path.join(packageRoot, "package.json"), { name: "steam-bridge", version: "0.1.0" });
+    fs.writeFileSync(path.join(packageRoot, "README.md"), "synthetic canonical package");
+    const syntheticRuntimeFiles = ["steam_bridge_native.win32-x64-msvc.node", "steam_api64.dll", "sdkencryptedappticket64.dll"];
+    for (const name of syntheticRuntimeFiles) fs.writeFileSync(path.join(packageRoot, name), "synthetic native, never loaded");
+    tar.create({ cwd: packageRoot, file: tarball, sync: true, gzip: true, portable: true, noMtime: true, prefix: "package" },
+      ["package.json", "README.md", ...syntheticRuntimeFiles]);
+    const bytes = fs.readFileSync(tarball);
     const bundleDir = path.join(tempRoot, "win-unpacked-source");
     fs.mkdirSync(path.join(bundleDir, "resources"), { recursive: true });
     fs.writeFileSync(path.join(bundleDir, "SteamBridgeSmoke.exe"), "signed app");
@@ -817,8 +830,21 @@ function selfTest() {
       /requires a matching Windows live-proof receipt/
     );
     const receiptPath = path.join(tempRoot, "windows-live-proof-receipt.json");
-    writeJson(receiptPath, createSelfTestReceipt(publishableCandidate.candidateBinding));
-    assert.ok(validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding));
+    writeJson(receiptPath, createSelfTestReceipt(publishableCandidate.candidateBinding, tarball));
+    assert.ok(validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding, { candidateTarball: tarball }));
+    const validReceipt = readJsonFile(receiptPath, "synthetic live proof");
+    for (const mutate of [
+      profile => { profile.installedRuntime.packageBinding.contentFingerprint.sha256 = "0".repeat(64); },
+      profile => { profile.installedRuntime.files["steam_bridge_native.win32-x64-msvc.node"].sha256 = "0".repeat(64); }
+    ]) {
+      const profiles = structuredClone(validReceipt.profiles);
+      mutate(profiles[0]);
+      writeJson(receiptPath, assembleLiveProofReceipt(publishableCandidate.candidateBinding, profiles, "2026-07-11T00:00:00.000Z", true));
+      assert.throws(() => validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding, { candidateTarball: tarball }), /differs from the canonical TGZ/);
+    }
+    writeJson(receiptPath, { ...validReceipt, schemaVersion: 7 });
+    assert.throws(() => validateLiveProofForPublish(true, receiptPath, publishableCandidate.candidateBinding, { candidateTarball: tarball }));
+    writeJson(receiptPath, validReceipt);
     const signedAudit = JSON.parse(fs.readFileSync(audit, "utf8"));
     for (const [field, invalidValue, expectedMessage] of [
       ["signerChainTrusted", false, /trusted signer chain/],
@@ -880,7 +906,7 @@ function selfTest() {
     };
     const previousDocsBinding = createCandidateBinding(previousDocsAudit);
     const previousDocsReceipt = path.join(tempRoot, "previous-docs-live-proof-receipt.json");
-    writeJson(previousDocsReceipt, createSelfTestReceipt(previousDocsBinding));
+    writeJson(previousDocsReceipt, createSelfTestReceipt(previousDocsBinding, previousDocsTarball));
     const candidateDocsAudit = JSON.parse(JSON.stringify(signedAudit));
     candidateDocsAudit.package.version = "1.2.4";
     candidateDocsAudit.package.tarball = {
@@ -901,7 +927,7 @@ function selfTest() {
     assert.deepEqual(documentationProof.documentationOnlySuccessor, {
       previousVersion: "1.2.3",
       candidateVersion: "1.2.4",
-      unchangedRuntimeFileCount: 1
+      unchangedRuntimeFileCount: 4
     });
     assert.throws(
       () =>
@@ -971,8 +997,8 @@ function selfTest() {
       releaseTag: "v0.1.0",
       bundleArchive
     });
-    writeJson(receiptPath, createSelfTestReceipt(unsignedCandidate.candidateBinding));
-    assert.ok(validateLiveProofForPublish(true, receiptPath, unsignedCandidate.candidateBinding));
+    writeJson(receiptPath, createSelfTestReceipt(unsignedCandidate.candidateBinding, tarball));
+    assert.ok(validateLiveProofForPublish(true, receiptPath, unsignedCandidate.candidateBinding, { candidateTarball: tarball }));
     unsignedAudit.finalBundle.authenticode.appExecutable.status = "HashMismatch";
     writeJson(audit, unsignedAudit);
     assert.throws(
@@ -1056,10 +1082,16 @@ function selfTest() {
   }
 }
 
-function createSelfTestReceipt(candidateBinding) {
+function createSelfTestReceipt(candidateBinding, tarball) {
   const profiles = PROFILE_CONTRACTS.map((_, index) =>
     createSelfTestProfile(candidateBinding, index)
   );
+  const canonicalPackage = inspectCandidatePackage(tarball, candidateBinding.package.tarballSha256);
+  for (const profile of profiles) {
+    profile.installedRuntime.packageBinding = canonicalPackage.binding;
+    profile.installedRuntime.files = Object.fromEntries(canonicalPackage.files.filter(file => file.relativePath.endsWith(".node") || file.relativePath.endsWith(".dll"))
+      .map(file => [file.relativePath, { bytes: file.size, sha256: file.sha256 }]));
+  }
   return assembleLiveProofReceipt(candidateBinding, profiles, "2026-07-11T00:00:00.000Z", true);
 }
 
@@ -1074,6 +1106,8 @@ function createDocumentationOnlySelfTestTarball(tempRoot, name, version, readme,
   });
   fs.writeFileSync(path.join(sourceRoot, "README.md"), `${readme}\n`);
   fs.writeFileSync(path.join(sourceRoot, "index.js"), `${runtime}\n`);
+  const syntheticRuntimeFiles = ["steam_bridge_native.win32-x64-msvc.node", "steam_api64.dll", "sdkencryptedappticket64.dll"];
+  for (const file of syntheticRuntimeFiles) fs.writeFileSync(path.join(sourceRoot, file), "synthetic native, never loaded");
   tar.create(
     {
       cwd: sourceRoot,
@@ -1084,7 +1118,7 @@ function createDocumentationOnlySelfTestTarball(tempRoot, name, version, readme,
       noMtime: true,
       prefix: "package"
     },
-    ["README.md", "index.js", "package.json"]
+    ["README.md", "index.js", "package.json", ...syntheticRuntimeFiles]
   );
   return tarball;
 }

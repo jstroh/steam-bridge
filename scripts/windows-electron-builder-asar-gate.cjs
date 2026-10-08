@@ -67,12 +67,17 @@ const windowsToolFiles = Object.freeze([
   "windows-app-control-dev-mode.ps1",
   "windows-electron-smoke.ps1",
   "windows-live-proof-receipt.cjs",
+  "windows-consumer-package-binding.cjs",
   "windows-native-overlay-control.ps1",
   "windows-overlay-matrix.ps1",
   "windows-overlay-task.ps1",
   "windows-release-candidate-fingerprint.cjs",
   "windows-render-health-probe.ps1",
   "windows-steam-app-launch-options.ps1"
+]);
+const windowsToolAssets = Object.freeze([
+  { fileName: "windows-consumer-tar.cjs", sourcePath: require.resolve("tar") },
+  { fileName: "windows-consumer-tar.LICENSE", sourcePath: path.join(path.dirname(require.resolve("tar/package.json")), "LICENSE.md") }
 ]);
 
 if (require.main === module) {
@@ -377,6 +382,9 @@ function stageFixture(stageDir, tarball, packageVersion, tarballHashes, sourceRu
   for (const fileName of windowsToolFiles) {
     fs.copyFileSync(path.join(repoRoot, "scripts", fileName), path.join(toolsDir, fileName));
   }
+  for (const asset of windowsToolAssets) {
+    fs.copyFileSync(asset.sourcePath, path.join(toolsDir, asset.fileName));
+  }
   fs.copyFileSync(path.join(exampleRoot, "checkout-proof.cjs"), path.join(toolsDir, "checkout-proof.cjs"));
   fs.cpSync(
     path.join(repoRoot, "scripts", "windows-native-overlay-control"),
@@ -637,13 +645,14 @@ function verifyLiveSmokeCapability(appDir) {
     assert.ok(smokeMain.includes(marker), `Archived live smoke protocol is missing ${marker}`);
   }
 
-  const packagedTools = [...windowsToolFiles, "checkout-proof.cjs", "steam_appid.txt"];
+  const packagedTools = [...windowsToolFiles, ...windowsToolAssets.map(asset => asset.fileName), "checkout-proof.cjs", "steam_appid.txt"];
   const toolHashes = {};
   for (const fileName of packagedTools) {
     const packagedPath = path.join(appDir, fileName);
     assertNonEmptyFile(packagedPath, `packaged live smoke tool ${fileName}`);
     if (fileName !== "steam_appid.txt") {
-      const sourcePath =
+      const asset = windowsToolAssets.find(asset => asset.fileName === fileName);
+      const sourcePath = asset ? asset.sourcePath :
         fileName === "checkout-proof.cjs"
           ? path.join(exampleRoot, fileName)
           : path.join(repoRoot, "scripts", fileName);
@@ -834,6 +843,7 @@ function selfTest() {
   assert.ok(liveSmokeFiles.includes("native-binding-probe.cjs"));
   assert.ok(windowsToolFiles.includes("windows-release-candidate-fingerprint.cjs"));
   assert.ok(windowsToolFiles.includes("windows-live-proof-receipt.cjs"));
+  assert.ok(windowsToolFiles.includes("windows-consumer-package-binding.cjs"));
   assert.doesNotMatch(
     fixtureMainSource,
     /\bbinding(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[\s*["'][A-Za-z_$][A-Za-z0-9_$]*["']\s*\])\s*\(/,
@@ -864,6 +874,17 @@ function selfTest() {
   const bytes = Buffer.from("exact tarball bytes");
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "steam-bridge-windows-asar-gate-self-test-"));
   try {
+    const isolatedTools = path.join(tempRoot, "isolated-tools");
+    fs.mkdirSync(isolatedTools);
+    for (const fileName of ["windows-live-proof-receipt.cjs", "windows-consumer-package-binding.cjs", "windows-release-candidate-fingerprint.cjs"]) {
+      fs.copyFileSync(path.join(repoRoot, "scripts", fileName), path.join(isolatedTools, fileName));
+    }
+    for (const asset of windowsToolAssets) fs.copyFileSync(asset.sourcePath, path.join(isolatedTools, asset.fileName));
+    const isolatedProbe = spawnSync(process.execPath, [path.join(isolatedTools, "windows-live-proof-receipt.cjs"), "--self-test"], {
+      cwd: isolatedTools, encoding: "utf8", env: { ...process.env, NODE_PATH: "" }, timeout: 30000, windowsHide: true
+    });
+    assert.equal(isolatedProbe.status, 0, `Copied receipt checker must work without repository dependencies: ${isolatedProbe.stderr}`);
+    assert.match(isolatedProbe.stdout, /Windows standalone live-proof receipt self-test passed/);
     const filePath = path.join(tempRoot, "package.tgz");
     fs.writeFileSync(filePath, bytes);
     const fakeNpmCli = path.join(tempRoot, "npm-cli.js");

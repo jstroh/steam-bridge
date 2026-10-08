@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-06
+Last reviewed: 2026-10-07
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -23,13 +23,96 @@ four-case proof; prior 0.4.10 clearance and source CI are not transferred.
 The newly reviewed formatter advisory also blocks the build dependency graph.
 A scoped build-only sprintf-js derivative bounds only numeric precision while
 preserving Get3, global-agent3, Roarr2 and the existing cache-policy repair.
-The focused62 formatter/upstream/cache checks and lock audit pass. Ordinary
-clean-source CI and three-target Release preflight need a corrected checkout:
-the initial Windows run converted the new vendor source/tests to CRLF and
-failed both strict raw-hash assertions. Explicit LF attributes now preserve
-the reviewed bytes without relaxing those assertions. No local native
-prototype build is used as release evidence. No new tag, npm publication,
-consuming-app deployment or Steam promotion yet.
+The focused62 formatter/upstream/cache checks and lock audit pass. Current
+source23053a9 passes all nine CI jobs and the four-job, three-target Release
+preflight, including its Windows package gate. The initial Windows run converted
+the new vendor source/tests to CRLF and failed both strict raw-hash assertions;
+explicit LF attributes preserve the reviewed bytes without relaxing them.
+The preflight Windows addon and matching PDB are retained and their debug ID
+is verified. The independently downloaded canonical tarball and retained
+Windows bundle also pass the publish verifier in verification-only mode.
+The earlier preflight artifacts are historical, not tag-bound Microsoft/live receipts.
+The maintainer subsequently approved version0.4.11 at23053a9 and renewed the
+new-candidate unsigned, exact-file Microsoft-review release exception. Immutable
+v0.4.11 now resolves to that exact commit locally and remotely. Its tag CI
+37586960096 passes all nine jobs; tag Release37586960092 passes all four jobs.
+The retained tag Windows addon is9286656bytes, SHA-256
+ea6e9c5d4d6faaa6a4d557a787131a877fe8c21658a8659750ddd39b0a4830e6.
+Its matching PDB SHA-256 is
+09883554c2d099fb167b8f13dba95114124c35a1c1085810554a44721fc4a38e,
+with verified debug ID27200b02-a373-4857-90ad-69479108dd6c-1.
+The tag canonical tarball SHA-256 is
+fb3544615ef5672c506d7645969e9aeb02a3c5247e70e04ef88a7e7ebe699d6a;
+its retained Windows bundle is
+1d98f3cd69476ac972623b8b9aa5800fee2cf6f51b8af2b2eea1ca4bb9c62094.
+Verification-only publication validation passes; it performs no local native launch.
+The exact tag addon and maintainer-approved developer statement were accepted
+by Microsoft's Smart App Control submission portal after the maintainer approved
+the CAPTCHA step. The immutable local artifact now has a retained private upload
+receipt and tracking link. History initially gained exactly one new entry, status
+Submitted, final determination Pending and no analyst comment. A later analyst
+response confirms that all submitted files were not blocked by Smart App Control.
+That exact-file SAC review is complete despite stale generic Pending labels; it
+is separate from malware-table status and protected consuming-game proof. Its
+displayed SHA-256 is the developer-text echo, not an independently exposed
+server-computed digest. Exact retained addon bytes remain unchanged and have not
+been locally launched as this candidate.
+The maintainer now authorizes publication of the frozen0.4.11 package and the
+consumer dependency update, subject to the existing release gates. Fresh GitHub
+metadata confirms tag Release37586960092 and CI37586960096 succeeded for23053a9.
+Verification-only validation again matches the canonical tarball, retained bundle
+and package audit. No matching0.4.11 schema-7 live-proof receipt was found in the
+retained release evidence, and the protected publisher has no configured proof.
+Earlier0.4.10 and schema-4 receipts do not bind this candidate. No publisher was
+dispatched, package published, or consuming-app pin changed.
+The maintainer approved an isolated Windows QA handoff for the four cases.
+That host now verifies a full OS reboot and current desktop-app version, but
+native capture still fails after the single permitted fresh-selection recovery.
+Its ordinary application launch/window inventory works; a separately approved
+desktop image is diagnostic-only, not native-controller/game proof. No further
+blind reboot or unchanged capture retry is justified. A second host recovers
+capture of its recorder after one supported foreground recovery; the initial
+wrong-surface image is invalidated. Recording, actual game capture and every
+live case remain unproved. Protected actual-game consumer/Limited-route,
+executable review and cross-host Steam isolation remain prerequisites.
+
+A data-only reproduction found that schema7's consumer check admitted altered
+producer JavaScript and a missing preload when version/native3 still matched.
+The local schema8 repair binds every normal-install file and exact metadata to
+the canonical TGZ before and after evidence validation, then independently
+recomputes that binding and reconciles native3 in configurator/publication intake.
+Bounded in-memory archive inventory rejects links, portable collisions, truncated
+bodies, incomplete end markers and data after EOF; no mutable extraction is used.
+The copied checker includes the exact locked upstream tar bundle and license.
+Its isolated synthetic self-test needs no repository dependency resolution.
+The frozen0.4.11 TGZ remains89files/35925686content bytes, fingerprint
+67b39b8862fa5923a8e5447dad5ee43d8b4c7bdac621f70f957924e45e407669.
+This read-only inventory is not consumer verification or a live receipt.
+All31 binding cases, the full data-only Windows package-gate checks, no-emit
+typecheck, platform and whitespace checks pass. No local native tests, package
+smoke, build or new real receipt was run for this repair. The maintainer now
+approves the recommended scoped checker/tests/docs commit and push, excluding
+the native prototype, private artifacts and unrelated cache evidence. Exact-
+committed-source CI, including package smoke, remains a source gate; it does
+not qualify a device or retrofit the frozen candidate.
+Independent review findings on archive termination and redundant consumer
+payload rereads are corrected. A final independent13-case synthetic archive
+matrix passes, including valid PAX/GNU long paths and empty files; no residual
+actionable finding in the reviewed delta. Source anchors are binding helper
+4d5d231b5573befd1088c12f76cccfbf2654a36daaa1317eff6962983668c457 and
+receipt generator5f0ac9baadd708d1ed3cc395e41e9930feff65a7d9cfac530753a5d9821f9b2a.
+This remains source/offline proof, not runtime qualification.
+The immutable tag's generator/publisher remains schema7. Local schema8 source
+does not retrofit that workflow; do not retag, replace frozen bytes, silently
+reuse schema7 proof or claim publication readiness. Maintainer source/tooling
+epoch reconciliation is needed before protected live qualification/publication.
+See `WIN-CONSUMER-PACKAGE-BINDING-001` in the findings ledger.
+Next: complete the approved scoped source push and its CI, then reconcile the
+release tooling epoch before protected exact-consumer proof and publication.
+No local native prototype build is used as release evidence. No consuming-app
+deployment or Steam promotion is authorized by this publication decision.
+Normal signed gates remain intact; this exception is not an Authenticode claim,
+old-clearance transfer, QA-review-package promotion or security-setting bypass.
 
 ### Retained unqualified Linux controller research
 

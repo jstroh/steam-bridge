@@ -237,9 +237,18 @@ raw log; its original hash and classification are retained without publishing ID
 
 Generate the candidate-bound receipt only after every manual field is true:
 
+The packaged tools include the locked upstream archive-reader bundle and its
+license, so this command also works outside the repository with supported Node.
+Schema 8 compares every installed Bridge file with the canonical TGZ, not only
+the native addon and Valve DLLs. Keep normal-directory package metadata exact;
+ASAR-transformed metadata is not this install policy. The generator verifies
+both inventories before and after evidence validation. Production Electron
+identity and protected launch evidence remain separate gates.
+
 ```powershell
 node .\\windows-live-proof-receipt.cjs `
   --audit-manifest C:\\candidate\\steam-bridge-windows-package-audit.json `
+  --tarball C:\\candidate\\steam-bridge-version.tgz `
   --candidate-directory C:\\candidate\\win-unpacked `
   --consumer-package-directory C:\\game\\node_modules\\steam-bridge `
   --evidence C:\\proof\\standalone-evidence.json `

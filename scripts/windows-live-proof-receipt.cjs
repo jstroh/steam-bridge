@@ -12,10 +12,15 @@ const {
   validateCandidateBinding,
   verifyCandidateDirectory
 } = require("./windows-release-candidate-fingerprint.cjs");
+const {
+  inspectCandidatePackage,
+  verifyInstalledPackage,
+  validateConsumerPackageBinding
+} = require("./windows-consumer-package-binding.cjs");
 
 const RECEIPT_KIND = "steam-bridge-windows-live-proof-receipt";
-const RECEIPT_SCHEMA_VERSION = 7;
-const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v7";
+const RECEIPT_SCHEMA_VERSION = 8;
+const RECEIPT_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-receipt-v8";
 const EVIDENCE_HASH_DOMAIN = "steam-bridge-windows-standalone-live-proof-evidence-v1";
 const EVIDENCE_KIND = "steam-bridge-windows-standalone-consumer-evidence";
 const EVIDENCE_SCHEMA_VERSION = 1;
@@ -164,6 +169,7 @@ function main() {
 function parseArgs(args) {
   const names = new Map([
     ["--audit-manifest", "auditManifest"],
+    ["--tarball", "tarball"],
     ["--candidate-directory", "candidateDirectory"],
     ["--consumer-package-directory", "consumerPackageDirectory"],
     ["--evidence", "evidence"],
@@ -196,7 +202,9 @@ function generateLiveProofReceipt(options) {
     consumerPackageDirectory,
     path.dirname(evidencePath)
   ]);
-  const installedRuntime = verifyConsumerPackage(consumerPackageDirectory, audit);
+  const candidatePackage = inspectCandidatePackage(path.resolve(options.tarball), candidateBinding.package.tarballSha256);
+  if (audit.package.tarball.size !== undefined) assert.equal(candidatePackage.binding.tarball.size, audit.package.tarball.size);
+  const installedRuntime = verifyConsumerPackage(consumerPackageDirectory, audit, candidatePackage);
   const evidenceArtifact = readStableRealJson(
     path.dirname(evidencePath),
     evidencePath,
@@ -215,7 +223,9 @@ function generateLiveProofReceipt(options) {
     evidencePath,
     "standalone consumer evidence"
   );
-  const finalInstalledRuntime = verifyConsumerPackage(consumerPackageDirectory, audit);
+  const finalCandidatePackage = inspectCandidatePackage(path.resolve(options.tarball), candidateBinding.package.tarballSha256);
+  assert.deepEqual(finalCandidatePackage.binding, candidatePackage.binding, "Canonical TGZ changed during receipt generation.");
+  const finalInstalledRuntime = verifyConsumerPackage(consumerPackageDirectory, audit, finalCandidatePackage);
   assert.ok(auditArtifact.bytes.equals(finalAuditArtifact.bytes), "Package audit changed during receipt generation.");
   assert.ok(evidenceArtifact.bytes.equals(finalEvidenceArtifact.bytes), "Evidence changed during receipt generation.");
   assert.deepEqual(finalInstalledRuntime, installedRuntime, "Consumer package changed during receipt generation.");
@@ -228,7 +238,7 @@ function generateLiveProofReceipt(options) {
   return assembleLiveProofReceipt(candidateBinding, [profile], new Date().toISOString(), true);
 }
 
-function verifyConsumerPackage(packageDirectory, audit) {
+function verifyConsumerPackage(packageDirectory, audit, candidatePackage) {
   const stat = fs.lstatSync(packageDirectory);
   assert.equal(stat.isSymbolicLink(), false, "Consumer package must be a real registry/tarball install, not a link.");
   assert.ok(stat.isDirectory(), "Consumer package path must be a directory.");
@@ -237,28 +247,24 @@ function verifyConsumerPackage(packageDirectory, audit) {
     normalizePath(packageDirectory),
     "Consumer package path must not traverse a junction or reparse point."
   );
-  const manifest = readStableRealJson(
-    packageDirectory,
-    path.join(packageDirectory, "package.json"),
-    "consumer package manifest"
-  ).value;
-  assert.equal(manifest.name, audit.package.name, "Consumer package name differs from the candidate.");
-  assert.equal(manifest.version, audit.package.version, "Consumer package version differs from the candidate.");
+  const packageBinding = verifyInstalledPackage(packageDirectory, candidatePackage);
+  assert.equal(packageBinding.packageName, audit.package.name, "Consumer package name differs from the candidate.");
+  assert.equal(packageBinding.packageVersion, audit.package.version, "Consumer package version differs from the candidate.");
   const expectedFiles = audit.finalBundle && audit.finalBundle.files;
   assert.ok(expectedFiles && typeof expectedFiles === "object", "Audit is missing final Windows runtime files.");
   const files = {};
   for (const name of WINDOWS_RUNTIME_FILES) {
-    const filePath = path.join(packageDirectory, name);
-    const bytes = readStableRealFile(packageDirectory, filePath, "consumer runtime " + name);
-    const digest = sha256(bytes);
+    const file = candidatePackage.files.find(file => file.relativePath === name);
+    assert.ok(file && file.size > 0, "Canonical TGZ is missing a Windows runtime file.");
     assert.equal(
-      digest,
+      file.sha256,
       expectedFiles[name] && expectedFiles[name].sha256,
       "Consumer runtime " + name + " differs from the audited candidate."
     );
-    files[name] = { bytes: bytes.length, sha256: digest };
+    if (expectedFiles[name].size !== undefined) assert.equal(file.size, expectedFiles[name].size, "Canonical runtime size differs from the audited candidate.");
+    files[name] = { bytes: file.size, sha256: file.sha256 };
   }
-  return { packageName: manifest.name, packageVersion: manifest.version, files };
+  return { packageName: packageBinding.packageName, packageVersion: packageBinding.packageVersion, files, packageBinding };
 }
 
 function validateStandaloneEvidence(evidence, candidateBinding, evidenceRoot) {
@@ -725,11 +731,12 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
   assert.equal(profile.passed, true);
   assertExactKeys(
     profile.installedRuntime,
-    ["files", "packageName", "packageVersion"],
+    ["files", "packageBinding", "packageName", "packageVersion"],
     "live-proof installed runtime"
   );
   assert.equal(profile.installedRuntime.packageName, "steam-bridge");
   assert.equal(profile.installedRuntime.packageVersion, candidateBinding.package.version);
+  validateConsumerPackageBinding(profile.installedRuntime.packageBinding, candidateBinding);
   assertExactKeys(profile.installedRuntime.files, WINDOWS_RUNTIME_FILES, "live-proof runtime files");
   for (const name of WINDOWS_RUNTIME_FILES) {
     assertExactKeys(
@@ -924,6 +931,21 @@ function createSelfTestProfile(candidateBinding, index = 0) {
     installedRuntime: {
       packageName: "steam-bridge",
       packageVersion: candidateBinding.package.version,
+      packageBinding: {
+        kind: "steam-bridge-windows-consumer-package-binding",
+        schemaVersion: 1,
+        metadataPolicy: "normal-install-exact-bytes-v1",
+        packageName: "steam-bridge",
+        packageVersion: candidateBinding.package.version,
+        tarball: { size: 1, sha256: candidateBinding.package.tarballSha256 },
+        contentFingerprint: {
+          schemaVersion: 1,
+          algorithm: "steam-bridge-windows-bundle-content-v1",
+          fileCount: 2,
+          totalSize: 7,
+          sha256: "6".repeat(64)
+        }
+      },
       files: installedFiles
     },
     runtime: {
@@ -1099,6 +1121,16 @@ function runGeneratorSelfTest() {
     for (const [name, bytes] of Object.entries(runtimeBytes)) {
       fs.writeFileSync(path.join(consumerDirectory, name), bytes);
     }
+    fs.mkdirSync(path.join(consumerDirectory, "dist"));
+    fs.mkdirSync(path.join(consumerDirectory, "templates"));
+    fs.writeFileSync(path.join(consumerDirectory, "dist", "electron.js"), "canonical producer");
+    fs.writeFileSync(path.join(consumerDirectory, "templates", "electron-input-preload.cjs"), "canonical preload");
+    const tarball = path.join(tempRoot, "candidate.tgz");
+    const packagedTar = path.join(__dirname, "windows-consumer-tar.cjs");
+    const tar = fs.existsSync(packagedTar) ? require(packagedTar) : require("tar");
+    tar.create({ cwd: consumerDirectory, file: tarball, sync: true, gzip: true, portable: true, noMtime: true, prefix: "package" },
+      ["package.json", ...Object.keys(runtimeBytes), "dist/electron.js", "templates/electron-input-preload.cjs"]);
+    const tarballBytes = fs.readFileSync(tarball);
     const fingerprint = fingerprintCandidateDirectory(candidateDirectory);
     const audit = {
       schemaVersion: 2,
@@ -1106,7 +1138,7 @@ function runGeneratorSelfTest() {
       package: {
         name: "steam-bridge",
         version: "1.2.3",
-        tarball: { sha256: "1".repeat(64) },
+        tarball: { sha256: sha256(tarballBytes), size: tarballBytes.length },
         nativeBinding: { methodCount: 1130, methodsSha256: "2".repeat(64) }
       },
       electronBuilder: { electronVersion: "43.1.0" },
@@ -1249,6 +1281,7 @@ function runGeneratorSelfTest() {
     );
     const options = {
       auditManifest: auditPath,
+      tarball,
       candidateDirectory,
       consumerPackageDirectory: consumerDirectory,
       evidence: evidencePath,
@@ -1259,6 +1292,14 @@ function runGeneratorSelfTest() {
       candidateBinding
     );
     assert.equal(generatedReceipt.profiles[0].runtime.targetUnsynchronizedSampleCount, 1);
+    const producerPath = path.join(consumerDirectory, "dist", "electron.js");
+    fs.writeFileSync(producerPath, "different producer");
+    assert.throws(() => generateLiveProofReceipt(options), /Complete consumer package differs/);
+    fs.writeFileSync(producerPath, "canonical producer");
+    const preloadPath = path.join(consumerDirectory, "templates", "electron-input-preload.cjs");
+    fs.unlinkSync(preloadPath);
+    assert.throws(() => generateLiveProofReceipt(options), /Complete consumer package differs/);
+    fs.writeFileSync(preloadPath, "canonical preload");
     const syntheticAccount = "1234567890" + "1234567";
     const startupLines = [
       "Setting breakpad minidump AppID = 480",
