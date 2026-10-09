@@ -99,9 +99,40 @@ test("descendants require the complete inherited rule set, not merely an empty e
   assert.match(audit, /\$entry.PSIsContainer/);
   assert.match(audit, /\$matching\.Count -ne 1/);
   assert.match(audit, /\$invalidChildRuleCount -eq 0/);
-  for (const right of ["Write", "Delete", "DeleteSubdirectoriesAndFiles", "ChangePermissions", "TakeOwnership"]) {
-    assert.ok(audit.includes(`[System.Security.AccessControl.FileSystemRights]::${right}`));
-  }
+  assert.match(audit, /Test-ReadExecuteOnlyRights -Value \$_\.FileSystemRights/);
+});
+
+test("root and descendant user rules share the exact read-execute predicate with optional synchronization only", () => {
+  const exact = section("Test-ReadExecuteOnlyRights");
+  assert.match(exact, /\$Value -eq \$readExecute -or \$Value -eq \(\$readExecute -bor/);
+  assert.match(exact, /FileSystemRights\]::Synchronize/);
+  assert.doesNotMatch(exact, /-band|disallowedRights/);
+  assert.match(section("Test-CanonicalRootRule"), /Test-ReadExecuteOnlyRights -Value \$Rule\.FileSystemRights/);
+  assert.match(section("Get-CandidateProtectionAudit"), /Test-ReadExecuteOnlyRights -Value \$_\.FileSystemRights/);
+});
+
+test("Windows memory-only root rules reject generic and unknown permissions", { skip: process.platform !== "win32" }, () => {
+  const functions = [
+    ...(source.includes("function Test-ReadExecuteOnlyRights {") ? [section("Test-ReadExecuteOnlyRights")] : []),
+    section("Test-CanonicalRootRule"),
+  ].join("\n");
+  assert.doesNotMatch(functions, /Get-Acl|Set-Acl|Get-CimInstance|Invoke-Icacls|CreateFile|OpenWithRights|SetSecurityInfo/);
+  const command = [
+    "$ErrorActionPreference='Stop';",
+    functions,
+    "$qaReadExecute=[Security.AccessControl.FileSystemRights]::ReadAndExecute; $qaSynchronize=[Security.AccessControl.FileSystemRights]::Synchronize;",
+    "function New-MemoryRule($qaRights) { [PSCustomObject]@{IdentityReference=[PSCustomObject]@{Value='S-1-5-21-111-222-333-1001'};FileSystemRights=[Security.AccessControl.FileSystemRights]$qaRights;AccessControlType=[Security.AccessControl.AccessControlType]::Allow;InheritanceFlags=([Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit);PropagationFlags=[Security.AccessControl.PropagationFlags]::None;IsInherited=$false} };",
+    "$qaValid=0;foreach($qaRights in @($qaReadExecute,($qaReadExecute -bor $qaSynchronize))){if(Test-CanonicalRootRule -Rule (New-MemoryRule $qaRights) -Identity 'S-1-5-21-111-222-333-1001' -Rights $qaReadExecute -ReadExecuteOnly){$qaValid++}};",
+    "$qaRejected=0;foreach($qaExtra in @(0x116,0x10000,0x40,0x40000,0x80000,0x10000000,0x40000000,0x20000000,0x800,[int]::MinValue)){if(-not (Test-CanonicalRootRule -Rule (New-MemoryRule ($qaReadExecute -bor $qaExtra)) -Identity 'S-1-5-21-111-222-333-1001' -Rights $qaReadExecute -ReadExecuteOnly)){$qaRejected++}};",
+    "@{valid=$qaValid;rejected=$qaRejected} | ConvertTo-Json -Compress;",
+  ].join("\n");
+  const shell = path.join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe");
+  const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", command], {
+    encoding: "utf8", shell: false, windowsHide: true, timeout: 20000, maxBuffer: 16384,
+  });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null); assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(JSON.parse(result.stdout), { valid: 2, rejected: 10 });
 });
 
 test("protected root audit includes every access rule and rejects inherited root-only grants", () => {

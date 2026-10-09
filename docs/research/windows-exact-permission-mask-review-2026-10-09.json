@@ -1,0 +1,27 @@
+{
+  "kind": "windows-exact-permission-mask-source-review-v1",
+  "reviewedAtUtc": "2026-10-09T16:47:24Z",
+  "sourceBase": "072ca806c38d18563961be18b28eb1f892302d78",
+  "scope": "Current Windows protection audit tooling only, separate from frozen release artifacts and native code.",
+  "finding": "Root and descendant user rules required read/execute presence and excluded named low write bits, but did not exclude additional generic or unknown bits. The actual extracted old root predicate admits read/execute combined with generic all, write, execute or an unknown bit in memory-only rule models.",
+  "correction": "One shared pure predicate accepts exactly read/execute or read/execute plus synchronize. Both existing root and descendant paths use it. Identity, Allow type, inheritance, propagation, four-rule/OWNER RIGHTS policy, schema2 fields, Apply ordering, recovery and CLI remain unchanged.",
+  "source": {
+    "script": "scripts/windows-protect-release-candidate.ps1",
+    "windowsCheckoutBytes": 19876,
+    "windowsCheckoutSha256": "8b5519d4b624516504558f54b1e959c8b830ccf4dbe5cbde55c38d35f7aeb850",
+    "test": "tests/windows-protection-owner-rights.test.cjs",
+    "windowsTestBytes": 15450,
+    "windowsTestSha256": "d1e23d0d8867b8cbf0c0c22bc715a21400e8d7ce1142a4cc3d0d6bde71db390b"
+  },
+  "evidence": {
+    "before": "Three focused checks fail before correction. The real extracted root predicate accepts both valid models but rejects only five of nine weakened models, not the expected nine. This demonstrates a predicate gap, not a filesystem exploit.",
+    "after": "All13 focused and107 final data-only package/epoch/protection cases pass with no skips. The final in-memory root matrix accepts two valid values and rejects ten invalid values, including signed generic read. All seven verifier tests, supported-target policy, typecheck and whitespace checks pass. No whole protection script or native candidate executes locally.",
+    "independentReview": "Exact corrected source review accepts the scalar Boolean predicate and both pipeline integrations; Apply/recovery/CLI and the preceding source prefix match their prior bytes. A suggested signed generic-read regression is added; final test-only delta and scoped public documentation reviews accept the change. No reviewer runtime action or write.",
+    "sourceCi": "Not committed or pushed at initial source-review capture; fresh exact-source CI including package smoke remains required. Local native smoke is not invoked through its known policy-override route."
+  },
+  "limits": "Source and memory-only evidence, not an observed NTFS bypass, actual protection Apply, owned recovery fixture, current candidate boundary, game/device QA or release qualification. No permission, security policy, frozen artifact, helper/native payload, tag, registry publication or deployment changed. Existing native prototype and unrelated research changes remain outside this source slice.",
+  "candidateNativeExecuted": false,
+  "candidateProtectionEstablished": false,
+  "published": false,
+  "releaseQualified": false
+}

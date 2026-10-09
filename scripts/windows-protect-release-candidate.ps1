@@ -76,6 +76,16 @@ function Get-RootAclBoundary {
   }
 }
 
+function Test-ReadExecuteOnlyRights {
+  param([System.Security.AccessControl.FileSystemRights]$Value)
+
+  $readExecute = [System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+  return (
+    $Value -eq $readExecute -or $Value -eq ($readExecute -bor
+      [System.Security.AccessControl.FileSystemRights]::Synchronize)
+  )
+}
+
 function Test-CanonicalRootRule {
   param(
     $Rule,
@@ -89,18 +99,7 @@ function Test-CanonicalRootRule {
     [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
   )
   $rightsMatch = if ($ReadExecuteOnly) {
-    $disallowedRights = (
-      [System.Security.AccessControl.FileSystemRights]::Write -bor
-      [System.Security.AccessControl.FileSystemRights]::Delete -bor
-      [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
-      [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
-      [System.Security.AccessControl.FileSystemRights]::TakeOwnership
-    )
-    (
-      ($Rule.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq
-        [System.Security.AccessControl.FileSystemRights]::ReadAndExecute -and
-      ($Rule.FileSystemRights -band $disallowedRights) -eq 0
-    )
+    Test-ReadExecuteOnlyRights -Value $Rule.FileSystemRights
   } else {
     $Rule.FileSystemRights -eq $Rights
   }
@@ -186,12 +185,7 @@ function Get-CandidateProtectionAudit {
         $_.InheritanceFlags -eq $expectedChildInheritance -and
         $_.PropagationFlags -eq [System.Security.AccessControl.PropagationFlags]::None -and
         $(if ($sid -eq $currentSid) {
-          ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -eq $expectedRights[$sid] -and
-          ($_.FileSystemRights -band ([System.Security.AccessControl.FileSystemRights]::Write -bor
-            [System.Security.AccessControl.FileSystemRights]::Delete -bor
-            [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
-            [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
-            [System.Security.AccessControl.FileSystemRights]::TakeOwnership)) -eq 0
+          Test-ReadExecuteOnlyRights -Value $_.FileSystemRights
         } else { $_.FileSystemRights -eq $expectedRights[$sid] })
       })
       if ($matching.Count -ne 1) { $childOk = $false }

@@ -362,6 +362,28 @@ Evidence: [source review](windows-deployment-host-policy-review-2026-10-09.json)
 [deployment helper](../../scripts/windows-deploy-release-candidate.ps1),
 [regressions](../../tests/windows-protection-owner-rights.test.cjs).
 
+### WIN-CANDIDATE-EXACT-RIGHTS-001 — SOURCE CORRECTION, LIVE BOUNDARY OPEN
+
+The root/descendant read-execute-only predicates excluded named write bits but
+admitted generic or unknown extras. A shared exact read/execute predicate permits
+only optional synchronize. Three checks fail before correction; the actual
+memory-only root function rejects five of nine weakened models. Thirteen focused
+checks pass after correction, with two valid and ten negative final models,
+including signed generic read. Independent source/test reviews accept the delta;
+Apply/recovery/CLI, four-rule policy and schema2 remain unchanged.
+
+This is a source predicate finding, not a demonstrated NTFS bypass, fixture or
+current protection pass. Do not transfer earlier frozen/helper/fixture evidence
+or rerun an unchanged live experiment.
+
+**Repeat only when:** the exact-mask policy or root/descendant integration changes,
+or separately authorized current protection reaches this corrected audit. Fresh
+exact-source CI and a genuine current boundary still precede live qualification.
+
+Evidence: [source review](windows-exact-permission-mask-review-2026-10-09.json),
+[protection helper](../../scripts/windows-protect-release-candidate.ps1),
+[regressions](../../tests/windows-protection-owner-rights.test.cjs).
+
 ### WIN-CANDIDATE-OWNER-RIGHTS-001 — OPEN
 
 The three-rule write-protection audit omitted the owner's implicit WRITE_DAC.

@@ -90,6 +90,23 @@ source review finds no actionable issue. No elevation, Apply, native/game launch
 candidate rebuild, tag or publication occurs. Exact committed-source CI is still
 required. See [bounded source review](windows-deployment-host-policy-review-2026-10-09.json).
 
+### Current Windows exact permission-mask correction
+
+The current protection audit admitted read/execute combined with generic or
+unknown rights because it excluded only named low write bits. A shared pure
+predicate now requires exact read/execute with optional synchronize in both root
+and descendant rules. Three regressions fail before correction, including the
+actual memory-only root predicate rejecting only five of nine weakened models.
+All thirteen focused checks pass afterward; the final matrix rejects ten models,
+including signed generic read, while retaining both valid values. Independent
+exact-source and final test-delta reviews accept the change. Apply/recovery/CLI,
+four-rule policy and schema2 remain unchanged. All107 final data-only checks,
+seven verifier checks, platform/type/whitespace pass. No filesystem exploit,
+live Apply, fixture, native/game action or frozen release qualification is
+inferred. Scoped public documentation review also accepts the change. Fresh
+exact-source CI remains required.
+See [source review](windows-exact-permission-mask-review-2026-10-09.json).
+
 ### Current Windows owner-right protection correction
 
 Source review found that the three-rule ACL checker omitted the owner's

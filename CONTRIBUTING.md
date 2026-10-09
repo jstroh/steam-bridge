@@ -183,6 +183,9 @@ implicit permission-changing right, resets descendants to inherit that
 canonical ACL, rejects reparse points and running candidate processes, and
 then audits the complete tree. Re-run
 `-Mode Audit` and the exact content fingerprint after every live profile.
+The current identity's root and descendant rules must be exactly read/execute,
+with only the optional synchronization right accepted. Additional generic or
+unknown permission bits are not canonical, even when the named write bits are absent.
 Preserve and replace a mutated candidate; never delete, exclude, or baseline a
 runtime file.
 Launch protected live candidates only through the required Limited task; an
