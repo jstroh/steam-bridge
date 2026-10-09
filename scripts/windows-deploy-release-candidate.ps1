@@ -154,6 +154,29 @@ function Invoke-CandidateFingerprint {
   return ([string]$bindingLine[0]).Substring($script:FingerprintPrefix.Length) | ConvertFrom-Json
 }
 
+function Test-CandidateProtectionRecord {
+  param($Value)
+
+  if ($Value.kind -isnot [string] -or $Value.kind -cne "steam-bridge-windows-candidate-write-protection") { return $false }
+  foreach ($name in @("ok", "writeProtected", "rootInheritanceProtected", "ownerRightsReadControlOnly",
+      "currentIdentityReadExecuteOnly", "systemFullControl", "administratorsFullControl", "limitedLaunchRequired")) {
+    if ($Value.$name -isnot [bool] -or $Value.$name -ne $true) { return $false }
+  }
+  $expectedCounts = @{
+    schemaVersion = 2
+    rootExplicitRuleCount = 4
+    canonicalRuleCount = 4
+    protectedChildCount = 0
+    explicitChildRuleCount = 0
+    invalidChildRuleCount = 0
+  }
+  foreach ($name in $expectedCounts.Keys) {
+    $number = $Value.$name
+    if (($number -isnot [int] -and $number -isnot [long]) -or $number -ne $expectedCounts[$name]) { return $false }
+  }
+  return $true
+}
+
 function Invoke-CandidateProtection {
   param(
     [string]$Directory,
@@ -168,7 +191,7 @@ function Invoke-CandidateProtection {
     throw "Candidate write-protection $Mode failed."
   }
   $result = Get-Content -LiteralPath $EvidencePath -Raw | ConvertFrom-Json
-  if ($result.ok -ne $true -or $result.writeProtected -ne $true) {
+  if (-not (Test-CandidateProtectionRecord -Value $result)) {
     throw "Candidate write-protection $Mode did not produce a successful audit."
   }
   return $result
@@ -212,6 +235,44 @@ function Restore-DeploymentRollback {
 }
 
 function Invoke-SelfTest {
+  $validProtection = [PSCustomObject]@{
+    kind = "steam-bridge-windows-candidate-write-protection"
+    schemaVersion = 2
+    ok = $true
+    writeProtected = $true
+    rootInheritanceProtected = $true
+    ownerRightsReadControlOnly = $true
+    currentIdentityReadExecuteOnly = $true
+    systemFullControl = $true
+    administratorsFullControl = $true
+    limitedLaunchRequired = $true
+    rootExplicitRuleCount = 4
+    canonicalRuleCount = 4
+    protectedChildCount = 0
+    explicitChildRuleCount = 0
+    invalidChildRuleCount = 0
+  }
+  if (-not (Test-CandidateProtectionRecord -Value $validProtection)) { throw "Canonical protection record self-test failed." }
+  $altered = $validProtection | ConvertTo-Json | ConvertFrom-Json
+  $altered.kind = @("steam-bridge-windows-candidate-write-protection")
+  if (Test-CandidateProtectionRecord -Value $altered) { throw "Array protection kind self-test failed." }
+  $altered.kind = $null
+  if (Test-CandidateProtectionRecord -Value $altered) { throw "Null protection kind self-test failed." }
+  foreach ($property in $validProtection.PSObject.Properties) {
+    $altered = $validProtection | ConvertTo-Json | ConvertFrom-Json
+    $altered.PSObject.Properties.Remove($property.Name)
+    if (Test-CandidateProtectionRecord -Value $altered) { throw "Missing protection field self-test failed." }
+    $altered = $validProtection | ConvertTo-Json | ConvertFrom-Json
+    $altered.($property.Name) = if ($property.Value -is [bool]) { "true" } else { "invalid" }
+    if (Test-CandidateProtectionRecord -Value $altered) { throw "Invalid protection field type self-test failed." }
+  }
+  foreach ($change in @(@("schemaVersion", 1), @("rootExplicitRuleCount", 3), @("canonicalRuleCount", 3),
+      @("invalidChildRuleCount", 1), @("protectedChildCount", 1), @("explicitChildRuleCount", 1),
+      @("ownerRightsReadControlOnly", $false))) {
+    $altered = $validProtection | ConvertTo-Json | ConvertFrom-Json
+    $altered.($change[0]) = $change[1]
+    if (Test-CandidateProtectionRecord -Value $altered) { throw "Legacy or failed protection record self-test failed." }
+  }
   $root = Join-Path ([IO.Path]::GetTempPath()) ("steam-bridge-deploy-self-test-" + [Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $root | Out-Null
   try {

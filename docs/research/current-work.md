@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-09
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,7 +12,121 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Prepare stable 0.4.11 from the corrected committed input, preload and layout
+Prepare a normal stable 0.4.12 release from reviewed committed main1caba46,
+with the corrected schema8 publisher in the same candidate/tooling epoch.
+The maintainer rejected a protected allowed-ref change; use the ordinary
+v0.4.12 candidate tag and leave publishing policy unchanged. Only the root,
+library and lockfile version fields change. Preserve the native controller
+prototype and unrelated documentation dirt outside the source commit. Fresh
+exact-source CI precedes tagging; the tag creates the normal three-target
+artifacts. Its Windows version resource changes the addon bytes, so the frozen
+0.4.11 Microsoft review and live evidence cannot qualify the new candidate.
+Freeze and independently verify the new artifacts, then complete exact-byte
+review and protected schema8 actual-game proof before gated publication.
+No helper execution, consumer deployment or Steam promotion is implied.
+
+The independently reviewed five-field version bump is committed/pushed as
+1caba46bf8f873d4f8825dcf1431e509d16fefe8; only the three intended metadata
+files entered that commit. All preserved prototype and unrelated evidence bytes
+remain unchanged. Metadata equality, supported-target policy, zero-vulnerability
+lock audit, all94 data-only package/epoch cases, seven verifier self-tests and
+whitespace checks pass. Exact-source main CI37868603106 passes all nine jobs.
+Normal annotated v0.4.12 was then created/pushed at that exact commit; tag
+object1ae8ce9670c6e4bc8382beceb226a6f92578a964 peels to the pinned source.
+Genuine tag CI37868946094 attempt1 passes all nine jobs. Independent first
+checkout logs from CI job113622265479 and Release job113622265870 prove the
+refs/tags/v0.4.12 fetch, peel and checkout to the exact source before dependency
+setup. Release37868946050 attempt1 passes all four jobs. Downloaded original
+native3-platform artifacts, matching Windows PDB and canonical Windows package
+gate pass verification-only publication checks; all nine raw native/runtime
+files equal the canonical89-file TGZ. The new TGZ SHA-256 is
+9ab2892ee452eb69b45729e71fa12fb6c5fe37f66b2565cff91d03dba7a40be3;
+the new Windows addon SHA-256 is
+492bfc04e6a4330fd3542f2e32dda6d0d4eb81189eb5c2633a8d8eebfaed08bf.
+Its independently verified addon/PDB debug ID is
+7f294a8f-66e8-4d0d-a38f-01229ca50012-1. Source/build/package proof is complete;
+the candidate remains pre-live and unqualified. Independent final artifact
+review finds no discrepancy across the canonical
+four file pins, exact source/tag/run/artifact provenance,89-file inventory and
+all nine native files. The native-load JSON equals the audited executable probe
+and remains CI-only evidence. The maintainer approved the new exact-file
+Microsoft submission. The signed-in developer/SAC form is filled and the
+verified addon selected; final review shows the correct file and full public
+source/build/hash statement without asserting a new block. Submit has not been
+clicked at the preparation observation. A subsequent fresh explicit CAPTCHA
+instruction completed the same reviewed form and exact-file upload. Microsoft
+now supplies a genuine accepted case and retained private exact-byte receipt;
+status was Submitted with a Pending root determination and blank analyst reply.
+A later bounded read observes In progress, still no analyst reply and a Pending
+root determination. The automated protection cells report scan-completed icons
+while their current-detection text says No malware detected; this is not an
+analyst Smart App Control clearance or a whole-file malware determination.
+Exact retained receipt and addon pins remain unchanged. Acceptance is not
+clearance. No decision time or malware verdict is invented, and frozen0.4.11
+evidence is unchanged. Fresh data-only ordinary actual-game preparation now
+binds all89 canonical0.4.12 package files inside a fully verified7,890-file copy;
+original runtime, game source, assets and inputs stay unchanged. It is not a
+production assembly, protected launch, runtime qualification or publication.
+Reuse this retained current container while exact-file review waits.
+Protected schema8 four-case proof remains absent. No protected
+publisher, local native candidate launch, GitHub Release or npm publication
+occurred. Preserve the existing permissions, frozen0.4.11 and prototype.
+
+The previously approved publishing-tools-0.4.11-7aac1c0 tag was already created
+at exact7aac1c05d586f0525ffb595919400b1a8fad8298. Its CI37868000465 passed
+all nine jobs, but it is not used for this normal release. The existing
+v0.4.11 tag, Microsoft-reviewed addon and retained package remain immutable.
+
+### Current Windows owner-right protection correction
+
+Source review found that the three-rule ACL checker omitted the owner's
+implicit permission-changing right. A read-only in-memory AccessCheck with
+the current Limited token confirms that the old descriptor grants WRITE_DAC;
+the added OWNER RIGHTS read-control-only rule suppresses that grant. The
+tooling correction now requires four exact root/inherited rules,
+effective descendant propagation, and a fresh WRITE_DAC-open denial in its
+owned-text-fixture self-test. Schema2 explicitly does not attest the parent
+namespace or mapped-image/module identity. The frozen tag and artifacts are
+unchanged; no candidate protection or native launch occurred.
+
+The deployment consumer also accepted only ok/writeProtected booleans from
+older three-rule helpers. A separate pure validator now requires typed schema2,
+four root/canonical rules, OWNER RIGHTS confirmation and valid descendants.
+Its synthetic negative fixtures reject missing/type-invalid/legacy reports;
+independent review also caught and corrected PowerShell array-kind admission.
+The corrected consumer self-test passes its actual pure predicates and owned
+activation/rollback fixture under the unchanged normal policy, with no new
+fixture remaining. It exits before protection, elevation or deployment.
+The frozen schema8 receipt and publisher have no ACL input; separately retained
+current protection, Limited-token and namespace/image evidence still precedes
+actual-game qualification. No frozen tooling epoch is silently upgraded.
+
+Two owned-text-fixture tests failed recovery, including four direct
+SetSecurityInfo access-denied results. Preserve both failed records and their
+retained protected fixtures. The first prematurely printed passing line is
+not whole-test success; source now prints success only after strict cleanup.
+The single-factor correction adds READ_CONTROL to saved pre-protection recovery
+handles only; the fresh WRITE_DAC-only denial probe, restore API/flags/order,
+Limited token and execution policy remain unchanged. Independent exact-source
+review and all100 data-only package/epoch/protection cases plus seven verifier
+self-tests pass. A fresh normal-policy owned-text-fixture test now passes the
+four-rule audit, data-write and WRITE_DAC-open denials, retained read access,
+all four descriptor restores and strict cleanup. Independent absence verification
+confirms its cleanup. This proves this host's recovery correction, not the API's
+internal mechanism or candidate protection. Do not repeat either unchanged
+failure or this unchanged passing fixture, use filesystem-incompatible
+SetKernelObjectSecurity, elevate implicitly, or infer a candidate pass from
+these fixtures. See `WIN-CANDIDATE-OWNER-RIGHTS-001` in the findings ledger.
+
+Platform/type/whitespace checks pass. Full native tests and local package smoke
+were not run; the local smoke route specifies an execution-policy bypass and
+is not substituted for the normal-policy fixture proof. Fresh exact-committed
+source CI and its Linux package-smoke gate remain required before accepting
+this source-tooling slice. Preserve unrelated native prototype/cache evidence.
+
+### Superseded frozen 0.4.11 preparation
+
+Prepared stable 0.4.11 from the corrected committed input, preload and layout
 source. The QA example moves to Electron44.6.0 to satisfy current source CI;
 this does not upgrade a consuming application's production runtime. Preserve
 the uncommitted native Linux controller prototype but exclude its lib.rs,
@@ -139,8 +253,55 @@ tag ref; do not turn an ambiguous same-named branch run into tag-push proof.
 Genuine original event/checkout evidence remains an operational prerequisite,
 as does an explicitly approved immutable tooling tag with exact-source green CI.
 No environment/OIDC change, new tag, dispatch or publication occurs.
-Next: finish the approved scoped workflow source push/review/CI, resolve the
-QA-example question, then require protected exact-consumer proof before publication.
+The approved ten-file source slice is now committed/pushed72f0198 and remote
+main matches exactly. CI37737891233 is terminal: all three platform jobs and
+dependency audit pass; only the known QA example44.6.0 versus44.7.0 latest gate
+fails and the Node runtime matrix is skipped. No rerun was dispatched.
+Fresh read-only original CI37586960096 and Release37586960092 checkout logs
+independently show the pinned first checkout action fetching/peeling/checking
+out refs/tags/v0.4.11 to exact23053a9, before repository code or dependency setup.
+Root verifies Windows-check job112679214698 and package-gate job112681206675;
+independent review verifies distinct security/prebuild jobs. Both original runs
+are successful push/attempt1 in the canonical repository/workflows. This closes
+their original checkout namespace ambiguity, not signed event, native/live
+qualification or future tooling-tag proof. Frozen v0.4.11 still resolves to
+23053a9. No new tag, publication or candidate bytes were created.
+The maintainer subsequently approved the QA-example-only Electron44.7.0 update,
+tests, commit and push. Exactly two metadata files changed: the example pin and
+the lockfile's matching workspace/package version, URL and official integrity.
+All other lock records, dependency shapes and library/runtime pins are unchanged.
+Normal scoped dependency reconciliation with scripts disabled updates one package;
+the version/latest guard, derived Windows ASAR fixture, supported-target policy,
+zero-vulnerability lock audit, all94 data-only package/epoch tests and package-gate
+self-tests pass. Independent review confirms exact scope and unchanged frozen
+addon/TGZ/audit/helper/receipt pins. The approved two-file slice is committed/pushed
+7aac1c0; remote main matches its full SHA. Unrelated prototype and documentation
+hunks remain unstaged. Fresh exact-source CI37748229914 completes successfully
+on all nine jobs: Windows, Apple Silicon macOS, Linux, dependency audit, full
+package smoke and Node18/20/22/24. Primary watch and independent final API metadata
+verify attempt1/main push/canonical CI/exact full source; Windows completes last
+at08:15:30UTC. This is a new push run, not a restart of terminal earlier runs.
+Local frozen native loading,
+prototype builds, full native Windows package smoke and live QA were not run.
+That publishing-tools tag and its successful tag-push CI now exist as recorded
+above. The subsequent normal-release decision supersedes its publication path;
+no protected publisher was dispatched and no package was published.
+Fresh private consuming-game data preparation now provides a normal-directory
+container with all 89 canonical package files. Two independent source reviews
+corrected temp/privacy checks, source pinning, omitted physical dependencies and
+mutable archive reads before the single preparation. Game headers/bodies derive
+from one pinned archive buffer; an independent reconstruction verifies all 7,890
+output files and unchanged original inputs. The runtime, game code, assets and
+original metadata are unchanged; the separately bound package is 0.4.11. Two
+diagnostic opt-in markers are omitted only in the copy, with other physical
+dependencies preserved. This is older-game QA preparation, not current production
+assembly or a passing launch. The private receipt remains unqualified and no
+candidate native code has executed. Its inherited writable ACL is not a protected
+boundary; exact executable/native review, scoped protection or equivalent audit,
+Limited route, account isolation and control/capture still precede the four cases.
+Reuse the retained prepared container rather than recreate unchanged staging.
+Shipped consumer runtime and
+all Microsoft-reviewed frozen bytes remain unchanged and separately unqualified.
 No local native prototype build is used as release evidence. No consuming-app
 deployment or Steam promotion is authorized by this publication decision.
 Normal signed gates remain intact; this exception is not an Authenticode claim,

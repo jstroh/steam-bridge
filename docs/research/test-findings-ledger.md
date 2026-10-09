@@ -342,6 +342,50 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
+### WIN-CANDIDATE-OWNER-RIGHTS-001 — OPEN
+
+The three-rule write-protection audit omitted the owner's implicit WRITE_DAC.
+A read-only in-memory AccessCheck using the actual Limited token reproduces
+that grant and its removal by an OWNER RIGHTS read-control-only rule. Source
+now requires four canonical effective root/descendant rules and reports that
+namespace/image attestation remains separate. No game candidate was protected
+or launched by this correction.
+
+Two disposable owned-text-fixture tests passed the protection assertions but
+failed saved-handle recovery; the second reports SetSecurityInfo return5 for
+all four objects. Both are whole-test failures and their protected fixtures
+remain retained. The first success line preceded cleanup and is invalid as
+passing evidence; source now prints success only after verified strict cleanup.
+The single-factor recovery correction adds READ_CONTROL to the saved
+pre-protection handles only; fresh post-protection WRITE_DAC-only reopen still
+fails. After independent exact-source review, one fresh normal-policy fixture
+passes the canonical audit, denied data write and WRITE_DAC reopen, retained
+read access, all original descriptor restores and strict cleanup; its absence
+is independently verified. This proves recovery here, not its internal API
+mechanism, protection of the game candidate or cleanup of the two failures.
+
+The current deployment intake previously checked only two success booleans.
+Source now requires typed schema2/four-rule/OWNER RIGHTS/valid-descendant
+fields, rejecting a mixed old three-rule report. Frozen schema8 live proof and
+publication do not consume ACL records; their separately retained current
+protection/Limited/namespace/image prerequisites remain operator gates.
+Independent review caught PowerShell's array-kind comparison admission; the
+string-type guard and explicit array/null negatives correct it. The actual
+consumer self-test now passes its pure predicates and owned activation/rollback
+fixture under the unchanged normal policy, with verified cleanup and no
+candidate protection, elevation or deployment.
+
+**Repeat only when:** the descriptor policy, handle access mask or documented
+recovery implementation changes. Keep failure records, use one fresh owned
+fixture for each falsifiable change, and do not repeat unchanged access-denied
+restores. Existing denied fixtures require explicit scoped maintenance, not
+take-ownership, elevation, execution-policy or filesystem-incompatible API
+fallbacks. Fixture recovery is not a candidate protection or live-release pass.
+
+Evidence: [protection helper](../../scripts/windows-protect-release-candidate.ps1),
+[source regressions](../../tests/windows-protection-owner-rights.test.cjs),
+[protection scope](../../CONTRIBUTING.md#release-candidates-publication-and-rollback).
+
 ### WIN-RELEASE-REVIEW-049-001 — QUALIFIED LOCALLY AND PUBLISHED
 
 Release review exposes a stale busy-Present result being used as current retry

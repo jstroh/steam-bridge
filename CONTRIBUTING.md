@@ -174,8 +174,10 @@ replacement beside it. The lower-level
 for an already deployed candidate, with `-EvidencePath` outside that candidate.
 It removes inherited write access from the current interactive identity while
 retaining read/execute access and SYSTEM/Administrators maintenance access,
-resets descendants to inherit that canonical ACL, rejects reparse points and
-running candidate processes, and then audits the complete tree. Re-run
+adds inherited OWNER RIGHTS read-control-only access to suppress the owner's
+implicit permission-changing right, resets descendants to inherit that
+canonical ACL, rejects reparse points and running candidate processes, and
+then audits the complete tree. Re-run
 `-Mode Audit` and the exact content fingerprint after every live profile.
 Preserve and replace a mutated candidate; never delete, exclude, or baseline a
 runtime file.
@@ -184,6 +186,18 @@ elevated process intentionally retains Administrators maintenance access.
 An installer that already places immutable program bytes under a protected
 system location may use audit mode to prove an equivalent boundary, but the
 live release evidence still requires a successful sanitized protection record.
+Current protection records use schema 2 and four canonical rules; historical
+three-rule records do not prove owner-right suppression. The deployment helper
+requires the typed schema2 owner-right, four-rule and valid-descendant fields,
+not only successful-audit booleans. Live-proof schema8 and the publisher do not
+consume ACL records: the separately retained current protection/Limited-launch
+and namespace/image checks remain prerequisites, not receipt fields. The
+frozen release tag's old protection helper is not upgraded by a source fix.
+The ACL audit does not attest a stable parent namespace or loaded-image/module
+identity; those remain
+separate launch-binding checks. The self-test retains recovery handles only for
+its own disposable text fixtures and must run non-elevated; those handles are
+closed before fixture cleanup and are not part of a game-launch boundary.
 
 GitHub Actions artifacts in this public repository are retained for 90 days;
 GitHub permits at most 90 days for public repositories. After publication,
