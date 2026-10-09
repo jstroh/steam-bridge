@@ -399,6 +399,39 @@ Evidence: [protection helper](../../scripts/windows-protect-release-candidate.ps
 [source regressions](../../tests/windows-protection-owner-rights.test.cjs),
 [protection scope](../../CONTRIBUTING.md#release-candidates-publication-and-rollback).
 
+### WIN-STANDALONE-RESOURCE-TRANSPORT-001 — RESOURCE-ONLY PASS, GAME ROUTE OPEN
+
+A separately reviewed private consumer-QA prototype passes a real current-user
+on-demand LeastPrivilege task using the existing signed Windows system command
+processor only. The actor is actually Limited/Medium in the expected session.
+Both raw byte streams stay separate, the expected nonzero exit propagates, and
+the exact temporary task is removed. Independent source/result/hash/byte checks
+agree. No helper, game or native release candidate executes.
+
+Retain five distinct failures rather than repeat them: inherited Core module
+selection by the Desktop host; an inappropriate single-link test on the signed
+OS resource; explicit byte encoding on a CIM XML string; COM-versus-XML setting
+names; and omission of exported default fields. Normal vendor-module import
+authorization and candidate single-link rules stay intact. Registration consumes
+retained in-memory XML; task checks reject extra actors/triggers, automatic
+retries/maintenance and changed bounds. Missing XML defaults are accepted only
+with matching authoritative CIM values. The failed-closed validator's one
+registered never-started task was separately removed using hash-bound original
+specification and Ready/never-run/full-contract checks; its failed result remains
+unchanged. No security-policy, permission or installation change was needed.
+
+**Repeat only when:** the reviewed resource command, task definition/default
+normalization, module selection, raw streams or cleanup contract changes. Do not
+repeat unchanged passing or failed probes, reuse retired attached launchers,
+filter/merge raw logs or transfer this result to a game. Full candidate inventory,
+held namespace/image/module identity, actual token/protection, account/capture and
+exact Microsoft/SAC gates still precede a separately reviewed actual-game route.
+The helper's fixed limits and spent test are not widened or renewed.
+
+Evidence: [current transport checkpoint](current-work.md#current-windows-resource-only-task-transport),
+[Windows architecture](native-overlay-presenter-plan.md#read-first-after-compaction-windows-architecture),
+[XML demand-start contract](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-allowstartondemand-settingstype-element).
+
 ### WIN-RELEASE-REVIEW-049-001 — QUALIFIED LOCALLY AND PUBLISHED
 
 Release review exposes a stale busy-Present result being used as current retry

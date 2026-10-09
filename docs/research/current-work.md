@@ -138,10 +138,46 @@ all seven pass afterward. Independent exact-delta review finds no actionable
 issue. One changed-audit normal-policy run passes the actual memory predicate,
 canonical data/permission denials, recovery and strict fixture cleanup; the
 matching deployment record/transaction fixture passes too, with no new fixture
-remaining. All101 data-only cases and seven verifier self-tests pass. Fresh
-exact-committed-source CI remains required for this follow-up. This is not a
-demonstrated NTFS bypass or passing live QA. Frozen tag/artifacts are unchanged.
+remaining. All101 data-only cases and seven verifier self-tests pass. The six-file
+follow-up is committed/pushed asab7dd320b6aaf96e0e774cbda4f6280948d55dbc;
+remote main matches. CI37892675620 attempt1/main push/canonical CI is terminal
+success on all nine jobs, independently confirmed, including all three platforms,
+Linux package smoke, dependency security and packed Node18/20/22/24. This is not
+a demonstrated NTFS bypass or passing live QA. Frozen tag/artifacts are unchanged.
 Preserve unrelated native prototype/cache evidence.
+
+### Current Windows resource-only task transport
+
+A private consumer-QA resource prototype now passes a real current-user
+InteractiveToken/LeastPrivilege on-demand task, using only the existing signed
+Windows system command processor. Its actual actor is Limited/Medium in the
+expected session; distinct raw stdout/stderr retain both exact sentinel byte
+streams, the expected nonzero exit propagates, and the owned task is removed.
+Independent source and retained-result reconciliation agrees. This is transport
+proof, not candidate, game, mapped-module, device or notification qualification.
+
+Five distinct failed prototype records remain retained: inherited Core-versus-Desktop
+module selection; a candidate-only hard-link restriction incorrectly applied to
+the OS resource; byte-encoding declaration versus a CIM XML string; the COM
+property name versus its XML element; and exported default-field normalization.
+Corrected vendor-manifest selection preserves normal authorization. The OS-only
+resource read does not change candidate single-link requirements. Retained-memory
+XML registration and closed actors/triggers/settings remain mandatory, with no
+automatic retry or maintenance setting. Omitted XML defaults require matching
+authoritative Limited/Interactive/demand-start CIM values. A never-started task
+left by failed-closed validation was separately removed after exact retained-spec
+and full contract checks; its original failure was not replaced or passed.
+
+Do not repeat this unchanged resource pass or any unchanged failure. The separate
+guarded actual-game adapter is still absent: helper-specific retained locks and
+suspended native-image binding are building blocks only, with eleven pins,
+16-MB files, one process, five seconds and 4-KB streams. Ancestor locks alone
+do not freeze unpinned directory contents. Preserve helper limits and spent
+results; a game route needs its own reviewed closed candidate inventory,
+namespace/image/module/token/protection, account/capture and exact-file
+Microsoft/SAC bindings before execution. No native candidate, installation,
+notification enrollment/send, security change or publication occurred.
+See `WIN-STANDALONE-RESOURCE-TRANSPORT-001` in the findings ledger.
 
 ### Superseded frozen 0.4.11 preparation
 
