@@ -77,6 +77,19 @@ at exact7aac1c05d586f0525ffb595919400b1a8fad8298. Its CI37868000465 passed
 all nine jobs, but it is not used for this normal release. The existing
 v0.4.11 tag, Microsoft-reviewed addon and retained package remain immutable.
 
+### Current Windows deployment host/policy correction
+
+The normal Core-host deployment path selected a nonexistent Desktop executable
+under its own runtime directory. Its two subprocess paths also supplied policy
+bypasses. A pure edition-aware host builder now preserves Core/Desktop selection
+for both paths without policy overrides, rejecting unknown editions. User-confirmed
+elevation, hidden windows, quoting, transaction/rollback and typed ACL checks stay
+unchanged. Four failing-before regressions, all eleven focused cases,105data-only
+gate cases and seven verifier checks pass after correction; exact final independent
+source review finds no actionable issue. No elevation, Apply, native/game launch,
+candidate rebuild, tag or publication occurs. Exact committed-source CI is still
+required. See [bounded source review](windows-deployment-host-policy-review-2026-10-09.json).
+
 ### Current Windows owner-right protection correction
 
 Source review found that the three-rule ACL checker omitted the owner's

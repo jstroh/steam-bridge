@@ -158,6 +158,10 @@ write protection, same-volume transactional activation, rollback retention,
 active-package fingerprint and ACL audits, and Steam-process continuity under
 one elevation prompt:
 
+Both elevation and the protection subprocess keep the caller's PowerShell
+edition and its existing execution policy. A policy rejection is a failed
+deployment, not permission to select another runtime or add a policy override.
+
 ```powershell
 .\scripts\windows-deploy-release-candidate.ps1 `
   -SourceDirectory C:\path\to\candidate `

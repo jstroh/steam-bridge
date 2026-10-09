@@ -1,0 +1,28 @@
+{
+  "kind": "windows-deployment-host-policy-source-review-v1",
+  "reviewedAtUtc": "2026-10-09T15:14:58Z",
+  "sourceBase": "4e83790af24e6ee33e25339f2676d2e9ca8c7ac2",
+  "scope": "Deployment tooling only, separate from frozen candidate artifacts and native code.",
+  "finding": "The elevation phase used PSHOME/powershell.exe even under Core, where the observed normal host directory contains pwsh.exe and not powershell.exe. Elevation and the protection subprocess also explicitly requested ExecutionPolicy Bypass; the latter selected a Desktop host from PATH.",
+  "correction": "One pure edition-aware host builder selects pwsh.exe for Core and powershell.exe for Desktop from the same PSHOME, rejecting unknown editions. Both subprocess paths use it and neither supplies a policy override. User-confirmed elevation, hidden window, native argument quoting, transaction/rollback preservation, exit status and typed schema2 protection validation are unchanged.",
+  "source": {
+    "script": "scripts/windows-deploy-release-candidate.ps1",
+    "windowsCheckoutBytes": 19974,
+    "windowsCheckoutSha256": "887301bd1ed94a50f16b2bf1a8c64d135d53da862013afd5edca6a3ee8767052",
+    "test": "tests/windows-protection-owner-rights.test.cjs",
+    "windowsTestBytes": 12621,
+    "windowsTestSha256": "87cef3111bdaf607828411080fc92e6825969a995fb06a659227484b45f71574"
+  },
+  "evidence": {
+    "before": "Three added source/pure-function regressions fail against the old elevation path. Independent review then identifies the unchanged nested override; a fourth regression genuinely fails before its correction. Failures are not relabeled passing.",
+    "after": "All11 focused cases and105 full data-only package/epoch/protection cases pass, with no skips. All7 verifier self-tests, supported-target policy, typecheck and whitespace checks pass. Windows parses both scripts, compiles only the existing fixture recovery type and invokes only pure host/argument builders with synthetic paths.",
+    "independentReview": "Final exact two-file source review finds no actionable issue after both subprocess paths are corrected. Optional arguments, quoting, exit-code handling and typed protection validation are retained. No reviewer runtime action or write.",
+    "packageSmoke": "Local native smoke is not executed: its existing route requests a policy bypass. Fresh exact-source CI, including Linux package smoke, remains required; no terminal run is restarted.",
+    "sourceCi": "Not yet committed or pushed at initial source-review capture; no fresh source CI claim."
+  },
+  "limits": "Source/data-only checks are not actual elevation, protection Apply, game launch or device qualification. No system setting, policy, permission, frozen artifact, helper/native payload, release tag, registry publication or consumer deployment changed. Existing native prototype and unrelated research changes remain outside this source slice.",
+  "candidateNativeExecuted": false,
+  "candidateProtectionEstablished": false,
+  "published": false,
+  "releaseQualified": false
+}

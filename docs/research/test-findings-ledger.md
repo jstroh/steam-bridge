@@ -342,6 +342,26 @@ fallback, and healthy near-target presentation.
 
 ## Windows x64
 
+### WIN-DEPLOYMENT-HOST-POLICY-001 — SOURCE FIX, LIVE PATH OPEN
+
+The normal Core-host elevation path selected a nonexistent Desktop executable;
+both elevation and protection subprocesses also requested policy bypasses. The
+source fix preserves the caller's Core/Desktop host and existing policy in both
+paths, rejecting unknown editions. Four new regressions fail before correction;
+eleven focused and105data-only gate cases plus seven verifier checks pass afterward.
+Independent corrected-source review agrees. Pure builders and parsing/compile
+checks perform no elevation, file-protection or candidate/native operation.
+
+**Repeat only when:** host selection, arguments, policy handling, subprocess
+status or protection validation changes, or an explicitly authorized deployment
+reaches this path with an eligible candidate. Fresh exact-source CI including
+package smoke remains required; source checks do not qualify live protection or
+retrofit frozen artifacts. Do not invoke a spent fixture or change policy to pass.
+
+Evidence: [source review](windows-deployment-host-policy-review-2026-10-09.json),
+[deployment helper](../../scripts/windows-deploy-release-candidate.ps1),
+[regressions](../../tests/windows-protection-owner-rights.test.cjs).
+
 ### WIN-CANDIDATE-OWNER-RIGHTS-001 — OPEN
 
 The three-rule write-protection audit omitted the owner's implicit WRITE_DAC.

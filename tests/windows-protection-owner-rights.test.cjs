@@ -14,6 +14,69 @@ const section = name => {
   const end = source.indexOf("\nfunction ", start + 1);
   return source.slice(start, end < 0 ? source.length : end);
 };
+const deploymentSection = name => {
+  const start = deploymentSource.indexOf(`function ${name} {`);
+  assert.ok(start >= 0, `Missing deployment function ${name}`);
+  const end = deploymentSource.indexOf("\nfunction ", start + 1);
+  return deploymentSource.slice(start, end < 0 ? deploymentSource.length : end);
+};
+
+test("deployment elevation keeps the current PowerShell edition and never supplies a policy override", () => {
+  const argumentsSource = deploymentSection("Get-DeploymentArguments");
+  assert.doesNotMatch(argumentsSource, /ExecutionPolicy|Bypass|Unrestricted/);
+  assert.match(deploymentSource, /\$powershellPath = Get-DeploymentHostPath -RuntimeHome \$PSHOME -Edition \$PSVersionTable\.PSEdition/);
+  assert.match(deploymentSource, /-Verb RunAs -WindowStyle Hidden/);
+});
+
+test("deployment host selection rejects unknown editions rather than choosing another runtime", () => {
+  const selection = deploymentSection("Get-DeploymentHostPath");
+  assert.match(selection, /\"Core\".*\"pwsh\.exe\"/);
+  assert.match(selection, /\"Desktop\".*\"powershell\.exe\"/);
+  assert.match(selection, /throw \"Unsupported PowerShell edition/);
+  assert.doesNotMatch(selection, /Get-Command|SystemRoot|Start-Process|Test-Path|SilentlyContinue/);
+});
+
+test("deployment protection subprocess preserves the host and respects its existing policy", () => {
+  const protection = deploymentSection("Invoke-CandidateProtection");
+  assert.match(protection, /\$protectionHost = Get-DeploymentHostPath -RuntimeHome \$PSHOME -Edition \$PSVersionTable\.PSEdition/);
+  assert.match(protection, /& \$protectionHost -NoProfile -NonInteractive -File \$ProtectionScript/);
+  assert.doesNotMatch(deploymentSource, /ExecutionPolicy|Bypass|Unrestricted|& powershell\.exe/);
+  assert.match(protection, /if \(\$LASTEXITCODE -ne 0\)/);
+  assert.match(protection, /Test-CandidateProtectionRecord -Value \$result/);
+});
+
+test("Windows executes only the pure deployment host and argument builders without elevation or file actions", { skip: process.platform !== "win32" }, () => {
+  const pure = ["ConvertTo-NativeArgument", "Get-DeploymentHostPath", "Get-DeploymentArguments"].map(deploymentSection).join("\n");
+  assert.doesNotMatch(pure, /Start-Process|Set-ExecutionPolicy|Copy-Item|Move-Item|Remove-Item|Invoke-Candidate|Get-CimInstance/);
+  const command = [
+    "$ErrorActionPreference='Stop';",
+    pure,
+    "$core=Get-DeploymentHostPath -RuntimeHome 'C:\\Runtime Core' -Edition 'Core';",
+    "$desktop=Get-DeploymentHostPath -RuntimeHome 'C:\\Runtime Desktop' -Edition 'Desktop';",
+    "$unknownRejected=$false; try { Get-DeploymentHostPath -RuntimeHome 'C:\\Runtime' -Edition 'Unknown' | Out-Null } catch { $unknownRejected=$true };",
+    "$SourceDirectory='C:\\QA Source'; $ActiveDirectory='C:\\QA Active'; $AuditManifest='C:\\QA Evidence\\audit.json'; $EvidenceDirectory='C:\\QA Evidence';",
+    "$RollbackDirectory='C:\\QA Rollback'; $NodeExecutable='C:\\Runtime\\node.exe';",
+    "$arguments=@(Get-DeploymentArguments);",
+    "@{core=$core;desktop=$desktop;unknownRejected=$unknownRejected;arguments=$arguments} | ConvertTo-Json -Depth 3 -Compress;",
+  ].join("\n");
+  const shell = path.join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0/powershell.exe");
+  const result = spawnSync(shell, ["-NoProfile", "-NonInteractive", "-Command", command], {
+    encoding: "utf8", shell: false, windowsHide: true, timeout: 20000, maxBuffer: 16384,
+  });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null); assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  const actual = JSON.parse(result.stdout);
+  assert.equal(actual.core, "C:\\Runtime Core\\pwsh.exe");
+  assert.equal(actual.desktop, "C:\\Runtime Desktop\\powershell.exe");
+  assert.equal(actual.unknownRejected, true);
+  assert.deepEqual(actual.arguments.slice(0, 3), ["-NoProfile", "-NonInteractive", "-File"]);
+  assert.ok(!actual.arguments.some(value => /ExecutionPolicy|Bypass|Unrestricted/.test(value)));
+  for (const flag of ["-SourceDirectory", "-ActiveDirectory", "-AuditManifest", "-EvidenceDirectory", "-Elevated", "-RollbackDirectory", "-NodeExecutable"]) {
+    assert.equal(actual.arguments.filter(value => value === flag).length, 1);
+  }
+  assert.equal(actual.arguments[actual.arguments.indexOf("-SourceDirectory") + 1], '"C:\\QA Source"');
+  assert.equal(actual.arguments[actual.arguments.indexOf("-NodeExecutable") + 1], "C:\\Runtime\\node.exe");
+});
 
 test("protection records require the fourth OWNER RIGHTS read-control-only rule", () => {
   const audit = section("Get-CandidateProtectionAudit");

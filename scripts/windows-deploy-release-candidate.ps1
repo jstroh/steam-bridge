@@ -48,12 +48,21 @@ function ConvertTo-NativeArgument {
   return '"' + ([regex]::Replace($Value, '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
 }
 
+function Get-DeploymentHostPath {
+  param([string]$RuntimeHome, [string]$Edition)
+
+  $hostExecutable = switch -CaseSensitive ($Edition) {
+    "Core" { "pwsh.exe" }
+    "Desktop" { "powershell.exe" }
+    default { throw "Unsupported PowerShell edition for deployment elevation." }
+  }
+  return Join-Path $RuntimeHome $hostExecutable
+}
+
 function Get-DeploymentArguments {
   $arguments = @(
     "-NoProfile",
     "-NonInteractive",
-    "-ExecutionPolicy",
-    "Bypass",
     "-File",
     $PSCommandPath,
     "-SourceDirectory",
@@ -186,7 +195,8 @@ function Invoke-CandidateProtection {
     [string]$ProtectionScript
   )
 
-  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ProtectionScript `
+  $protectionHost = Get-DeploymentHostPath -RuntimeHome $PSHOME -Edition $PSVersionTable.PSEdition
+  & $protectionHost -NoProfile -NonInteractive -File $ProtectionScript `
     -CandidateDirectory $Directory -Mode $Mode -EvidencePath $EvidencePath
   if ($LASTEXITCODE -ne 0) {
     throw "Candidate write-protection $Mode failed."
@@ -327,7 +337,7 @@ if (-not (Test-IsAdministrator)) {
   if ($Elevated) {
     throw "The elevated deployment phase is not running as Administrator."
   }
-  $powershellPath = Join-Path $PSHOME "powershell.exe"
+  $powershellPath = Get-DeploymentHostPath -RuntimeHome $PSHOME -Edition $PSVersionTable.PSEdition
   $argumentLine = (Get-DeploymentArguments) -join " "
   $process = Start-Process -FilePath $powershellPath -Verb RunAs -WindowStyle Hidden `
     -ArgumentList $argumentLine -Wait -PassThru
