@@ -41,6 +41,19 @@ test("descendants require the complete inherited rule set, not merely an empty e
   }
 });
 
+test("protected root audit includes every access rule and rejects inherited root-only grants", () => {
+  const boundary = section("Get-RootAclBoundary");
+  const audit = section("Get-CandidateProtectionAudit");
+  assert.match(boundary, /GetAccessRules\(\$true, \$true/);
+  assert.match(boundary, /Where-Object \{ \$_.IsInherited \}/);
+  assert.match(boundary, /\$rules\.Count -eq 4 -and \$inheritedCount -eq 0/);
+  assert.match(audit, /\$rootBoundary = Get-RootAclBoundary -Acl \$rootAcl/);
+  assert.match(audit, /\$rootBoundary\.ok -and/);
+  assert.match(audit, /rootInheritedRuleCount = \$rootBoundary\.inheritedRuleCount/);
+  assert.match(section("Invoke-SelfTest"), /\(A;ID;WD;;;WD\)/);
+  assert.match(section("Invoke-SelfTest"), /Inherited root-only rule self-test failed/);
+});
+
 test("Apply is idempotent and establishes owner suppression only after descendant reset", () => {
   const apply = section("Set-CandidateProtection");
   assert.match(apply, /Get-CandidateProtectionAudit -Directory \$Directory\)\.ok\) \{\s+return/);
@@ -78,7 +91,8 @@ test("deployment requires typed schema-2 owner-right and complete four-rule prot
   assert.match(validation, /\$Value\.\$name -isnot \[bool\]/);
   assert.match(validation, /\$number -isnot \[int\].*\$number -isnot \[long\]/);
   for (const [name, count] of Object.entries({ schemaVersion: 2, rootExplicitRuleCount: 4,
-    canonicalRuleCount: 4, protectedChildCount: 0, explicitChildRuleCount: 0, invalidChildRuleCount: 0 })) {
+    rootInheritedRuleCount: 0, canonicalRuleCount: 4, protectedChildCount: 0,
+    explicitChildRuleCount: 0, invalidChildRuleCount: 0 })) {
     assert.ok(validation.includes(`${name} = ${count}`));
   }
   assert.match(deploymentSource, /if \(-not \(Test-CandidateProtectionRecord -Value \$result\)\)/);

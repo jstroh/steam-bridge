@@ -375,6 +375,19 @@ consumer self-test now passes its pure predicates and owned activation/rollback
 fixture under the unchanged normal policy, with verified cleanup and no
 candidate protection, elevation or deployment.
 
+A Windows10 source-only peer review found the root predicate inspected only
+explicit entries: a protected descriptor can still have an effective inherited
+root-only grant that descendants do not expose. The follow-up examines all root
+rules, requires exactly four explicit and no inherited entry, and makes the
+deployment intake reject missing/nonzero inherited counts. Source regressions
+fail twice before correction and seven pass afterward; an in-memory protected
+four-plus-inherited-rule negative is added to the actual helper self-test.
+Independent exact-source review passes. One normal-policy changed-audit run
+passes the actual in-memory predicate, existing protection denials and restored
+fixture cleanup; the matching deployment record/transaction fixture passes,
+with no new retained fixture. This is predicate completeness and owned-fixture
+proof, not a locally reproduced NTFS bypass or current candidate protection.
+
 **Repeat only when:** the descriptor policy, handle access mask or documented
 recovery implementation changes. Keep failure records, use one fresh owned
 fixture for each falsifiable change, and do not repeat unchanged access-denied

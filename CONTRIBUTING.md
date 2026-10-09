@@ -188,7 +188,8 @@ system location may use audit mode to prove an equivalent boundary, but the
 live release evidence still requires a successful sanitized protection record.
 Current protection records use schema 2 and four canonical rules; historical
 three-rule records do not prove owner-right suppression. The deployment helper
-requires the typed schema2 owner-right, four-rule and valid-descendant fields,
+requires the typed schema2 owner-right, four-rule, zero-inherited-root and
+valid-descendant fields,
 not only successful-audit booleans. Live-proof schema8 and the publisher do not
 consume ACL records: the separately retained current protection/Limited-launch
 and namespace/image checks remain prerequisites, not receipt fields. The

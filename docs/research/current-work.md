@@ -122,7 +122,26 @@ Platform/type/whitespace checks pass. Full native tests and local package smoke
 were not run; the local smoke route specifies an execution-policy bypass and
 is not substituted for the normal-policy fixture proof. Fresh exact-committed
 source CI and its Linux package-smoke gate remain required before accepting
-this source-tooling slice. Preserve unrelated native prototype/cache evidence.
+this source-tooling slice. The seven reviewed files are now committed/pushed
+as46ad717bf9ea222c3c2c2d8d8fc896b67497ffa2; remote main matches exactly.
+CI37890628159 is terminal success on all nine jobs, including all three
+platforms, dependency security, Linux package smoke and packed Node18/20/22/24.
+Root and independent review verify the exact main-push SHA/attempt1/canonical
+workflow. This is source-tooling proof, not a current protection or native/device
+receipt. No candidate rebuild, retag, publication or consuming-app pin change.
+The independent Windows10 source-only follow-up found one additional root-rule
+predicate gap: protected inheritance does not establish absence of effective
+inherited root-only permissions. The follow-up requires every root rule and
+inheritedCount0, with a pure memory-descriptor negative and matching typed
+deployment intake. The new source checks fail twice before correction and
+all seven pass afterward. Independent exact-delta review finds no actionable
+issue. One changed-audit normal-policy run passes the actual memory predicate,
+canonical data/permission denials, recovery and strict fixture cleanup; the
+matching deployment record/transaction fixture passes too, with no new fixture
+remaining. All101 data-only cases and seven verifier self-tests pass. Fresh
+exact-committed-source CI remains required for this follow-up. This is not a
+demonstrated NTFS bypass or passing live QA. Frozen tag/artifacts are unchanged.
+Preserve unrelated native prototype/cache evidence.
 
 ### Superseded frozen 0.4.11 preparation
 

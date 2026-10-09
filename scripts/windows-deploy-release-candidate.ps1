@@ -165,6 +165,7 @@ function Test-CandidateProtectionRecord {
   $expectedCounts = @{
     schemaVersion = 2
     rootExplicitRuleCount = 4
+    rootInheritedRuleCount = 0
     canonicalRuleCount = 4
     protectedChildCount = 0
     explicitChildRuleCount = 0
@@ -247,6 +248,7 @@ function Invoke-SelfTest {
     administratorsFullControl = $true
     limitedLaunchRequired = $true
     rootExplicitRuleCount = 4
+    rootInheritedRuleCount = 0
     canonicalRuleCount = 4
     protectedChildCount = 0
     explicitChildRuleCount = 0
@@ -267,6 +269,7 @@ function Invoke-SelfTest {
     if (Test-CandidateProtectionRecord -Value $altered) { throw "Invalid protection field type self-test failed." }
   }
   foreach ($change in @(@("schemaVersion", 1), @("rootExplicitRuleCount", 3), @("canonicalRuleCount", 3),
+      @("rootInheritedRuleCount", 1),
       @("invalidChildRuleCount", 1), @("protectedChildCount", 1), @("explicitChildRuleCount", 1),
       @("ownerRightsReadControlOnly", $false))) {
     $altered = $validProtection | ConvertTo-Json | ConvertFrom-Json

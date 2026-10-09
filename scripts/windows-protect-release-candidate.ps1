@@ -64,6 +64,18 @@ function Get-ExplicitRules {
   ))
 }
 
+function Get-RootAclBoundary {
+  param($Acl)
+
+  $rules = @($Acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+  $inheritedCount = @($rules | Where-Object { $_.IsInherited }).Count
+  return [PSCustomObject]@{
+    allRuleCount = $rules.Count
+    inheritedRuleCount = $inheritedCount
+    ok = [bool]($Acl.AreAccessRulesProtected -and $rules.Count -eq 4 -and $inheritedCount -eq 0)
+  }
+}
+
 function Test-CanonicalRootRule {
   param(
     $Rule,
@@ -117,6 +129,7 @@ function Get-CandidateProtectionAudit {
   $administratorsSid = "S-1-5-32-544"
   $ownerRightsSid = "S-1-3-4"
   $rootAcl = Get-Acl -LiteralPath $Directory -ErrorAction Stop
+  $rootBoundary = Get-RootAclBoundary -Acl $rootAcl
   $rootRules = @(Get-ExplicitRules -Acl $rootAcl)
   $currentRuleOk = @($rootRules | Where-Object {
       Test-CanonicalRootRule `
@@ -190,6 +203,7 @@ function Get-CandidateProtectionAudit {
   $directoryCount = @($entries | Where-Object { $_.PSIsContainer }).Count
   $ok = (
     $rootAcl.AreAccessRulesProtected -and
+    $rootBoundary.ok -and
     $rootRules.Count -eq 4 -and
     @($canonicalRules | Where-Object { $_ -eq $true }).Count -eq 4 -and
     $protectedChildCount -eq 0 -and
@@ -204,6 +218,7 @@ function Get-CandidateProtectionAudit {
     mode = $Mode.ToLowerInvariant()
     rootInheritanceProtected = [bool]$rootAcl.AreAccessRulesProtected
     rootExplicitRuleCount = $rootRules.Count
+    rootInheritedRuleCount = $rootBoundary.inheritedRuleCount
     canonicalRuleCount = @($canonicalRules | Where-Object { $_ -eq $true }).Count
     childEntryCount = $entries.Count
     fileCount = $fileCount
@@ -328,6 +343,17 @@ function Invoke-SelfTest {
   $selfTestPrincipal = New-Object System.Security.Principal.WindowsPrincipal($selfTestIdentity)
   if ($selfTestPrincipal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw "Candidate protection self-test requires a Limited non-elevated token."
+  }
+  $rootModel = New-Object System.Security.AccessControl.DirectorySecurity
+  $rootModelSddl = "D:P(A;OICI;FRFX;;;" + $selfTestIdentity.User.Value +
+    ")(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;RC;;;OW)"
+  $rootModel.SetSecurityDescriptorSddlForm($rootModelSddl)
+  if (-not (Get-RootAclBoundary -Acl $rootModel).ok) { throw "Canonical root-boundary self-test failed." }
+  $rootModel.SetSecurityDescriptorSddlForm($rootModelSddl + "(A;ID;WD;;;WD)")
+  $inheritedRoot = Get-RootAclBoundary -Acl $rootModel
+  if (-not $rootModel.AreAccessRulesProtected -or @(Get-ExplicitRules -Acl $rootModel).Count -ne 4 `
+    -or $inheritedRoot.allRuleCount -ne 5 -or $inheritedRoot.inheritedRuleCount -ne 1 -or $inheritedRoot.ok) {
+    throw "Inherited root-only rule self-test failed."
   }
   if (-not ("SteamBridgeProtectionSelfTestRestore" -as [type])) {
     Add-Type -TypeDefinition @"
