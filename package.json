@@ -62,11 +62,11 @@
     }
   },
   "devDependencies": {
-    "@electron/asar": "4.3.0",
+    "@electron/asar": "4.3.1",
     "@electron/packager": "^20.3.0",
     "@emnapi/runtime": "1.11.3",
-    "@napi-rs/cli": "3.9.0",
-    "@sentry/cli": "3.7.0",
+    "@napi-rs/cli": "3.9.1",
+    "@sentry/cli": "3.8.0",
     "electron-builder": "26.15.3",
     "http-cache-semantics": "file:./vendor/http-cache-semantics",
     "tar": "7.5.22",
