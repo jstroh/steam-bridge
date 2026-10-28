@@ -70,7 +70,8 @@ presentation. Keep the addon and the Steam DLLs unpacked together in
 `app.asar.unpacked` using the `asarUnpack` entries above. Test the actual
 executable without a development override.
 
-The Windows native addon is unsigned. Preserve Valve's exact runtime bytes and
+Tagged releases sign the Windows native addon as Pixel Games LLC; releases
+through 0.4.12 ship it unsigned. Preserve Valve's exact runtime bytes and
 signatures. Your application signing/reputation policy is your responsibility;
 a Microsoft Security Intelligence submission is reputation review, not signing.
 Do not weaken App Control or other security settings to declare a candidate

@@ -697,14 +697,168 @@ function runWindowsSmokeHelperStaticChecks() {
   }
   assert.ok(
     !releaseWorkflow.includes("--require-signed") &&
-      !releaseWorkflow.includes("--require-native-addon-signed") &&
-      !releaseWorkflow.includes("--expected-publisher-subject") &&
       !releaseWorkflow.includes("submit-signing-request") &&
       releaseWorkflow.includes("Verify exact Windows release tag") &&
       releaseWorkflow.includes("Run exact Windows package gate") &&
-      !releaseWorkflow.includes("WINDOWS_CSC_LINK") &&
-      !releaseWorkflow.includes("azure/login"),
-    "npm release workflow must audit the exact unsigned candidate without an external signing-provider dependency"
+      !releaseWorkflow.includes("WINDOWS_CSC_LINK"),
+    "npm release workflow must audit the exact candidate without full-application signing or stored signing certificates"
+  );
+  const normalizedReleaseWorkflow = releaseWorkflow.replace(/\r\n?/g, "\n");
+  assert.match(
+    normalizedReleaseWorkflow,
+    /^permissions:\n {2}actions: read\n {2}contents: read\n\njobs:\n/m,
+    "Release workflow top-level token must stay read-only"
+  );
+  const signingJobStart = normalizedReleaseWorkflow.indexOf("\n  sign-windows-addon:\n");
+  const packageGateJobStart = normalizedReleaseWorkflow.indexOf("\n  windows-package-gate:\n");
+  assert.ok(
+    signingJobStart > normalizedReleaseWorkflow.indexOf("\n  prebuild:\n") && packageGateJobStart > signingJobStart,
+    "Release workflow must sign the Windows addon in its own job between prebuild and the package gate"
+  );
+  const signingJob = normalizedReleaseWorkflow.slice(signingJobStart, packageGateJobStart);
+  const packageGateJob = normalizedReleaseWorkflow.slice(packageGateJobStart);
+  for (const expected of [
+    "    needs: prebuild\n    if: github.ref_type == 'tag'\n    runs-on: windows-latest\n    environment: windows-signing\n",
+    "    permissions:\n      actions: read\n      contents: read\n      id-token: write\n",
+    "persist-credentials: false",
+    "package-manager-cache: false",
+    "name: steam-bridge-x86_64-pc-windows-msvc\n          path: windows-signing/steam-bridge-x86_64-pc-windows-msvc\n",
+    'Status -ne "NotSigned"',
+    "steam-bridge-unsigned-prebuild",
+    "uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0",
+    "client-id: ${{ vars.AZURE_CLIENT_ID }}",
+    "tenant-id: ${{ vars.AZURE_TENANT_ID }}",
+    "subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}",
+    "uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0",
+    "endpoint: https://eus.codesigning.azure.net\n",
+    "signing-account-name: pixelgames-signing\n",
+    "certificate-profile-name: pixelgames-public\n",
+    "files: ${{ github.workspace }}\\windows-signing\\steam-bridge-x86_64-pc-windows-msvc\\steam_bridge_native.win32-x64-msvc.node\n",
+    "file-digest: SHA256\n",
+    "timestamp-rfc3161: http://timestamp.acs.microsoft.com\n",
+    "timestamp-digest: SHA256\n",
+    "cache-dependencies: false\n",
+    "exclude-azure-cli-credential: false\n",
+    "if: always()\n        run: az account clear\n",
+    "EXPECTED_PUBLISHER: Pixel Games LLC\n",
+    'Status -ne "Valid"',
+    "EnumerateRelativeDistinguishedNames",
+    "1.3.6.1.5.5.7.3.3",
+    "TimeStamperCertificate",
+    "changed during addon signing",
+    "Signing did not change the addon bytes",
+    "allowAuthenticodeChanges: true",
+    "overwrite: true\n",
+    "if-no-files-found: error\n"
+  ]) {
+    assert.ok(signingJob.includes(expected), `Windows addon signing job missing ${expected}`);
+  }
+  for (const credential of [
+    "environment",
+    "workload-identity",
+    "managed-identity",
+    "shared-token-cache",
+    "visual-studio",
+    "visual-studio-code",
+    "azure-powershell",
+    "azure-developer-cli",
+    "interactive-browser"
+  ]) {
+    assert.ok(
+      signingJob.includes(`exclude-${credential}-credential: true\n`),
+      `Windows addon signing must use only the azure/login CLI credential, not ${credential}`
+    );
+  }
+  assert.doesNotMatch(
+    signingJob,
+    /secrets\.|azure-client-secret|azure-password|azure-client-certificate-path|npm ci|cache: npm/u,
+    "Windows addon signing must use GitHub OIDC without stored secrets, npm installs, or npm caches"
+  );
+  assert.ok(
+    signingJob.indexOf("Record exact unsigned Windows prebuild") < signingJob.indexOf("azure/login@") &&
+      signingJob.indexOf("azure/login@") < signingJob.indexOf("azure/artifact-signing-action@") &&
+      signingJob.indexOf("azure/artifact-signing-action@") < signingJob.indexOf("az account clear") &&
+      signingJob.indexOf("az account clear") < signingJob.indexOf("Verify signed Windows addon") &&
+      signingJob.indexOf("Verify signed Windows addon") < signingJob.indexOf("Replace Windows prebuild with signed addon"),
+    "Windows addon signing must record, sign, sign out, verify, then replace the prebuild artifact"
+  );
+  assert.equal(
+    (normalizedReleaseWorkflow.match(/id-token: write/g) || []).length,
+    1,
+    "Only the Windows addon signing job may request an OIDC token"
+  );
+  assert.equal(
+    (normalizedReleaseWorkflow.match(/environment: windows-signing/g) || []).length,
+    1,
+    "Only the Windows addon signing job may enter the windows-signing environment"
+  );
+  for (const expected of [
+    "    needs: [prebuild, sign-windows-addon]\n",
+    "      !cancelled() &&\n" +
+      "      needs.prebuild.result == 'success' &&\n" +
+      "      (needs.sign-windows-addon.result == 'success' ||\n" +
+      "      (github.ref_type != 'tag' && needs.sign-windows-addon.result == 'skipped'))\n",
+    "name: native-symbols-windows-${{ github.sha }}\n          path: native-symbols-windows\n",
+    "--addon packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node",
+    "--pdb native-symbols-windows/steam_bridge_native.pdb",
+    "- name: Run exact Windows package gate\n        if: github.ref_type != 'tag'\n        run: npm run windows:package-gate\n",
+    "- name: Run exact Windows package gate with signed native addon\n" +
+      "        if: github.ref_type == 'tag'\n" +
+      "        shell: cmd\n" +
+      '        run: npm run windows:package-gate -- --require-native-addon-signed --expected-publisher-subject "CN=Pixel Games LLC"\n'
+  ]) {
+    assert.ok(packageGateJob.includes(expected), `Windows package gate missing fail-closed signing contract ${expected}`);
+  }
+  assert.equal(
+    (normalizedReleaseWorkflow.match(/--require-native-addon-signed/g) || []).length,
+    1,
+    "Only the tag-guarded package gate may require the signed native addon"
+  );
+  assert.ok(
+    packageGateJob.indexOf("node scripts/assemble-release-artifacts.cjs") <
+      packageGateJob.indexOf("Verify assembled Windows addon and PDB pair") &&
+      packageGateJob.indexOf("Verify assembled Windows addon and PDB pair") <
+        packageGateJob.indexOf("Restore proved runtime payload for documentation-only v0.1.6"),
+    "Windows package gate must pair the assembled addon with its PDB before any documentation-only payload restore"
+  );
+  assert.ok(
+    normalizedReleaseWorkflow
+      .slice(0, signingJobStart)
+      .includes(
+        "      - name: Retain exact unsigned Windows addon\n" +
+          "        if: matrix.target == 'x86_64-pc-windows-msvc'\n" +
+          "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1\n" +
+          "        with:\n" +
+          "          name: native-unsigned-windows-${{ github.sha }}\n" +
+          "          path: packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node\n" +
+          "          if-no-files-found: error\n"
+      ) && !signingJob.includes("native-unsigned-windows"),
+    "Windows prebuild must retain the unsigned addon outside the signing job and the steam-bridge-* namespace"
+  );
+  for (const expected of [
+    "name: native-unsigned-windows-${{ github.sha }}\n          path: native-unsigned-windows\n",
+    "- name: Verify assembled Windows addon against unsigned prebuild\n",
+    'Get-AuthenticodeSignature -LiteralPath $env:UNSIGNED_ADDON).Status -ne "NotSigned"',
+    "authenticodeContentSha256(fs.readFileSync(process.env.UNSIGNED_ADDON)",
+    "authenticodeContentSha256(fs.readFileSync(process.env.ASSEMBLED_ADDON)",
+    '$env:GITHUB_REF_TYPE -ne "tag"'
+  ]) {
+    assert.ok(packageGateJob.includes(expected), `Windows package gate missing unsigned-reference check ${expected}`);
+  }
+  assert.ok(
+    packageGateJob.indexOf("Verify assembled Windows addon and PDB pair") <
+      packageGateJob.indexOf("Verify assembled Windows addon against unsigned prebuild") &&
+      packageGateJob.indexOf("Verify assembled Windows addon against unsigned prebuild") <
+        packageGateJob.indexOf("Restore proved runtime payload for documentation-only v0.1.6"),
+    "Windows package gate must compare the assembled addon with the unsigned prebuild before any documentation-only payload restore"
+  );
+  assert.ok(
+    !windowsAsarGate.includes(".Verify()") &&
+      windowsAsarGate.includes("$timeValidatedByTimestamp = [string]$signature.Status -eq 'Valid' -and [bool]$timestamp; ") &&
+      windowsAsarGate.includes("$chain.ChainPolicy.VerificationFlags = 'IgnoreNotTimeValid'") &&
+      windowsAsarGate.includes("signerChainTrusted = Test-TrustedChain $signer $timeValidatedByTimestamp; ") &&
+      windowsAsarGate.includes("timestampChainTrusted = Test-TrustedChain $timestamp $timeValidatedByTimestamp } "),
+    "Windows package gate must validate signer and timestamp chains at the verified timestamp, not the current time"
   );
   for (const expected of [
     "Verify exact Windows addon and PDB pair",
@@ -2718,10 +2872,18 @@ function runWindowsSmokeHelperStaticChecks() {
     "AllowUnsigned",
     "ExpectedPublisherThumbprint",
     "ExpectedPublisherSubject",
-    "publisherFilePaths"
+    "publisherFilePaths",
+    "ExpectedNativeAddonPublisherSubject",
+    "keptNativeAddonPaths",
+    '$shouldSign = $before.status -eq "NotSigned" -or ($ForceResign -and $isPublisherFile)',
+    "Steam Bridge native addon must keep a valid upstream Authenticode signature"
   ]) {
     assert.ok(signingHelper.includes(expected), `Windows signing helper missing ${expected}`);
   }
+  assert.ok(
+    !signingHelper.includes("$shouldSign = $ForceResign -or"),
+    "Windows signing helper -ForceResign must never re-sign third-party libraries"
+  );
   for (const expected of [
     "steam-bridge-windows-app-control-dev-mode",
     "VerifiedAndReputablePolicyState",

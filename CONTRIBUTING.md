@@ -120,7 +120,9 @@ history belongs in the evidence docs, not the quick start.
 ## Release Candidates, Publication, and Rollback
 
 The Release workflow assembles and validates an exact cross-platform npm
-tarball plus an unsigned app-owned Windows candidate. Valve's upstream runtime
+tarball plus a Windows candidate whose example application stays unsigned. On
+release tags it first signs only the project-owned native addon through Azure
+Artifact Signing; branch runs are unsigned dry runs. Valve's upstream runtime
 DLLs must retain their existing valid signatures and exact bytes. The workflow
 does not publish npm bytes or create a GitHub Release, and a tag run remains a
 candidate until its exact retained bundle passes the required live Windows

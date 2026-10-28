@@ -155,10 +155,12 @@ not a minimal application template.
 
 ## Windows signing and privacy
 
-The Windows native addon is unsigned. Valve libraries retain their original
-bytes and signatures; signing a consuming application is the distributor's
-responsibility. Microsoft Security Intelligence submission is reputation review,
-not code signing or a guarantee of Smart App Control approval.
+Tagged releases sign the Windows native addon with Authenticode as Pixel Games
+LLC through Azure Artifact Signing; releases through 0.4.12 ship it unsigned.
+Valve libraries retain their original bytes and signatures; signing a consuming
+application is the distributor's responsibility.
+Microsoft Security Intelligence submission is reputation review, not code
+signing or a guarantee of Smart App Control approval.
 
 Steam Bridge does not send telemetry to its maintainers. Your application owns
 its diagnostics, collection policy, and retention. Read the

@@ -735,14 +735,21 @@ function getAuthenticodeEvidence(files) {
         "$signature = Get-AuthenticodeSignature -LiteralPath $env:STEAM_BRIDGE_SIGNATURE_FILE; " +
           "$signer = $signature.SignerCertificate; $timestamp = $signature.TimeStamperCertificate; " +
           "$codeSigningOid = '1.3.6.1.5.5.7.3.3'; " +
+          "$timeValidatedByTimestamp = [string]$signature.Status -eq 'Valid' -and [bool]$timestamp; " +
+          "function Test-TrustedChain($certificate, [bool]$ignoreNotTimeValid) { " +
+          "if (-not $certificate) { return $false }; " +
+          "$chain = New-Object System.Security.Cryptography.X509Certificates.X509Chain; " +
+          "try { $chain.ChainPolicy.RevocationMode = 'Online'; $chain.ChainPolicy.RevocationFlag = 'ExcludeRoot'; " +
+          "if ($ignoreNotTimeValid) { $chain.ChainPolicy.VerificationFlags = 'IgnoreNotTimeValid' }; " +
+          "return $chain.Build($certificate) } finally { $chain.Reset() } }; " +
           "[PSCustomObject]@{ status = [string]$signature.Status; " +
           "signerSubject = if ($signer) { $signer.Subject } else { $null }; " +
           "signerThumbprint = if ($signer) { $signer.Thumbprint } else { $null }; " +
-          "signerChainTrusted = if ($signer) { $signer.Verify() } else { $false }; " +
+          "signerChainTrusted = Test-TrustedChain $signer $timeValidatedByTimestamp; " +
           "signerPublicKeyOid = if ($signer) { $signer.PublicKey.Oid.Value } else { $null }; " +
           "hasCodeSigningEku = if ($signer) { @($signer.EnhancedKeyUsageList | Where-Object { $_.ObjectId -eq $codeSigningOid }).Count -gt 0 } else { $false }; " +
           "timestampPresent = [bool]$timestamp; " +
-          "timestampChainTrusted = if ($timestamp) { $timestamp.Verify() } else { $false } } " +
+          "timestampChainTrusted = Test-TrustedChain $timestamp $timeValidatedByTimestamp } " +
           "| ConvertTo-Json -Compress"
       ],
       { env, encoding: "utf8", windowsHide: true }

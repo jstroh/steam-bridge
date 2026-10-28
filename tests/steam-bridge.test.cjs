@@ -23,16 +23,30 @@ function readSourceFile(...pathSegments) {
     .replace(/\r\n?/g, "\n");
 }
 
-test("Windows release policy audits unsigned candidates without an external signing provider", () => {
+test("Windows release policy signs only the project-owned addon on release tags", () => {
   const readme = readSourceFile("README.md");
+  const packageReadme = readSourceFile("packages", "steam-bridge", "README.md");
+  const packagingGuide = readSourceFile("docs", "packaging.md");
   const policy = readSourceFile("CODE_SIGNING_POLICY.md");
   const privacy = readSourceFile("PRIVACY.md");
   const workflow = readSourceFile(".github", "workflows", "release.yml");
 
+  for (const document of [readme, packageReadme, packagingGuide, policy]) {
+    assert.doesNotMatch(document, /Windows native addon is unsigned/u);
+  }
+  for (const document of [readme, packageReadme, packagingGuide]) {
+    assert.match(document, /Tagged releases sign the Windows native addon/u);
+  }
   for (const document of [readme, policy]) {
-    assert.match(document, /Windows native addon is unsigned/u);
     assert.match(document, /Microsoft Security Intelligence submission is reputation review/u);
   }
+  assert.match(policy, /Release tags sign the project-owned Windows native addon/u);
+  assert.match(policy, /Azure Artifact Signing/u);
+  assert.match(policy, /Pixel Games LLC/u);
+  assert.match(policy, /Public Trust/u);
+  assert.match(policy, /OIDC/u);
+  assert.match(policy, /none are stored in GitHub/u);
+  assert.match(policy, /unsigned dry run/u);
   assert.match(policy, /steam_bridge_native\.win32-x64-msvc\.node/u);
   assert.match(policy, /must never be re-signed/u);
   assert.match(privacy, /does not transfer telemetry/u);
@@ -42,18 +56,137 @@ test("Windows release policy audits unsigned candidates without an external sign
   assert.match(workflow, /git rev-list -n 1 \$env:GITHUB_REF_NAME/u);
   assert.match(workflow, /"v\$packageVersion" -ne \$env:GITHUB_REF_NAME/u);
   assert.match(workflow, /Get-FileHash -LiteralPath \$addon -Algorithm SHA256/u);
-  assert.doesNotMatch(workflow, /submit-signing-request|github-artifact-id|--require-native-addon-signed|--expected-publisher-subject/u);
+  assert.doesNotMatch(workflow, /submit-signing-request|github-artifact-id|--require-signed\b/u);
   assert.match(workflow, /pattern: steam-bridge-\*/u);
   assert.match(workflow, /steam_bridge_native\.win32-x64-msvc\.node/u);
   assert.match(workflow, /Verify exact Windows addon and PDB pair/u);
   assert.match(workflow, /Retain exact Windows PDB/u);
   assert.match(workflow, /--require-publishable/u);
   assert.doesNotMatch(workflow, /(?:^|\s)--publish(?:\s|$)/m);
-  assert.equal((workflow.match(/run: npm run windows:package-gate/g) || []).length, 1);
+  assert.equal((workflow.match(/run: npm run windows:package-gate$/gm) || []).length, 1);
+  assert.equal((workflow.match(/run: npm run windows:package-gate -- /g) || []).length, 1);
   assert.ok(
     workflow.indexOf("Verify exact Windows addon and PDB pair")
       < workflow.indexOf("Retain exact Windows PDB")
   );
+
+  const signingJobStart = workflow.indexOf("\n  sign-windows-addon:\n");
+  const packageGateJobStart = workflow.indexOf("\n  windows-package-gate:\n");
+  assert.ok(signingJobStart > workflow.indexOf("\n  prebuild:\n"));
+  assert.ok(packageGateJobStart > signingJobStart);
+  const signingJob = workflow.slice(signingJobStart, packageGateJobStart);
+  const packageGateJob = workflow.slice(packageGateJobStart);
+
+  assert.match(
+    signingJob,
+    /\n {4}needs: prebuild\n {4}if: github\.ref_type == 'tag'\n {4}runs-on: windows-latest\n {4}environment: windows-signing\n {4}permissions:\n {6}actions: read\n {6}contents: read\n {6}id-token: write\n/u
+  );
+  assert.match(signingJob, /uses: azure\/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3\.1\.0\n/u);
+  assert.match(signingJob, /client-id: \$\{\{ vars\.AZURE_CLIENT_ID \}\}\n/u);
+  assert.match(signingJob, /tenant-id: \$\{\{ vars\.AZURE_TENANT_ID \}\}\n/u);
+  assert.match(signingJob, /subscription-id: \$\{\{ vars\.AZURE_SUBSCRIPTION_ID \}\}\n/u);
+  assert.match(
+    signingJob,
+    /uses: azure\/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2\.0\.0\n/u
+  );
+  assert.match(
+    signingJob,
+    /files: \$\{\{ github\.workspace \}\}\\windows-signing\\steam-bridge-x86_64-pc-windows-msvc\\steam_bridge_native\.win32-x64-msvc\.node\n/u
+  );
+  assert.equal((signingJob.match(/^ {10}files: /gmu) || []).length, 1);
+  assert.doesNotMatch(signingJob, /files-folder|files-catalog/u);
+  assert.match(signingJob, /file-digest: SHA256\n/u);
+  assert.match(signingJob, /timestamp-rfc3161: http:\/\/timestamp\.acs\.microsoft\.com\n/u);
+  assert.match(signingJob, /timestamp-digest: SHA256\n/u);
+  assert.match(signingJob, /cache-dependencies: false\n/u);
+  assert.match(signingJob, /exclude-azure-cli-credential: false\n/u);
+  assert.equal((signingJob.match(/exclude-[a-z-]+-credential: true\n/gu) || []).length, 9);
+  assert.doesNotMatch(signingJob, /secrets\.|azure-client-secret|azure-password|npm ci|cache: npm/u);
+  assert.match(signingJob, /Status -ne "NotSigned"/u);
+  assert.match(signingJob, /EnumerateRelativeDistinguishedNames/u);
+  assert.match(signingJob, /TimeStamperCertificate/u);
+  assert.match(signingJob, /changed during addon signing/u);
+  assert.match(signingJob, /Signing did not change the addon bytes/u);
+  assert.match(signingJob, /allowAuthenticodeChanges: true/u);
+  assert.match(
+    signingJob,
+    /name: steam-bridge-x86_64-pc-windows-msvc\n {10}path: \|\n(?: {12}windows-signing\/steam-bridge-x86_64-pc-windows-msvc\/\S+\n){5} {10}if-no-files-found: error\n {10}overwrite: true\n/u
+  );
+  assert.ok(signingJob.indexOf("azure/login@") < signingJob.indexOf("azure/artifact-signing-action@"));
+  assert.ok(signingJob.indexOf("azure/artifact-signing-action@") < signingJob.indexOf("Verify signed Windows addon"));
+  assert.ok(signingJob.indexOf("Verify signed Windows addon") < signingJob.indexOf("overwrite: true"));
+
+  assert.equal((workflow.match(/id-token: write/g) || []).length, 1);
+  assert.equal((workflow.match(/environment: windows-signing/g) || []).length, 1);
+  assert.match(packageGateJob, /\n {4}needs: \[prebuild, sign-windows-addon\]\n/u);
+  assert.match(
+    packageGateJob,
+    /\n {4}if: >-\n {6}!cancelled\(\) &&\n {6}needs\.prebuild\.result == 'success' &&\n {6}\(needs\.sign-windows-addon\.result == 'success' \|\|\n {6}\(github\.ref_type != 'tag' && needs\.sign-windows-addon\.result == 'skipped'\)\)\n/u
+  );
+  assert.match(
+    packageGateJob,
+    /- name: Run exact Windows package gate\n {8}if: github\.ref_type != 'tag'\n {8}run: npm run windows:package-gate\n/u
+  );
+  assert.match(
+    packageGateJob,
+    /- name: Run exact Windows package gate with signed native addon\n {8}if: github\.ref_type == 'tag'\n {8}shell: cmd\n {8}run: npm run windows:package-gate -- --require-native-addon-signed --expected-publisher-subject "CN=Pixel Games LLC"\n/u
+  );
+  assert.equal((workflow.match(/--require-native-addon-signed/g) || []).length, 1);
+  assert.ok(
+    packageGateJob.indexOf("node scripts/assemble-release-artifacts.cjs")
+      < packageGateJob.indexOf("Verify assembled Windows addon and PDB pair")
+  );
+  assert.match(packageGateJob, /--pdb native-symbols-windows\/steam_bridge_native\.pdb/u);
+
+  const prebuildJob = workflow.slice(workflow.indexOf("\n  prebuild:\n"), signingJobStart);
+  assert.match(
+    prebuildJob,
+    /- name: Retain exact unsigned Windows addon\n {8}if: matrix\.target == 'x86_64-pc-windows-msvc'\n {8}uses: actions\/upload-artifact@\S+ # v7\.0\.1\n {8}with:\n {10}name: native-unsigned-windows-\$\{\{ github\.sha \}\}\n {10}path: packages\/steam-bridge\/steam_bridge_native\.win32-x64-msvc\.node\n {10}if-no-files-found: error\n/u
+  );
+  assert.ok(prebuildJob.indexOf("Retain exact unsigned Windows addon") < prebuildJob.indexOf("link-native.cjs"));
+  assert.doesNotMatch(signingJob, /native-unsigned-windows/u);
+  assert.match(
+    packageGateJob,
+    /name: native-unsigned-windows-\$\{\{ github\.sha \}\}\n {10}path: native-unsigned-windows\n/u
+  );
+  const unsignedReferenceStepStart = packageGateJob.indexOf(
+    "- name: Verify assembled Windows addon against unsigned prebuild"
+  );
+  const documentationOnlyRestoreStart = packageGateJob.indexOf(
+    "- name: Restore proved runtime payload for documentation-only v0.1.6"
+  );
+  assert.ok(unsignedReferenceStepStart > 0 && documentationOnlyRestoreStart > unsignedReferenceStepStart);
+  const unsignedReferenceStep = packageGateJob.slice(unsignedReferenceStepStart, documentationOnlyRestoreStart);
+  assert.match(unsignedReferenceStep, /Status -ne "NotSigned"/u);
+  assert.match(unsignedReferenceStep, /authenticodeContentSha256\(fs\.readFileSync\(process\.env\.UNSIGNED_ADDON\)/u);
+  assert.match(unsignedReferenceStep, /authenticodeContentSha256\(fs\.readFileSync\(process\.env\.ASSEMBLED_ADDON\)/u);
+  assert.match(unsignedReferenceStep, /if \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/u);
+  assert.match(unsignedReferenceStep, /\$env:GITHUB_REF_TYPE -ne "tag"/u);
+  assert.ok(
+    packageGateJob.indexOf("Verify assembled Windows addon and PDB pair")
+      < unsignedReferenceStepStart
+  );
+
+  const packageGate = readSourceFile("scripts", "windows-electron-builder-asar-gate.cjs");
+  assert.doesNotMatch(packageGate, /\.Verify\(\)/u);
+  assert.match(packageGate, /\$timeValidatedByTimestamp = \[string\]\$signature\.Status -eq 'Valid' -and \[bool\]\$timestamp; /u);
+  assert.match(packageGate, /\$chain\.ChainPolicy\.RevocationMode = 'Online'/u);
+  assert.match(packageGate, /if \(\$ignoreNotTimeValid\) \{ \$chain\.ChainPolicy\.VerificationFlags = 'IgnoreNotTimeValid' \}/u);
+  assert.match(packageGate, /signerChainTrusted = Test-TrustedChain \$signer \$timeValidatedByTimestamp; /u);
+  assert.match(packageGate, /timestampChainTrusted = Test-TrustedChain \$timestamp \$timeValidatedByTimestamp \} /u);
+
+  const signingHelper = readSourceFile("scripts", "sign-windows-package.ps1");
+  assert.match(signingHelper, /\[string\]\$ExpectedNativeAddonPublisherSubject = ""\n\)/u);
+  assert.match(
+    signingHelper,
+    /\$shouldSign = \$before\.status -eq "NotSigned" -or \(\$ForceResign -and \$isPublisherFile\)/u
+  );
+  assert.doesNotMatch(signingHelper, /\$shouldSign = \$ForceResign -or/u);
+  assert.match(signingHelper, /if \(-not \$VerifyOnly -and -not \$isKeptNativeAddon\)/u);
+  assert.match(signingHelper, /Steam Bridge native addon must keep a valid upstream Authenticode signature/u);
+  assert.match(policy, /-ExpectedNativeAddonPublisherSubject "CN=Pixel Games LLC"/u);
+  assert.match(policy, /never on Valve's or other\s+third-party libraries/u);
+  assert.match(policy, /time validity from the verified timestamp/u);
 });
 
 test("workflows keep least-privilege tokens and never interpolate refs into shell scripts", () => {
@@ -62,6 +195,7 @@ test("workflows keep least-privilege tokens and never interpolate refs into shel
   const publishWorkflow = readSourceFile(".github", "workflows", "publish.yml");
 
   assert.match(ciWorkflow, /^permissions:\n {2}contents: read\n/mu);
+  assert.match(releaseWorkflow, /^permissions:\n {2}actions: read\n {2}contents: read\n\njobs:\n/mu);
   for (const workflow of [ciWorkflow, releaseWorkflow, publishWorkflow]) {
     const runBlocks = [...workflow.matchAll(/^(\s*)(?:- )?run: \|\n((?:\1 {2,}.*\n|\s*\n)*)/gmu)].map((match) => match[2]);
     const inlineRuns = [...workflow.matchAll(/^\s*(?:- )?run: (?!\|)(.*)$/gmu)].map((match) => match[1]);

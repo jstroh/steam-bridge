@@ -12,7 +12,8 @@ param(
   [string]$DigestAlgorithm = "SHA256",
   [switch]$VerifyOnly,
   [switch]$AllowUnsigned,
-  [switch]$ForceResign
+  [switch]$ForceResign,
+  [string]$ExpectedNativeAddonPublisherSubject = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -176,8 +177,14 @@ foreach ($runtimeFile in $runtimeFiles) {
     throw "Steam Bridge runtime file was not discovered exactly once for signing: $($runtimeFile.FullName)"
   }
 }
+$nativeAddonFiles = @($runtimeFiles | Where-Object { $_.Extension.ToLowerInvariant() -eq ".node" })
+$keptNativeAddonPaths = @(
+  if ($ExpectedNativeAddonPublisherSubject) {
+    $nativeAddonFiles | ForEach-Object { $_.FullName }
+  }
+)
 $publisherFiles = @(
-  @($runtimeFiles | Where-Object { $_.Extension.ToLowerInvariant() -eq ".node" }) +
+  @($nativeAddonFiles | Where-Object { $keptNativeAddonPaths -notcontains $_.FullName }) +
   @(Get-ChildItem -LiteralPath $AppDir -File | Where-Object { $_.Extension.ToLowerInvariant() -eq ".exe" })
 )
 $publisherFilePaths = @($publisherFiles | ForEach-Object { $_.FullName })
@@ -208,23 +215,33 @@ if ($certificate) {
   Write-Host ("  thumbprint: {0}" -f $certificate.Thumbprint)
   Write-Host ("  timestampServer: {0}" -f $TimestampServer)
 }
+if ($ExpectedNativeAddonPublisherSubject) {
+  Write-Host ("  keptNativeAddonPublisherSubject: {0}" -f $ExpectedNativeAddonPublisherSubject)
+}
 
 $summaries = New-Object System.Collections.Generic.List[object]
 foreach ($file in $files) {
   $before = Get-SignatureSummary -File $file
   $isPublisherFile = $publisherFilePaths -contains $file.FullName
+  $isKeptNativeAddon = $keptNativeAddonPaths -contains $file.FullName
 
-  if (-not $VerifyOnly) {
+  if (-not $VerifyOnly -and -not $isKeptNativeAddon) {
     if (
       $isPublisherFile -and
       $before.status -eq "Valid" -and
       (Normalize-Thumbprint $before.signerThumbprint) -ne (Normalize-Thumbprint $certificate.Thumbprint) -and
       -not $ForceResign
     ) {
+      if ($nativeAddonFiles.FullName -contains $file.FullName) {
+        throw "Refusing to replace the valid upstream signature on Steam Bridge native addon $($file.FullName). Pass -ExpectedNativeAddonPublisherSubject to keep it, or -ForceResign to replace it."
+      }
       throw "Refusing to replace a valid unrelated signature on app-owned file $($file.FullName). Use -ForceResign if this is intentional."
     }
-    $shouldSign = $ForceResign -or $before.status -eq "NotSigned"
+    $shouldSign = $before.status -eq "NotSigned" -or ($ForceResign -and $isPublisherFile)
     if (-not $shouldSign -and $before.status -ne "Valid") {
+      if (-not $isPublisherFile) {
+        throw "Refusing to sign over $($before.status) signature on $($file.FullName). -ForceResign replaces signatures only on app-owned publisher files."
+      }
       throw "Refusing to sign over $($before.status) signature on $($file.FullName). Use -ForceResign if this is intentional."
     }
 
@@ -256,6 +273,19 @@ $publisherSummaries = @($summaries | Where-Object { $publisherFilePaths -contain
 
 if ($invalid.Count -gt 0) {
   throw "Windows package contains $($invalid.Count) file(s) with invalid Authenticode status."
+}
+foreach ($summary in @($summaries | Where-Object { $keptNativeAddonPaths -contains $_.path })) {
+  if ($summary.status -ne "Valid") {
+    throw "Steam Bridge native addon must keep a valid upstream Authenticode signature: $($summary.path)"
+  }
+  if (
+    ([string]$summary.signerSubject).IndexOf(
+      $ExpectedNativeAddonPublisherSubject,
+      [System.StringComparison]::OrdinalIgnoreCase
+    ) -lt 0
+  ) {
+    throw "Steam Bridge native addon signer subject does not match the expected native addon publisher: $($summary.path)"
+  }
 }
 
 if ($unsigned.Count -gt 0 -and -not $AllowUnsigned) {
