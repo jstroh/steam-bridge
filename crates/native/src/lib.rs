@@ -20,6 +20,7 @@ use tokio::sync::oneshot;
 mod compat;
 #[cfg(target_os = "linux")]
 mod kwin_dbus;
+mod linux_steam_gamepads;
 mod native_surface;
 mod resource;
 mod state;
@@ -383,6 +384,8 @@ fn shutdown_all_locked() {
     if state::is_initialized() {
         state::invalidate_lifecycle_generation(state::CallbackDomain::Client);
         native_surface::close();
+        #[cfg(target_os = "linux")]
+        linux_steam_gamepads::reset();
         compat::clear_warning_message_hook();
         compat::clear_input_action_event_callback(None);
         compat::clear_client_process_hooks();
@@ -1841,6 +1844,16 @@ pub fn update_native_overlay_host_linux_dma_buf_shared_texture(
 pub fn drain_native_overlay_host_input_events_json() -> Result<String, Error> {
     state::ensure_initialized()?;
     Ok(native_surface::drain_input_events_json())
+}
+
+#[napi(js_name = "captureLinuxSteamEmulatedGamepadsJson")]
+pub fn capture_linux_steam_emulated_gamepads_json(
+    active: bool,
+    input_epoch: String,
+) -> Result<String, Error> {
+    state::ensure_initialized()?;
+    native_surface::ensure_main_thread()?;
+    linux_steam_gamepads::capture(active, &input_epoch).map_err(Error::from_reason)
 }
 
 #[napi(js_name = "closeNativeOverlayProbeWindow")]

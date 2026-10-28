@@ -10340,6 +10340,54 @@ test("overlay helpers map constants and forward modal/store options", (t) => {
   );
 });
 
+test("Linux Steam emulated gamepad capture parses native frames without changing them", (t) => {
+  const frames = [
+    JSON.stringify({ version: 1, supported: false }),
+    JSON.stringify({
+      version: 1,
+      provider: "linux-steam-emulation-v1",
+      supported: true,
+      sequence: "18446744073709551615",
+      inputEpoch: "7",
+      active: true,
+      complete: false,
+      controllers: [
+        {
+          instance: "3",
+          id: "Steam Input Virtual Gamepad #3 (STANDARD GAMEPAD Vendor: 28de Product: 11ff)",
+          mapping: "standard",
+          axes: [0.75, 0, 0, 0],
+          buttons: [{ pressed: true, touched: true, value: 1 }]
+        }
+      ]
+    }),
+    "[]"
+  ];
+  const calls = [];
+  const fake = createFakeNative({
+    captureLinuxSteamEmulatedGamepadsJson(active, inputEpoch) {
+      calls.push([active, inputEpoch]);
+      return frames.shift();
+    }
+  });
+  const steam = loadSteamWithFakeNative(fake);
+  t.after(clearSteamBridgeCache);
+
+  assert.deepEqual(steam.captureLinuxSteamEmulatedGamepads(false, "1"), { version: 1, supported: false });
+  const frame = steam.captureLinuxSteamEmulatedGamepads(true, "7");
+  assert.equal(frame.sequence, "18446744073709551615");
+  assert.equal(frame.inputEpoch, "7");
+  assert.equal(frame.complete, false);
+  assert.equal(frame.controllers[0].instance, "3");
+  assert.deepEqual(frame.controllers[0].buttons[0], { pressed: true, touched: true, value: 1 });
+  assert.throws(() => steam.captureLinuxSteamEmulatedGamepads(true, "7"), /invalid Linux Steam gamepad frame/);
+  assert.deepEqual(calls, [
+    [false, "1"],
+    [true, "7"],
+    [true, "7"]
+  ]);
+});
+
 test("electron overlay helper scrubs Steam overlay preload from child process env", (t) => {
   clearSteamBridgeCache();
   const electron = require(distFile("electron.js"));

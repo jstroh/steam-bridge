@@ -2088,6 +2088,36 @@ export interface NativeOverlayPresenterSnapshot {
 
 export type NativeOverlayHostDiagnostics = Record<string, unknown>;
 
+export interface LinuxSteamEmulatedGamepadButton {
+  readonly pressed: boolean;
+  readonly touched: boolean;
+  readonly value: number;
+}
+
+export interface LinuxSteamEmulatedGamepad {
+  readonly instance: string;
+  readonly id: string;
+  readonly mapping: "standard";
+  readonly axes: readonly number[];
+  readonly buttons: readonly LinuxSteamEmulatedGamepadButton[];
+}
+
+export type LinuxSteamEmulatedGamepadFrame =
+  | {
+      readonly version: 1;
+      readonly supported: false;
+    }
+  | {
+      readonly version: 1;
+      readonly provider: "linux-steam-emulation-v1";
+      readonly supported: true;
+      readonly sequence: string;
+      readonly inputEpoch: string;
+      readonly active: boolean;
+      readonly complete: boolean;
+      readonly controllers: readonly LinuxSteamEmulatedGamepad[];
+    };
+
 export interface NativeOverlayPresenter extends CallbackHandle {
   close(): void;
   pump(): void;
@@ -9657,6 +9687,17 @@ export function getNativeOverlayHostDiagnostics(): NativeOverlayHostDiagnostics 
   } catch {
     return undefined;
   }
+}
+
+export function captureLinuxSteamEmulatedGamepads(
+  active: boolean,
+  inputEpoch: string
+): LinuxSteamEmulatedGamepadFrame {
+  const parsed: unknown = JSON.parse(native().captureLinuxSteamEmulatedGamepadsJson(active, inputEpoch));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new TypeError("Steam Bridge returned an invalid Linux Steam gamepad frame.");
+  }
+  return parsed as LinuxSteamEmulatedGamepadFrame;
 }
 
 export function onMicroTxnAuthorizationResponse(

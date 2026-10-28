@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-09
+Last reviewed: 2026-10-10
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,18 +12,54 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Prepare a normal stable 0.4.12 release from reviewed committed main1caba46,
-with the corrected schema8 publisher in the same candidate/tooling epoch.
-The maintainer rejected a protected allowed-ref change; use the ordinary
-v0.4.12 candidate tag and leave publishing policy unchanged. Only the root,
-library and lockfile version fields change. Preserve the native controller
-prototype and unrelated documentation dirt outside the source commit. Fresh
-exact-source CI precedes tagging; the tag creates the normal three-target
-artifacts. Its Windows version resource changes the addon bytes, so the frozen
-0.4.11 Microsoft review and live evidence cannot qualify the new candidate.
-Freeze and independently verify the new artifacts, then complete exact-byte
-review and protected schema8 actual-game proof before gated publication.
-No helper execution, consumer deployment or Steam promotion is implied.
+Normal stable0.4.12 is published and verified. Immutable v0.4.12 remains at
+1caba46bf8f873d4f8825dcf1431e509d16fefe8. The single protected
+[publisher38052502921](https://github.com/jstroh/steam-bridge/actions/runs/38052502921)
+used the same candidate/tooling epoch, original Release37868946050 attempt1
+and tag CI37868946094. It succeeded at12:36:58UTC on2026-10-10; neither
+native bytes nor the tag were rebuilt/replaced, and publishing protections,
+allowed refs and OIDC settings were unchanged. The transient registry404
+resolved without republishing. Registry signature and Sigstore attestation
+checks pass; authenticated tag/source/workflow/run/attempt and the complete
+89-file package match the canonical TGZ. Independent read-only review agrees.
+
+The protected actual-game route now uses the required registered current-user
+InteractiveToken/LeastPrivilege task, explicit saved/effective policy, held
+actor/image/token/instance association and separate drained raw streams.
+Seven phases and seventeen manual checks complete with exact original geometry,
+natural game/actor exit0, empty job, typed cleanup and task removal. All8,877
+held protection objects and112 preheld external-file observations remain
+unchanged. Unfiltered logs validate529 gameplay samples at59.9/59.9/59.7
+median paint/fresh/native FPS and68 overlay samples at58.7 native FPS against
+60Hz; no copy failure/timeout/slow copy, device loss or frame-wait timeout.
+The genuine schema8 receipt domain hash is
+540831a947196a9812b2218c83bd776088a8716a15874d50aa12039eb7d42025.
+Independent data review reconciles all thirteen original control envelopes,
+their seals/order/phase equality and separate2224/0-byte relay streams. The
+manual visual grades are the owning operator's observations, not independent
+reviewer grades. A compact229-second captioned video fully decodes and ends
+on a visible same-recording world; original capture and failed attempts remain.
+
+The actual consumer uses Electron44.4.5; the audited CI example bundle's
+Electron44.7.0 identity is a separate candidate binding, not44.7.0 gameplay.
+The [stable GitHub Release](https://github.com/jstroh/steam-bridge/releases/tag/v0.4.12)
+was published at12:52:38UTC after all eight assets were independently downloaded
+and matched by size/SHA-256, including both retained source-epoch JSON files.
+The downloaded PDB matches the addon debug ID and downloaded receipt validates.
+npm latest is0.4.12. The release-scoped sanitized proof secret is removed.
+Do not dispatch, publish, rebuild or retag this release again.
+
+Next: consuming-application integration and its separate coherent production,
+signing/exact-byte Microsoft, delivered layout, platform/device/gameplay and
+desktop-notification proof. This library release does not qualify a changed
+consumer production package or authorize its promotion. The Linux Steam
+emulated-gamepad capture prototype is now committed on main as the low-level
+`captureLinuxSteamEmulatedGamepads` facade; the Electron input service and
+consumer do not call it, and it is unqualified on device. Historical preparation and
+failed/source-only observations below remain evidence for their original epochs;
+they are not current missing-task/live-proof/publication blockers.
+
+### Historical normal0.4.12 preparation
 
 The independently reviewed five-field version bump is committed/pushed as
 1caba46bf8f873d4f8825dcf1431e509d16fefe8; only the three intended metadata
@@ -61,16 +97,41 @@ A later bounded read observes In progress, still no analyst reply and a Pending
 root determination. The automated protection cells report scan-completed icons
 while their current-detection text says No malware detected; this is not an
 analyst Smart App Control clearance or a whole-file malware determination.
-Exact retained receipt and addon pins remain unchanged. Acceptance is not
-clearance. No decision time or malware verdict is invented, and frozen0.4.11
-evidence is unchanged. Fresh data-only ordinary actual-game preparation now
+Exact retained receipt and addon pins remain unchanged. That blank-analyst
+observation is superseded: the accepted candidate submission now has an explicit
+analyst response confirming that all submitted files were not blocked by Smart
+App Control. The retained accepted receipt, exact addon and visible response are
+independently reconciled. Generic In progress/Pending labels remain but are not
+blockers. This clears exact-byte SAC review only, not a final malware verdict,
+execution permit, gameplay proof or publication approval; observation time is
+not a decision time. Original receipts and frozen0.4.11 evidence remain unchanged.
+Fresh data-only ordinary actual-game preparation now
 binds all89 canonical0.4.12 package files inside a fully verified7,890-file copy;
 original runtime, game source, assets and inputs stay unchanged. It is not a
 production assembly, protected launch, runtime qualification or publication.
-Reuse this retained current container while exact-file review waits.
-Protected schema8 four-case proof remains absent. No protected
+A separately reviewed clean derivative now omits exactly13 stale image-library
+support files, including six native leftovers outside the normal Bridge package.
+Its complete7,877-file/487,007,544-byte output and unchanged original source are
+verified before and after the one data-only preparation. All89 canonical Bridge
+members and every other kept byte remain identical. Seven pure checks pass;
+pre-use privacy/device aliases, exact policy attribution and failure-retention
+findings are corrected. Exact source/test/predicate copies are retained.
+Reuse this new clean QA container; retain the original unchanged. This is still
+an older-game, unprotected QA assembly, not current consumer source integration,
+native trust/current protection, account/capture, actual-game or release proof.
+A later separate metadata reader now consumes the new SAC observation without
+changing the original acceptance receipt or rescanning the candidate. Seven
+pinned retained inputs remain unchanged before/after; all ten kept Windows PE
+files reconcile to six exact SAC analyst bindings and four retained vendor-trust
+observations. Six foreign normal-package members remain preserved. Independent
+review catches row-level approval propagation and unchecked foreign kinds;
+explicit normalization and negative coverage correct both before use. Twelve
+source/pure checks and final exact-source review pass; the combined preparation
+checks total twenty-nine passes. This is metadata reconciliation, not fresh
+candidate/trust/protection, actual native operation or launch authorization.
+Protected schema8 four-case proof was then still absent. No protected
 publisher, local native candidate launch, GitHub Release or npm publication
-occurred. Preserve the existing permissions, frozen0.4.11 and prototype.
+had occurred at that point. Preserve the existing permissions and frozen0.4.11.
 
 The previously approved publishing-tools-0.4.11-7aac1c0 tag was already created
 at exact7aac1c05d586f0525ffb595919400b1a8fad8298. Its CI37868000465 passed
@@ -87,8 +148,12 @@ elevation, hidden windows, quoting, transaction/rollback and typed ACL checks st
 unchanged. Four failing-before regressions, all eleven focused cases,105data-only
 gate cases and seven verifier checks pass after correction; exact final independent
 source review finds no actionable issue. No elevation, Apply, native/game launch,
-candidate rebuild, tag or publication occurs. Exact committed-source CI is still
-required. See [bounded source review](windows-deployment-host-policy-review-2026-10-09.json).
+candidate rebuild, tag or publication occurs. The six-file slice is committed/pushed
+as072ca806c38d18563961be18b28eb1f892302d78; remote main matches. Exact-source
+CI37950918122 main-push/attempt1 succeeds on all nine jobs, independently verified,
+including all three platforms, security, Linux package smoke and four Node versions.
+This is source-tooling proof, not protected candidate or live release evidence.
+See [bounded source review](windows-deployment-host-policy-review-2026-10-09.json).
 
 ### Current Windows exact permission-mask correction
 
@@ -103,11 +168,258 @@ exact-source and final test-delta reviews accept the change. Apply/recovery/CLI,
 four-rule policy and schema2 remain unchanged. All107 final data-only checks,
 seven verifier checks, platform/type/whitespace pass. No filesystem exploit,
 live Apply, fixture, native/game action or frozen release qualification is
-inferred. Scoped public documentation review also accepts the change. Fresh
-exact-source CI remains required.
+inferred. Scoped public documentation review also accepts the change.
 See [source review](windows-exact-permission-mask-review-2026-10-09.json).
 
+The six intentional public files are committed/pushed as
+fa8193cd337e9d27ffa1b6235d8c31f22db0fd02; remote main matches. Exact-source
+CI37962532435 main-push/attempt1 succeeds on all nine jobs, independently
+verified at16:58:31UTC after the last job ends16:58:23UTC. Root watch exits zero;
+all three platforms, security, Linux package smoke and four Node versions pass.
+No native artifacts are downloaded, tag moved or candidate published. Earlier
+private negative audits keep their original copied helper and are not repinned.
+
 ### Current Windows owner-right protection correction
+
+The latest registered-task continuation completes the protected actual game,
+all seven phases/seventeen manual checks, exact original placement, natural
+exit/empty-job/raw drain/typed disposal and genuine schema8 as summarized above.
+No current protection or native-file bytes changed during qualification.
+Repeat only when candidate/controller/protection/input behavior changes, or a
+different consumer candidate requires its own proof; do not replay this unchanged
+pass for confidence or transfer it to final consumer/platform/notification claims.
+
+### Historical Windows owner-right protection attempts
+
+The preceding recorded Windows11 continuation was incomplete. It acquired the
+current112 external-file holds before creation and revalidates them through five
+actual mapped phases, with visible world, ordinary Friends open/close,
+fullscreen, maximize/minimize restoration and title movement. The operator
+misses resize/minimum/final phases and lets the existing deadlines expire;
+the caller retains forced termination with no typed terminal. This is failed
+QA execution, not an established product crash or passing schema8 receipt.
+All7,877 candidate file hashes match afterward; OS execution absence does not
+replace typed cleanup. The approved portable capture completes normally and
+fully decodes. A compact captioned diagnostic preserves original pixels and a
+same-recording visible-world ending, labels the missing work, and retains the
+raw video and superseded caption draft. Other-host idle Steam is restored once.
+A separate untouched ordinary-app preflight now exercises large width/height
+changes through the native System Menu Size, direction-key edge selection and
+one supported pointer-positioning input. Escape restores exact original geometry
+for each axis. Pointer corner positioning alone does not acquire both axes.
+That negative is retained; the app is closed unchanged. This is a prospective
+finite input recipe, not game minimum/client/DPI qualification. Before another
+changed live attempt, finish the actual-game Limited-task actor and bounded
+command/stream/lifetime integration: the current private Windows11 driver is
+direct-spawn, just as the separate Windows10 route lacks a game task actor.
+Observed Limited tokens do not substitute for the required task transport;
+the resource-only task pass is not game admission. Preserve bounds and existing
+locks/token/source checks; do not replay incomplete proof for confidence.
+No publication or deployment.
+
+The earlier actual protected consumer run completes naturally: all seven
+owned phases, root exit zero, empty job, full raw-stream drain, final held-DACL
+observation and clean typed resource disposal. The private CLI previously waited
+on stdin after its worker died. An exit watcher corrects that lifecycle; independent
+review additionally finds and fixes unbounded error notices and discarded stop
+errors. Both memory-only regressions fail before and pass after correction.
+The CLI now advertises the exact phase names and retains its full outcome.
+Final87 source/pure/parse checks and exact-source review pass.
+
+Two earlier incomplete game runs remain unchanged: outer-deadline hard kill without
+typed completion, then an operator's invalid phase name followed by successful safe
+stop/cleanup. The final natural run retains fourteen original screenshots and
+fourteen of seventeen manual observations. Cursor/corner/continuous-flicker grades,
+external runtime trust and schema8 integration remain unqualified. Window sizing
+reaches the real minimum and keyboard reversal returns near, not exactly to, the
+initial geometry. Other-host idle Steam state is restored and target Steam survives.
+The exact data-only raw-log predicate rejects that final geometry mismatch;
+the unfiltered stderr matches only its two allowed vendor startup messages.
+This is an operator QA-restore defect, not established product regression.
+Independent data-only review reconciles all retained caller/input/sidecar pins,
+normal-package metadata and actual pre-resume/final protection predicates.
+Complete every-module audit and later runtime predicates remain unfinished;
+the geometry rejection is not bypassed to create a receipt.
+
+A separate private closed external-file observer now derives112 exact native
+paths from the seven retained phases and holds their full identities, streams
+and whole-file hashes. Its first read-only pass completes eight embedded trust
+observations, then stops before the ninth WVT call on catalog-name validation.
+A targeted name-only query establishes a case-only `system32`/`System32`
+normalization difference. The corrected predicate retains component, traversal,
+namespace and file-identity restrictions; the preserved old predicate fails the
+actual Core memory check and all29 focused checks pass after correction.
+The changed-source full read-only pass now completes all112 current Windows
+policy observations:90 embedded and22 catalog, code-signing EKU on every signer,
+final same-held-file verification and typed clean disposal, zero exit and empty
+stderr. Earlier failure and diagnostic records remain unchanged. This is current
+held-file trust only, not retrospective mapped-game qualification. A future
+game owner still must acquire these holds before creation and retain them through
+the existing phase-binding and cleanup window; visual/schema8 and final
+production/device/video gates remain open. No package is published.
+Reuse the completed lifecycle evidence; no unchanged replay or larger bounds.
+This older-game QA assembly is not a final consuming-game candidate or publication
+approval. Full platform/gameplay/desktop-notification video and production gates
+remain separate. Earlier source-only/no-game statements below are historical.
+
+The scoped preparation blocker is now cleared by a corrected actual attempt.
+A readonly diagnostic locates the sharing rejection at the public helper's
+temporary-to-final evidence rename, after its audit. Omitting only the optional
+evidence path completes both audits under held inputs alone and then with the
+same candidate locks/recovery handles; both honestly report the original
+unprotected policy. No permission mutator runs in those diagnostic cases.
+The initial diagnostic root-normalization failure remains retained separately.
+
+The private caller now keeps actual typed audit observations in raw worker
+stdout and creates immutable evidence copies in the parent only after validated
+successful worker exit. They are parent-created copies, not helper-created
+evidence files. Exact final source review accepts the minimal delta; all76
+focused source/pure/parse checks pass. The subsequent43-second actual scoped
+attempt passes all8,877 held permission readbacks, both unchanged canonical
+Audit records, sealing with zero recovery capabilities, disposal and empty
+cleanup errors. Independent raw/source/command/parent-copy reconciliation passes. Original
+four failed attempts remain unchanged; the public helper and frozen bytes are
+unchanged. Reuse this protected QA copy, never replay the unchanged preparation.
+This completes copy preparation only: no game/native candidate execution,
+current runtime/UI/schema8 or different production-candidate qualification.
+
+The maintainer has now answered the scoped temporary-copy protection request.
+Four distinct changed-source attempts are retained. The first stops before
+imports because the cold host has no autoloaded path command; the corrected
+bootstrap uses the ordinary runtime path API. The second reaches the captured
+preparation but classifies the Windows permission utility as a document;
+read-only command classification identifies a process-local extension list,
+corrected without global environment or policy changes. The third reaches the
+utility and rejects a sharing violation. Both later failures verify restoration
+of all8,877 original descriptors and dispose both owners without cleanup errors.
+
+The fourth uses the existing captured handles and DACL-only setter under the
+unchanged four-rule policy, readonly tree locks and rollback/sealing sequence.
+All8,877 canonical/identity/original-owner-group readbacks and final tree check
+complete. The separate public Audit callback then rejects a sharing violation
+before sealing. All8,877 original permissions are again verified restored; both
+owners dispose and cleanup errors are empty. The exact audit suboperation/file
+and responsible process were not retained, so the callback boundary is the
+supported finding, not a demonstrated foreign-process or specific API cause.
+Original failed records and their conservative partial-protection flags are
+unchanged. That fourth attempt is a failed preparation, not launch proof; the
+separate corrected fifth pass above does not rewrite it.
+
+Final exact-source pre-use review accepts the retained-handle implementation;
+seventy-three source/pure/parse checks pass, but do not erase the actual failure.
+Do not repeat the unchanged failed attempt, drop readonly locks, widen rights,
+change security policy or transfer this optional older-game QA assembly to
+another production candidate. The audit integration is now corrected as above.
+The reply authorizes only the temporary copy,
+not game launch or deployment. Earlier source-only/unanswered-approval notes
+below are historical and superseded by these actual observations. No candidate
+native code, installed game or frozen release binary changed or executed.
+
+A private preparation-only recovery component is now implemented, but uninvoked.
+It would retain original root/descendant DACLs and protection flags through
+non-inheritable read-control/write-DACL handles alongside readonly tree locks,
+restore parents before children on rejected Apply, and close every recovery
+capability before exposing a sealed readonly preparation. Independent initial
+review found generic-write/all admission and an unrecoverable partial-close
+finalization. Both are corrected: exact read/execute with optional synchronize,
+and explicit irreversible finalization with retryable remaining closes and no
+rollback promise afterward. Five source/memory cases pass on Desktop/Core,
+including192pure state assertions per host. Corrected independent exact-source
+review accepts both fixes within the preparation contract. Retried sealing relies
+on the prior canonical ACL observation, not a fresh audit or continuous guarantee;
+the separate current ACL audit remains before game admission. This does not
+exercise capture, Apply, Restore, close-failure injection,
+game/controller, current protection or release proof. Scoped copy protection
+authority remains unanswered; process death can strand a partially changed copy.
+Original/frozen inputs and spent historical tests remain unchanged. No permission
+change or native candidate execution has occurred.
+
+The same private component now sequences one captured Apply/audit/seal with
+original-plus-recovery error ownership and pre-finalization rollback only.
+Main review caught callback reentry through reentrant Monitor locks; callback-phase
+instance operations are now denied and only the orchestrator's own transitions
+are allowed, with both flags reset in finally. Six source/memory checks pass on
+Desktop/Core, including eight sequence models and eight empty, constructor-free
+owner checks per host. Independent final exact-source/test review accepts the
+guarded delta within its source-only contract, not real handles, close faults,
+cross-thread completion or live Apply. The preparation driver below now wires
+pinned callbacks and bounded worker control in source; scoped authority and
+actual operation remain absent. No live operation or protected
+launch is inferred; preserve the separate fresh ACL gate.
+
+A separate private preparation-worker self-job lease is implemented but uninvoked.
+It retains an unnamed non-inheritable kill-on-close/active-four job until worker
+exit, uses a one-shot timer and observes only the current sole worker. Independent
+review caught a failed timer constructor leaving apparent deadline evidence; public
+observations now require an armed timer and completed attachment. Five source/pure
+Desktop/Core checks and final review pass, including32memory state combinations.
+The timer is not an independent wall deadline; bounded parent control is still
+required. Actual attachment, child termination, callbacks, scoped authority and
+candidate protection are unproved. This active-four lease is not the game's
+separate active-thirty-two job. No candidate/helper/resource fixture is replayed.
+
+A private one-shot preparation parent/worker driver now binds the exact current
+public helper to the separate recovery and preparation lease. Main review fixes
+mode-label mismatch, stale script exit state and wrapped recovery-owner loss.
+Independent review finds missing actual executor-PID binding and a final-newline
+path alias; both are corrected before use. All seventeen combined source/pure
+checks pass, including inert parsing/compilation, synthetic callback exit cases
+and an empty constructor-free owner model. Final exact-source review accepts the
+driver with no residual actionable issue. No live job, recovery handle, Apply,
+Restore, permission change or candidate launch occurred. The existing scoped
+copy-protection reply remains required; the CLI/request is not authorization.
+Hard worker death can strand a changed copy, and parent filesystem I/O is not
+independently wall bounded. This is not the full game controller or live proof.
+
+Runbook reconciliation finds that the private fourteen-variable baseline lacks
+the required ordinary Friends QA menu and overlay snapshot settings. An explicit
+sixteen-variable proof environment/factory now adds only those two fixed values;
+the baseline factory and all fourteen normal values remain unchanged. A new pure
+missing-method test fails before correction and passes afterward with six invalid
+profile negatives. All forty-two combined source/pure checks and independent
+exact-delta review pass. Retained old source/observations stay unchanged; only
+prospective uninvoked input pins move to the new core. Managed candidate source
+supports the settings, but no menu, snapshot, constructor, native or protection
+operation is observed. The future proof controller must use the explicit proof
+factory and actual visible-menu input; scoped human authority remains unanswered.
+
+The private held-tree component now has the missing current-DACL snapshot adapter:
+existing readonly handles, bounded descriptors, root and exact descendants only,
+full identity/content checks around the scan. Static intake reuses the unchanged
+canonical permission predicate and emits observation-only evidence. Independent
+source review catches dropped allocation ownership and masked original errors on
+failed release; retained cleanup ownership, blocked requery and retryable disposal
+correct both. Fifty-one combined source/pure checks and final exact-source review
+pass. No native descriptor query, permission change or candidate launch occurs.
+This is not effective-access, continuous protection or a completed controller.
+Use a freshly observed caller identity before creation and resume; finish the
+single-owner runtime/UI/schema8 wiring and obtain the existing scoped reply.
+Spent proofs and frozen artifacts remain unchanged; no further fixture is needed.
+
+The separate private single-owner run component now connects the held tree,
+fresh context/protection/signature observations, explicit suspended proof factory,
+one resume attempt, seven stable phase records and natural-exit/ordered cleanup.
+Independent review finds returned records exposed mutable internal evidence;
+detached bounded snapshots correct it after both managed-host regressions fail.
+Six owner checks and fifty-seven combined source/pure checks pass, with final
+exact-source review accepted. Existing implementations/frozen artifacts remain
+unchanged; no tree/game constructor or native query runs in the new coverage.
+At that component checkpoint caller/parent admission and retention, external
+runtime trust, supported manual UI/capture and schema8 integration were incomplete. External module observations
+stay explicitly unqualified; the component grants no launch or release approval.
+
+The existing-host private caller now stages and holds exact admission source,
+dependencies and caller provenance before importing validators. It reconciles
+metadata/package/plan, retains detached PID/hash/sequence/terminal records and
+uses bounded cleanup. Review corrections cover worker ownership, pipe errors,
+mutable inputs, short writes and partial-failure raw byte counts. Twelve focused
+and sixty-nine combined source/pure/parse checks pass; final exact-source review
+accepts the bounded contract. No worker, protection or candidate operation runs.
+At that source-only checkpoint the scoped copy-protection reply was unanswered
+across three consecutive goal turns. The later direct reply and failed actual
+preparation above supersede that approval blocker, not the separate actual
+external/runtime/manual/schema8 and full consumer release gates. Source checks,
+CLI flags and requests are not consent or live receipts.
 
 Source review found that the three-rule ACL checker omitted the owner's
 implicit permission-changing right. A read-only in-memory AccessCheck with
@@ -174,9 +486,59 @@ remote main matches. CI37892675620 attempt1/main push/canonical CI is terminal
 success on all nine jobs, independently confirmed, including all three platforms,
 Linux package smoke, dependency security and packed Node18/20/22/24. This is not
 a demonstrated NTFS bypass or passing live QA. Frozen tag/artifacts are unchanged.
-Preserve unrelated native prototype/cache evidence.
 
-### Current Windows resource-only task transport
+### Historical Windows resource-only task transport
+
+A private actual-game manager/controller integration is now implemented. One
+literal hash-pinned source cohort supplies in-memory imports, compiled peer/channel
+bytes and retained source inputs. Actual task XML/COM policy, returned instance,
+held actor/token/image and separate raw streams precede caller admission. The
+consumed-control handshake prevents buffered input loss; guarded sinks and a
+separate exact-definition/instance recovery preserve ownership after controller
+termination. Five independent integration/default-readback findings are fixed
+and source accepted; twenty-three focused cases do not establish native behavior.
+
+The corrected policy subsequently passes actual registration/readback, returned
+instance and held actor/image/token association, command consumption, seven game
+phases and separate raw-stream/natural-exit cleanup. The owned task is removed;
+independent raw record/stream reconciliation agrees. EnginePID is observed, never
+assumed to alias the actor; the generic relay membership flag is not promoted.
+This is the actual-game transport used by the genuine0.4.12 library proof above,
+not Windows10 execution, a new consumer production candidate or notification proof.
+
+Its first actual registration attempt stops before task execution or game creation:
+Windows stores the unified-engine setting as true despite the proposed false.
+Both saved XML and effective COM observations agree; the owned never-started task
+is removed and original failure records are retained. The prospective policy now
+explicitly requires the observed true setting, without changing any identity,
+trigger, restart, privilege or deadline. Pre-start cleanup no longer attempts a
+nonexistent held peer wait. Fifteen changed source checks and narrow independent
+review pass before the changed actual attempt. No game or recorder starts in this
+preserved failure; it is not retroactively relabeled as the subsequent live pass.
+The source-only absent-manager statements below are historical.
+
+A separate private actual-game task source slice is now implemented but uninvoked:
+closed declaration/readback policy, fixed old-worker generation, held actual peer
+identity and three separate raw streams. Independent initial review finds the
+actual Settings projection admitted disabled/non-terminating/idle-restarting
+tasks; full declared/effective field policies and negative models correct it.
+Source review also keeps input EOF separate from output drain and retains failed
+cleanup ownership. Exact review then finds a nested-worker script-counter scope
+defect, relay-failure cleanup bypasses and actor cleanup stopping on first throw.
+Same-scope invocation, a common unsuccessful-relay cleanup path and aggregate
+all-resource disposal correct these. An actual-host inert counter reproduction
+fails before and passes afterward; the emitted-finally fake-close model attempts
+all six resources and preserves both errors. Fifteen source/data/parser/compiler/memory checks pass;
+existing hosts compile declarations only, with no native method, pipe, task or
+game operation. Exact correction review confirms the three earlier fixes, then
+finds a late peer publication after terminal disposal. Serialized post-await
+peer acquisition/publication and terminal disposal correct that ownership race;
+narrow exact-source review accepts the correction, with no actual native race exercised.
+The registration manager,
+truthful actual task association, controller adapter and bounded stop/removal/
+stream lifetime are still absent. Do not claim this slice completes the required
+game task, qualifies a platform or supplies a receipt. Existing caller/game
+deadlines, source holds, frozen bytes and original failed records stay unchanged.
 
 A private consumer-QA resource prototype now passes a real current-user
 InteractiveToken/LeastPrivilege on-demand task, using only the existing signed
@@ -208,6 +570,106 @@ namespace/image/module/token/protection, account/capture and exact-file
 Microsoft/SAC bindings before execution. No native candidate, installation,
 notification enrollment/send, security change or publication occurred.
 See `WIN-STANDALONE-RESOURCE-TRANSPORT-001` in the findings ledger.
+
+### Historical Windows held-tree component
+
+A separate private consumer-QA component now passes one fresh owned-text
+fixture after independent source review. It holds GUID/native ancestors and
+files, requires full128-bit identities, clones the closed plan, hashes through
+the same handles, and checks candidate-directory/file streams and exact inventory.
+The actual fixture rejects writes, file/directory renames, wrong hashes, extra
+files/directories and named file streams; failed-constructor handles release and
+strict nonrecursive cleanup completes. The original failed stream-query record,
+source and text tree remain retained. Directory EOF handling was corrected in
+a fresh changed-source attempt; absent file records still fail closed.
+
+Pure Windows PowerShell5 checks also accept the authenticated retained candidate
+manifest without opening candidate files. This component is not a full launch
+adapter or candidate qualification. Stream sharing is per stream and inventory
+checks are observations, so current protection remains separate. Owned job,
+suspended-image/module/token/SAC, account/capture and actual-game proof were
+still open at that point. Do not repeat either unchanged text attempt or the
+spent helper test.
+See `WIN-STANDALONE-HELD-TREE-001` in the findings ledger.
+
+Native-path reopening now additionally binds the same GUID/full128-bit identity,
+size and hash, with one cached observer handle per planned file. A fresh text
+fixture passes sixteen observations with one binding, rejects a different
+same-byte file and a wrong query length, releases every handle and cleans up.
+It is not an actual process-image or module observation.
+
+A separate game-sized contained-session source core compiles under PowerShell5
+and passes thirteen source/pure checks. Independent review corrected unbounded
+observer acquisition, unrecoverable cleanup state and a repeated unstarted-sink
+flush. The last issue fails in an actual own-empty-file managed fixture before
+correction; a fresh changed fixture passes idempotent cleanup while still rejecting
+unstarted or synthetically failed evidence. Preserve the original failed tree
+and record. The core has never created/resumed a game process or started a pipe
+reader. Its new owned-process/module phase observer retains child identities
+through the final job snapshot and preserves failed-close recovery ownership;
+independent review finds both corrected defects resolved. The observer has not
+queried a game process. Controller/current-gate integration and actual contained-
+game proof were still open at that point.
+
+One separately reviewed full prepared-consumer file observation now passes all
+7,890 files and 526,087,396 bytes: same held-handle hashes/full128-bit identities,
+streams and closed inventory before/after two native-file reopenings, with
+successful disposal and empty stderr in 7.1 seconds. Independent source and raw
+artifact reconciliation agree. A temporary-base write-scope defect was corrected
+before the single run. This is actual file-scale evidence, not observed process
+images/modules or current protection. No result supplies Microsoft, gameplay,
+video or publication approval; do not repeat this unchanged observation.
+
+The same private creation/resume/job/raw-stream/exit/cleanup code now passes one
+closed existing signed Windows system-resource fixture. Its actual root is
+Limited/Medium in the expected session; two separate fifteen-byte raw streams,
+the expected nonzero child exit, empty job, completed readers and disposal all
+agree with independent source/artifact review. The resource path is fixed and
+hash-pinned, and its bounded sentinel reader was corrected before use. No task
+or game-specific constructor runs. That natural-exit observation does not exercise
+overflow, actual game descendants/modules, protection, gameplay or notification
+videos. Do not repeat the unchanged resource pass; complete the guarded actual-
+game controller and current gates.
+
+A distinct fixed system-resource loop now passes the actual ten-second watchdog
+path. Independent pre-use review caught an early-exit false pass; a resource-only
+live-root creation/membership witness immediately before the existing termination
+request corrects it without changing game/natural defaults. The watcher observes
+the matching live root at 10.011 seconds; forced exit, rejection of natural
+completion, empty job, drained empty raw streams and disposal follow at 10.028
+seconds. Exact source and retained raw evidence pass independent reconciliation.
+This does not qualify a game or module/protection/account/capture boundary. Do
+not repeat this unchanged deadline pass; finish the guarded game controller.
+
+The new clean consumer's four vendor DLLs now pass one direct held-file Windows
+embedded Authenticode observation: two Microsoft and two Valve signatures, each
+with exact bytes, retained GUID/native paths, nonzero full128-bit IDs and root
+volume/relative-path binding. Current WVT policy returns zero with RSA/code-signing
+EKU. All7,877 files verify before/after; trust state closes, disposal returns,
+exit is zero and raw stderr is empty. Independent retained-input/raw-record audit
+agrees. Pre-use review corrects false signature-absence attribution, lost VERIFY
+status during cleanup failure and generic-path intake;18source/pure/PowerShell5
+checks pass. Standard revocation network retrieval and normal caches are allowed,
+not disabled. Past Microsoft signer expiry alone does not contradict the observed
+policy result; no RFC3161 detail or new expiry policy is invented. This is not
+mapped-code/current-protection/Limited/SAC/gameplay or release qualification.
+No SDK verifier or candidate/native/helper launch occurs. Historical source copies
+and spent observations remain unchanged; do not repeat this unchanged trust pass.
+
+A new private read-only controller/protection observation now completes on the
+ordinary default Core host with its unchanged RemoteSigned policy. Its actual
+worker is Limited/Medium in the expected session and SAC is On. The full clean
+consumer ACL audit is negative: inheritance remains writable, canonical rules
+are absent and every descendant fails the protected policy. The observer's zero
+exit means successful retention of that negative audit, not protection success.
+The earlier forced Desktop-host script refusal remains a separate failed record;
+no ACL audit ran there. Independent pre/post-use reviews reconcile all retained
+inputs, raw context, policy and audit. Twenty-one pure/source/ABI checks pass.
+No protection or game execution occurs. Scoped protection authority and reviewed
+recovery, controller/external-runtime/account/capture still preceded live
+qualification at that point. Exact new-candidate SAC analyst review is now cleared as recorded
+above. Do not repeat either unchanged
+observation or transfer worker/fixture evidence to a game-child or release claim.
 
 ### Superseded frozen 0.4.11 preparation
 
@@ -418,7 +880,8 @@ Next repair choice is pending: an owned Linux native controller/emulation
 backend, preserving exact identity, custom layouts, non-Steam browser devices,
 deduplication and physical held-input quarantine, or a private patched Electron
 runtime followed by a full candidate-bound retest. No runtime/source transport
-is enabled by this evidence. Keep the unresolved native gameplay prototype off,
+is enabled by this evidence. The committed capture prototype is not wired into
+the Electron input service. Keep the unresolved native gameplay prototype off,
 and do not change global udev rules, player bindings or browser privacy gates.
 
 ### Earlier consumer admission evidence
@@ -1101,8 +1564,13 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   native targets, package smoke and security. Windows CI and Release preflight
   fail only the two formatter/upstream raw-hash checks; reproducing CRLF bytes
   yields both observed hashes. Explicit vendor LF attributes repair checkout
-  identity; fresh CI/preflight remain pending. Native artifacts and exact-byte
-  Microsoft review remain separate pending gates.
+  identity. Current source23053a9 passes all nine CI jobs in
+  [37579928376](https://github.com/jstroh/steam-bridge/actions/runs/37579928376).
+  Nonpublishing preflight
+  [37579929001](https://github.com/jstroh/steam-bridge/actions/runs/37579929001)
+  passes all three prebuilds and the exact Windows package gate. The downloaded
+  Windows addon/PDB debug ID matches; this remains preflight proof, not an
+  immutable tag candidate, Microsoft determination or protected live receipt.
 - 2026-10-04 follow-up build-cache guard review: sixteen added failing-before
   cases expose forbidden extension/error fallback, request/Vary mismatches and
   stale shared s-maxage reuse in the preceding local patch. The explicitly
@@ -1118,8 +1586,13 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
   the retained native payload for loading only. Eight actual canonical
   downloader/TLS checks pass. Consumer build-only integration also passes its
   focused installed-source/downloader checks and fresh Linux lock install;
-  its separate lint-tool braces advisory remains unpatched. Source push and
-  current-byte CI are next. Earlier nine-job CI below qualifies `.1`, not these changed bytes.
+  its separate lint-tool braces advisory remains unpatched. Follow-up source
+  `1cfb401` is pushed and the remote hash verified. CI
+  [37228339125](https://github.com/jstroh/steam-bridge/actions/runs/37228339125)
+  passes all nine exact-source jobs: the three native platforms, package smoke,
+  npm/Rust security and packed Node18/20/22/24 compatibility. The watcher exits
+  zero and an independent result confirms every job. No live CI wait remains.
+  Earlier nine-job CI below qualifies the preceding `.1` source only.
   This is build-tool source proof, not a new device, native or release receipt.
 - 2026-10-04 compatible build-cache repair: the root development dependency now
   selects the explicitly versioned local `4.3.0-steam-bridge.1` derivative, with

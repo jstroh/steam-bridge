@@ -3,8 +3,9 @@
   "date": "2026-10-04",
   "findingId": "CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001",
   "sourceBase": "8f81b192ab61b370e3585b5b5eb8827a04acfdd8",
-  "status": "follow-up-extension-and-error-fallback-repair-full-and-package-passed-ci-pending",
+  "status": "settled-compatible-extension-and-error-fallback-repair-full-package-and-all-platform-ci-passed",
   "previousSourcePush": {"commit":"8f81b192ab61b370e3585b5b5eb8827a04acfdd8","remoteHeadVerified":true,"ciRun":37225511429,"ciUrl":"https://github.com/jstroh/steam-bridge/actions/runs/37225511429","terminalStatus":"completed","conclusion":"success","jobsPassed":9},
+  "sourcePush": {"commit":"1cfb401ccaa93e87479af0352e7d225b799b18a0","remoteHeadVerified":true,"ciRun":37228339125,"ciUrl":"https://github.com/jstroh/steam-bridge/actions/runs/37228339125","terminalStatus":"completed","conclusion":"success","jobsPassed":9},
   "followUpReview": {
     "sourceBase": "8f81b192ab61b370e3585b5b5eb8827a04acfdd8",
     "version": "4.3.0-steam-bridge.2",
@@ -18,7 +19,7 @@
     "actualCachedDownloaderControls": ["503 rejects no-cache", "503 rejects must-revalidate", "503 rejects stale shared s-maxage", "503 permits public stale-if-error", "matching conditional304 reuses original bytes"],
     "unchangedExactUpstreamSuitePassed": 128,
     "lockChanges": ["vendor/http-cache-semantics version only"],
-    "fullPackageAndCi": "Full Windows gates and fresh locked Linux policy/package smoke pass; source push and current .2 CI pending",
+    "fullPackageAndCi": "Full Windows and fresh locked Linux policy/package smoke pass; CI37228339125 passes all nine jobs at exact source1cfb401",
     "fixtureCorrections": "The first source transfer used shell-converted patch line endings and stopped before install; a Git-written patch applied exactly. A missing retained ticket library stopped before install and was copied from the known complete fixture. An older experimental TLS fixture still had the rejected bare-relative npm link; its failed log is retained, and the actual canonical builder/downloader path passed all eight controls on the identified .2 source. No node_modules source was hand-edited."
   },
   "scope": "Development/build dependency only. Synthetic policy execution, actual downloader loopback controls and isolated package loading; not a live exploit, native rebuild or release/device qualification",
@@ -81,7 +82,7 @@
     "windowsAndLinuxDependencyTreesValid": true,
     "retainedLinuxAddonUsedForLoadingOnlySha256": "511adf90a91003121c90331711bb265dd83e52c371e909b7ed62d8c01d7b0acb",
     "retainedValveRuntimeSha256": "ec4797f76a206eb0af627af0f0788eb5a2eabf5dee38ee0a6affbaa44a645f4e",
-    "exactDevelopmentFloorAndAllPlatformCi": "Pending for .2; previousSourcePush is the independently verified .1 nine-job result, not current-byte qualification",
+    "exactDevelopmentFloorAndAllPlatformCi": "CI37228339125 passes all nine jobs at1cfb401: Windows/Linux/Apple Silicon macOS, package smoke, npm/Rust security audit and packed Node18/20/22/24; development uses Node22.13",
     "notNewNativeOrCandidateBoundLiveProof": true
   },
   "primarySources": ["https://github.com/advisories/GHSA-ch52-4w7c-c8xp", "https://www.rfc-editor.org/rfc/rfc9111.html", "https://github.com/kornelski/http-cache-semantics/tree/b1d4bd682fbab0252985de45219f4e7497c0067c"],

@@ -354,9 +354,9 @@ checks perform no elevation, file-protection or candidate/native operation.
 
 **Repeat only when:** host selection, arguments, policy handling, subprocess
 status or protection validation changes, or an explicitly authorized deployment
-reaches this path with an eligible candidate. Fresh exact-source CI including
-package smoke remains required; source checks do not qualify live protection or
-retrofit frozen artifacts. Do not invoke a spent fixture or change policy to pass.
+reaches this path with an eligible candidate. Exact-source CI37950918122 at
+072ca80 passes all nine jobs including package smoke; source checks do not
+qualify live protection or retrofit frozen artifacts. Do not invoke a spent fixture or change policy to pass.
 
 Evidence: [source review](windows-deployment-host-policy-review-2026-10-09.json),
 [deployment helper](../../scripts/windows-deploy-release-candidate.ps1),
@@ -377,14 +377,153 @@ current protection pass. Do not transfer earlier frozen/helper/fixture evidence
 or rerun an unchanged live experiment.
 
 **Repeat only when:** the exact-mask policy or root/descendant integration changes,
-or separately authorized current protection reaches this corrected audit. Fresh
-exact-source CI and a genuine current boundary still precede live qualification.
+or separately authorized current protection reaches this corrected audit.
+Exact-source CI37962532435 at fa8193c passes all nine jobs; a genuine current
+boundary still precedes live qualification.
 
 Evidence: [source review](windows-exact-permission-mask-review-2026-10-09.json),
 [protection helper](../../scripts/windows-protect-release-candidate.ps1),
 [regressions](../../tests/windows-protection-owner-rights.test.cjs).
 
-### WIN-CANDIDATE-OWNER-RIGHTS-001 — OPEN
+### WIN-CANDIDATE-OWNER-RIGHTS-001 — PROTECTED ACTUAL-GAME PASS
+
+The changed registered-task route now completes actual protected0.4.12 library
+qualification: seven phases/seventeen owning-operator visual checks, exact original
+geometry, natural game/actor exit0, empty job, raw drain, typed disposal and task
+removal. All8,877 protection objects and112 preheld external-file observations
+remain unchanged. Genuine unfiltered runtime/schema8 proof and independent
+thirteen-envelope/seal/stream reconciliation pass. Normal library publication
+and independent registry/GitHub asset verification complete; original failed
+attempts and source-only observations below remain unchanged. Actual consumer
+Electron44.4.5 and CI example44.7.0 are separate attributions. This does not
+qualify Windows10, a different final production consumer, notifications or its
+complete device/display matrix. See [current release outcome](current-work.md#active-goal).
+
+**Passing actual-game repeat only when:** candidate/controller/protection/input
+behavior changes or a distinct production consumer needs its own exact proof.
+Do not replay unchanged passing or failed runs, widen deadlines, manufacture
+visual grades or transfer this library receipt to consumer deployment.
+
+The new independently reviewed manager/controller performs one actual task
+registration, then rejects saved/effective unified-engine true against proposed
+false before running its actor. The never-started owned task is removed; no game
+or recorder starts. Original raw/typed failure records remain. The explicit
+prospective true policy matches both actual observations, with all other task
+restrictions unchanged; source review remains separate from a live pass.
+
+**Task-registration repeat only when:** the corrected exact task policy and
+pre-start cleanup are reviewed, with current account/capture admission. Continue
+the actual-game route rather than replay this unchanged rejection or the earlier
+in-memory/resource-only probes. No Windows policy or reviewed binary changes.
+
+The newest recorded Windows11 continuation acquires current112 external-file
+holds before creation and verifies them through five real mapped phases. Visible
+world, ordinary Friends open/close and native window transitions are retained,
+but the operator misses resize/minimum/final phases and lets the existing run
+expire. Forced termination has no typed terminal or schema8 receipt; it is not
+an established product crash. All7,877 candidate file hashes match afterward.
+OS absence is not typed cleanup. Approved portable capture ends normally and
+fully decodes; its compact captioned diagnostic retains original pixels and a
+visible-world ending, clearly labels incomplete QA, and preserves raw/draft
+evidence. Other-host idle Steam is restored once.
+
+A distinct untouched ordinary-app preflight now exercises large width/height
+changes with native System Menu Size, a direction-key edge selection and one
+supported pointer-positioning input. Escape restores exact original geometry
+for each axis; pointer corner positioning alone fails to acquire both axes.
+The blank app is closed unchanged. This is prospective input evidence, not
+game minimum/client/DPI proof. Current private Windows11 direct-spawn also lacks
+the required actual-game Limited task; the resource-only task is not a substitute.
+
+**Recorded attempt repeat only when:** reviewed fixed game-task lifetime/channel
+integration and the supported finite resize/exact-cancel sequence close the
+missing prerequisites. Actual game geometry/rendering still needs observation.
+No larger deadlines, fake grades, unchanged confidence replay or transfer to
+a final production/gameplay/notification qualification.
+
+The earlier actual protected game continuation completes natural root exit zero,
+empty job, fully drained raw streams, seven stable phases, final held-DACL
+observation and typed cleanup. The private CLI's old un-watched stdin loop hid
+an outer-deadline termination; the corrected watcher reports exit and closes
+input immediately. Independent review fixes unbounded error previews and masked
+stop rejection with failing-before memory tests. A separate operator invalid-
+phase stop is retained with verified cleanup, not relabeled as a product crash.
+Final source checks and review pass. Fourteen screenshots/manual observations
+do not establish the remaining cursor/corner/continuous-flicker, external-runtime
+trust, schema8 or final production-candidate gates. Original incomplete runs stay
+unchanged; no passing release receipt is created.
+Exact data-only raw runtime evaluation rejects the near-restored final window
+size; unfiltered stderr matches the two allowed vendor startup messages.
+
+The later separate external-file audit derives112 native names from the retained
+phases, with no authority inferred from their folders. An initial pass stops after
+eight embedded results because catalog-name normalization changes only letter case.
+A targeted metadata-only query proves that mismatch, without replaying completed
+signatures or invoking WVT. The corrected comparison preserves all other path,
+ancestor/full-identity/content restrictions. The actual old Core memory predicate
+fails before correction;29 focused checks pass afterward. The changed-source
+read-only full pass observes current policy success for all112 files (90 embedded,
+22 catalog), verifies held inputs finally and disposes cleanly. It is not the prior
+game's mapped-file or release qualification; original failed records stay unchanged.
+Do not replay this standalone trust pass for confidence. Integrate the owner before
+future game creation and retain its lifetime through the existing phase observer.
+The next supported input plan must restore exact normal geometry, not weaken
+the predicate or convert lifecycle success into runtime qualification.
+
+**Completed lifecycle repeat only when:** candidate/lifecycle source changes,
+or a discriminating supported plan closes the remaining qualification gaps.
+Do not repeat the same natural/protection/helper/resource pass for confidence,
+inflate deadlines, merge unrelated candidate evidence or manufacture manual grades.
+
+A later readonly diagnostic localizes evidence persistence to Write-Evidence's
+temporary-to-final Move-Item, not the ACL read itself. With only the optional
+evidence path omitted, both held-inputs-only and held-inputs-plus-candidate audits
+complete and report the correct original unprotected policy. No permissions
+change. The exact diagnostic ErrorRecord is retained; no external lock-holder
+identity or retroactive exact stack for older failures is inferred.
+
+The minimal private caller correction retains real audit records in raw stdout;
+only after successful validated worker exit does the parent exclusively create
+and verify matching JSON copies. Public/frozen helper bytes, candidate locks,
+canonical predicates, rollback/sealing and bounds are unchanged. A failing-before
+regression, all76 source/pure checks and accepted pre-use review precede one
+corrected actual attempt. That attempt passes8,877 held permission readbacks,
+both canonical Audit observations, zero remaining recovery capabilities, sealing,
+disposal and cleanup. Raw source/command/evidence bindings reconcile. Four original
+failed preparations and the initial diagnostic path failure remain unchanged.
+This is scoped copy protection, not game/native runtime or release qualification.
+
+**Passing preparation repeat only when:** exact candidate or protection/persistence
+implementation changes and a separately reviewed new attempt is meaningful.
+Reuse the existing protected copy otherwise; retain the independent current-game
+admission and exact production-candidate gates.
+
+The maintainer later approves protection of the temporary QA copy only. Four
+changed-source attempts remain retained: cold bootstrap command unavailable;
+process-local executable-extension classification rejection; utility sharing
+rejection; and separate Audit sharing rejection after completed held Apply.
+The ordinary path bootstrap and process-only extension correction change no
+global setting or execution policy. The new Apply reuses saved read-control/
+write-DACL handles, the existing DACL-only setter and unchanged four-rule policy.
+
+The fourth attempt completes all8,877 canonical/identity/original-owner-group
+readbacks and held-tree verification, then fails its public Audit callback before
+irreversible sealing. Existing recovery verifies every original descriptor
+restored; both owners dispose and cleanup errors are empty. Exact audit file/
+suboperation and responsible process are not retained. Do not equate the callback
+boundary with proven foreign-process causation. Three reached-preparation
+failures have verified restoration; the initial bootstrap failure never reaches
+the mutator. Original conservative flags and all failed records stay unchanged.
+No protected candidate, game launch, native runtime or release pass follows.
+Seventy-three source/pure/parse checks and accepted exact-source review do not
+override the actual rejection. Earlier unanswered-approval/source-only notes
+below are historical, not the current human boundary.
+
+**Scoped preparation repeat only when:** the identified audit/held-source or
+candidate integration changes and its bounded recovery/error retention is
+reviewed. No unchanged rerun, relaxed sharing, broader rights, elevation or policy
+override. The scoped reply is not game/deployment approval; a different release
+candidate needs its own exact assembly and current gates.
 
 The three-rule write-protection audit omitted the owner's implicit WRITE_DAC.
 A read-only in-memory AccessCheck using the actual Limited token reproduces
@@ -430,6 +569,100 @@ fixture cleanup; the matching deployment record/transaction fixture passes,
 with no new retained fixture. This is predicate completeness and owned-fixture
 proof, not a locally reproduced NTFS bypass or current candidate protection.
 
+A later private read-only observation completes the clean consumer's full ACL
+audit under the existing ordinary Core/RemoteSigned host. It finds an unprotected
+root with inherited grants and no canonical protection; all descendants fail.
+Fresh actual worker Limited/Medium/SAC-On context is not a game-child observation.
+The earlier forced Desktop-host script refusal is retained separately, with no
+audit result. Reviewed host selection fixes that intake route without policy
+mutation; independent raw-artifact reconciliation agrees with the negative audit.
+No Apply, permission change or candidate execution occurs.
+
+A private preparation-only original-DACL recovery component now has pure source
+coverage. Initial independent review found generic-write/all ACE admission and a
+partial-close lifecycle dead end. Strict read/execute plus optional synchronize
+and explicit irreversible finalization correct those defects before use. Five
+source/memory checks pass under Desktop/Core, including192pure state assertions
+per host; corrected independent review accepts both fixes within preparation-only
+scope. Retried sealing relies on the prior canonical ACL observation; a fresh
+current ACL audit still precedes game admission. No recovery handles,
+actual Apply/Restore, close-failure injection, permissions or game operation occur.
+Do not transfer these pure predicates to a live recovery or protected candidate
+claim. The scoped copy-protection request is still unanswered.
+
+The added one-captured preparation sequence retains original/recovery errors and
+restores only before irreversible closure. A source-traced callback reentry hole
+is guarded before any live use. Six Desktop/Core source/memory checks include
+eight sequence models and eight empty constructor-free owner checks per host;
+those owners have no tree/handles and invoke no direct native API. Independent
+final guarded-delta review accepts the source-only contract, not real handles,
+close faults, cross-thread completion or live Apply. The private preparation
+driver now wires pinned callbacks/worker control in source as recorded below;
+scoped authority and actual protection remain unestablished.
+
+Private preparation-worker containment has a new source-only lease, not a replay
+of an old system-resource fixture. An initial timer-construction failure could
+leave an assigned recovery owner reporting an unarmed deadline; the corrected
+public observation requires both timer and completed attachment. Five Desktop/
+Core source/pure checks and final review pass, with no native job operation.
+Parent hard timeout, actual compatibility/child termination, pinned callbacks,
+scoped authority and current protection remain open. Active-four is preparation
+only and must not replace the game session's active-thirty-two job.
+
+The private one-shot driver now has seventeen passing combined source/pure
+checks and corrected independent exact-source acceptance. Mode labels, stale
+exit state and wrapped recovery ownership are corrected; peer review also
+requires actual executor-PID binding and a true-end output-path guard. The
+callback fixture is synthetic text only and the recovered owner is empty and
+constructor-free. No live worker attachment, capture, Apply/Restore, permissions
+or native candidate operation follows. The scoped human reply is still required.
+Worker death can strand changed permissions; parent filesystem I/O has no
+independent wall guarantee. Do not treat the CLI or request file as approval,
+or this source acceptance as current protection or game qualification.
+
+The private proof launch recipe previously omitted the runbook's visible ordinary
+Friends QA-menu and snapshot settings. An explicit proof-only environment and
+factory adds the two fixed flags while retaining all fourteen baseline values.
+The new memory-only method test fails before correction; forty-two combined
+source/pure checks and independent exact-delta review pass afterward. Older
+retained source/proofs stay unchanged and only prospective inputs are repinned.
+Managed-source support is not visible-menu, callback, pacing or native proof.
+No factory, protection or game action occurs; the scoped reply remains required.
+
+The later private readonly held-DACL adapter uses existing handles and the unchanged
+canonical predicate. Source-only review finds cleanup could discard an allocation
+or mask the original failure; pending ownership, use revocation and retryable
+disposal correct both. Fifty-one combined source/pure checks and final corrected
+exact-source review pass, without native queries or fault injection. This does not
+attest effective access, continuous protection or game-controller completion.
+Fresh caller identity, actual current snapshot and the finite owner wiring remain
+required. Do not turn these checks into a candidate protection or launch claim.
+
+The subsequent private single-owner component connects the existing lifecycle
+APIs without another backend. Initial returned records exposed mutable internal
+context/phase evidence; both managed-host regressions reproduce it. Bounded
+detached snapshots isolate all returned plain data and reject unsafe shapes.
+Six owner/fifty-seven combined source-pure checks and final exact review pass,
+without any tree/game constructor or native query. External runtime records
+remain unqualified. Caller admission/retention, real supported UI/manual evidence
+and schema8 integration are still required, not manufactured by phase labels.
+
+The subsequent existing-host private caller completes source admission and
+record retention only. Initial lifecycle, pipe, mutable-source and terminal
+findings are corrected before use; independent review also catches short writes,
+missing caller provenance and partial-failure raw-count mismatch. Write-all,
+retained caller input and existing-descriptor final counts correct those paths.
+Twelve focused and sixty-nine combined source/pure/parse checks and final exact
+delta review pass. No actual worker, candidate or permission operation follows.
+After three consecutive unanswered scoped copy-protection turns the goal is
+blocked on that human boundary. Actual source-bound worker failure cleanup,
+external-runtime, supported manual and schema8 proof remain unobserved; do not
+turn synthetic terminal/short-write models or phase labels into passing receipts.
+
+Do not repeat the unchanged negative audit. A new audit is meaningful only after
+separately authorized protection actually changes this scoped candidate or the
+candidate/descriptor policy changes; it must not replay the spent fixtures.
+
 **Repeat only when:** the descriptor policy, handle access mask or documented
 recovery implementation changes. Keep failure records, use one fresh owned
 fixture for each falsifiable change, and do not repeat unchanged access-denied
@@ -441,7 +674,23 @@ Evidence: [protection helper](../../scripts/windows-protect-release-candidate.ps
 [source regressions](../../tests/windows-protection-owner-rights.test.cjs),
 [protection scope](../../CONTRIBUTING.md#release-candidates-publication-and-rollback).
 
-### WIN-STANDALONE-RESOURCE-TRANSPORT-001 — RESOURCE-ONLY PASS, GAME ROUTE OPEN
+### WIN-STANDALONE-RESOURCE-TRANSPORT-001 — RESOURCE AND GAME TRANSPORT PASSED
+
+The separately reviewed game manager now also passes actual on-demand task
+registration, saved XML/effective COM policy, returned instance/held actor
+association, all game phases, distinct raw streams, natural actor exit0 and
+owned-task removal. Independent original-record/seal/stream reconciliation
+finds no contradiction. The explicit unified-engine true contract matches the
+actual stored/effective setting; all other privilege/trigger/restart/bound
+restrictions remain. The first never-started false-setting rejection and later
+operator empty-line abort are preserved, not passed retroactively. This is the
+transport used by the current genuine0.4.12 Windows library proof, not Windows10
+or a different production consumer. See [transport checkpoint](current-work.md#historical-windows-resource-only-task-transport).
+
+**Game transport repeat only when:** candidate, source cohort, policy, task/actor
+association, raw streams, consumption or lifetime contract changes. Keep existing
+bounds and locks, and never substitute a resource pass or a generic boolean for
+actual association/current protection/runtime observations.
 
 A separately reviewed private consumer-QA prototype passes a real current-user
 on-demand LeastPrivilege task using the existing signed Windows system command
@@ -470,9 +719,135 @@ held namespace/image/module identity, actual token/protection, account/capture a
 exact Microsoft/SAC gates still precede a separately reviewed actual-game route.
 The helper's fixed limits and spent test are not widened or renewed.
 
-Evidence: [current transport checkpoint](current-work.md#current-windows-resource-only-task-transport),
+Evidence: [transport checkpoint](current-work.md#historical-windows-resource-only-task-transport),
 [Windows architecture](native-overlay-presenter-plan.md#read-first-after-compaction-windows-architecture),
 [XML demand-start contract](https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-allowstartondemand-settingstype-element).
+
+### WIN-STANDALONE-HELD-TREE-001 — TEXT-FIXTURE PASS, GAME ROUTE OPEN
+
+A new independently reviewed private consumer-QA component verifies a cloned
+closed plan using retained GUID/native ancestor/file handles, mandatory128-bit
+identities, same-handle hashes, candidate-directory/file stream queries and exact
+inventory. One fresh owned-text fixture passes held write/rename denials,
+wrong-hash, extra-file/empty-directory and named-file-stream rejection,
+failed-constructor release, post-dispose reopen and strict nonrecursive cleanup.
+Independent root observation confirms that passed fixture is absent.
+
+The first fixture failed closed with stream-query EOF38 before initial inventory
+success; its precise directory/file query was not recorded. Preserve that failed
+record, exact source and text tree. A narrow reviewed directory-only EOF correction
+handles both BOOL outcomes before parsing data; absent file records and other
+failures still reject. The later pass is a fresh changed-source attempt, not a
+retroactive success. Earlier review also corrected private/case/device aliases
+and a stale-buffer no-record path before any fixture execution.
+
+This is file-component proof only. Pure PowerShell5 validation of the retained
+candidate manifest opens no candidate files. Sharing is per stream; scans do not
+continuously exclude new children/streams or replace current protection. No
+actual game/helper, task, ACL/security change, module/job/token/SAC, account,
+capture, notification or release qualification follows.
+
+The later native-path binding holds a matched reopened GUID/full128-bit file,
+size and hash, caching one successful binding per planned file and refusing an
+automatic reacquisition after rejection. A new text-only fixture verifies sixteen
+observations with one cache entry, rejection of a different same-byte file and
+wrong query length, handle release and cleanup. It observes files, not actual
+process images or modules. The original broad fixture was not repeated.
+
+A separate process-session source core remains unexecuted. Source review fixes
+early disposed-state/constructor recovery ownership and an idempotent sink bug.
+One new own-empty-file managed reproduction fails on its second unstarted drain
+with ObjectDisposedException; preserve that failed tree, source and record.
+A fresh corrected fixture passes repeated resource cleanup while still rejecting
+unstarted and synthetically failed evidence. No pipe reader or process starts.
+Thirteen source/pure/PowerShell5 checks are not actual job/deadline/token/SAC/module
+or release proof. Independent phase-observer review also corrected releasing
+child identities before the final job snapshot and losing failed-close recovery
+ownership. This source observer remains unexecuted against a game process.
+
+A new single full prepared-consumer file observation passes all 7,890 files and
+526,087,396 bytes through the actual held-file component, including initial/final
+same-handle hashes, full identities, stream and closed-inventory checks plus two
+native-file reopenings. Disposal returns, exit is zero, stderr is empty, and the
+7.1-second raw result matches an independent five-input artifact audit. A dynamic
+temporary-base write-scope defect was corrected before invocation. This establishes
+file-scale operation only, not process/mapped-module identity or current protection.
+Finish the separately reviewed runtime adapter and current gates.
+
+On2026-10-09 the new clean consumer receives one direct held-file observation of
+four vendor DLLs, rather than running the unqualified SDK-verifier prototype.
+All four primary embedded signatures return current Windows trust success with
+the expected Microsoft/Valve CN/O, RSA and code-signing EKU. Same-handle hashes,
+streams/full128-bit IDs and canonical/native root-relative paths bind each file;
+all7,877 files verify initially/finally. Raw per-file/final records, complete input
+plan/source/command, zero exit, empty stderr and disposal independently reconcile.
+Pre-use privacy/status/cleanup/path-attribution corrections and18pure/source/
+PowerShell5 checks are not substituted for this actual trust invocation.
+Normal revocation network/cache behavior stays enabled. This does not establish
+RFC3161, Microsoft/SAC clearance, protected/mapped runtime, actual game or release
+qualification.
+
+A separate later metadata-only reconciliation binds the clean preparation to
+the preserved earlier native-header observations and retained vendor proof.
+All seven pinned records remain unchanged before/after; ten kept Windows PE
+files have six exact SAC analyst bindings and four retained vendor observations.
+The new candidate's later analyst response is a separate input, never a rewrite
+of its original blank acceptance receipt. Source review corrects row-level
+approval propagation and unchecked foreign types before the sole metadata read.
+This does not rescan candidate files, invoke native trust, establish current
+protection, authorize launch or qualify the game. Preserve the historical proofs
+and their original sources; remaining current/runtime gates still apply.
+No candidate code/helper executes; earlier source copies/proofs
+remain original and are not transferred.
+
+**Repeat only when:** the reviewed file-boundary, query/error/stream contract,
+fixture assertions, candidate vendor bytes/trust context or cleanup changes. Do not rerun unchanged passing/failed text
+fixtures or the unchanged full prepared-file observation, reuse the spent helper
+test, repeat the unchanged four-vendor trust pass or transfer these limited observations to runtime qualification.
+Finish the separately guarded actual-game adapter and existing release gates.
+
+Evidence: [component checkpoint](current-work.md#historical-windows-held-tree-component),
+[stream query contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getfileinformationbyhandleex),
+[per-stream sharing](https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams).
+
+### WIN-CONTAINED-SYSTEM-RESOURCE-001 — COMMON-CORE PASS, GAME ROUTE OPEN
+
+One separately reviewed private fixture now passes through the same contained-
+process creation, exact resume, raw byte readers, natural exit and cleanup code
+planned for the game. It uses only the existing signed/hash-pinned Windows
+system command processor, two fixed sentinels and a fixed nonzero exit. The
+actual root is Limited/Medium in the expected session, the job initially has
+one suspended root, both independent raw streams retain exactly fifteen bytes,
+the child exit propagates, the job becomes empty and readers/disposal complete.
+Copied source/combined command/raw outputs and all assertions reconcile in an
+independent read-only audit.
+
+Before invocation, source review corrected unbounded sentinel-file reads to an
+exact length/read/EOF contract and retained cleanup ownership instead of masking
+the original exception. The resource branch admits no arbitrary executable,
+arguments or game phase; legitimate OS hardlinks do not relax candidate rules.
+No task, helper rerun, game-specific constructor or candidate native launch occurs.
+This is not watchdog-expiry, overflow, descendant/module/namespace/current-
+protection, actual gameplay, notification/video or release proof.
+
+A distinct closed internal-loop fixture now exercises the real shared ten-second
+watchdog. Pre-use review exposed an early-exit false pass; the corrected resource-
+only watcher retains a freshly verified live-root creation/membership witness
+before the unchanged termination request. It observes the matching live root at
+10.011 seconds, then verifies forced exit, exact natural-completion rejection,
+empty job, drained empty logs and disposal at 10.028 seconds. Independent source,
+command, raw output and witness/exit/cleanup bindings agree. Game/natural defaults
+remain unchanged. This does not establish descendant/module/namespace/protection,
+actual-game or release proof.
+
+**Repeat only when:** shared creation/job/resume/reader/cleanup behavior, fixed
+resource bytes or this fixture contract changes. Do not repeat the unchanged
+passing natural-exit or deadline fixture or substitute either for actual-game qualification.
+Exercise distinct unproved failure paths with bounded reviewed resources, then
+finish the controller/current gates and protected actual-game proof.
+
+Evidence: [component checkpoint](current-work.md#historical-windows-held-tree-component),
+[Windows architecture](native-overlay-presenter-plan.md#read-first-after-compaction-windows-architecture).
 
 ### WIN-RELEASE-REVIEW-049-001 — QUALIFIED LOCALLY AND PUBLISHED
 
@@ -748,9 +1123,9 @@ changes, or an affected-device candidate becomes available. See
 | `WIN-PACKAGE-SMOKE-HOST-001` | `ENVIRONMENT BLOCKER` | Repository `package:smoke` cannot complete under native Windows semantics: the packaged macOS preparation self-test deliberately expects `/tmp/...` after `path.resolve`, which becomes `C:\\tmp\\...` on Windows. Adding the installed Git Bash and bundled Python only moves the boundary to Linux fixture semantics; installing WSL is not justified for this release slice. Applicable Windows receipt, summary, package, API, unit, and native checks pass locally; exact CI `29389571866` passes the complete Linux package smoke and all three platform jobs. | Repeat locally only if the macOS/Linux fixture suite becomes host-neutral or a supported Unix environment is available. Do not install or reconfigure WSL merely to duplicate exact Linux CI. | [package smoke](../../scripts/smoke-package.cjs), [exact CI](https://github.com/jstroh/steam-bridge/actions/runs/29389571866), [macOS preparation helper](../../packages/steam-bridge/bin/prepare-macos-app.cjs), [contribution checks](../../CONTRIBUTING.md) |
 | `WIN-CANDIDATE-BINDING-001` | `SETTLED` | The exact `1028ef2` task exposed Electron ASAR virtualization in the physical candidate fingerprint runner and stopped before preflight or any overlay case. Commit `a6a5553` sets `process.noAsar` in that helper. Replacement Release `29179993719` passed all three prebuilds, Electron `43.1.0` packaging/native load, 114-file archive/audit, and 1,121-method gates; its independently verified tarball then passed the installed-certificate signed gate and transactional deployment with rollback and Steam continuity. The candidate-bound interactive task passed the packaged fingerprint boundary and continued through preflight, native load, render health, and its one presenter-ready case. | Do not rerun `1028ef2` or repeat the `a6a5553` binding probe. Repeat only after the fingerprint helper, Electron, ASAR configuration, JavaScript-runner fallback, candidate archive, or deployed-directory contract changes. | [candidate fingerprint helper](../../scripts/windows-release-candidate-fingerprint.cjs), [Windows matrix](../../scripts/windows-overlay-matrix.ps1), [replacement candidate](https://github.com/jstroh/steam-bridge/actions/runs/29179993719) |
 | `WIN-NATIVE-LOAD-AUDIT-001` | `SETTLED` | The exact signed and deployed `a6a5553` no-click task passed candidate binding, readiness, render health, lazy D3D11 selection, presenter-ready, cleanup, and Steam continuity, but its bundled summary falsely demanded attached renderer diagnostics from the deliberately non-attaching native-load gate. Commit `fe7d989` labels lazy selection-only evidence without claiming renderer proof and preserves three-way agreement for attached cases. Its exact CI and replacement Release `29180717107` passed; the independently verified 114-file Electron `43.1.0` candidate then passed the installed-certificate signed gate, transactional deployment with rollback and Steam continuity, and the complete candidate-bound no-click task including its bundled semantic summary. | Do not rerun `a6a5553` or repeat the unchanged `fe7d989` no-click gate. Repeat only when lazy presenter readiness, native-load policy, backend diagnostics, summary semantics, Electron packaging, or attached renderer agreement changes, or a later candidate regresses. | [summary auditor](../../scripts/summarize-windows-overlay-matrix.cjs), [Windows smoke verifier](../../scripts/windows-electron-smoke.ps1), [final candidate](https://github.com/jstroh/steam-bridge/actions/runs/29180717107) |
-| `WIN-CONSUMER-PACKAGE-BINDING-001` | `OPEN` | An offline actual-verifier fixture reproduced schema7 accepting altered producer JavaScript and a missing preload with unchanged version/native3. The local schema8 repair compares the complete ordinary install with a bounded canonical-TGZ inventory before/after evidence checks and recomputes it independently at publication/configuration intake, including native3 consistency. Exact metadata is required; arbitrary exclusions/transformation are not allowed. Independent review reproduced partial inventory acceptance for incomplete EOF and hidden trailing data; explicit framing checks now reject those cases. Canonical inventory uses pinned memory, not mutable extracted files, and installed hashing rejects newly introduced unknown files before reading them. The locked upstream archive bundle/license is hash-attested with copied tools. These are data-only source checks, not device proof or retrofit authority: immutable0.4.11 still has schema7 tooling and no new live receipt. | Repeat when verifier/schema/metadata policy, archive parser, normal install/copy delivery or trusted publication source changes. Reconcile the immutable source/tooling epoch explicitly, then require exact protected actual-game proof; do not silently transfer an old receipt or modify frozen artifacts. Do not rerun unchanged native device tests merely to validate this data-only defect. | [binding helper](../../scripts/windows-consumer-package-binding.cjs), [regressions](../../tests/windows-consumer-package-binding.test.cjs), [receipt generator](../../scripts/windows-live-proof-receipt.cjs), [release procedure](../../RELEASING.md#4-run-the-protected-windows-actual-game-proof) |
+| `WIN-CONSUMER-PACKAGE-BINDING-001` | `OPEN` | An offline actual-verifier fixture reproduced schema7 accepting altered producer JavaScript and a missing preload with unchanged version/native3. The local schema8 repair compares the complete ordinary install with a bounded canonical-TGZ inventory before/after evidence checks and recomputes it independently at publication/configuration intake, including native3 consistency. Exact metadata is required; arbitrary exclusions/transformation are not allowed inside the canonical package. Independent review reproduced partial inventory acceptance for incomplete EOF and hidden trailing data; explicit framing checks now reject those cases. Canonical inventory uses pinned memory, not mutable extracted files, and installed hashing rejects newly introduced unknown files before reading them. The locked upstream archive bundle/license is hash-attested with copied tools. Private consuming-game data preparation preserves a complete normal89-file install; the historical7,890-file output and original inputs remain unchanged. On2026-10-09 a new reviewed preparer removes exactly13 stale image-library support files, including six native leftovers outside Bridge, using the pinned consuming-app production exclusion policy. Complete new7,877-file/487,007,544-byte inventory and unchanged old source pass before/after verification; every kept byte/all89Bridge members are identical. Seven pure checks and final independent pre-use review pass after privacy/device-alias, policy-attribution and failure-retention corrections. The clean7,877-file container was later protected (8,877 objects) and passed the protected0.4.12 library proof with genuine schema8 receipt domain hash540831a947196a9812b2218c83bd776088a8716a15874d50aa12039eb7d42025; see `WIN-CANDIDATE-OWNER-RIGHTS-001`. This does not retrofit immutable0.4.11's tooling or qualify a different consumer candidate. | Open only for a different consumer candidate. Repeat when verifier/schema/metadata policy, archive parser, normal install/copy delivery or trusted publication source changes. Reuse the protected clean container; retain the old unchanged. Recreate data staging only when its inputs/preparer/namespace genuinely change or the verified container is lost. For a different consumer candidate, reconcile its source/tooling epoch explicitly, then require its own exact protected actual-game proof; do not silently transfer the0.4.12 library receipt or modify frozen artifacts. Do not rerun unchanged native device tests merely to validate this data-only defect. | [binding helper](../../scripts/windows-consumer-package-binding.cjs), [regressions](../../tests/windows-consumer-package-binding.test.cjs), [receipt generator](../../scripts/windows-live-proof-receipt.cjs), [current clean preparation](current-work.md#active-goal), [release procedure](../../RELEASING.md#4-run-the-protected-windows-actual-game-proof) |
 | `CROSS-BUILD-TEMP-ALIAS-001` | `SETTLED` | Exact-source Windows/macOS CI37734552772 at449dc38 passes the binding and receipt checks, then the publisher self-test fails its strict link check because OS temporary paths are aliases. Only the self-test's owned root now uses the physical temporary path. An independent actual-source alias reproduction fails before and passes after; the cross-platform TEMP/TMP/TMPDIR child regression passes with all32 binding tests. Production link rejection and frozen candidate bytes are unchanged. | The publisher self-test root, OS temporary-path handling, filesystem aliases or supported development platform changes. Require exact-source CI before treating the local regression as platform confirmation; do not weaken production link guards or modify frozen files. | [publisher self-test](../../scripts/publish-release-candidate.cjs), [alias regression](../../tests/windows-consumer-package-binding.test.cjs), [original CI](https://github.com/jstroh/steam-bridge/actions/runs/37734552772) |
-| `CROSS-PUBLISH-TOOLING-EPOCH-001` | `OPEN` | The frozen tag publisher cannot use later corrected tooling, and its old verifier does not compare the audit source commit to an independent candidate pin. The maintainer-approved source-only repair pins dispatch/workflow/checkout and tooling CI separately from candidate tag/source/original Release attempt/CI, explicitly binds the audit source, and preserves all schema8/artifact/native/signature gates. Source snapshots are retained before irreversible publication and rechecked afterward; failures never trigger automatic republishing. Synthetic distinct/same-epoch, moved-tag, annotated-tag, wrong-run and attempt-drift controls pass. Bare/short-ref REST fields cannot independently prove a full original tag ref; require genuine original event/checkout evidence instead of claiming ambiguous metadata is tag proof. No new immutable tooling tag, protected run or live receipt is created. | Publication tooling, canonical workflow/API/ref evidence, protected allowed refs, candidate source/artifact epoch or receipt policy changes. Require reviewed immutable tooling and exact-source CI plus protected exact-candidate proof before publication. Do not retag/rebuild frozen files, override GitHub identity, silently downgrade receipt schemas or change permissions to bypass a refusal. | [epoch validator](../../scripts/verify-publish-epochs.cjs), [regressions](../../tests/publish-epochs.test.cjs), [protected workflow](../../.github/workflows/publish.yml), [release procedure](../../RELEASING.md#5-publish-the-exact-audited-npm-tarball) |
+| `CROSS-PUBLISH-TOOLING-EPOCH-001` | `OPEN` | The frozen tag publisher cannot use later corrected tooling, and its old verifier does not compare the audit source commit to an independent candidate pin. The maintainer-approved source-only repair pins dispatch/workflow/checkout and tooling CI separately from candidate tag/source/original Release attempt/CI, explicitly binds the audit source, and preserves all schema8/artifact/native/signature gates. Source snapshots are retained before irreversible publication and rechecked afterward; failures never trigger automatic republishing. Synthetic distinct/same-epoch, moved-tag, annotated-tag, wrong-run and attempt-drift controls pass. Bare/short-ref REST fields cannot independently prove a full original tag ref; require genuine original event/checkout evidence instead of claiming ambiguous metadata is tag proof. No new immutable tooling tag is created. Same-epoch protected [publisher38052502921](https://github.com/jstroh/steam-bridge/actions/runs/38052502921) later succeeded on v0.4.12@1caba46; distinct-epoch publication remains unexercised. | Publication tooling, canonical workflow/API/ref evidence, protected allowed refs, candidate source/artifact epoch or receipt policy changes. Require reviewed immutable tooling and exact-source CI plus protected exact-candidate proof before publication. Do not retag/rebuild frozen files, override GitHub identity, silently downgrade receipt schemas or change permissions to bypass a refusal. | [epoch validator](../../scripts/verify-publish-epochs.cjs), [regressions](../../tests/publish-epochs.test.cjs), [protected workflow](../../.github/workflows/publish.yml), [release procedure](../../RELEASING.md#5-publish-the-exact-audited-npm-tarball) |
 | `WIN-RECEIPT-AUDIT-001` | `SETTLED` | Native-load and route `10-presenter-ready` require selection-only D3D11 with empty host/renderer/style and zero attached lifecycle; every attaching route requires complete presenter/native-host/renderer D3D11 agreement. Current native-presenter cases require exact `overlayInjection=false`, while Steam launch markers, overlay-enabled state where applicable, activation callbacks, and lifecycle proof remain mandatory. Foreground-grant, close-glyph, and current-panel fallback fields are strictly validated. The exact `v0.2.14` 31-case receipt and independent readback pass and are retained with the public Release. | Repeat only when presenter-ready behavior, backend summaries, injection diagnostics, foreground-grant/close-glyph/current-panel schemas, profile contracts, or receipt generation changes, or a semantically green root is rejected. | [receipt generator](../../scripts/windows-live-proof-receipt.cjs), [matrix summarizer](../../scripts/summarize-windows-overlay-matrix.cjs), [latest Windows evidence](cross-platform-overlay-status.md#latest-windows-evidence) |
 | `WIN-RECEIPT-HOST-STYLE-002` | `SETTLED` | Published `v0.2.8` corrected immutable receipt expectations for the Electron-owned `owned-popup` presenter and passive achievement evidence; `v0.2.9`, `v0.2.10`, and `v0.2.11` repeated the complete four-profile proof for their runtime changes. Exact published `v0.2.14` repeats all four profiles for high-refresh, menu/minimum/DPI, transient readiness, and Friends-classifier changes and produces receipt semantic SHA-256 `3daadf8eca5ca79efc71b000c7b69198ee7917498b8d8ca5d1f514676d6d4509`. | Repeat only if presenter host-style diagnostics, passive overlay semantics, receipt validation, checkout-dialog lifecycle, sizing/readiness behavior, or the exact candidate changes, or a later receipt regresses. | [receipt generator](../../scripts/windows-live-proof-receipt.cjs), [v0.2.14 Release](https://github.com/jstroh/steam-bridge/releases/tag/v0.2.14), [current checkpoint](checkpoint-history.md#historical-v0214-release-evidence), [release policy](../../CONTRIBUTING.md#release-candidates-publication-and-rollback) |
 | `WIN-SHORTCUT-001` | `SETTLED` | A read-only audit before the `afc19eb` focused run found no reusable direct packaged-app Steam shortcut: the default public Smoke entry targeted a probe executable without the stable smoke-env-file option, while the remaining entries were historical Electron-runtime, renamed-runtime, or command-launcher diagnostics. The exact signed package was placed at a dedicated stable direct-app path; Steam was closed once; the packaged shortcut suite updated the default entry with a retained backup; and immediate `-AssumeShortcutConfigured` passes returned unchanged/existing-match. After the cleanup fix passed exact CI and signed deployment, Steam was started once in interactive Session 1 with a new continuity identity; the exact `02bb14d` active and shortcut audits and focused case's assumed-shortcut gate all preserved it. After the later exact `8323cd4` case-40 launch, the whole `shortcuts.vdf` hash differed from its captured pre-run hash, while a post-run packaged dry-run still returned unchanged/existing-match for the stable target entry, including its executable, start directory, launch options, game ID, and overlay setting. Whole-file hash drift alone therefore does not establish target-entry drift; the semantic dry-run remains the product gate. | Shortcut name, executable/start path, env-file launch option, package deployment path, stable game ID, overlay setting, helper comparison contract, or targeted semantic dry-run result changes. Do not reuse the historical diagnostic entries, treat whole-file hash drift alone as target drift, or restart Steam solely for shortcut state. | [Current work](checkpoint-history.md#historical-v0310-state), [Windows matrix](../../scripts/windows-overlay-matrix.ps1) |
@@ -904,7 +1279,7 @@ not execute their popup/companion pairing matrix against the current product.
 | --- | --- | --- | --- | --- |
 | `CROSS-BUILD-FORMATTER-PRECISION-001` | `SETTLED` | The reviewed sprintf-js advisory newly blocks eight build-tool audit nodes. Seven of nine regression cases fail before the repair, including an uncaught asynchronous real Roarr call terminating its child process. A licensed, explicitly versioned local derivative changes only three numeric precision arguments; Get3, global-agent3, Roarr2 and builder versions stay unchanged. All62 focused formatter/upstream/cache/downloader cases and the lock audit pass afterward. Current proxy messages are constants; no remotely controlled format route was demonstrated. The source-only global-agent4.1.3 comparison shows missing ordinary HTTPS TLS-option forwarding and an incorrect nullish absolute-URL check, so that major override is not used. These checks do not qualify a native payload, device or release. | The derivative, actual installed selection, logger/downloader chain or supported Node runtime changes, or a maintained upstream replacement fixes/removes the formatter and preserves valid formats, asynchronous logging and downloader contracts. Do not retry the unchanged rejected major upgrade or substitute an uncaught SyntaxError for the RangeError. | [Patch/provenance](../../vendor/sprintf-js/BRIDGE_PATCH.md), [regressions](../../tests/build-formatter-policy.test.cjs), [upstream controls](../../tests/sprintf-upstream.test.cjs), [advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) |
 | `CROSS-INPUT-MANUAL-CORRELATION-001` | `SETTLED` | An actual compiled-service and standalone-preload regression showed that hardcoded strict correlation discarded frames from the advanced service's public manual scheduler and ignored explicit false. The advanced service now preserves manual/non-correlated scheduling by default; managed connectActionInput opts into strict correlation, while both honor explicit false. Manual mode cannot claim strict delayed-frame rejection. Eight actual-component tests preserve strict stale-frame guards and the separate compatibility routes; no new physical-device qualification is implied. | Correlation defaults, public manual scheduling, bootstrap options, managed service policy or preload admission changes. Preserve both contracts rather than silently requiring existing advanced callers to opt out. | [Input lifecycle tests](../../tests/electron-input-lifecycle.test.cjs), [Electron service](../../packages/steam-bridge/src/electron.ts), [Managed Electron facade](../../packages/steam-bridge/src/electron-app.ts) |
-| `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` | `SETTLED` | The upstream4.2/4.3 counterexamples and raw get5 timeout/proxy/retry incompatibility remain valid. The local BSD derivative preserves stable builder/get APIs and rejects seven original max-stale cases. A follow-up .2 review adds16 failing-before extension/error/request/s-maxage cases; all50 current repository cases pass, including actual cached503 rejection, permitted public fallback and matching304 body reuse. The unchanged128 upstream tests and eight actual canonical downloader/TLS checks pass. Full Windows545 JavaScript tests (542 passes/three skips),101 native passes/13 ignores and normal gates pass; a fresh locked Linux installation passes all50 and complete package smoke with unchanged lock and zero audit findings. Only the local policy-version lock record changes from .1. Earlier source8f81b19/CI37225511429 passed nine jobs for .1; .2 source push/CI are pending. Retained native bytes prove package loading only; this repairs local policy behavior, not upstream publication, a demonstrated pipeline exploit, native/device or release qualification. No audit exception or breaking downloader override is added. | The patch, actual installed selection, downloader/toolchain or development platform changes, or a source-verified upstream replacement becomes available. Verify counterexamples, controls and package output before retiring the derivative. Do not repeat unchanged upstream/raw-major or rejected bare-relative link experiments merely for a green metadata audit. | [Repair/provenance receipt](build-cache-policy-remedy-review-2026-10-04.json), [patch](../../vendor/http-cache-semantics/BRIDGE_PATCH.md), [regressions](../../tests/build-cache-policy.test.cjs), [prior CI](https://github.com/jstroh/steam-bridge/actions/runs/37225511429), [prior cache-policy review](cache-policy-security-review-2026-10-04.json), [prior downloader comparison](build-downloader-compatibility-review-2026-10-04.json), [Advisory](https://github.com/advisories/GHSA-ch52-4w7c-c8xp) |
+| `CROSS-BUILD-UNPATCHED-CACHE-AUDIT-001` | `SETTLED` | The upstream4.2/4.3 counterexamples and raw get5 timeout/proxy/retry incompatibility remain valid. The local BSD derivative preserves stable builder/get APIs and rejects seven original max-stale cases. A follow-up .2 review adds16 failing-before extension/error/request/s-maxage cases; all50 current repository cases pass, including actual cached503 rejection, permitted public fallback and matching304 body reuse. The unchanged128 upstream tests and eight actual canonical downloader/TLS checks pass. Full Windows545 JavaScript tests (542 passes/three skips),101 native passes/13 ignores and normal gates pass; a fresh locked Linux installation passes all50 and complete package smoke with unchanged lock and zero audit findings. Only the local policy-version lock record changes from .1. Earlier source8f81b19/CI37225511429 passed nine jobs for .1. Follow-up source1cfb401 is pushed with remote hash verified; CI37228339125 passes all nine exact-source jobs, including all native targets, package smoke, security and four packed Node runtimes. Retained native bytes prove package loading only; this repairs local policy behavior, not upstream publication, a demonstrated pipeline exploit, native/device or release qualification. No audit exception or breaking downloader override is added. | The patch, actual installed selection, downloader/toolchain or development platform changes, or a source-verified upstream replacement becomes available. Verify counterexamples, controls and package output before retiring the derivative. Do not repeat unchanged upstream/raw-major or rejected bare-relative link experiments merely for a green metadata audit. | [Repair/provenance receipt](build-cache-policy-remedy-review-2026-10-04.json), [patch](../../vendor/http-cache-semantics/BRIDGE_PATCH.md), [regressions](../../tests/build-cache-policy.test.cjs), [current CI](https://github.com/jstroh/steam-bridge/actions/runs/37228339125), [prior cache-policy review](cache-policy-security-review-2026-10-04.json), [prior downloader comparison](build-downloader-compatibility-review-2026-10-04.json), [Advisory](https://github.com/advisories/GHSA-ch52-4w7c-c8xp) |
 | `CROSS-ELECTRON-LATE-REPAINT-001` | `SETTLED` | Production Sentry group `CONSUMER-CRASH-1J` recorded `window.closed`, `window-all-closed`, and `before-quit` immediately before Steam Bridge's one-shot `did-finish-load` invalidation raised Electron's exact `Object has been destroyed` error. The minified offset maps directly to that callback. Every advisory repaint entry point now shares a best-effort liveness/race guard while unrelated repaint exceptions remain visible. Focused tests cover destroyed BrowserWindow, destroyed WebContents, the check/use race, and unexpected-error propagation. | Repeat only if Electron repaint registration, BrowserWindow/WebContents teardown ordering, or the shared invalidation guard changes, or this exact Sentry group recurs on a package containing the repair. | [Current checkpoint](checkpoint-history.md#2026-08-24-electron-shutdown-repaint-repair) |
 | `CROSS-PURCHASE-001` | `SETTLED` | App ID `480` proves generic overlay plumbing and synthetic routing only. It cannot prove real purchase content or authorization. | Never. Real proof always uses private runtime inputs with only sanitized committed evidence. | [Purchase overlay checklist](cross-platform-overlay-status.md#purchase-overlay-checklist) |
 | `CROSS-MATCHMAKING-SHUTDOWN-001` | `SETTLED` | A live App ID `480` probe proved that invalidating waiter generations alone was insufficient: shutting down with an unregistered one-shot matchmaking server-list request emitted a Steam matchmaking lock failure and terminated the Node process with an access violation. The replacement registers list and ping/player/rules queries while holding the shared lifecycle lock, gives shutdown sole cancellation/release ownership, and keeps callback response state alive until its future rejects. The rebuilt native addon rejected the pending list in 32 ms, rejected a simultaneous open request as stale after reinitialization in 69 ms, and rejected a generic pending leaderboard call in 15 ms, with clean exits. A following stress probe passed 20 generic API and 10 matchmaking init/request/immediate-shutdown cycles with prompt rejections and zero crashes. | Repeat only if matchmaking request registration, active-query ownership, client shutdown ordering, lifecycle generations, manual dispatch, or Steam SDK behavior changes, or a shutdown-with-pending-work crash regresses. Do not test lifecycle safety by leaving a native request unregistered. | [0.3.12 checkpoint](checkpoint-history.md#2026-08-01-0312-security-and-lifecycle-release-checkpoint) |

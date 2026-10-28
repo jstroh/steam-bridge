@@ -1914,6 +1914,7 @@ export interface NativeBinding {
     presentationHeight?: number
   ): void;
   drainNativeOverlayHostInputEventsJson(): string;
+  captureLinuxSteamEmulatedGamepadsJson(active: boolean, inputEpoch: string): string;
   closeNativeOverlayProbeWindow(): void;
   detachNativeOverlayHostView(): void;
   isNativeOverlayProbeWindowOpen(): boolean;
