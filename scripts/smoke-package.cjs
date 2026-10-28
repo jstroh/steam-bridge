@@ -827,7 +827,7 @@ function runWindowsSmokeHelperStaticChecks() {
       .includes(
         "      - name: Retain exact unsigned Windows addon\n" +
           "        if: matrix.target == 'x86_64-pc-windows-msvc'\n" +
-          "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1\n" +
+          "        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n" +
           "        with:\n" +
           "          name: native-unsigned-windows-${{ github.sha }}\n" +
           "          path: packages/steam-bridge/steam_bridge_native.win32-x64-msvc.node\n" +

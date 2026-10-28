@@ -361,6 +361,10 @@ function copyTargetHelpers(appPath) {
     );
   }
   if (target === "x86_64-pc-windows-msvc") {
+    const werHelperPath = path.join(appPath, "electron_wer.dll");
+    if (fs.existsSync(werHelperPath)) {
+      fs.renameSync(werHelperPath, path.join(appPath, "SteamBridgeSmoke_wer.dll"));
+    }
     const checkoutProofHelperPath = path.join(appPath, "checkout-proof.cjs");
     fs.copyFileSync(path.join(exampleRoot, "checkout-proof.cjs"), checkoutProofHelperPath);
     fs.copyFileSync(

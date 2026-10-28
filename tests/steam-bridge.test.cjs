@@ -141,7 +141,7 @@ test("Windows release policy signs only the project-owned addon on release tags"
   const prebuildJob = workflow.slice(workflow.indexOf("\n  prebuild:\n"), signingJobStart);
   assert.match(
     prebuildJob,
-    /- name: Retain exact unsigned Windows addon\n {8}if: matrix\.target == 'x86_64-pc-windows-msvc'\n {8}uses: actions\/upload-artifact@\S+ # v7\.0\.1\n {8}with:\n {10}name: native-unsigned-windows-\$\{\{ github\.sha \}\}\n {10}path: packages\/steam-bridge\/steam_bridge_native\.win32-x64-msvc\.node\n {10}if-no-files-found: error\n/u
+    /- name: Retain exact unsigned Windows addon\n {8}if: matrix\.target == 'x86_64-pc-windows-msvc'\n {8}uses: actions\/upload-artifact@\S+ # v7\.0\.2\n {8}with:\n {10}name: native-unsigned-windows-\$\{\{ github\.sha \}\}\n {10}path: packages\/steam-bridge\/steam_bridge_native\.win32-x64-msvc\.node\n {10}if-no-files-found: error\n/u
   );
   assert.ok(prebuildJob.indexOf("Retain exact unsigned Windows addon") < prebuildJob.indexOf("link-native.cjs"));
   assert.doesNotMatch(signingJob, /native-unsigned-windows/u);

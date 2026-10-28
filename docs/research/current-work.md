@@ -1551,6 +1551,44 @@ corrected. Relative links and anchors across all tracked Markdown are clean.
 
 ## Last verification
 
+- 2026-10-27 dependency refresh (unreleased source on main): development tools
+  advance to `@electron/asar` 4.3.1, `@napi-rs/cli` 3.10.9, `@sentry/cli`
+  3.8.2 and `electron-builder` 26.18.1 (its `v26` tag; `latest` still names
+  26.18.0), all still exact pins. The QA example, derived Windows ASAR fixture
+  and lock pin latest stable Electron 45.1.0; 44.7.0 carried
+  GHSA-jr5w-w6x2-84p9. Electron 45 ships a Windows Error Reporting helper,
+  `electron_wer.dll`, that registers for `__fastfail` crashes only when named
+  `<exe>_wer.dll`. electron-builder 26.18.1 renames it, and because
+  `@electron/packager` 20.3.0 does not, the example packager now renames it to
+  `SteamBridgeSmoke_wer.dll`. Both packaged layouts were inspected, but no
+  packaged app was launched, so helper registration and fail-fast dump capture
+  are unproved. In-range lock updates move undici to 6.29.1/7.30.1 and fast-uri
+  to 3.1.9, so the moderate lock audit is clean without new overrides, and both
+  vendored build-only derivatives still resolve. `@napi-rs/lzma`, reached only
+  through `napi --use-napi-cross`, stays at 1.4.5: 1.5.x requires Node ^22.20,
+  so `npm ci` on the 22.13 floor would warn EBADENGINE and skip its native
+  binding. No lock entry now rejects Node 22.13.0. `cargo update` takes
+  compatible crates, including napi 3.15.0, napi-derive 3.6.13 and tokio
+  1.54.1 (clearing RUSTSEC-2026-0386). The
+  unreferenced macOS `cocoa` dependency moves to 0.27. Workflows pin
+  setup-node v7.1.0, upload-artifact v7.0.2, download-artifact v8.0.2 and the
+  current rust-toolchain stable commit by full SHA. Skipped: TypeScript 7.0.2,
+  whose main export lacks the compiler API that the native-binding manifest
+  audit uses, and zbus 6, which defers builder errors to `build()` and splits
+  service/runtime features, so it needs Linux session-bus proof. zbus 5 keeps
+  three RustSec unmaintained warnings. Electron 45 no longer downloads its
+  binary at install; `electron .` fetches it on first launch. Windows: npm ci,
+  full `npm test` (558 JavaScript tests, 555 passing with 3 platform skips;
+  112 native tests passing with 13 hardware tests ignored), platform, API and
+  latest-Electron checks, zero-finding npm and RustSec audits, native
+  fmt/check, a Release-style `napi build` and `example:package:win` with its
+  packaged native-binding probe all pass. Windows package smoke stops only at
+  `WIN-PACKAGE-SMOKE-HOST-001`. A clean WSL Ubuntu copy of the final tree
+  passes npm ci, the complete package smoke and 558/558 unit tests; before the
+  electron-builder and lzma corrections it also passed the Linux all-target
+  check and 77 X11-required native tests. macOS compile/tests, Electron 45
+  gameplay and every device or release qualification still need CI or live
+  proof.
 - 2026-10-06 source preparation: package/root/lock versions agree at0.4.11;
   the example, derived Windows ASAR fixture and exact Electron lock record
   agree at44.6.0, verified against the public registry. This metadata check
