@@ -49,8 +49,15 @@ equal/newer on main, with no unique fix remaining. Both are now closed as
 superseded, with explanatory comments; no stale lockfiles were merged and no
 branches were deleted. A fresh query shows zero open PRs.
 
-Next: commit/push the reviewed documentation and release preparation, verify
-exact CI, and reconcile the audit with a real compatible remedy before tagging.
+Reviewed source45c749c is committed and pushed to main, with a clean worktree.
+Exact [CI41405195040](https://github.com/jstroh/steam-bridge/actions/runs/41405195040)
+finishes with all eight functional jobs green: all three native targets,
+package smoke and all four packed Node runtime lines. The only failing job is
+the mandatory dependency-security audit with the same16 moderate findings;
+RustSec is skipped after that step fails, not claimed green.
+
+Next: reconcile the audit with a real compatible remedy and reverify exact CI
+before tagging. No v0.4.13 tag, release artifact, live proof or publication exists.
 Only the new tag's retained signed candidate can receive fresh schema8
 protected Windows actual-game proof and gated publication. Consumer QA,
 consumer-signed addon bytes and old0.4.12 proof cannot substitute for it.
