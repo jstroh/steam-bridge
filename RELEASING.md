@@ -40,9 +40,13 @@ Start from a clean, synchronized `main` checkout. Confirm that the package
 version in `packages/steam-bridge/package.json` is the intended version and that
 the corresponding `v<version>` tag does not already exist.
 
-Run the normal repository gates:
+Use the repository's pinned npm11.17.0 with Node22.13 or newer. CI bootstraps
+that exact build-tool version before installation/audit; npm10 can select
+incompatible replacement majors. Runtime Node18 support is separate and
+unchanged. Run the normal repository gates:
 
 ```sh
+npm run check:build-npm
 npm run check:platform
 npm run package:smoke
 npm test

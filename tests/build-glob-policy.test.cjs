@@ -9,6 +9,53 @@ const { createHash } = require("node:crypto");
 const test = require("node:test");
 const provenance = require("../vendor/glob-hardening-provenance.json");
 
+test("build-tool pins retain exact archives, enforce the resolver and leave runtime support unchanged", () => {
+  const root = require("../package.json");
+  const lock = require("../package-lock.json");
+  assert.equal(root.packageManager, "npm@11.17.0");
+  assert.equal(root.engines.npm, ">=11.17.0 <12");
+  assert.equal(require("../packages/steam-bridge/package.json").engines.node, ">=18");
+  let foundation;
+  for (const pin of provenance.packages) {
+    const name = `steam-bridge-build-${pin.directory}`;
+    const url = root.devDependencies[name];
+    const match = /^https:\/\/raw\.githubusercontent\.com\/jstroh\/steam-bridge\/([a-f0-9]{40})\/(vendor\/archives\/[^/]+\.tgz)$/.exec(url);
+    assert.ok(match, url);
+    foundation ??= match[1];
+    assert.equal(match[1], foundation);
+    assert.equal(match[2], pin.archive.path);
+    const records = Object.values(lock.packages).filter(entry => entry.name === name || entry.resolved === url);
+    assert.ok(records.length > 0, name);
+    for (const record of records) {
+      assert.equal(record.dev, true);
+      assert.equal(record.resolved, url);
+      assert.equal(record.integrity, pin.archive.integrity);
+    }
+  }
+  for (const file of ["ci.yml", "release.yml"]) {
+    const workflow = fs.readFileSync(path.join(__dirname, "../.github/workflows", file), "utf8");
+    assert.equal((workflow.match(/npm install --global npm@11\.17\.0 --ignore-scripts/g) || []).length, file === "ci.yml" ? 3 : 2);
+    assert.equal((workflow.match(/npm run check:build-npm/g) || []).length, file === "ci.yml" ? 3 : 2);
+  }
+  const publish = fs.readFileSync(path.join(__dirname, "../.github/workflows/publish.yml"), "utf8");
+  assert.ok(publish.indexOf("Verify exact tooling and candidate epochs") < publish.indexOf("npm install --global npm@11.17.0 --ignore-scripts"));
+  assert.ok(publish.indexOf("npm run check:build-npm") < publish.indexOf("npm ci --ignore-scripts"));
+  const rootTemp = fs.mkdtempSync(path.join(os.tmpdir(), "bridge-build-npm-"));
+  try {
+    const cli = path.join(rootTemp, "version.cjs");
+    for (const version of ["10.9.9", "11.17.0", "12.2.1"]) {
+      fs.writeFileSync(cli, `process.stdout.write(${JSON.stringify(version)});`);
+      const result = spawnSync(process.execPath, [path.join(__dirname, "../scripts/assert-build-npm.cjs")], {
+        encoding: "utf8", env: { ...process.env, npm_execpath: cli }, timeout: 10000
+      });
+      assert.equal(result.status === 0, version === "11.17.0");
+      if (version !== "11.17.0") assert.match(result.stderr, /Build npm 11\.17\.0 is required/);
+    }
+  } finally {
+    fs.rmSync(rootTemp, { recursive: true });
+  }
+});
+
 const asar4Require = Module.createRequire(require.resolve("@electron/asar"));
 const builderRequire = Module.createRequire(require.resolve("app-builder-lib"));
 const asar3Require = Module.createRequire(builderRequire.resolve("@electron/asar"));

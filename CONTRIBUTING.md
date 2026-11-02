@@ -18,7 +18,11 @@ Read [AGENTS.md](AGENTS.md) for repository boundaries and
 or live experiments. Never commit SDK files, private runtime inputs, or raw
 player evidence.
 
-Use Node.js 22.13 or newer for repository development. The published package
+Use Node.js 22.13 or newer and the pinned npm11.17.0 for repository development.
+Run `npm run check:build-npm` before installation/build checks. npm10's resolver
+can select incompatible majors for the reviewed build-only replacements; a
+clean audit alone does not prove correct selection. CI installs and verifies
+the pinned build npm explicitly. The published package
 keeps a lower runtime engine where possible, but the current Electron and
 N-API tooling expect modern Node during install/build. CI builds with the exact
 22.13 development floor and separately installs the packed package under the
@@ -78,6 +82,13 @@ the stable downloader API. It is not shipped in the runtime npm package.
 See [the patch provenance and retirement conditions](vendor/http-cache-semantics/BRIDGE_PATCH.md).
 The installed-source and downloader regressions are part of `npm test`; do not
 replace them with a clean advisory-range report alone.
+
+The matching-major build-only glob/minimatch derivatives use immutable
+source-commit archive URLs with lockfile integrity. Their
+[repair/provenance](vendor/glob-hardening.md) and actual-caller regressions
+cover cancellation and bounded preprocessing without replacing legacy APIs.
+They are not part of the published runtime. Keep the pinned build npm and
+all source/archive/installed-byte checks when updating or retiring them.
 
 ## Repository map
 

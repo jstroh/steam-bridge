@@ -2,6 +2,7 @@
   "name": "steam-bridge-monorepo",
   "private": true,
   "version": "0.4.13",
+  "packageManager": "npm@11.17.0",
   "workspaces": [
     "packages/*",
     "examples/*"
@@ -10,6 +11,7 @@
     "build": "npm run build -w steam-bridge",
     "api:check": "node scripts/audit-steam-api-coverage.cjs",
     "check:platform": "node scripts/assert-supported-targets.cjs",
+    "check:build-npm": "node scripts/assert-build-npm.cjs",
     "example:package": "npm run package -w steam-bridge-electron-example --",
     "example:package:linux": "npm run package:linux -w steam-bridge-electron-example --",
     "example:package:mac": "npm run package:mac -w steam-bridge-electron-example --",
@@ -52,16 +54,26 @@
     "native:fmt": "cargo fmt --all --check",
     "native:test": "node scripts/run-native-tests.cjs",
     "native:link": "npm run native:link -w steam-bridge",
-    "test": "npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run steam-input:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
-    "test:unit": "npm run build && node --test tests/build-cache-policy.test.cjs tests/build-formatter-policy.test.cjs tests/sprintf-upstream.test.cjs tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs tests/electron-input-lifecycle.test.cjs"
+    "test": "npm run check:build-npm && npm run check:electron && npm run typecheck && npm run steam-shortcut:check && npm run steam-input:check && npm run windows:package-gate:check && npm run release:assemble:check && npm run test:unit && npm run native:test",
+    "test:unit": "npm run build && node --test tests/build-cache-policy.test.cjs tests/build-formatter-policy.test.cjs tests/build-glob-policy.test.cjs tests/sprintf-upstream.test.cjs tests/steam-bridge.test.cjs tests/macos-window-visual-qa.test.cjs tests/electron-input-lifecycle.test.cjs"
   },
   "overrides": {
+    "glob@13": "$steam-bridge-build-glob13",
+    "minimatch@3": "$steam-bridge-build-minimatch3",
+    "minimatch@5": "$steam-bridge-build-minimatch5",
+    "minimatch@9": "$steam-bridge-build-minimatch9",
+    "minimatch@10": "$steam-bridge-build-minimatch10",
     "http-cache-semantics": "$http-cache-semantics",
     "roarr@2": {
       "sprintf-js": "$sprintf-js"
     }
   },
   "devDependencies": {
+    "steam-bridge-build-glob13": "https://raw.githubusercontent.com/jstroh/steam-bridge/31957a9db6135bd09abb811550fbb7ebbae3d22a/vendor/archives/steam-bridge-build-glob13-13.0.6-steam-bridge.1.tgz",
+    "steam-bridge-build-minimatch3": "https://raw.githubusercontent.com/jstroh/steam-bridge/31957a9db6135bd09abb811550fbb7ebbae3d22a/vendor/archives/steam-bridge-build-minimatch3-3.1.5-steam-bridge.1.tgz",
+    "steam-bridge-build-minimatch5": "https://raw.githubusercontent.com/jstroh/steam-bridge/31957a9db6135bd09abb811550fbb7ebbae3d22a/vendor/archives/steam-bridge-build-minimatch5-5.1.9-steam-bridge.1.tgz",
+    "steam-bridge-build-minimatch9": "https://raw.githubusercontent.com/jstroh/steam-bridge/31957a9db6135bd09abb811550fbb7ebbae3d22a/vendor/archives/steam-bridge-build-minimatch9-9.0.9-steam-bridge.1.tgz",
+    "steam-bridge-build-minimatch10": "https://raw.githubusercontent.com/jstroh/steam-bridge/31957a9db6135bd09abb811550fbb7ebbae3d22a/vendor/archives/steam-bridge-build-minimatch10-10.2.6-steam-bridge.1.tgz",
     "@electron/asar": "4.3.1",
     "@electron/packager": "^20.3.0",
     "@emnapi/runtime": "1.11.3",
@@ -75,6 +87,7 @@
     "typescript": "6.0.3"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.13",
+    "npm": ">=11.17.0 <12"
   }
 }

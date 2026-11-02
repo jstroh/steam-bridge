@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: 22.13.0
           cache: npm
+      - name: Use tested build npm
+        run: npm install --global npm@11.17.0 --ignore-scripts
+      - run: npm run check:build-npm
       - run: npm audit --package-lock-only --audit-level=moderate
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
@@ -51,6 +54,9 @@ jobs:
       - if: matrix.target == 'aarch64-apple-darwin'
         run: test "$(uname -m)" = arm64
       - run: node scripts/assert-supported-targets.cjs
+      - name: Use tested build npm
+        run: npm install --global npm@11.17.0 --ignore-scripts
+      - run: npm run check:build-npm
       - run: npm ci
       - run: npm test
       - if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -70,6 +76,9 @@ jobs:
         with:
           node-version: 22.13.0
           cache: npm
+      - name: Use tested build npm
+        run: npm install --global npm@11.17.0 --ignore-scripts
+      - run: npm run check:build-npm
       - run: npm ci
       - if: github.ref_type != 'tag'
         run: npm run check:electron:latest

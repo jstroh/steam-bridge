@@ -36,7 +36,7 @@ isolated copy under already-installed WSL, not by repeating the settled native
 Windows fixture failure. That complete WSL package smoke now passes from an
 isolated tracked-source copy with the exact current code/metadata patch.
 
-Release preparation blocker: newly published glob/minimatch advisories produce16 moderate
+The initial release blocker was newly published glob/minimatch advisories producing16 moderate
 build-dependency audit findings. Every affected selection already exists in
 0e161ab; production-only audit is clean. CI requires the full moderate audit,
 so this is not a waived gate. Latest maintained parent versions do not clear
@@ -45,7 +45,8 @@ unchanged dependency, omit dev dependencies or weaken the threshold merely to
 obtain green audit output. See `CROSS-BUILD-GLOB-AUDIT-001` in the ledger.
 
 The human explicitly requested continuing through this repair and publication.
-Five matching-major build-only derivatives are prepared with canonical npm
+Five matching-major build-only derivatives are now committed in immutable
+foundation31957a9db6135bd09abb811550fbb7ebbae3d22a with canonical npm
 source/commit/integrity and complete original/derived file/archive pins in
 [`vendor/glob-hardening-provenance.json`](../../vendor/glob-hardening-provenance.json).
 Both module formats receive the narrow upstream glob13 cancellation and
@@ -55,17 +56,30 @@ components before splitting/parsing, without adding or forwarding new options.
 Original licenses, callable APIs and valid ordinary matching remain intact.
 This is bounded allocation hardening, not a blanket regex DoS immunity claim.
 
-Nine focused tests pass in a clean Windows source copy, including reconstructed
-hash-checked original controls, zero post-abort filesystem reads, all four abort
-entry points, exact budget/slash-run behavior, CJS/ESM and actual ASAR3/4,
-FileList and dir-compare callers. Its clean installation and full audit pass
-with temporary absolute TGZ references used only in that scratch copy.
-Those private paths are not public dependency pins. npm's nested relative-file
-override handling rejects portable local-directory/TGZ selection; no machine or
-npm policy change is made to force it. Reviewed source-only archives will be
-committed first, then selected by immutable public foundation-commit HTTPS URLs
-and lockfile integrity. That final route still needs a fresh empty-cache
-install, all normal gates and exact CI. No release blocker is waived.
+Ten focused tests pass on Windows and Linux, including reconstructed hash-checked
+original controls, zero post-abort filesystem reads, all four abort entry points,
+exact budget/slash-run behavior, CJS/ESM, actual ASAR3/4, FileList/dir-compare,
+archive inventories and wrong-toolchain rejection. Source-only archives are
+selected by full foundation-SHA HTTPS URLs and matching lockfile integrity;
+fresh empty-cache installations and full moderate audits pass on both hosts.
+The tests are part of the ordinary test command, not an optional side gate.
+
+Retain the negative resolver findings: relative directory/TGZ overrides resolve
+against nested callers, and npm10 rejects the npm11 lock or installs incompatible
+minimatch majors despite a clean audit. Do not revive those routes. Build npm
+is now explicitly11.17.0, bootstrapped with scripts disabled and checked by
+executing the active CLI before CI/Release install/audit. Publisher bootstrap
+stays after exact source/epoch identity proof. The isolated signing job,
+protected environments/OIDC, Node18 runtime lane and public package engines
+remain unchanged. The local Linux check uses the already-installed npm11 JS
+through an owned temporary wrapper, without changing system npm or settings.
+
+Current Windows full tests pass107 candidate/epoch/protection cases,566 unit
+passes/three skips and112 native passes/13 hardware ignores. Formatting, native
+check, API audit and full lock audit pass. Linux clean install, all ten focused
+tests and complete package smoke pass with audit0. Two independent source,
+provenance/archive and final integration reviews find no critical issue. No
+source/test/security gate has been waived. Exact final-source CI is next.
 Both open PRs20/21 were independently compared against0e161ab, including
 transitive locks and all action SHA pins. Every proposed upgrade is already
 equal/newer on main, with no unique fix remaining. Both are now closed as
@@ -80,9 +94,8 @@ package smoke and all four packed Node runtime lines. The only failing job is
 the mandatory dependency-security audit with the same16 moderate findings;
 RustSec is skipped after that step fails, not claimed green.
 
-Next: finish independent review, commit the repair source foundation, wire its
-immutable archive pins and focused tests into normal checks, then verify clean
-installation/full audit/packaging and exact CI before tagging. No v0.4.13 tag,
+Next: commit/push the verified resolver/integration changes and require exact
+final-source CI before tagging. No v0.4.13 tag,
 release artifact, live proof or publication exists.
 Only the new tag's retained signed candidate can receive fresh schema8
 protected Windows actual-game proof and gated publication. Consumer QA,

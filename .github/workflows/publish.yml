@@ -91,7 +91,8 @@ jobs:
           node scripts/verify-publish-epochs.cjs > publish-epoch-proof.json
       - name: Install release tooling
         run: |
-          node -e "const [major, minor] = require('node:child_process').execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim().split('.').map(Number); if (major < 11 || (major === 11 && minor < 15)) throw new Error('npm 11.15.0 or newer is required')"
+          npm install --global npm@11.17.0 --ignore-scripts
+          npm run check:build-npm
           npm ci --ignore-scripts
       - name: Download exact audited candidate
         env:

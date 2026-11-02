@@ -39,6 +39,9 @@ jobs:
       - if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y patchelf
       - run: node scripts/assert-supported-targets.cjs
+      - name: Use tested build npm
+        run: npm install --global npm@11.17.0 --ignore-scripts
+      - run: npm run check:build-npm
       - run: npm ci
       - name: Run full test gate
         run: npm test
@@ -286,6 +289,9 @@ jobs:
         with:
           pattern: steam-bridge-*
           path: release-artifacts
+      - name: Use tested build npm
+        run: npm install --global npm@11.17.0 --ignore-scripts
+      - run: npm run check:build-npm
       - run: npm ci
       - run: npm run check:electron
       - run: node scripts/assemble-release-artifacts.cjs --artifacts-dir release-artifacts
