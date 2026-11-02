@@ -12,94 +12,102 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Prepare the human-requested signed normal stable0.4.13 GitHub/npm release;
-refresh both public READMEs and resolve the open dependency PRs first. The
-starting source is0e161ab. Neither v0.4.13 nor a new public package has been
-created. Keep published0.4.12 and its evidence immutable.
+Finish the human-requested signed normal stable0.4.13 GitHub/npm release.
+The README refresh and open-PR review are completed. Both public READMEs are
+equivalent and regression-checked; PRs20/21 were closed as fully superseded by
+main, including their transitive dependencies/action pins. No stale lockfile was
+merged. Published0.4.12 and its receipts remain immutable.
 
-The README refresh preserves the valid SpaceWar Node probe, adds an Electron
-startup path and shipping checklist, makes Windows builder-hook no-ops and
-application signing responsibilities explicit, and removes duplicated Linux
-qualification wording without waiving that lane. Independent review finds no
-accuracy issue. A new regression enforces root/npm text equivalence and local
-documentation-link resolution. The smallest release metadata update is0.4.13;
-the QA-only Electron example advances45.1.0 to registry-stable45.2.1, with no
-consumer runtime changes or unrelated lockfile refresh.
+### Frozen signed0.4.13 candidate
 
-Local Windows checks pass: supported targets, latest stable Electron, full
-`npm test` (107 candidate/epoch/protection cases;556 unit passes/three skips;
-112 native passes/13 hardware-dependent ignores), Rust formatting/check and
-API coverage. The first unit pass exposed a literal assertion for the removed
-duplicate sentence; the replacement still requires explicit not-green physical
-X11/Wayland qualification. Complete Unix package smoke is being checked in an
-isolated copy under already-installed WSL, not by repeating the settled native
-Windows fixture failure. That complete WSL package smoke now passes from an
-isolated tracked-source copy with the exact current code/metadata patch.
+Source0ef690ec4a137f592ff9f718f4673e21376c645e is tagged as immutable
+v0.4.13; annotated tag object21dc3d912f9d39a9deabf865ef46933c9acc55c0
+peels to that source. Do not rebuild, replace native bytes, or retag it.
+[Main CI41413811659](https://github.com/jstroh/steam-bridge/actions/runs/41413811659),
+[tag CI41414411467](https://github.com/jstroh/steam-bridge/actions/runs/41414411467)
+and original [Release41414411589](https://github.com/jstroh/steam-bridge/actions/runs/41414411589)
+attempt1 succeed. Release includes all three native targets, Windows signing
+and the final canonical package audit. Original checkout logs explicitly fetch,
+peel and check out refs/tags/v0.4.13 to0ef690e before dependencies; REST short
+ref names alone are not treated as full-ref proof.
 
-The initial release blocker was newly published glob/minimatch advisories producing16 moderate
-build-dependency audit findings. Every affected selection already exists in
-0e161ab; production-only audit is clean. CI requires the full moderate audit,
-so this is not a waived gate. Latest maintained parent versions do not clear
-all legacy chains. Do not force modern callback-incompatible APIs, rename an
-unchanged dependency, omit dev dependencies or weaken the threshold merely to
-obtain green audit output. See `CROSS-BUILD-GLOB-AUDIT-001` in the ledger.
+Canonical TGZ:12,156,737bytes,
+SHA2564cc33d4310dce989e9b00e0f217c1a7aa11804cf9ddaca47adcd6d615e50572c.
+Its complete89-file/39,287,146-byte normal-install content fingerprint is
+06e68d5963a49a7695a5c90421a3d0037211d1f83ea19a6ffc0da3e5611650f9.
+All nine native/runtime members equal the original downloaded artifacts.
+Windows bundle417,077,248bytes:
+da148fe6b267e0a0f78b5e3f9045841fee389ea69a90ba9c26ba77b91431ab01.
+Audit21,074bytes:
+ea60e4cae01665cf943ff9d9a2b03e51cb3d70efd3bf1bef834143f63e83874e.
+Native-load result726bytes:
+d45d94c58cd8592e3b7c137d79d16e2a20b86c5c3e005ed93e3ebf2947c2b21b.
 
-The human explicitly requested continuing through this repair and publication.
-Five matching-major build-only derivatives are now committed in immutable
-foundation31957a9db6135bd09abb811550fbb7ebbae3d22a with canonical npm
-source/commit/integrity and complete original/derived file/archive pins in
-[`vendor/glob-hardening-provenance.json`](../../vendor/glob-hardening-provenance.json).
-Both module formats receive the narrow upstream glob13 cancellation and
-minimatch9/10 optimizer patches. Legacy minimatch3/5 lack that newer optimizer;
-their real additional guard rejects more than100,000 aggregate expanded path
-components before splitting/parsing, without adding or forwarding new options.
-Original licenses, callable APIs and valid ordinary matching remain intact.
-This is bounded allocation hardening, not a blanket regex DoS immunity claim.
+The exact Windows addon is11,321,120bytes,
+SHA25662d5d58afe99b05db4e62bbf56b04dc22d2f469ca21443df31fb2042172d1cb5,
+with Valid Pixel Games LLC Authenticode and Microsoft timestamp. Signed and
+unsigned PE-content hashes agree:
+8abb6466921c85bf3fbbd0ef31d0d7af37b49f7605e43d66f2bbe3b5b8e78c6e.
+Matching PDB debug ID79329bcc-eb70-44e0-b0a3-1273a372c554-1 is verified.
+The PDB is5,263,360bytes,
+SHA256916d9dfb3f7efb134b19e5068b201956e26a6bce78f94dd12759c5afa3f08a7f.
+The canonical verification-only publishability check and independent complete
+artifact/provenance/PE reconciliation pass. Twelve non-generated packaged
+sources differ from Git only by Windows CRLF conversion, not raw Git-byte
+equality. CI native loading is not protected local actual-game proof.
 
-Ten focused tests pass on Windows and Linux, including reconstructed hash-checked
-original controls, zero post-abort filesystem reads, all four abort entry points,
-exact budget/slash-run behavior, CJS/ESM, actual ASAR3/4, FileList/dir-compare,
-archive inventories and wrong-toolchain rejection. Source-only archives are
-selected by full foundation-SHA HTTPS URLs and matching lockfile integrity;
-fresh empty-cache installations and full moderate audits pass on both hosts.
-The tests are part of the ordinary test command, not an optional side gate.
+### Build-tool repair completed
 
-Retain the negative resolver findings: relative directory/TGZ overrides resolve
-against nested callers, and npm10 rejects the npm11 lock or installs incompatible
-minimatch majors despite a clean audit. Do not revive those routes. Build npm
-is now explicitly11.17.0, bootstrapped with scripts disabled and checked by
-executing the active CLI before CI/Release install/audit. Publisher bootstrap
-stays after exact source/epoch identity proof. The isolated signing job,
-protected environments/OIDC, Node18 runtime lane and public package engines
-remain unchanged. The local Linux check uses the already-installed npm11 JS
-through an owned temporary wrapper, without changing system npm or settings.
+The prior16 moderate audit findings are repaired, not waived. Foundation
+31957a9db6135bd09abb811550fbb7ebbae3d22a retains five licensed, matching-major,
+build-only derivatives and reproducible plain-source archives. Full-SHA HTTPS
+pins/SRIs select them. Modern glob13/minimatch9/10 use narrow upstream repairs;
+legacy3/5 genuinely bound expanded component allocations before splitting/parsing
+without inventing the absent newer optimizer. See the
+[repair/provenance](../../vendor/glob-hardening.md) and
+CROSS-BUILD-GLOB-AUDIT-001. Ten focused original-control/archive/actual-caller
+checks, clean Windows/Linux HTTPS installations, full audits and Linux package
+smoke pass. Full Windows tests pass107 candidate/epoch/protection cases,
+566 unit passes/three skips and112 native passes/13 hardware ignores.
 
-Current Windows full tests pass107 candidate/epoch/protection cases,566 unit
-passes/three skips and112 native passes/13 hardware ignores. Formatting, native
-check, API audit and full lock audit pass. Linux clean install, all ten focused
-tests and complete package smoke pass with audit0. Two independent source,
-provenance/archive and final integration reviews find no critical issue. No
-source/test/security gate has been waived. Exact final-source CI is next.
-Both open PRs20/21 were independently compared against0e161ab, including
-transitive locks and all action SHA pins. Every proposed upgrade is already
-equal/newer on main, with no unique fix remaining. Both are now closed as
-superseded, with explanatory comments; no stale lockfiles were merged and no
-branches were deleted. A fresh query shows zero open PRs.
+Preserve the negative resolver evidence: relative-file overrides resolve against
+nested callers, and npm10 rejects/misresolves this replacement graph despite
+clean audit output. Build npm11.17 is explicitly bootstrapped with scripts
+disabled and checked through its active CLI before install/audit. Publisher
+bootstrap stays after exact epoch identity proof. Signing isolation,
+OIDC/protected environments, public Node18 engines and runtime CI remain intact.
 
-The earlier README/release-preparation source45c749c was committed and pushed
-with a clean worktree; its CI does not qualify the subsequent build-tool repair.
-Exact [CI41405195040](https://github.com/jstroh/steam-bridge/actions/runs/41405195040)
-finishes with all eight functional jobs green: all three native targets,
-package smoke and all four packed Node runtime lines. The only failing job is
-the mandatory dependency-security audit with the same16 moderate findings;
-RustSec is skipped after that step fails, not claimed green.
+### Next real gate: restore the actual-game test setup
 
-Next: commit/push the verified resolver/integration changes and require exact
-final-source CI before tagging. No v0.4.13 tag,
-release artifact, live proof or publication exists.
-Only the new tag's retained signed candidate can receive fresh schema8
-protected Windows actual-game proof and gated publication. Consumer QA,
-consumer-signed addon bytes and old0.4.12 proof cannot substitute for it.
+No new candidate has been launched locally, no schema8 actual-game receipt exists,
+no publish workflow has been dispatched, and no npm/stable GitHub release has
+been created. Native signature/static success does not establish gameplay.
+
+A bounded read-only recovery search finds the old local task/controller and
+older isolated-game source/setup directories empty after retention cleanup.
+The searched older assemblies retain only their old game EXE as visible content;
+no reusable public registered-task actor/controller was found in the searched
+QA roots. This is not a claim that no backup exists elsewhere. The known Mac
+owner chat is not readable on the currently returned hosts; no guessed host,
+new connection or claimed message delivery is substituted. The human has been
+asked for the retained backup location. No game, Steam, task, lock route,
+security/privacy setting or notification state was changed during that search.
+
+Restore the retained reviewed source cohort/setup, rebind this exact complete
+TGZ as a normal-directory isolated consumer, establish current transactional
+deployment/protection and Limited-task/actor/image/module evidence, then run
+the four required standalone cases with genuine17 manual observations and
+unfiltered separate streams. Do not reuse old0.4.12 receipts, consumer waivers
+or execution/device approvals, or invoke native lock routes directly.
+
+After fresh schema8 proof and the protected approval boundary, configure only
+the sanitized release proof and dispatch publish.yml from v0.4.13, using the
+same0ef690e tooling/candidate epoch, tag CI41414411467 and Release41414411589
+attempt1. Independently verify npm downloaded bytes/signature/provenance/latest,
+retain all eight stable GitHub assets including PDB and both publication-epoch
+files, then remove the release-scoped proof secret. No additional tooling tag
+or native rebuild is needed. The current data-only release observation is not
+a permit, passing self-test, runtime receipt or publication approval.
 
 ### Published0.4.12 baseline (historical proof)
 
