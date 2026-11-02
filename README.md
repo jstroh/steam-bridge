@@ -4,16 +4,26 @@
 [![CI](https://github.com/jstroh/steam-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/jstroh/steam-bridge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/npm/l/steam-bridge)](LICENSE)
 
-**Steamworks for Node.js and Electron, with typed APIs and prebuilt native addons.**
+**Steamworks for Node.js and Electron. Typed APIs, native Steam overlays, and prebuilt addons.**
 
 Add authentication, achievements, cloud saves, friends, inventory, matchmaking,
 Workshop, and Steam Input to your game. For Electron games, Steam Bridge also
 provides native Steam-overlay presentation, context-isolated renderer input,
-and packaging helpers.
+and packaging helpers. Start with the managed APIs; reach for the low-level
+Steamworks bindings when you need more control.
+
+| Build with Steam | Included |
+| --- | --- |
+| Game services | Authentication, achievements, cloud, friends, inventory, matchmaking, and Workshop |
+| Electron integration | Native game hosts, Steam overlay presentation, and context-isolated input |
+| Controllers | Steam Input actions, normalized snapshots, glyphs, and layout tooling |
+| Trusted backends | Publisher Web API client, kept separate from game code |
+| Distribution | Prebuilt native addons, Valve runtime libraries, and packaging helpers |
 
 The package includes the native addon and matching Valve runtime libraries.
 Installing the published package does not require Rust or a separate Steamworks
-SDK download. Building Steam Bridge itself does.
+SDK download. Building Steam Bridge itself does. Check the
+[supported platforms](#platform-targets) before integrating.
 
 ## Quick start
 
@@ -21,7 +31,7 @@ SDK download. Building Steam Bridge itself does.
 npm install steam-bridge
 ```
 
-Start Steam, save this as `steam-check.cjs`, and run `node steam-check.cjs`:
+Start the Steam desktop client and sign in. Save this as `steam-check.cjs`:
 
 ```js
 const { startSteam } = require("steam-bridge");
@@ -40,6 +50,10 @@ try {
 }
 ```
 
+```sh
+node steam-check.cjs
+```
+
 This checks native loading and Steam initialization. It does not create a game
 window or prove that the Steam overlay works. App ID `480` is Valve's SpaceWar
 sample; use your own App ID and an entitled account for your game's features.
@@ -47,6 +61,20 @@ sample; use your own App ID and an entitled account for your game's features.
 For a running game, keep the returned application alive until shutdown.
 `startSteam()` owns callback dispatch and permits one active application per
 process. Do not initialize Steamworks again in a renderer or worker.
+
+### Building an Electron game?
+
+Use the [Electron integration guide](docs/electron.md), not the Node check above
+as a game-window template. The startup sequence is:
+
+1. Call `configureSteamElectron()` before `app.whenReady()`.
+2. Initialize Steam before creating windows or graphics devices.
+3. Register the input preload before loading the game page.
+4. Create the platform's game host and connect action input before navigation.
+5. Read input from your existing game loop and close the Steam application on shutdown.
+
+The guide covers the different Windows, Linux, and macOS window models and the
+texture ownership required for a working overlay.
 
 ## Pick your next step
 
@@ -80,9 +108,8 @@ runtime and packaged application you ship.
 Windows ARM, Linux ARM, Intel macOS, Rosetta, and universal macOS packages are
 not supported. A browser page alone cannot initialize the native Steam client.
 
-General non-Deck Linux remains a separate physical X11/Wayland qualification lane.
 General non-Deck Linux desktop is a separate release-evidence lane and is **not green**
-without its own physical-host receipt. Deck Desktop/Game Mode and CI results
+without its own physical X11/Wayland-host receipt. Deck Desktop/Game Mode and CI results
 do not qualify every Linux distribution, compositor, and driver.
 
 ### macOS Apple Silicon Only
@@ -107,6 +134,25 @@ Start with these APIs. Use `steam-bridge/steamworks` or the
 `electron/advanced`, `renderer/advanced`, `server/advanced`, and
 `electron-builder/advanced` subpaths only when you need a lower-level feature.
 
+## Packaging and shipping
+
+Before distributing your game:
+
+- Install `steam-bridge` as a normal application dependency. Do not ship a workspace link.
+- Keep the native `.node` addon and matching Valve libraries outside ASAR, and
+  verify their paths in the final installed application.
+- For electron-builder, use `createSteamBuildHooks()` in both `afterPack` and
+  `afterSign`. These hooks prepare Linux/macOS and verify macOS signing; they
+  are no-ops on Windows, where you must configure native-file unpacking yourself.
+- Include your game's Steam Input action manifest and required layouts.
+- Sign your own Windows application; sign and notarize your macOS application.
+  A signed Bridge addon does not sign the rest of your game.
+- Test that exact installed build through Steam, including overlay, controllers,
+  window transitions, and clean shutdown.
+
+See [packaging your game](docs/packaging.md) for configuration and verification.
+Application signing and platform qualification remain your responsibility.
+
 ## Important integration rules
 
 **Electron startup has an order.** Configure Steam Electron before
@@ -120,15 +166,13 @@ game frame. For renderer-owned gameplay, let `connectActionInput()` service
 renderer requests. Do not add a second polling loop.
 
 `connectActionInput()` enables request correlation by default. The advanced
-`createElectronSteamInputService()` retains legacy/manual frame scheduling by
-default; set `requestCorrelation: true` for renderer-owned polling. Explicit
-`requestCorrelation: false` selects compatibility mode in either API. That
-manual/non-correlated mode cannot provide strict delayed-frame rejection.
-Keep the service and input preload on the same package version. With correlation
-enabled, stale replies cannot retire newer requests, and a refused current poll
-clears cached actions. Native-host focus and ownership boundaries must also
-invalidate the producer and consumer input state; sequence advancement alone
-does not prove a fresh post-focus sample.
+`createElectronSteamInputService()` defaults to legacy/manual scheduling; set
+`requestCorrelation: true` for renderer-owned polling. Explicit
+`requestCorrelation: false` selects compatibility mode, which cannot provide
+strict delayed-frame rejection. Keep the service and preload on the same
+package version. Correlation rejects stale replies and clears cached actions
+when the current poll is refused; focus and ownership changes must also
+invalidate both sides' input state. A newer sequence alone does not prove fresh input.
 
 **Windows textures have an ownership contract.** Prefer
 `host.updateSharedTextureAsync(descriptor)`. A resolved promise permits

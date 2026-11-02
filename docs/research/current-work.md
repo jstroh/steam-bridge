@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-10-10
+Last reviewed: 2026-11-02 UTC
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -11,6 +11,51 @@ Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
 ## Active goal
+
+Prepare the human-requested signed normal stable0.4.13 GitHub/npm release;
+refresh both public READMEs and resolve the open dependency PRs first. The
+starting source is0e161ab. Neither v0.4.13 nor a new public package has been
+created. Keep published0.4.12 and its evidence immutable.
+
+The README refresh preserves the valid SpaceWar Node probe, adds an Electron
+startup path and shipping checklist, makes Windows builder-hook no-ops and
+application signing responsibilities explicit, and removes duplicated Linux
+qualification wording without waiving that lane. Independent review finds no
+accuracy issue. A new regression enforces root/npm text equivalence and local
+documentation-link resolution. The smallest release metadata update is0.4.13;
+the QA-only Electron example advances45.1.0 to registry-stable45.2.1, with no
+consumer runtime changes or unrelated lockfile refresh.
+
+Local Windows checks pass: supported targets, latest stable Electron, full
+`npm test` (107 candidate/epoch/protection cases;556 unit passes/three skips;
+112 native passes/13 hardware-dependent ignores), Rust formatting/check and
+API coverage. The first unit pass exposed a literal assertion for the removed
+duplicate sentence; the replacement still requires explicit not-green physical
+X11/Wayland qualification. Complete Unix package smoke is being checked in an
+isolated copy under already-installed WSL, not by repeating the settled native
+Windows fixture failure. That complete WSL package smoke now passes from an
+isolated tracked-source copy with the exact current code/metadata patch.
+
+Release blocker: newly published glob/minimatch advisories produce16 moderate
+build-dependency audit findings. Every affected selection already exists in
+0e161ab; production-only audit is clean. CI requires the full moderate audit,
+so this is not a waived gate. Latest maintained parent versions do not clear
+all legacy chains. Do not force modern callback-incompatible APIs, rename an
+unchanged dependency, omit dev dependencies or weaken the threshold merely to
+obtain green audit output. See `CROSS-BUILD-GLOB-AUDIT-001` in the ledger.
+Both open PRs20/21 were independently compared against0e161ab, including
+transitive locks and all action SHA pins. Every proposed upgrade is already
+equal/newer on main, with no unique fix remaining. Both are now closed as
+superseded, with explanatory comments; no stale lockfiles were merged and no
+branches were deleted. A fresh query shows zero open PRs.
+
+Next: commit/push the reviewed documentation and release preparation, verify
+exact CI, and reconcile the audit with a real compatible remedy before tagging.
+Only the new tag's retained signed candidate can receive fresh schema8
+protected Windows actual-game proof and gated publication. Consumer QA,
+consumer-signed addon bytes and old0.4.12 proof cannot substitute for it.
+
+### Published0.4.12 baseline (historical proof)
 
 Normal stable0.4.12 is published and verified. Immutable v0.4.12 remains at
 1caba46bf8f873d4f8825dcf1431e509d16fefe8. The single protected

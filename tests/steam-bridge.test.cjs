@@ -23,6 +23,19 @@ function readSourceFile(...pathSegments) {
     .replace(/\r\n?/g, "\n");
 }
 
+test("root and npm READMEs stay equivalent with resolvable documentation links", () => {
+  const readme = readSourceFile("README.md");
+  const packageReadme = readSourceFile("packages", "steam-bridge", "README.md");
+  const githubRoot = "https://github.com/jstroh/steam-bridge/blob/main/";
+  const packagedLinks = readme.replace(/\]\((?!https?:\/\/|#)([^)]+)\)/gu, (_, target) => {
+    const relativeFile = target.split("#")[0];
+    assert.ok(fs.statSync(path.join(repoRoot, relativeFile)).isFile(), target);
+    return `](${githubRoot}${target})`;
+  });
+
+  assert.equal(packageReadme, packagedLinks);
+});
+
 test("Windows release policy signs only the project-owned addon on release tags", () => {
   const readme = readSourceFile("README.md");
   const packageReadme = readSourceFile("packages", "steam-bridge", "README.md");
@@ -4578,7 +4591,8 @@ test("project support policy covers Steam desktop targets except Intel macOS", (
   assert.match(rootReadme, /Do not package, launch, or verify macOS smoke apps through Rosetta/);
   assert.match(packageReadme, /Do not package, launch, or verify macOS smoke\s+apps through Rosetta/);
   assert.match(packageReadme, /general\s+non-Deck Linux desktop is a separate release-evidence lane and is \*\*not green\*\*/i);
-  assert.match(rootReadme, /General\s+non-Deck Linux remains a separate physical X11\/Wayland qualification lane/i);
+  assert.match(rootReadme, /general\s+non-Deck Linux desktop is a separate release-evidence lane and is \*\*not green\*\*/i);
+  assert.match(rootReadme, /without its own physical X11\/Wayland-host receipt/i);
   assert.match(exampleReadme, /Do not\s+launch these macOS smoke apps through Rosetta/);
   assert.match(
     packagerScript,
