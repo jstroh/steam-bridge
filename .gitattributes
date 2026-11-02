@@ -1,2 +1,8 @@
 vendor/http-cache-semantics/* text eol=lf
 vendor/sprintf-js/** text eol=lf
+vendor/glob13/** text eol=lf
+vendor/minimatch3/** text eol=lf
+vendor/minimatch5/** text eol=lf
+vendor/minimatch9/** text eol=lf
+vendor/minimatch10/** text eol=lf
+vendor/archives/*.tgz binary

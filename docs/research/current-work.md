@@ -36,28 +36,54 @@ isolated copy under already-installed WSL, not by repeating the settled native
 Windows fixture failure. That complete WSL package smoke now passes from an
 isolated tracked-source copy with the exact current code/metadata patch.
 
-Release blocker: newly published glob/minimatch advisories produce16 moderate
+Release preparation blocker: newly published glob/minimatch advisories produce16 moderate
 build-dependency audit findings. Every affected selection already exists in
 0e161ab; production-only audit is clean. CI requires the full moderate audit,
 so this is not a waived gate. Latest maintained parent versions do not clear
 all legacy chains. Do not force modern callback-incompatible APIs, rename an
 unchanged dependency, omit dev dependencies or weaken the threshold merely to
 obtain green audit output. See `CROSS-BUILD-GLOB-AUDIT-001` in the ledger.
+
+The human explicitly requested continuing through this repair and publication.
+Five matching-major build-only derivatives are prepared with canonical npm
+source/commit/integrity and complete original/derived file/archive pins in
+[`vendor/glob-hardening-provenance.json`](../../vendor/glob-hardening-provenance.json).
+Both module formats receive the narrow upstream glob13 cancellation and
+minimatch9/10 optimizer patches. Legacy minimatch3/5 lack that newer optimizer;
+their real additional guard rejects more than100,000 aggregate expanded path
+components before splitting/parsing, without adding or forwarding new options.
+Original licenses, callable APIs and valid ordinary matching remain intact.
+This is bounded allocation hardening, not a blanket regex DoS immunity claim.
+
+Nine focused tests pass in a clean Windows source copy, including reconstructed
+hash-checked original controls, zero post-abort filesystem reads, all four abort
+entry points, exact budget/slash-run behavior, CJS/ESM and actual ASAR3/4,
+FileList and dir-compare callers. Its clean installation and full audit pass
+with temporary absolute TGZ references used only in that scratch copy.
+Those private paths are not public dependency pins. npm's nested relative-file
+override handling rejects portable local-directory/TGZ selection; no machine or
+npm policy change is made to force it. Reviewed source-only archives will be
+committed first, then selected by immutable public foundation-commit HTTPS URLs
+and lockfile integrity. That final route still needs a fresh empty-cache
+install, all normal gates and exact CI. No release blocker is waived.
 Both open PRs20/21 were independently compared against0e161ab, including
 transitive locks and all action SHA pins. Every proposed upgrade is already
 equal/newer on main, with no unique fix remaining. Both are now closed as
 superseded, with explanatory comments; no stale lockfiles were merged and no
 branches were deleted. A fresh query shows zero open PRs.
 
-Reviewed source45c749c is committed and pushed to main, with a clean worktree.
+The earlier README/release-preparation source45c749c was committed and pushed
+with a clean worktree; its CI does not qualify the subsequent build-tool repair.
 Exact [CI41405195040](https://github.com/jstroh/steam-bridge/actions/runs/41405195040)
 finishes with all eight functional jobs green: all three native targets,
 package smoke and all four packed Node runtime lines. The only failing job is
 the mandatory dependency-security audit with the same16 moderate findings;
 RustSec is skipped after that step fails, not claimed green.
 
-Next: reconcile the audit with a real compatible remedy and reverify exact CI
-before tagging. No v0.4.13 tag, release artifact, live proof or publication exists.
+Next: finish independent review, commit the repair source foundation, wire its
+immutable archive pins and focused tests into normal checks, then verify clean
+installation/full audit/packaging and exact CI before tagging. No v0.4.13 tag,
+release artifact, live proof or publication exists.
 Only the new tag's retained signed candidate can receive fresh schema8
 protected Windows actual-game proof and gated publication. Consumer QA,
 consumer-signed addon bytes and old0.4.12 proof cannot substitute for it.

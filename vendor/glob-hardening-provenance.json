@@ -1,0 +1,850 @@
+{
+  "schemaVersion": 1,
+  "buildOnly": true,
+  "upstreamPatches": {
+    "glob": "4682e8c9babee1b385202ede36389634e12076d7",
+    "minimatch": "77a0f5c4b80bdc641c3c930a1d9edf5ad2db57f8"
+  },
+  "packages": [
+    {
+      "directory": "glob13",
+      "upstream": {
+        "name": "glob",
+        "version": "13.0.6",
+        "gitCommit": "e80cb38ae60d6cbff9e75f39032a994858994d35",
+        "integrity": "sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw=="
+      },
+      "files": [
+        {
+          "path": "lib/commonjs/glob.d.ts",
+          "upstreamPath": "dist/commonjs/glob.d.ts",
+          "upstreamSha256": "6871f200b0b9f9540ca75d38100164de7cbeeff71cfc5797a7dd406980817a8e",
+          "upstreamNormalizedSha256": "6871f200b0b9f9540ca75d38100164de7cbeeff71cfc5797a7dd406980817a8e",
+          "sha256": "d7be775fe2684ec79ad837cfa5f2cb96c1f2bce122002a2716069124b53145a8",
+          "bytes": 15094
+        },
+        {
+          "path": "lib/commonjs/glob.js",
+          "upstreamPath": "dist/commonjs/glob.js",
+          "upstreamSha256": "3c707e4e8f27c17247412789ddbea9f70fbbcc1570f5dd79e25037ebe6e4404f",
+          "upstreamNormalizedSha256": "3c707e4e8f27c17247412789ddbea9f70fbbcc1570f5dd79e25037ebe6e4404f",
+          "sha256": "441ada999067333febff49aa69db6808c88c5266fd3b54489f44c59453e6b01f",
+          "bytes": 8583
+        },
+        {
+          "path": "lib/commonjs/has-magic.d.ts",
+          "upstreamPath": "dist/commonjs/has-magic.d.ts",
+          "upstreamSha256": "4dc19c0c00dc6aecbc60ccbde00e5c6302197593bb47cd481294d3f78a386b93",
+          "upstreamNormalizedSha256": "4dc19c0c00dc6aecbc60ccbde00e5c6302197593bb47cd481294d3f78a386b93",
+          "sha256": "c2ca145054b378cf5d651a1e6384d201b421a5f4efb22d9f68e9a415aaacc176",
+          "bytes": 761
+        },
+        {
+          "path": "lib/commonjs/has-magic.js",
+          "upstreamPath": "dist/commonjs/has-magic.js",
+          "upstreamSha256": "1e4a9acafa68903d5331e17635339ca59c52b71152e82e195438adc46ef7381a",
+          "upstreamNormalizedSha256": "1e4a9acafa68903d5331e17635339ca59c52b71152e82e195438adc46ef7381a",
+          "sha256": "681830f0b939b741253eed183266bc4f6f30b2ebf23c1c08059c733bb840faed",
+          "bytes": 1059
+        },
+        {
+          "path": "lib/commonjs/ignore.d.ts",
+          "upstreamPath": "dist/commonjs/ignore.d.ts",
+          "upstreamSha256": "d840bff80b305e555ce81588219586207da31317649256fa021ad293de9a3d1a",
+          "upstreamNormalizedSha256": "d840bff80b305e555ce81588219586207da31317649256fa021ad293de9a3d1a",
+          "sha256": "7ef350938381ade9a7981356b6f8049db77fa65a9115ec4ae3f0db50484114fd",
+          "bytes": 814
+        },
+        {
+          "path": "lib/commonjs/ignore.js",
+          "upstreamPath": "dist/commonjs/ignore.js",
+          "upstreamSha256": "793e155177f3b9600432ea3d0978c32ce0c9981c702fff77d587333fc731cfbb",
+          "upstreamNormalizedSha256": "793e155177f3b9600432ea3d0978c32ce0c9981c702fff77d587333fc731cfbb",
+          "sha256": "cb875d386ddc101b77c3485d0da0a59b4e26f5535fa4f43832a312b96bc65e13",
+          "bytes": 4268
+        },
+        {
+          "path": "lib/commonjs/index.d.ts",
+          "upstreamPath": "dist/commonjs/index.d.ts",
+          "upstreamSha256": "b0287d4e1952363942bc3925344293dda6411afc2791c5421b20df03353751bb",
+          "upstreamNormalizedSha256": "b0287d4e1952363942bc3925344293dda6411afc2791c5421b20df03353751bb",
+          "sha256": "af7e54f2464140eef193c401f080b3803e61a0eea4e2006ce8057f5458ac5da1",
+          "bytes": 6212
+        },
+        {
+          "path": "lib/commonjs/index.js",
+          "upstreamPath": "dist/commonjs/index.js",
+          "upstreamSha256": "be0581401dff74824abe8ecd4f177d96535fdc1fe1b6698a9b4a4a9c4448bb61",
+          "upstreamNormalizedSha256": "be0581401dff74824abe8ecd4f177d96535fdc1fe1b6698a9b4a4a9c4448bb61",
+          "sha256": "9656e82192fd0832e681f4f1377d3c2b2df34853b2d2ed2e890a4f644653e3ae",
+          "bytes": 2877
+        },
+        {
+          "path": "lib/commonjs/package.json",
+          "upstreamPath": "dist/commonjs/package.json",
+          "upstreamSha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a",
+          "upstreamNormalizedSha256": "73513439b93b2391b8a67720b5e0959f46afc909c1f0fc7dd73b79c5ae36bda7",
+          "sha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a",
+          "bytes": 25
+        },
+        {
+          "path": "lib/commonjs/pattern.d.ts",
+          "upstreamPath": "dist/commonjs/pattern.d.ts",
+          "upstreamSha256": "d24b4b0326495a6afe97b5c692f875ace215e93e979d2ee9ffe202092b52076f",
+          "upstreamNormalizedSha256": "d24b4b0326495a6afe97b5c692f875ace215e93e979d2ee9ffe202092b52076f",
+          "sha256": "80cc1504063dc34c3dc5fc8648a040f314ec4a3d7e949fd5637e4414de48aa8e",
+          "bytes": 2204
+        },
+        {
+          "path": "lib/commonjs/pattern.js",
+          "upstreamPath": "dist/commonjs/pattern.js",
+          "upstreamSha256": "3efe5a6cafeaa100504795d4f66331e3c67a1251706d79a45cee112cdf92e1b9",
+          "upstreamNormalizedSha256": "3efe5a6cafeaa100504795d4f66331e3c67a1251706d79a45cee112cdf92e1b9",
+          "sha256": "46a7db4f372845acacc4d8c44b6b0caa96b5c1d5a5f190c85746088322a8d6ea",
+          "bytes": 7475
+        },
+        {
+          "path": "lib/commonjs/processor.d.ts",
+          "upstreamPath": "dist/commonjs/processor.d.ts",
+          "upstreamSha256": "5d20853a892f76d9c0c01f7a38c428f48f8fca89c33426320826d1f0090a7dac",
+          "upstreamNormalizedSha256": "5d20853a892f76d9c0c01f7a38c428f48f8fca89c33426320826d1f0090a7dac",
+          "sha256": "0cdd189b9be3fdf95a0aaff02a13c0a1b8c70cc285740392670dd99c9982d85b",
+          "bytes": 2137
+        },
+        {
+          "path": "lib/commonjs/processor.js",
+          "upstreamPath": "dist/commonjs/processor.js",
+          "upstreamSha256": "5c36f0422d39637dd6654a478d34a7465aa8a28bb728ea2c9f9c373f93b3e7b6",
+          "upstreamNormalizedSha256": "5c36f0422d39637dd6654a478d34a7465aa8a28bb728ea2c9f9c373f93b3e7b6",
+          "sha256": "d19fb7fea28c603c7df4e394c4996c1894fb0d59bcb9a6f2902c42b2bfec1551",
+          "bytes": 10761
+        },
+        {
+          "path": "lib/commonjs/walker.d.ts",
+          "upstreamPath": "dist/commonjs/walker.d.ts",
+          "upstreamSha256": "c3ab91e697053ab728b5621722040feb03b57d64aa91267e7fca7b2f9dd1ee55",
+          "upstreamNormalizedSha256": "c3ab91e697053ab728b5621722040feb03b57d64aa91267e7fca7b2f9dd1ee55",
+          "sha256": "f75fc617141ed75dab1cf18ab5121cca7c0d6de8814ccc4a987cbb500691c93c",
+          "bytes": 3781
+        },
+        {
+          "path": "lib/commonjs/walker.js",
+          "upstreamPath": "dist/commonjs/walker.js",
+          "upstreamSha256": "1138ced9d5429681a1740af32d13391a38184a3376d1d9d56eea64b7a43274a1",
+          "upstreamNormalizedSha256": "1138ced9d5429681a1740af32d13391a38184a3376d1d9d56eea64b7a43274a1",
+          "sha256": "e5e120440ad1896e0365f7a2588e9e04c283d3f838f79b13af734a0cb456a33a",
+          "bytes": 12844
+        },
+        {
+          "path": "lib/esm/glob.d.ts",
+          "upstreamPath": "dist/esm/glob.d.ts",
+          "upstreamSha256": "6871f200b0b9f9540ca75d38100164de7cbeeff71cfc5797a7dd406980817a8e",
+          "upstreamNormalizedSha256": "6871f200b0b9f9540ca75d38100164de7cbeeff71cfc5797a7dd406980817a8e",
+          "sha256": "d7be775fe2684ec79ad837cfa5f2cb96c1f2bce122002a2716069124b53145a8",
+          "bytes": 15094
+        },
+        {
+          "path": "lib/esm/glob.js",
+          "upstreamPath": "dist/esm/glob.js",
+          "upstreamSha256": "bd01ce3815a4745b5a357936f8d82a01d3275deb22b093de3ce4b41e8e46d676",
+          "upstreamNormalizedSha256": "bd01ce3815a4745b5a357936f8d82a01d3275deb22b093de3ce4b41e8e46d676",
+          "sha256": "684f9c5d30fe776e89a9c1f060c1385a0a7957861ac6f87fe93c38f814c2abc1",
+          "bytes": 8376
+        },
+        {
+          "path": "lib/esm/has-magic.d.ts",
+          "upstreamPath": "dist/esm/has-magic.d.ts",
+          "upstreamSha256": "4dc19c0c00dc6aecbc60ccbde00e5c6302197593bb47cd481294d3f78a386b93",
+          "upstreamNormalizedSha256": "4dc19c0c00dc6aecbc60ccbde00e5c6302197593bb47cd481294d3f78a386b93",
+          "sha256": "c2ca145054b378cf5d651a1e6384d201b421a5f4efb22d9f68e9a415aaacc176",
+          "bytes": 761
+        },
+        {
+          "path": "lib/esm/has-magic.js",
+          "upstreamPath": "dist/esm/has-magic.js",
+          "upstreamSha256": "875f1dc7229d850e9adac1786cf1f0fea3a718f4e91242049be0e409c19a8e02",
+          "upstreamNormalizedSha256": "875f1dc7229d850e9adac1786cf1f0fea3a718f4e91242049be0e409c19a8e02",
+          "sha256": "df005040c858e2dc848ccfb5a79a7204d68502fd5e00ea9ba9909fe0741eaefd",
+          "bytes": 918
+        },
+        {
+          "path": "lib/esm/ignore.d.ts",
+          "upstreamPath": "dist/esm/ignore.d.ts",
+          "upstreamSha256": "d840bff80b305e555ce81588219586207da31317649256fa021ad293de9a3d1a",
+          "upstreamNormalizedSha256": "d840bff80b305e555ce81588219586207da31317649256fa021ad293de9a3d1a",
+          "sha256": "7ef350938381ade9a7981356b6f8049db77fa65a9115ec4ae3f0db50484114fd",
+          "bytes": 814
+        },
+        {
+          "path": "lib/esm/ignore.js",
+          "upstreamPath": "dist/esm/ignore.js",
+          "upstreamSha256": "e0c4fd1231423017907978530f4af1b04bbb3152f4206d869bd8ccc3c68264e2",
+          "upstreamNormalizedSha256": "e0c4fd1231423017907978530f4af1b04bbb3152f4206d869bd8ccc3c68264e2",
+          "sha256": "22a3d48cdfa75d444f1c36e7fba1bd8ff4502e9af903e4f91bbb0242712a5dd6",
+          "bytes": 4102
+        },
+        {
+          "path": "lib/esm/index.d.ts",
+          "upstreamPath": "dist/esm/index.d.ts",
+          "upstreamSha256": "b0287d4e1952363942bc3925344293dda6411afc2791c5421b20df03353751bb",
+          "upstreamNormalizedSha256": "b0287d4e1952363942bc3925344293dda6411afc2791c5421b20df03353751bb",
+          "sha256": "af7e54f2464140eef193c401f080b3803e61a0eea4e2006ce8057f5458ac5da1",
+          "bytes": 6212
+        },
+        {
+          "path": "lib/esm/index.js",
+          "upstreamPath": "dist/esm/index.js",
+          "upstreamSha256": "c1c6edeb1f365b61dba99c88592aba8bf36fde8bc6d9f7c515e78086d87e2380",
+          "upstreamNormalizedSha256": "c1c6edeb1f365b61dba99c88592aba8bf36fde8bc6d9f7c515e78086d87e2380",
+          "sha256": "ab89c49bb09af1815d70646bf8b9d66c5818350338cc3940ca6d1f89c2f001b2",
+          "bytes": 1648
+        },
+        {
+          "path": "lib/esm/package.json",
+          "upstreamPath": "dist/esm/package.json",
+          "upstreamSha256": "3ca9d4afd21425087cf31893b8f9f63c81b0b8408db5e343ca76e5f8aa26ab9a",
+          "upstreamNormalizedSha256": "d2aaf324399446516b42d82624be18adcd6465fddf100b7ba79f57323f63da52",
+          "sha256": "3ca9d4afd21425087cf31893b8f9f63c81b0b8408db5e343ca76e5f8aa26ab9a",
+          "bytes": 23
+        },
+        {
+          "path": "lib/esm/pattern.d.ts",
+          "upstreamPath": "dist/esm/pattern.d.ts",
+          "upstreamSha256": "d24b4b0326495a6afe97b5c692f875ace215e93e979d2ee9ffe202092b52076f",
+          "upstreamNormalizedSha256": "d24b4b0326495a6afe97b5c692f875ace215e93e979d2ee9ffe202092b52076f",
+          "sha256": "80cc1504063dc34c3dc5fc8648a040f314ec4a3d7e949fd5637e4414de48aa8e",
+          "bytes": 2204
+        },
+        {
+          "path": "lib/esm/pattern.js",
+          "upstreamPath": "dist/esm/pattern.js",
+          "upstreamSha256": "743f9d4274cdd45875e180afbde70a14acd776a16061225aa80fa3d46de5cc7a",
+          "upstreamNormalizedSha256": "743f9d4274cdd45875e180afbde70a14acd776a16061225aa80fa3d46de5cc7a",
+          "sha256": "129394935f6339f60766d10cbdac4ede24a151d791af70dfb5975bb19ead975c",
+          "bytes": 7336
+        },
+        {
+          "path": "lib/esm/processor.d.ts",
+          "upstreamPath": "dist/esm/processor.d.ts",
+          "upstreamSha256": "5d20853a892f76d9c0c01f7a38c428f48f8fca89c33426320826d1f0090a7dac",
+          "upstreamNormalizedSha256": "5d20853a892f76d9c0c01f7a38c428f48f8fca89c33426320826d1f0090a7dac",
+          "sha256": "0cdd189b9be3fdf95a0aaff02a13c0a1b8c70cc285740392670dd99c9982d85b",
+          "bytes": 2137
+        },
+        {
+          "path": "lib/esm/processor.js",
+          "upstreamPath": "dist/esm/processor.js",
+          "upstreamSha256": "e0f118e843d05a09908943f8859e884aa8f4164178745bcdc9f09929199834d0",
+          "upstreamNormalizedSha256": "e0f118e843d05a09908943f8859e884aa8f4164178745bcdc9f09929199834d0",
+          "sha256": "48b0d464f31759002b9c5d3e6769e54a6b5865c9d4ace1ff1d2c7988af20cc75",
+          "bytes": 10454
+        },
+        {
+          "path": "lib/esm/walker.d.ts",
+          "upstreamPath": "dist/esm/walker.d.ts",
+          "upstreamSha256": "c3ab91e697053ab728b5621722040feb03b57d64aa91267e7fca7b2f9dd1ee55",
+          "upstreamNormalizedSha256": "c3ab91e697053ab728b5621722040feb03b57d64aa91267e7fca7b2f9dd1ee55",
+          "sha256": "f75fc617141ed75dab1cf18ab5121cca7c0d6de8814ccc4a987cbb500691c93c",
+          "bytes": 3781
+        },
+        {
+          "path": "lib/esm/walker.js",
+          "upstreamPath": "dist/esm/walker.js",
+          "upstreamSha256": "3e15af549ecc74d8691982d571168fd4b0e38b494c2cbb3edcfb8f97d4036ac6",
+          "upstreamNormalizedSha256": "3e15af549ecc74d8691982d571168fd4b0e38b494c2cbb3edcfb8f97d4036ac6",
+          "sha256": "229dbd412f82cdc86b7063027d71c5bc622df442fcd41e5a67b51b8b94bf707f",
+          "bytes": 12544
+        },
+        {
+          "path": "LICENSE.md",
+          "upstreamPath": "LICENSE.md",
+          "upstreamSha256": "a49c9ba464796f65b59fca3f1e6ca40912df1e859f575383223f7ec6c5baae09",
+          "upstreamNormalizedSha256": "e80af3fc41092353787eb36021f0aec4e2a7d2e920c923ed4d4f569ac3df2d43",
+          "sha256": "a49c9ba464796f65b59fca3f1e6ca40912df1e859f575383223f7ec6c5baae09",
+          "bytes": 1764
+        },
+        {
+          "path": "package.json",
+          "upstreamPath": "package.json",
+          "upstreamSha256": "5a28ef9a1f5252feb47ffe288a6350fe99b18311462e6a9cdacbdd0bb4be6be9",
+          "upstreamNormalizedSha256": "3c8cc6fdc51a3a7ef65a8a54decb0bc1e07d023137e912c25fcbe5c91d8a1717",
+          "sha256": "ed90862d59ce1818be62d49afcd54f4a7ceee69366b74e0dedd9c41b393a3752",
+          "bytes": 1360
+        }
+      ],
+      "archive": {
+        "path": "vendor/archives/steam-bridge-build-glob13-13.0.6-steam-bridge.1.tgz",
+        "sha256": "5ac2dd5815294bdf463ba65eb07c766f10c845c74fe855c83f2b587f57504918",
+        "integrity": "sha512-9zJE5dupm4Xy6+f7lFVUWB9xehrkXfnk49+C4ZgA7pY1EaTMk+vVz8bjFrkokT1K1cRQuEx5GED7zKXEFKdn9g=="
+      }
+    },
+    {
+      "directory": "minimatch10",
+      "upstream": {
+        "name": "minimatch",
+        "version": "10.2.6",
+        "gitCommit": "ded1bbd01beca62a5978bc1650ed0a1ccf9039d5",
+        "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A=="
+      },
+      "files": [
+        {
+          "path": "lib/commonjs/assert-valid-pattern.d.ts",
+          "upstreamPath": "dist/commonjs/assert-valid-pattern.d.ts",
+          "upstreamSha256": "ff8872a24ed233ed9b80a521c1c5214ee996f4d649f537a1e8d12196d9f83d77",
+          "upstreamNormalizedSha256": "ff8872a24ed233ed9b80a521c1c5214ee996f4d649f537a1e8d12196d9f83d77",
+          "sha256": "bbd8aad8df5cd0beda5a58f44e48b0a9d84d04240476bc1d77fb6fb1ffcca6f2",
+          "bytes": 120
+        },
+        {
+          "path": "lib/commonjs/assert-valid-pattern.js",
+          "upstreamPath": "dist/commonjs/assert-valid-pattern.js",
+          "upstreamSha256": "fcd3b0e6efee67b11249804cc64bf4d22c883395491f79bfb484869d61823600",
+          "upstreamNormalizedSha256": "fcd3b0e6efee67b11249804cc64bf4d22c883395491f79bfb484869d61823600",
+          "sha256": "2881d6774a80b992b9e48bd8848c298ec88a5e52bb3f12564317deca1d1d1716",
+          "bytes": 493
+        },
+        {
+          "path": "lib/commonjs/ast.d.ts",
+          "upstreamPath": "dist/commonjs/ast.d.ts",
+          "upstreamSha256": "a2db9e9a763c2249e423e2fa06fe16979684125f0ea41b04ca96c73467fcadc5",
+          "upstreamNormalizedSha256": "a2db9e9a763c2249e423e2fa06fe16979684125f0ea41b04ca96c73467fcadc5",
+          "sha256": "be6e856919e1459f624ee9e44732bc3ac6887c5f258edc5939f378bd1936586a",
+          "bytes": 846
+        },
+        {
+          "path": "lib/commonjs/ast.js",
+          "upstreamPath": "dist/commonjs/ast.js",
+          "upstreamSha256": "64eef2ec09b28ba2db87a46111ad87e1e56c73b603baf6de86a12eb5b591f324",
+          "upstreamNormalizedSha256": "99ab695e91d1a6c04a96db6b431ffaa35cec4a3750f4767d12b40eaf2da73424",
+          "sha256": "df49e715d458e206d376c7b2994ee2ad46f1b7200a66b71b13c63b5a5ab6c779",
+          "bytes": 30650
+        },
+        {
+          "path": "lib/commonjs/brace-expressions.d.ts",
+          "upstreamPath": "dist/commonjs/brace-expressions.d.ts",
+          "upstreamSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "upstreamNormalizedSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "sha256": "3bbf8f0406ceb29478ddcef4fa5e14048f3bcaccb4ccb0e353ec17452a4bb4e8",
+          "bytes": 252
+        },
+        {
+          "path": "lib/commonjs/brace-expressions.js",
+          "upstreamPath": "dist/commonjs/brace-expressions.js",
+          "upstreamSha256": "12054a62fa32362027b8103896d28d65adad412efb2a41f01af2e2e7400bbf9a",
+          "upstreamNormalizedSha256": "12054a62fa32362027b8103896d28d65adad412efb2a41f01af2e2e7400bbf9a",
+          "sha256": "31b0f6ae8b2a223a86891ad9bc18574aafca4cac7a2da85feeec2b9ee2023499",
+          "bytes": 5744
+        },
+        {
+          "path": "lib/commonjs/escape.d.ts",
+          "upstreamPath": "dist/commonjs/escape.d.ts",
+          "upstreamSha256": "a7224113134dbd16bcf5e95e31b02f2d3da83aa99756a4b3cd133031670c72fc",
+          "upstreamNormalizedSha256": "a7224113134dbd16bcf5e95e31b02f2d3da83aa99756a4b3cd133031670c72fc",
+          "sha256": "87eb720b0a85a548484f3da2f7722ac7a1e40d5a71267f7458327c69bc90fbcb",
+          "bytes": 782
+        },
+        {
+          "path": "lib/commonjs/escape.js",
+          "upstreamPath": "dist/commonjs/escape.js",
+          "upstreamSha256": "54b57f8f50c8e834f35a30c1848ac3f79acf8dd85894505f046afaf3965e63a0",
+          "upstreamNormalizedSha256": "54b57f8f50c8e834f35a30c1848ac3f79acf8dd85894505f046afaf3965e63a0",
+          "sha256": "91334aef4dbca58904c599c28f942e6dfa07a50574568aa45c5c44f5fb16c942",
+          "bytes": 1254
+        },
+        {
+          "path": "lib/commonjs/index.d.ts",
+          "upstreamPath": "dist/commonjs/index.d.ts",
+          "upstreamSha256": "4a3fbf9bb0ebcae246f172ba1f5df33404a4dc0fde03a5241434889b1ca595a5",
+          "upstreamNormalizedSha256": "4a3fbf9bb0ebcae246f172ba1f5df33404a4dc0fde03a5241434889b1ca595a5",
+          "sha256": "729b40b39ef9fa984bf88e9faa4e548d2b713c517a76708c356122a53420bd19",
+          "bytes": 7361
+        },
+        {
+          "path": "lib/commonjs/index.js",
+          "upstreamPath": "dist/commonjs/index.js",
+          "upstreamSha256": "d224f71f20d7c206fcc5b7e9f747324c7698345a0b2c28d717dd9cf698306783",
+          "upstreamNormalizedSha256": "b28ba241b1303aac698e7a458d0e098f136c46ca368165a1f748d0a188493c81",
+          "sha256": "8df3e4b4c1032a3f9e3fdae9e2a74a48fe4bbfd460e021baef3524a0a20bcdc0",
+          "bytes": 45328
+        },
+        {
+          "path": "lib/commonjs/package.json",
+          "upstreamPath": "dist/commonjs/package.json",
+          "upstreamSha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a",
+          "upstreamNormalizedSha256": "73513439b93b2391b8a67720b5e0959f46afc909c1f0fc7dd73b79c5ae36bda7",
+          "sha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a",
+          "bytes": 25
+        },
+        {
+          "path": "lib/commonjs/unescape.d.ts",
+          "upstreamPath": "dist/commonjs/unescape.d.ts",
+          "upstreamSha256": "7d3795e78cdc9079f6b03c6f85145f469582795af61134bbcf0568ae2e1476fe",
+          "upstreamNormalizedSha256": "7d3795e78cdc9079f6b03c6f85145f469582795af61134bbcf0568ae2e1476fe",
+          "sha256": "46f81ccd1578e468ff804ca065def50488d1c47f27a6026689f4e2912aa06848",
+          "bytes": 957
+        },
+        {
+          "path": "lib/commonjs/unescape.js",
+          "upstreamPath": "dist/commonjs/unescape.js",
+          "upstreamSha256": "bec1bb4483a2c325599949dd6668b5b7daa2dcbe046c5a09899bc8c5b51c08c1",
+          "upstreamNormalizedSha256": "bec1bb4483a2c325599949dd6668b5b7daa2dcbe046c5a09899bc8c5b51c08c1",
+          "sha256": "2cf96219ae157b6632a4d15101ee6ed8c8007294a170420e0b73a34b96b3455f",
+          "bytes": 1391
+        },
+        {
+          "path": "lib/esm/assert-valid-pattern.d.ts",
+          "upstreamPath": "dist/esm/assert-valid-pattern.d.ts",
+          "upstreamSha256": "ff8872a24ed233ed9b80a521c1c5214ee996f4d649f537a1e8d12196d9f83d77",
+          "upstreamNormalizedSha256": "ff8872a24ed233ed9b80a521c1c5214ee996f4d649f537a1e8d12196d9f83d77",
+          "sha256": "bbd8aad8df5cd0beda5a58f44e48b0a9d84d04240476bc1d77fb6fb1ffcca6f2",
+          "bytes": 120
+        },
+        {
+          "path": "lib/esm/assert-valid-pattern.js",
+          "upstreamPath": "dist/esm/assert-valid-pattern.js",
+          "upstreamSha256": "90e8d3327d573b9d2391edf03dc7d50c1c0b468d720a4c0fb4a08a36ee5c50dc",
+          "upstreamNormalizedSha256": "90e8d3327d573b9d2391edf03dc7d50c1c0b468d720a4c0fb4a08a36ee5c50dc",
+          "sha256": "4fa20b9307876fd5579d790314a5ac82c9daf4556c50f70034ffdfb556c325ca",
+          "bytes": 337
+        },
+        {
+          "path": "lib/esm/ast.d.ts",
+          "upstreamPath": "dist/esm/ast.d.ts",
+          "upstreamSha256": "a2db9e9a763c2249e423e2fa06fe16979684125f0ea41b04ca96c73467fcadc5",
+          "upstreamNormalizedSha256": "a2db9e9a763c2249e423e2fa06fe16979684125f0ea41b04ca96c73467fcadc5",
+          "sha256": "be6e856919e1459f624ee9e44732bc3ac6887c5f258edc5939f378bd1936586a",
+          "bytes": 846
+        },
+        {
+          "path": "lib/esm/ast.js",
+          "upstreamPath": "dist/esm/ast.js",
+          "upstreamSha256": "ec35db8358a5a7333dbd6bdb1ea6bd3f03d1433297de7d615f24f7df5fba06b5",
+          "upstreamNormalizedSha256": "c669a59773677ea77928bf8cb29d175e901f63425938b8b1a0919963d1f464c1",
+          "sha256": "9fa2002df89f1c977e79033cc0af1c588901aa6b246832f1b2e713186267a9fe",
+          "bytes": 30416
+        },
+        {
+          "path": "lib/esm/brace-expressions.d.ts",
+          "upstreamPath": "dist/esm/brace-expressions.d.ts",
+          "upstreamSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "upstreamNormalizedSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "sha256": "3bbf8f0406ceb29478ddcef4fa5e14048f3bcaccb4ccb0e353ec17452a4bb4e8",
+          "bytes": 252
+        },
+        {
+          "path": "lib/esm/brace-expressions.js",
+          "upstreamPath": "dist/esm/brace-expressions.js",
+          "upstreamSha256": "7c888d47a86b751d5e876938095c0875e837e7dd30da626ede6117c00481baeb",
+          "upstreamNormalizedSha256": "7c888d47a86b751d5e876938095c0875e837e7dd30da626ede6117c00481baeb",
+          "sha256": "5bf119dddbfa5ba6349b059813c8aafedade8062ca9210629953ee3f741aa1dd",
+          "bytes": 5612
+        },
+        {
+          "path": "lib/esm/escape.d.ts",
+          "upstreamPath": "dist/esm/escape.d.ts",
+          "upstreamSha256": "a7224113134dbd16bcf5e95e31b02f2d3da83aa99756a4b3cd133031670c72fc",
+          "upstreamNormalizedSha256": "a7224113134dbd16bcf5e95e31b02f2d3da83aa99756a4b3cd133031670c72fc",
+          "sha256": "87eb720b0a85a548484f3da2f7722ac7a1e40d5a71267f7458327c69bc90fbcb",
+          "bytes": 782
+        },
+        {
+          "path": "lib/esm/escape.js",
+          "upstreamPath": "dist/esm/escape.js",
+          "upstreamSha256": "8418e37c202bcd247e76b1c205d4eff9474f15fb76c1db1ef0688cb6a8ec3c94",
+          "upstreamNormalizedSha256": "8418e37c202bcd247e76b1c205d4eff9474f15fb76c1db1ef0688cb6a8ec3c94",
+          "sha256": "a8343cf5a6d1c5042ce20c4cbf4467149717bf0e919c459fbb03e445b84113ec",
+          "bytes": 1134
+        },
+        {
+          "path": "lib/esm/index.d.ts",
+          "upstreamPath": "dist/esm/index.d.ts",
+          "upstreamSha256": "4a3fbf9bb0ebcae246f172ba1f5df33404a4dc0fde03a5241434889b1ca595a5",
+          "upstreamNormalizedSha256": "4a3fbf9bb0ebcae246f172ba1f5df33404a4dc0fde03a5241434889b1ca595a5",
+          "sha256": "729b40b39ef9fa984bf88e9faa4e548d2b713c517a76708c356122a53420bd19",
+          "bytes": 7361
+        },
+        {
+          "path": "lib/esm/index.js",
+          "upstreamPath": "dist/esm/index.js",
+          "upstreamSha256": "59821ec2ce0d3df968292036e5c831ad322b33e9c33a949ecbc9dfe125d165be",
+          "upstreamNormalizedSha256": "76a8124bb801de35395c078338fbd083ba5a6858d40e9b5038808048fdd58202",
+          "sha256": "0c2b7e52f02f8b6a7c256db9c60fe0be69e5a9372b013231685e68c98a76fd9b",
+          "bytes": 43998
+        },
+        {
+          "path": "lib/esm/package.json",
+          "upstreamPath": "dist/esm/package.json",
+          "upstreamSha256": "3ca9d4afd21425087cf31893b8f9f63c81b0b8408db5e343ca76e5f8aa26ab9a",
+          "upstreamNormalizedSha256": "d2aaf324399446516b42d82624be18adcd6465fddf100b7ba79f57323f63da52",
+          "sha256": "3ca9d4afd21425087cf31893b8f9f63c81b0b8408db5e343ca76e5f8aa26ab9a",
+          "bytes": 23
+        },
+        {
+          "path": "lib/esm/unescape.d.ts",
+          "upstreamPath": "dist/esm/unescape.d.ts",
+          "upstreamSha256": "7d3795e78cdc9079f6b03c6f85145f469582795af61134bbcf0568ae2e1476fe",
+          "upstreamNormalizedSha256": "7d3795e78cdc9079f6b03c6f85145f469582795af61134bbcf0568ae2e1476fe",
+          "sha256": "46f81ccd1578e468ff804ca065def50488d1c47f27a6026689f4e2912aa06848",
+          "bytes": 957
+        },
+        {
+          "path": "lib/esm/unescape.js",
+          "upstreamPath": "dist/esm/unescape.js",
+          "upstreamSha256": "2cd61ba96e616969f152445c61ec2ca129a0afd2028ea71309b862a4222304d6",
+          "upstreamNormalizedSha256": "2cd61ba96e616969f152445c61ec2ca129a0afd2028ea71309b862a4222304d6",
+          "sha256": "198a8d577032d4c72229c4086d188ae675f3b02edf272ef2e85eb97cb668eee2",
+          "bytes": 1265
+        },
+        {
+          "path": "LICENSE.md",
+          "upstreamPath": "LICENSE.md",
+          "upstreamSha256": "2c7c5d22ed5a8ee968c64757710979afcd77438c48b4a265b94e615babd8a901",
+          "upstreamNormalizedSha256": "aa4c6585f201d6525bf712407f54c84fd7d607f1c129a25294b0969fbfba6863",
+          "sha256": "2c7c5d22ed5a8ee968c64757710979afcd77438c48b4a265b94e615babd8a901",
+          "bytes": 1550
+        },
+        {
+          "path": "package.json",
+          "upstreamPath": "package.json",
+          "upstreamSha256": "bb847ba240909c9a36d4eaeb4e0efdc3e31182aeef208c1611259a48f282ea75",
+          "upstreamNormalizedSha256": "b9b122e574f8ecc718b33208450a53c626040757657293af10163b6f27e1abe9",
+          "sha256": "cb8cde71d8b885b8c6f1a8bc9b939599f65d3418bad867f6c673153bb7e1ab78",
+          "bytes": 1020
+        }
+      ],
+      "archive": {
+        "path": "vendor/archives/steam-bridge-build-minimatch10-10.2.6-steam-bridge.1.tgz",
+        "sha256": "362d93113bf09bfd96f0cf2910628c30e256ec757fb7b6267d5415aca2a2a764",
+        "integrity": "sha512-CEwhjEWuIaHp2wVZH6Qu50BBknPp0fR/TyMuEaFnNlML/Fzeudyxt+4IdaSqPtC76YXT8qnkJPLPChj2bmhJdA=="
+      }
+    },
+    {
+      "directory": "minimatch9",
+      "upstream": {
+        "name": "minimatch",
+        "version": "9.0.9",
+        "gitCommit": "8a10e473e2e0ff03c2d4de308f257093af2bce21",
+        "integrity": "sha512-OBwBN9AL4dqmETlpS2zasx+vTeWclWzkblfZk7KTA5j3jeOONz/tRCnZomUyvNg83wL5Zv9Ss6HMJXAgL8R2Yg=="
+      },
+      "files": [
+        {
+          "path": "lib/commonjs/assert-valid-pattern.d.ts",
+          "upstreamPath": "dist/commonjs/assert-valid-pattern.d.ts",
+          "upstreamSha256": "8470352a01aeabc3149ab72c3bd4f4bb262315f2f23572adf5e4f00f7160027f",
+          "upstreamNormalizedSha256": "8470352a01aeabc3149ab72c3bd4f4bb262315f2f23572adf5e4f00f7160027f",
+          "sha256": "0a5f7c318e0525a21267d33301bc5dfc2193be5fcc334440f8ddea04fe4d3f79",
+          "bytes": 116
+        },
+        {
+          "path": "lib/commonjs/assert-valid-pattern.js",
+          "upstreamPath": "dist/commonjs/assert-valid-pattern.js",
+          "upstreamSha256": "fcd3b0e6efee67b11249804cc64bf4d22c883395491f79bfb484869d61823600",
+          "upstreamNormalizedSha256": "fcd3b0e6efee67b11249804cc64bf4d22c883395491f79bfb484869d61823600",
+          "sha256": "2881d6774a80b992b9e48bd8848c298ec88a5e52bb3f12564317deca1d1d1716",
+          "bytes": 493
+        },
+        {
+          "path": "lib/commonjs/ast.d.ts",
+          "upstreamPath": "dist/commonjs/ast.d.ts",
+          "upstreamSha256": "1ef34600dcdf3c557836be168982275ba6ea91a6dc27b81a3342c76226bf0dff",
+          "upstreamNormalizedSha256": "1ef34600dcdf3c557836be168982275ba6ea91a6dc27b81a3342c76226bf0dff",
+          "sha256": "0bd070ec42ee4cd133a9f4da6da2899435b5217a9b6d5231341e13fd4f06d6a4",
+          "bytes": 796
+        },
+        {
+          "path": "lib/commonjs/ast.js",
+          "upstreamPath": "dist/commonjs/ast.js",
+          "upstreamSha256": "fbf87b713254f8fcc915092093b6aa4dc0f4f7ff43ac646ee20875b229803e92",
+          "upstreamNormalizedSha256": "9997c7d2dd7250d5c82f5666897163684d157ffae413ae974099f10b47a6ac62",
+          "sha256": "648d57a9419f99217915eaf84dfbc8831af319f3a8c6c3e13ec1183268e024c9",
+          "bytes": 27788
+        },
+        {
+          "path": "lib/commonjs/brace-expressions.d.ts",
+          "upstreamPath": "dist/commonjs/brace-expressions.d.ts",
+          "upstreamSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "upstreamNormalizedSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "sha256": "3bbf8f0406ceb29478ddcef4fa5e14048f3bcaccb4ccb0e353ec17452a4bb4e8",
+          "bytes": 252
+        },
+        {
+          "path": "lib/commonjs/brace-expressions.js",
+          "upstreamPath": "dist/commonjs/brace-expressions.js",
+          "upstreamSha256": "9af1c8892ed1e6a153d2f158438722c666aa906eb7e2ec8a27fce7cf035b4278",
+          "upstreamNormalizedSha256": "9af1c8892ed1e6a153d2f158438722c666aa906eb7e2ec8a27fce7cf035b4278",
+          "sha256": "a204db0ccda7b130b59a38f946ff8c3051c24286e1d7b8739e11d0ff67bf9141",
+          "bytes": 5764
+        },
+        {
+          "path": "lib/commonjs/escape.d.ts",
+          "upstreamPath": "dist/commonjs/escape.d.ts",
+          "upstreamSha256": "58486fd899715857d9cfecf89c28fd8d6045712795036f69acc3ecd049f7e383",
+          "upstreamNormalizedSha256": "58486fd899715857d9cfecf89c28fd8d6045712795036f69acc3ecd049f7e383",
+          "sha256": "359bfc6018c202cce3337af8e2f8d5213d44e96a055c312c0774f2938360ab3f",
+          "bytes": 648
+        },
+        {
+          "path": "lib/commonjs/escape.js",
+          "upstreamPath": "dist/commonjs/escape.js",
+          "upstreamSha256": "55e384815856f5708dad6e501aa47314bc08dcb4b90d11db85e413716f948c17",
+          "upstreamNormalizedSha256": "55e384815856f5708dad6e501aa47314bc08dcb4b90d11db85e413716f948c17",
+          "sha256": "49517a6c0d1025ebd05e4e28c4522287fa37b1ef1db94a1eddc3761edb7c8868",
+          "bytes": 969
+        },
+        {
+          "path": "lib/commonjs/index.d.ts",
+          "upstreamPath": "dist/commonjs/index.d.ts",
+          "upstreamSha256": "213394807c8e4aac86127b2756b9e019e9c73e6dfd02299128b0cc375fdcdc3f",
+          "upstreamNormalizedSha256": "213394807c8e4aac86127b2756b9e019e9c73e6dfd02299128b0cc375fdcdc3f",
+          "sha256": "a6c496fc9ac047769f81fe4fdb8454de2e6bfa36e618df61096b3d086163b4e5",
+          "bytes": 4048
+        },
+        {
+          "path": "lib/commonjs/index.js",
+          "upstreamPath": "dist/commonjs/index.js",
+          "upstreamSha256": "a958a41536f57484cc427a03a10a6a094eb062a004c58261add4dbb6dd77bbda",
+          "upstreamNormalizedSha256": "a958a41536f57484cc427a03a10a6a094eb062a004c58261add4dbb6dd77bbda",
+          "sha256": "0356d67daf860822aa2487c25ec647a4cea99bb5ba1952fa5bb6098ff1699de1",
+          "bytes": 40042
+        },
+        {
+          "path": "lib/commonjs/package.json",
+          "upstreamPath": "dist/commonjs/package.json",
+          "upstreamSha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a",
+          "upstreamNormalizedSha256": "73513439b93b2391b8a67720b5e0959f46afc909c1f0fc7dd73b79c5ae36bda7",
+          "sha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a",
+          "bytes": 25
+        },
+        {
+          "path": "lib/commonjs/unescape.d.ts",
+          "upstreamPath": "dist/commonjs/unescape.d.ts",
+          "upstreamSha256": "32ffef6e12f038a2cbf047cbc5955ac09202426780b94b46b18080a8cce83b40",
+          "upstreamNormalizedSha256": "32ffef6e12f038a2cbf047cbc5955ac09202426780b94b46b18080a8cce83b40",
+          "sha256": "cd342e5f3b393fa79780dcf1da3f38e4fca0ff629d74aa5d184c85065d29fbb9",
+          "bytes": 789
+        },
+        {
+          "path": "lib/commonjs/unescape.js",
+          "upstreamPath": "dist/commonjs/unescape.js",
+          "upstreamSha256": "ff3e0dd4664576cfe078c3b494724d7cf2f691cdf960304e354e7c34fa6b5a30",
+          "upstreamNormalizedSha256": "ff3e0dd4664576cfe078c3b494724d7cf2f691cdf960304e354e7c34fa6b5a30",
+          "sha256": "b9bbc1611bd435fcd374aa4dc6b4503f619d9fba9df50955efb57a3855d9e8a6",
+          "bytes": 974
+        },
+        {
+          "path": "lib/esm/assert-valid-pattern.d.ts",
+          "upstreamPath": "dist/esm/assert-valid-pattern.d.ts",
+          "upstreamSha256": "8470352a01aeabc3149ab72c3bd4f4bb262315f2f23572adf5e4f00f7160027f",
+          "upstreamNormalizedSha256": "8470352a01aeabc3149ab72c3bd4f4bb262315f2f23572adf5e4f00f7160027f",
+          "sha256": "0a5f7c318e0525a21267d33301bc5dfc2193be5fcc334440f8ddea04fe4d3f79",
+          "bytes": 116
+        },
+        {
+          "path": "lib/esm/assert-valid-pattern.js",
+          "upstreamPath": "dist/esm/assert-valid-pattern.js",
+          "upstreamSha256": "90e8d3327d573b9d2391edf03dc7d50c1c0b468d720a4c0fb4a08a36ee5c50dc",
+          "upstreamNormalizedSha256": "90e8d3327d573b9d2391edf03dc7d50c1c0b468d720a4c0fb4a08a36ee5c50dc",
+          "sha256": "4fa20b9307876fd5579d790314a5ac82c9daf4556c50f70034ffdfb556c325ca",
+          "bytes": 337
+        },
+        {
+          "path": "lib/esm/ast.d.ts",
+          "upstreamPath": "dist/esm/ast.d.ts",
+          "upstreamSha256": "1ef34600dcdf3c557836be168982275ba6ea91a6dc27b81a3342c76226bf0dff",
+          "upstreamNormalizedSha256": "1ef34600dcdf3c557836be168982275ba6ea91a6dc27b81a3342c76226bf0dff",
+          "sha256": "0bd070ec42ee4cd133a9f4da6da2899435b5217a9b6d5231341e13fd4f06d6a4",
+          "bytes": 796
+        },
+        {
+          "path": "lib/esm/ast.js",
+          "upstreamPath": "dist/esm/ast.js",
+          "upstreamSha256": "15ce7a00a4afc2742e0ea01c5c32f27400cd88493b500c7d0057752da35e13c2",
+          "upstreamNormalizedSha256": "39ffe7ed5df236a18aa420047130b388d55768d2202b3b55ed44327f26cb4f26",
+          "sha256": "b0a2fd4cd1c7571986cf0f5058ebe3d7fc1ec4ff3241ba65721db08ff751e38a",
+          "bytes": 27554
+        },
+        {
+          "path": "lib/esm/brace-expressions.d.ts",
+          "upstreamPath": "dist/esm/brace-expressions.d.ts",
+          "upstreamSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "upstreamNormalizedSha256": "c653127b895660361106b3b5131a61060dd1ef9da6c4fded89ab2400064c6d53",
+          "sha256": "3bbf8f0406ceb29478ddcef4fa5e14048f3bcaccb4ccb0e353ec17452a4bb4e8",
+          "bytes": 252
+        },
+        {
+          "path": "lib/esm/brace-expressions.js",
+          "upstreamPath": "dist/esm/brace-expressions.js",
+          "upstreamSha256": "e99f6c57070874422dae185154539c9b33a6fb34e2a12eebac8626dd0ab35204",
+          "upstreamNormalizedSha256": "e99f6c57070874422dae185154539c9b33a6fb34e2a12eebac8626dd0ab35204",
+          "sha256": "5de5c7f67acf46cdaca8e36a35e3259ee7e1372329d3c16b615c01bafc4a786c",
+          "bytes": 5632
+        },
+        {
+          "path": "lib/esm/escape.d.ts",
+          "upstreamPath": "dist/esm/escape.d.ts",
+          "upstreamSha256": "58486fd899715857d9cfecf89c28fd8d6045712795036f69acc3ecd049f7e383",
+          "upstreamNormalizedSha256": "58486fd899715857d9cfecf89c28fd8d6045712795036f69acc3ecd049f7e383",
+          "sha256": "359bfc6018c202cce3337af8e2f8d5213d44e96a055c312c0774f2938360ab3f",
+          "bytes": 648
+        },
+        {
+          "path": "lib/esm/escape.js",
+          "upstreamPath": "dist/esm/escape.js",
+          "upstreamSha256": "1e510823c9fbc36771c4c1b5edc1a4a5fce1cc443634c19a843d02280acd4639",
+          "upstreamNormalizedSha256": "1e510823c9fbc36771c4c1b5edc1a4a5fce1cc443634c19a843d02280acd4639",
+          "sha256": "40893ed8b8e0c7b099afcd6ce8abcb4edcbb83b7928af7cefac700d891efcde9",
+          "bytes": 849
+        },
+        {
+          "path": "lib/esm/index.d.ts",
+          "upstreamPath": "dist/esm/index.d.ts",
+          "upstreamSha256": "213394807c8e4aac86127b2756b9e019e9c73e6dfd02299128b0cc375fdcdc3f",
+          "upstreamNormalizedSha256": "213394807c8e4aac86127b2756b9e019e9c73e6dfd02299128b0cc375fdcdc3f",
+          "sha256": "a6c496fc9ac047769f81fe4fdb8454de2e6bfa36e618df61096b3d086163b4e5",
+          "bytes": 4048
+        },
+        {
+          "path": "lib/esm/index.js",
+          "upstreamPath": "dist/esm/index.js",
+          "upstreamSha256": "8772b7fc5d3c741723b3839a43f929d9d9262121c5a74535638fa40c92cc1e6d",
+          "upstreamNormalizedSha256": "8772b7fc5d3c741723b3839a43f929d9d9262121c5a74535638fa40c92cc1e6d",
+          "sha256": "01c6bac382f4cdbb59c62bde67b5ffb366cef3606d2c6421d21bfd7e88fb921b",
+          "bytes": 38551
+        },
+        {
+          "path": "lib/esm/package.json",
+          "upstreamPath": "dist/esm/package.json",
+          "upstreamSha256": "3ca9d4afd21425087cf31893b8f9f63c81b0b8408db5e343ca76e5f8aa26ab9a",
+          "upstreamNormalizedSha256": "d2aaf324399446516b42d82624be18adcd6465fddf100b7ba79f57323f63da52",
+          "sha256": "3ca9d4afd21425087cf31893b8f9f63c81b0b8408db5e343ca76e5f8aa26ab9a",
+          "bytes": 23
+        },
+        {
+          "path": "lib/esm/unescape.d.ts",
+          "upstreamPath": "dist/esm/unescape.d.ts",
+          "upstreamSha256": "32ffef6e12f038a2cbf047cbc5955ac09202426780b94b46b18080a8cce83b40",
+          "upstreamNormalizedSha256": "32ffef6e12f038a2cbf047cbc5955ac09202426780b94b46b18080a8cce83b40",
+          "sha256": "cd342e5f3b393fa79780dcf1da3f38e4fca0ff629d74aa5d184c85065d29fbb9",
+          "bytes": 789
+        },
+        {
+          "path": "lib/esm/unescape.js",
+          "upstreamPath": "dist/esm/unescape.js",
+          "upstreamSha256": "4c52110a7053ca74d659226519e2d977d10ccbba0305d514d2aeffa78e1583f5",
+          "upstreamNormalizedSha256": "4c52110a7053ca74d659226519e2d977d10ccbba0305d514d2aeffa78e1583f5",
+          "sha256": "1bad5fae4159eb4b93c69311e2898594d098fead2d79172f153de21b00cda3e7",
+          "bytes": 848
+        },
+        {
+          "path": "LICENSE",
+          "upstreamPath": "LICENSE",
+          "upstreamSha256": "d11323827fa4edeaafc437cc5b91b6971b335f0127efeeb42bf5122fe8657e8f",
+          "upstreamNormalizedSha256": "5ca1040a186f709f87266e620a9c318ffebf80bb055aeecedbc8fcea2ba2feaf",
+          "sha256": "d11323827fa4edeaafc437cc5b91b6971b335f0127efeeb42bf5122fe8657e8f",
+          "bytes": 775
+        },
+        {
+          "path": "package.json",
+          "upstreamPath": "package.json",
+          "upstreamSha256": "07347ae64d38f4cc1be3ffcc83322ec40d4609f5f3e9dc027ae91a4617239ac2",
+          "upstreamNormalizedSha256": "ab225c1d10af0082854a83fb24c1ee7ae6b160acf6e5a7e0711bc2c45c7b1beb",
+          "sha256": "b8da2db461e891af8a986bd0b51a19105d1018131b4c5ea4b5798ddccc9eafc0",
+          "bytes": 1016
+        }
+      ],
+      "archive": {
+        "path": "vendor/archives/steam-bridge-build-minimatch9-9.0.9-steam-bridge.1.tgz",
+        "sha256": "c704d0498ac9a63018ce1e36f5cd5189ba38b5380ed785b68518f3ec54070667",
+        "integrity": "sha512-Gvrw/xrAOyfg3BnPKvzewAzCp9S+ipYIKNQJvu4LIHmfTCSknTHpISRXEJ3+mkJ8JcUxcKTYghTLuAPXaTKmLw=="
+      }
+    },
+    {
+      "directory": "minimatch3",
+      "upstream": {
+        "name": "minimatch",
+        "version": "3.1.5",
+        "gitCommit": "7bba97888a27a6162983056bcce2a6e28f668712",
+        "integrity": "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w=="
+      },
+      "files": [
+        {
+          "path": "LICENSE",
+          "upstreamPath": "LICENSE",
+          "upstreamSha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b",
+          "upstreamNormalizedSha256": "0ae52fe329ccfd23fedbd688361bd0dedaf5cae3e3516eb2ad17831f2d8b347c",
+          "sha256": "4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b",
+          "bytes": 765
+        },
+        {
+          "path": "minimatch.js",
+          "upstreamPath": "minimatch.js",
+          "upstreamSha256": "746849f267c4868a53729225bd85c7dccd387712136fb305fcc0a3eadd4a3d9d",
+          "upstreamNormalizedSha256": "0f03423cd3d01ef06f8387abe8c6642adaf157a1f6923c6e8d014c7bcca7ef92",
+          "sha256": "5abd33b51c77bc198e6e42afd3f4216ec57c6b9107780bffaf54dd45bac034ae",
+          "bytes": 28038
+        },
+        {
+          "path": "package.json",
+          "upstreamPath": "package.json",
+          "upstreamSha256": "eefa1c89527d52bbb2e8b053fe8ecf3e3ced399bdba82cf27e0e92edfd833938",
+          "upstreamNormalizedSha256": "d5e4c001601297686f717db8528d6795aa903b0143e78b80248afb230c1c23bc",
+          "sha256": "c26fdc0671532217048f9ca02c6c035cf636a38d3c72ef2da807dca3a5417741",
+          "bytes": 532
+        }
+      ],
+      "archive": {
+        "path": "vendor/archives/steam-bridge-build-minimatch3-3.1.5-steam-bridge.1.tgz",
+        "sha256": "57677207867f8d6a89e3f201cefb93def85bf3e43ac1dbcdaa2bed2a0696387f",
+        "integrity": "sha512-+nw7VcyOn2v8xuD9Q8sQzG13BRIW8JwKHL88vb0mkTU+3pB99I1Cl7GhKzFGSJsIexxB2nX3HpnvsrOw4f8b9A=="
+      }
+    },
+    {
+      "directory": "minimatch5",
+      "upstream": {
+        "name": "minimatch",
+        "version": "5.1.9",
+        "gitCommit": "4419b6e73f21516c6d53ca4165cb7abb3d79ae24",
+        "integrity": "sha512-7o1wEA2RyMP7Iu7GNba9vc0RWWGACJOCZBJX2GJWip0ikV+wcOsgVuY9uE8CPiyQhkGFSlhuSkZPavN7u1c2Fw=="
+      },
+      "files": [
+        {
+          "path": "lib/path.js",
+          "upstreamPath": "lib/path.js",
+          "upstreamSha256": "ac5d377288c45e5c5ea8b2deb593a5083a71d672099b52a9bf4a75d35de69e54",
+          "upstreamNormalizedSha256": "d8e5486646bac8d8ae23f8d56ce6e57b3b53378f62e0a392e349b9296006dafc",
+          "sha256": "ac5d377288c45e5c5ea8b2deb593a5083a71d672099b52a9bf4a75d35de69e54",
+          "bytes": 151
+        },
+        {
+          "path": "LICENSE",
+          "upstreamPath": "LICENSE",
+          "upstreamSha256": "d11323827fa4edeaafc437cc5b91b6971b335f0127efeeb42bf5122fe8657e8f",
+          "upstreamNormalizedSha256": "5ca1040a186f709f87266e620a9c318ffebf80bb055aeecedbc8fcea2ba2feaf",
+          "sha256": "d11323827fa4edeaafc437cc5b91b6971b335f0127efeeb42bf5122fe8657e8f",
+          "bytes": 775
+        },
+        {
+          "path": "minimatch.js",
+          "upstreamPath": "minimatch.js",
+          "upstreamSha256": "1339bca8b70e33847860daa8fc3ccfa62487e143670da01a3b718d40d5fd424f",
+          "upstreamNormalizedSha256": "e9c233161425f2258d13cf61dff32155f10759b954f7d942537835ba70ce5d86",
+          "sha256": "71d3bbf44045111e083968f619ab0bd944ad19b7c74896786eec0aedd128e63c",
+          "bytes": 30511
+        },
+        {
+          "path": "package.json",
+          "upstreamPath": "package.json",
+          "upstreamSha256": "dc1b9424c2ec4c845ba05e7402f7d22807f4ac85d31725892fd3dcafaa08f800",
+          "upstreamNormalizedSha256": "b38a0544bab7174b8de3e282ceaab1f257c3429704702187fc3d93af193fed41",
+          "sha256": "2a91643b580e811bd93ac1ec9d2c95328f74c3204d9fd2b4ed4896a77051c103",
+          "bytes": 546
+        }
+      ],
+      "archive": {
+        "path": "vendor/archives/steam-bridge-build-minimatch5-5.1.9-steam-bridge.1.tgz",
+        "sha256": "a693bdcd5826b2f2c310c568ee9606025676a5fd9163910aad16786a815e3de0",
+        "integrity": "sha512-aJFg1QsxfYkTwlRdHZ/F0ZoCjXkrShbMqvmUBnM2/TM1DSgbSZpxDBWyBQAKY+kjR0wQ8/98IbAVDX79XA1U9w=="
+      }
+    }
+  ]
+}
