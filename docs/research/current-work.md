@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-11-02 UTC
+Last reviewed: 2026-11-03 UTC
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,7 +12,8 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Finish the human-requested signed normal stable0.4.13 GitHub/npm release.
+The human-requested signed normal stable0.4.13 GitHub/npm release is live and
+independently verified. Do not dispatch, publish, rebuild, repack or retag it again.
 The README refresh and open-PR review are completed. Both public READMEs are
 equivalent and regression-checked; PRs20/21 were closed as fully superseded by
 main, including their transitive dependencies/action pins. No stale lockfile was
@@ -77,21 +78,86 @@ disabled and checked through its active CLI before install/audit. Publisher
 bootstrap stays after exact epoch identity proof. Signing isolation,
 OIDC/protected environments, public Node18 engines and runtime CI remain intact.
 
-### Next real gate: restore the actual-game test setup
+### Published0.4.13 and completed protected QA
 
-No new candidate has been launched locally, no schema8 actual-game receipt exists,
-no publish workflow has been dispatched, and no npm/stable GitHub release has
-been created. Native signature/static success does not establish gameplay.
+The fresh unchanged-candidate run completes all seven protected phases and17
+owning-operator manual observations, natural root/actor exit0, empty job, drained
+streams, closed resources and task removal. Complete candidate identities/DACLs,
+all13prequalified PEs and223external bindings reconcile independently. Eight
+distinct candidate files actually map; do not claim every qualified PE executed.
+The isolated consumer's89Bridge files and the source game's151files remain
+unchanged. The Mac's idle local IPC helper is left untouched as instructed.
 
-A bounded read-only recovery search finds the old local task/controller and
-older isolated-game source/setup directories empty after retention cleanup.
-The searched older assemblies retain only their old game EXE as visible content;
-no reusable public registered-task actor/controller was found in the searched
-QA roots. This is not a claim that no backup exists elsewhere. The known Mac
-owner chat is not readable on the currently returned hosts; no guessed host,
-new connection or claimed message delivery is substituted. The human has been
-asked for the retained backup location. No game, Steam, task, lock route,
-security/privacy setting or notification state was changed during that search.
+The unchanged schema8 generator passes. Gameplay463samples have median
+paint/fresh/native59.9/59.9/59.9FPS;106qualified overlay samples have median58.4
+at60Hz, above57. Its132-byte stderr is exactly the allowed Valve startup pair.
+Current120DPI/1600x900physical client differs from the old240DPI/3200x1800 run;
+this qualifies the present profile but does not prove streaming-only causation.
+The earlier failed result and raw logs remain unchanged.
+
+Receipt content-domain SHA256:
+0fdac5d5132a32ec42766c18f4c6e65d39384222b90049bd706415eade499c65.
+Serialized receipt-file SHA256:
+06b291fcb070b618713bb42d686ec945ed6b3aad445e391980bc0ebe80f06e00.
+Independent parser reproduction, exact-TGZ/bundle/native verification and the
+publication verification-only/configuration dry run all pass. The matching PDB
+debug ID is reverified without rebuilding.
+
+[Publish41579053411](https://github.com/jstroh/steam-bridge/actions/runs/41579053411)
+succeeded after the actual required-reviewer approval, using the unchanged
+0ef690e tooling/candidate epochs, tag CI41414411467 and original
+Release41414411589attempt1. Deployment7510532464 and the existing required
+reviewer, allowed-tag policy and OIDC configuration remain intact. The initial
+registry processing delay resolved without a second dispatch or publication.
+
+[npm0.4.13](https://www.npmjs.com/package/steam-bridge/v/0.4.13) is public and
+latest. Its downloaded12,156,737-byte TGZ matches the canonical SHA256 above;
+all89installed files match the original package fingerprint. The official npm
+signature/attestation verification passes with no invalid or missing entries.
+Authenticated SLSA bindings agree with the exact tag/source/workflow/run/attempt;
+the downloaded Windows addon retains Valid Authenticode. No installed package
+code was executed during this data-only verification.
+
+The [stable GitHub release](https://github.com/jstroh/steam-bridge/releases/tag/v0.4.13)
+is public and latest, published2026-11-03T04:51:37Z. All eight assets were
+independently downloaded and matched by size/SHA256 before publication: canonical
+TGZ, Windows bundle, package audit, native-load result, actual live-proof receipt,
+matching PDB, and both publication-epoch snapshots. Anonymous public tag/latest
+metadata independently reconfirms all eight uploaded asset digests and sizes.
+The two epoch snapshots are legitimately byte-identical immutable bindings;
+their separately executed workflow checks are retained. The release-scoped proof
+secret is removed and its absence verified; durable proof remains attached.
+
+The complete original151-file installed game is unchanged. The idle Mac helper
+is untouched. This generic library publication does not qualify, rebuild or
+promote a changed consuming application. No current publication blocker remains.
+The documentation-only closeout has independent accuracy/privacy review;
+supported-target, API-coverage, added-text privacy and whitespace checks pass.
+No executable source, packaged bytes or release policy changes in this closeout.
+
+### Earlier failed baseline and retained recreation evidence (historical)
+
+The following observations and proposed next steps describe their earlier
+epochs only. They are superseded for publication by the completed qualification
+and verified public release above, not instructions to repeat completed work.
+
+The earlier protected isolated actual-game run fails schema8 overlay pacing.
+At that stage no passing receipt or publisher dispatch exists. Native/static
+success and a clean lifetime alone do not establish a passing result. Its
+retained evidence below is not replaced by the later successful qualification.
+
+A bounded recovery search found the older temporary game assemblies/source
+snapshots empty, but the generic registered-task contract, actor, manager,
+raw channel, held-tree and protection sources remain in the consuming
+application's QA source tree. The human explicitly chose recreation of an
+isolated setup, completion of QA and publication, with no installed-game writes
+or signed-candidate rebuild. The obsolete backup question is superseded.
+The existing task engine and its prior lifecycle fixes will be reused, with
+new closed candidate/source/native-trust/external-runtime pins. Old0.4.12
+constants, SAC records and runtime baselines will not be reused as approval.
+The ordinary pinned Core7.6.5 host and unchanged RemoteSigned/FullLanguage
+policy still match. No game, Steam, task, native lock route, security/privacy
+setting or notification state has changed in this recovery continuation.
 
 Restore the retained reviewed source cohort/setup, rebind this exact complete
 TGZ as a normal-directory isolated consumer, establish current transactional
@@ -99,6 +165,110 @@ deployment/protection and Limited-task/actor/image/module evidence, then run
 the four required standalone cases with genuine17 manual observations and
 unfiltered separate streams. Do not reuse old0.4.12 receipts, consumer waivers
 or execution/device approvals, or invoke native lock routes directly.
+
+Recreation is now data-verified: the isolated actual-game derivative contains
+7,435files/614,915,534bytes and827directories including root. Its complete89-file
+Bridge install matches the canonical0.4.13 TGZ; independent ASAR/source/package
+reconstruction agrees and the installed game's complete before/after inventory
+is unchanged. A fresh captured-recovery preparation passes both canonical
+schema2 audits for all8,262objects, seals protection and closes every recovery
+capability. Independent raw/source/result reconciliation agrees. Steam is opened
+normally and signed in; no installed game or candidate native code is launched.
+
+The first current registered-task preparation obtains genuine same-held-file
+positive trust for all13candidate PEs and218current external files, then the
+parent rejects case-only spelling differences between module-path hints and
+canonical Windows names before creation. Resources close, streams drain and the
+owned task is removed; preserve this failed record. A narrow prospective
+case-insensitive path comparison retains exact hashes, full identities, trust
+and unknown-module rejection. Its61source/pure/compile-only checks include the
+actual failing-before retained record and wrong-path/hash/signer negatives.
+This is not actual-game/manual/schema8 proof or publication readiness.
+
+The corrected current task then passes preparation and suspended/resumed native
+creation, displaying the actual game's ordinary character-selection shell.
+The first phase fails closed on five additional unqualified Windows module
+paths. The owner stops the game, drains streams, closes resources and removes
+the exact task without cleanup errors; no natural-exit/manual pass is claimed.
+Those observed paths are not automatically approved for another run.
+Unfiltered stderr also contains three genuine Electron45 synchronous
+safeStorage deprecation warnings, in addition to the allowed Valve pair.
+The strict Bridge stderr gate therefore cannot pass this unchanged consumer.
+No warning filtering, notification stub or consumer exception is applied.
+A bounded older-consumer search finds only an unsigned Electron44.4.3
+assembly without this candidate's trust bindings; it is not substituted or
+launched. The human approved a supported encrypted-storage API migration only
+in the isolated QA consumer. The private draft uses real asynchronous Windows
+encryption, fresh serialized reads and generation-checked transactions;
+legacy/Mac storage stays unchanged. Adapted mocked notification tests pass173,
+with13 new storage and11 ownership/multiprocess cases passing. Independent
+review found shutdown, delayed-prompt and routing-lifetime races; those are
+corrected prospectively and failed test records remain. This is source/unit
+proof, not another game pass. Finish final exact-source review, then stage a new
+derivative with fresh inventory/protection and qualified external inputs.
+Preserve the first protected copy, installed game and frozen Bridge package.
+The fresh derivative's7,436files/827directories independently reconcile with
+all89Bridge files and all13unchanged signed PEs. Both schema2 protection audits
+pass for8,263objects; all recovery capabilities close. The registered Limited
+task obtains223held external-file observations and completes all seven phases,
+the seventeen owning-operator manual checks, exact original window geometry,
+natural game/actor exit0, drained streams, typed disposal and task removal.
+The independent reviews accept the source/staging/protection evidence.
+
+The compatibility fix removes the actual deprecated-storage warnings:132bytes
+of stderr match only the canonical Valve pair. Unfiltered gameplay401samples
+have59.9/59.9/59.9median paint/fresh/native FPS at60Hz. All38overlay samples are
+below the57FPS floor: median54.9, range48–56.8. The unchanged schema8 generator
+fails closed; no receipt is created. Visual/manual success does not waive that
+failure. Parsec is running and producing FPS telemetry, but causation is not
+established. The human approved one temporary Parsec-close/reopen comparison.
+Its window-close leaves the background host active; stopping the exact user
+process once causes the unchanged service to restart it. Read-only service
+review finds Start/Stop rights restricted to SYSTEM/Administrators, with no
+enabled administrator membership in the current token. No service Stop/Start,
+elevation, startup or permission change is attempted. Parsec is restored running
+in the background with its executable hash unchanged and service Running/Auto.
+No comparison game is launched, so do not claim a Parsecless result or repeat
+the ineffective process stop. The approved comparison remains pending a genuine
+normal Quit/isolation condition. Keep the failed raw logs and
+all earlier protected copies. This Bridge work does not authorize a separate
+installed-consumer notification test or transfer another release's FPS waiver.
+The latest bounded continuation finds no connected viewers in Parsec's documented
+bottom-left connected-user area on two fresh normal-UI observations. A private
+screenshot is retained. This supersedes the missing current-viewer observation,
+not the earlier failed run, and does not claim process-free or sustained stream
+inactivity. No hotkey, guest kick, authentication, setting or service action is
+taken. Keep the host running and recheck viewer state during the comparison.
+The existing secondary Windows QA task receives a coordination request, but its
+Mac-owner lookup also fails because that host is unavailable. No Mac message or
+exclusive-slot acknowledgement is claimed. Read-only checks find no secondary
+Windows or Deck Steam/game processes; the original Mac IPC helper remains live.
+Its exact user-domain job and original plist restoration path are verified.
+The human explicitly instructs leaving that idle helper alone and then directs
+npm publication. Do not stop, restore or change it. Source reconciliation finds
+that orphan-IPC cleanup is a macOS startup/health warning, not an encoded Windows
+schema8 or publisher gate. The broad historical zero-remnant procedure must not
+be turned into a claim that this helper owns another Steam login. A fresh scoped
+check shows its existing launchd child has no network sockets and no Mac Steam
+client, web helper, overlay or game is running. Retain this specific procedural
+exception and do not claim zero helper processes or an owner acknowledgement.
+Continue the already-approved Windows comparison with current account/capture
+admission and all exact-byte, protection, signing, lifetime, seventeen manual,
+raw-stderr and pacing requirements unchanged. Stop if another real Steam client
+or account-session conflict appears. No comparison or publication is yet claimed.
+Do not repeat the ineffective host-process stop.
+Independent closed-run review reconciles the exact source cohort, thirteen
+sealed records, seven phases, native/external bindings and actual task cleanup.
+Steam is exited normally to restore its pre-QA state; a fresh process check
+finds no game, Steam client or web helper. Parsec remains unchanged. Public
+peer-handoff evidence is retained, but direct Mac-message delivery is unavailable
+and is not claimed. Explicit-host reads of both known peer chats also return no
+readable match; their asserted new human instructions are not independently
+verified here. A fresh local check finds no Steam/game/notification helper,
+without asserting current state on other hosts or taking over a separate task.
+After cleanup, the complete installed151-file fingerprint and exact TGZ/addon
+hashes still match. npm latest remains0.4.12, no0.4.13GitHub Release exists and
+no publisher is dispatched. See WIN-0413-ISOLATED-CONSUMER-001 in the ledger.
 
 After fresh schema8 proof and the protected approval boundary, configure only
 the sanitized release proof and dispatch publish.yml from v0.4.13, using the

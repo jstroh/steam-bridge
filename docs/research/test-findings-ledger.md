@@ -28,6 +28,111 @@ history remains in the linked platform documents.
   prerelease. Any product-owner release exception must be exact, executable,
   evidence-bound, receipt-visible, and preserve every unaffected gate.
 
+## Current0.4.13 isolated consumer
+
+### WIN-0413-ISOLATED-CONSUMER-001 — SETTLED
+
+The later unchanged-candidate current-profile qualification passes the original
+schema8 validator. All seven phases and17actual manual observations complete;
+natural root/actor exit0, empty job, drained streams, unchanged held identities/
+protections and exact task cleanup reconcile independently. Gameplay463samples
+have59.9median paint/fresh/native FPS;106overlay samples have58.4median at60Hz.
+The132-byte stderr is exactly the accepted Valve pair. The complete89-file Bridge
+installation remains canonical. The original installed game remains unchanged.
+
+Current120DPI/1600x900physical client differs from the old240DPI/3200x1800 profile;
+do not claim streaming-only causation or erase the failed54.9result. The local
+Mac IPC helper is untouched per direct human instruction; no other actual Mac
+Steam client/web/overlay/game or helper network socket is observed. Zero helper
+processes and owner acknowledgement are not claimed.
+
+Receipt domain hash0fdac5d5132a32ec42766c18f4c6e65d39384222b90049bd706415eade499c65
+and serialized-file hash06b291fcb070b618713bb42d686ec945ed6b3aad445e391980bc0ebe80f06e00
+are independently reconciled. The separate protected publication gate is also
+complete: run41579053411 succeeds after the required-reviewer approval; npm and
+stable GitHub0.4.13 are public/latest. Downloaded canonical TGZ, all89installed
+files, registry signatures/attestations and all eight GitHub assets match.
+The release-scoped proof secret is removed. See the
+[completed publication checkpoint](current-work.md#active-goal).
+Earlier observations below are historical, not current blockers or rerun steps.
+
+The recreated isolated actual-game consumer has a complete89-file normal
+installation of the immutable signed0.4.13 TGZ. Independent reconstruction
+verifies all7,435consumer files and unchanged installed source. Fresh canonical
+four-rule protection passes for8,262objects with all recovery capabilities
+closed. The reusable registered-task engine is retained rather than rebuilt.
+
+Its first preparation rejects only path spelling/case differences before game
+creation, after genuine positive held-file trust for13candidate PEs and218
+external files. The corrected comparison matches the existing Windows holder's
+case-insensitive semantics, with exact hashes/identities/trust retained; actual
+retained-data failing-before/passing-after and wrong-path/hash/signer negatives
+are included in61source/pure/compile-only checks.
+
+The corrected task reaches the visible actual-game character-selection shell,
+then rejects five newly observed unqualified Windows modules at the first
+phase. Owned stop, drained raw streams, closed resources and exact task removal
+are retained. This is failed/incomplete QA, not a demonstrated Bridge crash or
+natural-exit pass. Unknown mappings are not automatically added as approval.
+The same raw stderr also contains three actual synchronous safeStorage
+deprecation warnings under the consumer's Electron45 runtime. The strict
+empty-or-Valve-pair classifier does not accept them. No filtering, stub,
+exception, schema8 receipt or publication is created. A bounded older-game
+search yields only an unsigned/unqualified assembly, which is not launched.
+
+The human-approved isolated-consumer compatibility migration now uses the real
+asynchronous encryption API, with fresh serialized reads and generation-checked
+commits.173 adapted mocked notification cases,13 storage cases and11 ownership/
+multiprocess cases pass. Independent review corrections cover delayed prompts,
+shutdown/routing lifetime and canceled cleanup being mistaken for completion.
+The installed game, frozen signed candidate and original protected copy stay
+unchanged. A new independently verified7,436-file derivative passes protection
+and its registered Limited-task lifetime, all seven phases and seventeen owning-
+operator manual observations, exact original geometry, natural exit0, drained
+raw streams and typed cleanup. This is not a passing schema8 result.
+
+Its132-byte stderr matches only the canonical Valve pair, so the storage-warning
+blocker is resolved for that derivative. Gameplay401samples have59.9median
+paint/fresh/native FPS at60Hz. Overlay38samples instead have54.9median native
+FPS (48–56.8); every sample misses the57FPS floor. The original generator
+rejects the unfiltered record. No source/native change, threshold exception,
+passing receipt or publication follows. Parsec activity is observed but is not
+established as the cause. The human subsequently approves one temporary
+close/reopen comparison, but normal window-close leaves the host active and
+one exact user-process stop is immediately undone by the unchanged service.
+Read-only service review finds no current-token Start/Stop authority. No
+service/permission/startup change or elevation is attempted. Parsec is restored
+running; no comparison game is launched. Do not repeat the ineffective stop or
+claim a no-Parsec measurement. Resume the approved comparison only after genuine
+normal Quit/isolation; the signed candidate and installed game remain unchanged.
+The latest normal UI now shows no connected viewers in its documented user area,
+with a private screenshot retained. This is current viewer-disconnected evidence,
+not a stopped-Parsec or sustained-inactivity claim; recheck during qualification.
+A delivered request to the existing secondary Windows QA task confirms that the
+Mac owner is unreachable there too. The original Mac IPC helper remains live;
+its exact job/plist route is verified read-only. The human then explicitly says
+to leave it alone and directs npm publication. Do not mutate it or claim zero
+helpers. Source reconciliation distinguishes macOS orphan-IPC startup warnings
+from the actual Windows schema8/publisher gates; fresh scoped observations show
+no network sockets in this idle helper and no other Mac Steam client/game.
+This specific procedural exception does not waive genuine account stability,
+capture admission, package/signature/trust, lifetime, manual or pacing gates.
+No owner acknowledgement or passing comparison is invented. Recheck actual
+other-host clients and stop on real concurrent login/session conflict. Do not
+require process-free Parsec merely because its unchanged host remains running,
+and do not replay the ineffective process stop.
+
+**Repeat only when:** a new candidate/qualified consumer changes, or a separately
+authorized reproduction investigates the retained older-profile failure. Do not
+repeat the completed passing qualification or the verified public release.
+The storage migration is already tested; do not redo it.
+Retain fresh independent precreation trust and exact-file binding for every
+selected external mapping. Preserve the current protected copies, failed records,
+signed candidate and installed game. Any future qualification needs its own
+actual-game cases and17manual observations with unfiltered logs; old passes
+and source checks cannot satisfy a changed candidate. See the
+[current checkpoint](current-work.md#active-goal).
+
 ### Hybrid-GPU recovery and queue-depth evidence reconciliation (2026-09-26)
 
 Status: `OPEN` for exact-candidate qualification. Retained local QA reports
