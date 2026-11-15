@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-11-03 UTC
+Last reviewed: 2026-11-15 UTC
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -11,6 +11,41 @@ Standing architecture decisions live in the
 [presenter plan](native-overlay-presenter-plan.md).
 
 ## Active goal
+
+Prepare the explicitly requested npm/GitHub patch release 0.4.16 with the QA
+example on exact stable Electron 45.3.2, confirmed as npm latest at preparation.
+The Windows ASAR fixture derives its version from the example. Preserve the
+strict latest-version check and all release-proof gates.
+
+The unchanged 0.4.15 source is 4062ac078b7e156311f9771336d5f2973884593e.
+Its main [CI43709795591](https://github.com/jstroh/steam-bridge/actions/runs/43709795591)
+failed only the stale Electron 45.2.1 latest check; its tag
+[CI43709798065](https://github.com/jstroh/steam-bridge/actions/runs/43709798065),
+[Release43709798145](https://github.com/jstroh/steam-bridge/actions/runs/43709798145)
+and [Publish43714051975](https://github.com/jstroh/steam-bridge/actions/runs/43714051975)
+succeeded. npm latest and the public GitHub release are 0.4.15.
+
+Current changes are the example Electron pin/lock and root/package/lock patch
+versions. Apple Silicon macOS checks pass with pinned npm 11.17.0 and Node 24:
+latest-Electron, supported platforms, full tests (571 unit passes, 104 release/
+package passes with 3 platform skips, 56 native passes), native formatting/check,
+API coverage, complete package smoke and a zero-finding full lock audit. The
+exact 45.3.2 packaged Electron runtime loads all 1158 required native methods.
+This is native-loading
+compatibility, not live Steam/gameplay proof. A complete SSD source snapshot
+preserves runtime-relative paths; existing checkouts remain untouched.
+
+Next: push the scoped source and verify its exact CI; tag the approved 0.4.16
+candidate and verify tag CI and signed Release artifacts.
+The maintainer explicitly instructed skipping fresh Windows gameplay testing;
+none was run and Windows gameplay remains unverified. The unchanged publisher
+requires a matching schema 8 receipt and offers no waiver input. Its predecessor
+route also requires the same Electron version, so 0.4.15 proof cannot qualify
+this upgrade. Do not fabricate proof, reuse the incompatible receipt or bypass
+that enforced gate. npm publication remains blocked by the missing exact proof.
+No 0.4.16 tag, publication or live qualification is claimed yet.
+
+### Completed 0.4.13 release (historical)
 
 The human-requested signed normal stable0.4.13 GitHub/npm release is live and
 independently verified. Do not dispatch, publish, rebuild, repack or retag it again.

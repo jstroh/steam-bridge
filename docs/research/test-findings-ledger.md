@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-10-07
+Last reviewed: 2026-11-15
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
@@ -27,6 +27,24 @@ history remains in the linked platform documents.
   exists only upstream, record its exact commit/TODO instead of testing another
   prerelease. Any product-owner release exception must be exact, executable,
   evidence-bound, receipt-visible, and preserve every unaffected gate.
+
+## macOS SSD verification layout
+
+### MAC-SSD-VERIFICATION-LAYOUT-001 — SETTLED
+
+Redirecting only compiled package `dist` to the SSD changes Node's resolved
+module directory, breaking package-metadata and preload-relative lookups in
+otherwise unchanged unit tests. A complete source snapshot on the SSD restores
+the normal layout and passes the complete unit/native suite. The macOS matrix
+self-test also assumes an unescaped script path in dry-run output; a physical
+volume path containing spaces fails that string assertion. Running package smoke
+through the configured space-free SSD execution alias with Node's
+`--preserve-symlinks-main` preserves the expected logical script path. Neither
+result demonstrates a product runtime regression or live overlay qualification.
+
+**Repeat only when:** package layout, Node module/symlink resolution or matrix
+dry-run path assertions change. Keep a complete source layout for verification;
+do not repeat isolated compiled-directory redirection or weaken assertions.
 
 ## Current0.4.13 isolated consumer
 
