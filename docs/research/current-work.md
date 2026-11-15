@@ -12,7 +12,7 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Prepare the explicitly requested npm/GitHub patch release 0.4.16 with the QA
+The explicitly requested npm/GitHub patch candidate 0.4.16 is prepared with the QA
 example on exact stable Electron 45.3.2, confirmed as npm latest at preparation.
 The Windows ASAR fixture derives its version from the example. Preserve the
 strict latest-version check and all release-proof gates.
@@ -31,19 +31,38 @@ latest-Electron, supported platforms, full tests (571 unit passes, 104 release/
 package passes with 3 platform skips, 56 native passes), native formatting/check,
 API coverage, complete package smoke and a zero-finding full lock audit. The
 exact 45.3.2 packaged Electron runtime loads all 1158 required native methods.
-This is native-loading
-compatibility, not live Steam/gameplay proof. A complete SSD source snapshot
-preserves runtime-relative paths; existing checkouts remain untouched.
+This is native-loading compatibility, not live Steam/gameplay proof. A complete
+SSD source snapshot preserves runtime-relative paths; existing checkouts remain
+untouched.
 
-Next: push the scoped source and verify its exact CI; tag the approved 0.4.16
-candidate and verify tag CI and signed Release artifacts.
+Source 4aa4bae4c7e207fc139b2a3388038d8e5d556f51 is pushed to main and
+tagged as immutable v0.4.16 (annotated tag object
+fe507c041dd98d3ebdce6df62d5b835f7cbb28ae).
+[Main CI 43763247036](https://github.com/jstroh/steam-bridge/actions/runs/43763247036)
+succeeds, including the previously failing latest-Electron check, package smoke,
+all three native platforms, security and packed Node 18/20/22/24 compatibility.
+[Tag CI 43763302070](https://github.com/jstroh/steam-bridge/actions/runs/43763302070)
+and original [Release 43763302125](https://github.com/jstroh/steam-bridge/actions/runs/43763302125)
+attempt 1 succeed. All three prebuilds, Windows signing and the final exact
+tarball/ASAR gate pass. The canonical candidate is retained in artifact
+[`steam-bridge-windows-publish-package-gate`](https://github.com/jstroh/steam-bridge/actions/runs/43763302125/artifacts/14181940856),
+with the PDB retained separately in that same run. Independent downloaded-byte
+verification passes: all 9 native/runtime files equal the 89-file canonical TGZ,
+the retained Windows bundle/source/signature audit passes in verification-only
+mode, and the Windows addon/PDB debug ID is
+85072ec3-39d7-4748-bf5e-dde1f7a19298-1. Canonical TGZ SHA-256:
+817de2f4178d65c197d35edaf01fe6e92e741e5c0bf1ca7b97007d5257eef692.
+
 The maintainer explicitly instructed skipping fresh Windows gameplay testing;
 none was run and Windows gameplay remains unverified. The unchanged publisher
 requires a matching schema 8 receipt and offers no waiver input. Its predecessor
 route also requires the same Electron version, so 0.4.15 proof cannot qualify
 this upgrade. Do not fabricate proof, reuse the incompatible receipt or bypass
-that enforced gate. npm publication remains blocked by the missing exact proof.
-No 0.4.16 tag, publication or live qualification is claimed yet.
+that enforced gate. npm publication remains blocked by the missing exact proof;
+the publisher was not dispatched. No 0.4.16 npm publication, public GitHub Release
+or live qualification is claimed. npm/GitHub latest remain 0.4.15. This closeout
+only records source/build verification and the publication blocker; the tagged
+candidate remains unchanged.
 
 ### Completed 0.4.13 release (historical)
 
