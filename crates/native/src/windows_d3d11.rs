@@ -233,6 +233,9 @@ pub struct SharedTextureCopyWaitHandle {
     completion: SharedTextureCopyCompletion,
     slot: Arc<SharedTextureCopySlot>,
     submitted_at: Instant,
+    submission_us: u64,
+    copy_command_end_us: Option<u64>,
+    completion_marker_end_us: Option<u64>,
     telemetry: Arc<SharedTextureCopyTelemetry>,
     submission_error: Option<String>,
 }
@@ -251,13 +254,54 @@ enum SharedTextureCopyCompletion {
     },
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedTextureCopyTimeoutDiagnostics {
+    schema_version: u8,
+    completion_mode: &'static str,
+    dedicated_copy_device: bool,
+    elapsed_us: u64,
+    submission_us: u64,
+    dispatch_us: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    copy_command_end_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completion_marker_end_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fence_target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fence_observed: Option<String>,
+    last_wait_result: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    copy_device_removed_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    host_device_removed_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_check_us: Option<u64>,
+}
+
+#[derive(Debug)]
+pub struct SharedTextureCopyWaitError {
+    pub message: String,
+    pub copy_diagnostics: Option<Box<SharedTextureCopyTimeoutDiagnostics>>,
+}
+
+impl From<String> for SharedTextureCopyWaitError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            copy_diagnostics: None,
+        }
+    }
+}
+
+fn shared_texture_copy_micros(duration: Duration) -> u64 {
+    duration.as_micros().min(u64::MAX as u128) as u64
+}
+
 impl SharedTextureCopyWaitHandle {
-    pub fn wait(self) -> Result<(), String> {
-        let dispatch_delay_micros = self
-            .submitted_at
-            .elapsed()
-            .as_micros()
-            .min(u64::MAX as u128) as u64;
+    pub fn wait(self) -> Result<(), SharedTextureCopyWaitError> {
+        let dispatch_delay_micros = shared_texture_copy_micros(self.submitted_at.elapsed());
         self.telemetry
             .last_dispatch_delay_micros
             .store(dispatch_delay_micros, Ordering::Relaxed);
@@ -268,7 +312,7 @@ impl SharedTextureCopyWaitHandle {
             self.telemetry
                 .terminal_failure_count
                 .fetch_add(1, Ordering::Release);
-            return Err(error.clone());
+            return Err(error.clone().into());
         }
         let started = self.submitted_at;
         let mut recorded_slow_copy = false;
@@ -276,6 +320,9 @@ impl SharedTextureCopyWaitHandle {
         let mut event_registration_attempted = false;
         let mut use_event_wait =
             matches!(&self.completion, SharedTextureCopyCompletion::Fence { .. });
+        let mut fence_observed = None;
+        let mut last_wait_result = "polling";
+        let mut last_device_check_us = None;
         loop {
             let complete = match &self.completion {
                 SharedTextureCopyCompletion::Fence { fence, fence_value } => {
@@ -283,7 +330,11 @@ impl SharedTextureCopyWaitHandle {
                         *fence_value,
                         &mut use_event_wait,
                         &self.telemetry.fence_wait,
-                        || unsafe { fence.GetCompletedValue() },
+                        || {
+                            let value = unsafe { fence.GetCompletedValue() };
+                            fence_observed = Some(value);
+                            value
+                        },
                         || unsafe {
                             if !event_registration_attempted {
                                 event_registration_attempted = true;
@@ -295,10 +346,18 @@ impl SharedTextureCopyWaitHandle {
                                             .is_ok()
                                     },
                                 ) {
+                                    last_wait_result = "registration-failed";
                                     return WAIT_FAILED;
                                 }
                             }
-                            WaitForSingleObjectEx(self.slot.event, 10, false)
+                            let result = WaitForSingleObjectEx(self.slot.event, 10, false);
+                            last_wait_result = match result {
+                                WAIT_OBJECT_0 => "signaled",
+                                WAIT_TIMEOUT => "timeout",
+                                WAIT_FAILED => "failed",
+                                _ => "unexpected",
+                            };
+                            result
                         },
                     )
                     .map_err(|error| {
@@ -326,7 +385,8 @@ impl SharedTextureCopyWaitHandle {
                                 .fetch_add(1, Ordering::Release);
                             return Err(
                                 "D3D11 shared-texture context lock was poisoned; the native graphics device must be restarted"
-                                    .to_owned(),
+                                    .to_owned()
+                                    .into(),
                             );
                         }
                     };
@@ -345,8 +405,9 @@ impl SharedTextureCopyWaitHandle {
                             .fetch_add(1, Ordering::Release);
                         return Err(format!(
                             "ID3D11DeviceContext::GetData for asynchronous shared texture copy failed: {error}; the native graphics device must be restarted"
-                        ));
+                        ).into());
                     }
+                    last_wait_result = "query-pending";
                     completed != 0
                 }
             };
@@ -364,7 +425,8 @@ impl SharedTextureCopyWaitHandle {
                 return Ok(());
             }
 
-            let elapsed_ms = started.elapsed().as_millis();
+            let elapsed = started.elapsed();
+            let elapsed_ms = elapsed.as_millis();
             if !recorded_slow_copy && elapsed_ms >= SHARED_TEXTURE_COPY_SLOW_MS {
                 self.telemetry.slow_count.fetch_add(1, Ordering::Relaxed);
                 recorded_slow_copy = true;
@@ -377,9 +439,36 @@ impl SharedTextureCopyWaitHandle {
                 self.telemetry
                     .fatal_timeout_count
                     .fetch_add(1, Ordering::Relaxed);
-                return Err(format!(
-                    "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
-                ));
+                let (completion_mode, fence_target) = match &self.completion {
+                    SharedTextureCopyCompletion::Fence { fence_value, .. } => {
+                        ("fence", Some(format!("0x{fence_value:016x}")))
+                    }
+                    SharedTextureCopyCompletion::Query { .. } => ("query", None),
+                };
+                let dedicated_copy_device = self.host_device.is_some();
+                return Err(SharedTextureCopyWaitError {
+                    message: format!(
+                        "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
+                    ),
+                    copy_diagnostics: Some(Box::new(SharedTextureCopyTimeoutDiagnostics {
+                        schema_version: 1,
+                        completion_mode,
+                        dedicated_copy_device,
+                        elapsed_us: shared_texture_copy_micros(elapsed),
+                        submission_us: self.submission_us,
+                        dispatch_us: dispatch_delay_micros,
+                        copy_command_end_us: self.copy_command_end_us,
+                        completion_marker_end_us: self.completion_marker_end_us,
+                        fence_target,
+                        fence_observed: fence_observed.map(|value| format!("0x{value:016x}")),
+                        last_wait_result,
+                        copy_device_removed_code: last_device_check_us.map(|_| 0),
+                        host_device_removed_code: last_device_check_us
+                            .filter(|_| dedicated_copy_device)
+                            .map(|_| 0),
+                        device_check_us: last_device_check_us,
+                    })),
+                });
             }
             let copy_removed = unsafe { self.device.GetDeviceRemovedReason() }.err();
             let host_removed = self
@@ -392,8 +481,9 @@ impl SharedTextureCopyWaitHandle {
                 self.telemetry
                     .terminal_failure_count
                     .fetch_add(1, Ordering::Release);
-                return Err(error);
+                return Err(error.into());
             }
+            last_device_check_us = Some(shared_texture_copy_micros(started.elapsed()));
             if matches!(&self.completion, SharedTextureCopyCompletion::Query { .. })
                 || !use_event_wait
             {
@@ -1850,7 +1940,9 @@ impl WindowsD3d11Renderer {
             presentation_rect,
             false,
         )? {
-            SharedTextureImportSubmission::Accepted(Some(wait)) => wait.wait(),
+            SharedTextureImportSubmission::Accepted(Some(wait)) => {
+                wait.wait().map_err(|error| error.message)
+            }
             SharedTextureImportSubmission::Accepted(None) => Ok(()),
             SharedTextureImportSubmission::Dropped => {
                 Err("Synchronous Electron shared-texture copy was unexpectedly dropped".to_owned())
@@ -2145,6 +2237,9 @@ impl WindowsD3d11Renderer {
                 0,
                 Some(&source_box),
             );
+            let copy_command_end_us = async_copy_submission
+                .as_ref()
+                .map(|_| shared_texture_copy_micros(copy_submitted_at.elapsed()));
             if let Some(timing) = self.gpu_copy_timing.as_mut() {
                 timing.end(&self.context, gpu_copy_sample);
             }
@@ -2201,13 +2296,19 @@ impl WindowsD3d11Renderer {
                             "ID3D11DeviceContext4::Signal for shared texture copy failed after submission: {error}{fallback}; the native graphics device must be restarted"
                         )
                     }).filter(|_| matches!(&completion, SharedTextureCopyCompletion::Fence { .. }));
+                    let completion_marker_end_us =
+                        shared_texture_copy_micros(copy_submitted_at.elapsed());
                     self.context.Flush();
+                    let submission_us = shared_texture_copy_micros(copy_submitted_at.elapsed());
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
                         host_device: None,
                         completion,
                         slot: reservation.into_slot(),
                         submitted_at: copy_submitted_at,
+                        submission_us,
+                        copy_command_end_us,
+                        completion_marker_end_us: Some(completion_marker_end_us),
                         telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
                         submission_error,
                     });
@@ -2217,7 +2318,10 @@ impl WindowsD3d11Renderer {
                     // End. Flush exactly once here, then let the worker poll
                     // without flushing while the producer texture stays alive.
                     self.context.End(&query);
+                    let completion_marker_end_us =
+                        shared_texture_copy_micros(copy_submitted_at.elapsed());
                     self.context.Flush();
+                    let submission_us = shared_texture_copy_micros(copy_submitted_at.elapsed());
                     copy_wait = Some(SharedTextureCopyWaitHandle {
                         device: self.device.clone(),
                         host_device: None,
@@ -2232,6 +2336,9 @@ impl WindowsD3d11Renderer {
                         },
                         slot: reservation.into_slot(),
                         submitted_at: copy_submitted_at,
+                        submission_us,
+                        copy_command_end_us,
+                        completion_marker_end_us: Some(completion_marker_end_us),
                         telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
                         submission_error: None,
                     });
@@ -2558,6 +2665,9 @@ impl WindowsD3d11Renderer {
             }
         }
         let mut copy_value = dedicated.next_copy_value;
+        let mut copy_command_end_us = None;
+        let mut completion_marker_end_us = None;
+        let mut submission_us = 0;
         if submission_error.is_none() {
             let gpu_copy_sample = match dedicated.gpu_timing.as_mut() {
                 Some(timing) => timing.begin(&dedicated.context),
@@ -2586,6 +2696,7 @@ impl WindowsD3d11Renderer {
                     back: 1,
                 }),
             );
+            copy_command_end_us = Some(shared_texture_copy_micros(copy_submitted_at.elapsed()));
             if let Some(timing) = dedicated.gpu_timing.as_mut() {
                 timing.end(&dedicated.context, gpu_copy_sample);
             }
@@ -2599,7 +2710,10 @@ impl WindowsD3d11Renderer {
                     "ID3D11DeviceContext4::Signal for the dedicated shared texture copy failed after submission: {error}; the native graphics device must be restarted"
                 ));
             }
+            completion_marker_end_us =
+                Some(shared_texture_copy_micros(copy_submitted_at.elapsed()));
             dedicated.context.Flush();
+            submission_us = shared_texture_copy_micros(copy_submitted_at.elapsed());
         }
         if submission_error.is_none() {
             dedicated.pending = Some((slot_index, copy_value));
@@ -2614,6 +2728,9 @@ impl WindowsD3d11Renderer {
             },
             slot: reservation.into_slot(),
             submitted_at: copy_submitted_at,
+            submission_us,
+            copy_command_end_us,
+            completion_marker_end_us,
             telemetry: Arc::clone(&self.shared_texture_copy_telemetry),
             submission_error,
         };
@@ -4082,6 +4199,9 @@ mod shared_texture_copy_slot_tests {
                 },
                 slot: Arc::clone(&slot),
                 submitted_at: Instant::now(),
+                submission_us: 0,
+                copy_command_end_us: None,
+                completion_marker_end_us: None,
                 telemetry: Arc::clone(&telemetry),
                 submission_error: None,
             };

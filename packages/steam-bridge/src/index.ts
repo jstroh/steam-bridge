@@ -1766,15 +1766,36 @@ export interface NativeOverlaySharedTexture {
   presentationRect?: NativeOverlayBounds;
 }
 
+export interface NativeOverlaySharedTextureCopyDiagnostics {
+  readonly schemaVersion: 1;
+  readonly completionMode: "fence" | "query";
+  readonly dedicatedCopyDevice: boolean;
+  readonly elapsedUs: number;
+  readonly submissionUs: number;
+  readonly dispatchUs: number;
+  readonly copyCommandEndUs?: number;
+  readonly completionMarkerEndUs?: number;
+  readonly fenceTarget?: string;
+  readonly fenceObserved?: string;
+  readonly lastWaitResult: "signaled" | "timeout" | "failed" | "unexpected"
+    | "registration-failed" | "polling" | "query-pending";
+  readonly copyDeviceRemovedCode?: number;
+  readonly hostDeviceRemovedCode?: number;
+  readonly deviceCheckUs?: number;
+}
+
 export class NativeOverlaySharedTextureCopyError extends Error {
   readonly code = "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED";
+  declare readonly copyDiagnostics?: NativeOverlaySharedTextureCopyDiagnostics;
 
   constructor(
     message: string,
-    readonly producerReleaseSafe: boolean
+    readonly producerReleaseSafe: boolean,
+    copyDiagnostics?: NativeOverlaySharedTextureCopyDiagnostics
   ) {
     super(message);
     this.name = "NativeOverlaySharedTextureCopyError";
+    if (copyDiagnostics !== undefined) this.copyDiagnostics = copyDiagnostics;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -9687,6 +9708,81 @@ export function getNativeOverlayHostDiagnostics(): NativeOverlayHostDiagnostics 
   } catch {
     return undefined;
   }
+}
+
+const WINDOWS_PROCESS_PRESSURE_SYSTEM_FIELDS = [
+  "commitTotalKiB",
+  "commitLimitKiB",
+  "commitPeakKiB",
+  "commitHeadroomKiB",
+  "systemHandleCount",
+  "systemThreadCount",
+  "systemProcessCount",
+  "kernelPagedKiB",
+  "kernelNonpagedKiB"
+] as const;
+
+export interface WindowsProcessPressure {
+  readonly version: 1;
+  readonly system: Readonly<Record<typeof WINDOWS_PROCESS_PRESSURE_SYSTEM_FIELDS[number], number>> | null;
+  readonly processes: readonly Readonly<{
+    pid: number;
+    creationTimeMs: number;
+    handleCount: number;
+  }>[];
+}
+
+export function getWindowsProcessPressure(pids: readonly number[]): WindowsProcessPressure | null {
+  if (
+    process.platform !== "win32"
+    || (process.versions.electron && Reflect.get(process, "type") !== "browser")
+    || !Array.isArray(pids)
+    || pids.length > 16
+  ) return null;
+
+  const requested = new Set<number>();
+  for (const pid of pids) {
+    if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 0xffff_ffff) return null;
+    requested.add(pid);
+  }
+
+  try {
+    const value = native().getWindowsProcessPressure?.([...requested]);
+    return isWindowsProcessPressure(value, requested) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function isWindowsProcessPressure(value: unknown, requested: ReadonlySet<number>): value is WindowsProcessPressure {
+  const record = (data: unknown): data is Record<string, unknown> =>
+    !!data && typeof data === "object" && !Array.isArray(data);
+  const count = (data: unknown): data is number =>
+    typeof data === "number" && Number.isSafeInteger(data) && data >= 0;
+  if (
+    !record(value) || Object.keys(value).length !== 3 || value.version !== 1
+    || !Array.isArray(value.processes) || value.processes.length > requested.size
+  ) return false;
+
+  const system = value.system;
+  if (
+    system !== null && (
+      !record(system) || Object.keys(system).length !== WINDOWS_PROCESS_PRESSURE_SYSTEM_FIELDS.length
+      || !WINDOWS_PROCESS_PRESSURE_SYSTEM_FIELDS.every(field => count(system[field]))
+    )
+  ) return false;
+
+  const seen = new Set<number>();
+  for (const row of value.processes) {
+    if (
+      !record(row) || Object.keys(row).length !== 3 || !count(row.pid)
+      || !requested.has(row.pid) || seen.has(row.pid) || !count(row.handleCount)
+      || typeof row.creationTimeMs !== "number" || !Number.isFinite(row.creationTimeMs)
+      || row.creationTimeMs <= 0
+    ) return false;
+    seen.add(row.pid);
+  }
+  return system !== null || seen.size > 0;
 }
 
 export function captureLinuxSteamEmulatedGamepads(
@@ -32461,6 +32557,73 @@ function unwrapNativeCallbackArgument(event: unknown): unknown {
   return event;
 }
 
+function nonnegativeCopyMicroseconds(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCopyHresult(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value)
+    && value >= -2147483648 && value <= 2147483647;
+}
+
+function normalizeNativeCopyDiagnostics(value: unknown): NativeOverlaySharedTextureCopyDiagnostics | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const {
+    schemaVersion, completionMode, dedicatedCopyDevice, elapsedUs, submissionUs,
+    dispatchUs, copyCommandEndUs, completionMarkerEndUs, fenceTarget, fenceObserved,
+    lastWaitResult, copyDeviceRemovedCode, hostDeviceRemovedCode, deviceCheckUs
+  } = value as Record<string, unknown>;
+  if (
+    schemaVersion !== 1
+    || (completionMode !== "fence" && completionMode !== "query")
+    || typeof dedicatedCopyDevice !== "boolean"
+    || !nonnegativeCopyMicroseconds(elapsedUs)
+    || !nonnegativeCopyMicroseconds(submissionUs)
+    || !nonnegativeCopyMicroseconds(dispatchUs)
+    || submissionUs > dispatchUs || dispatchUs > elapsedUs
+    || (copyCommandEndUs !== undefined && (!nonnegativeCopyMicroseconds(copyCommandEndUs) || copyCommandEndUs > submissionUs))
+    || (completionMarkerEndUs !== undefined && (
+      !nonnegativeCopyMicroseconds(completionMarkerEndUs) || completionMarkerEndUs > submissionUs
+      || (nonnegativeCopyMicroseconds(copyCommandEndUs) && copyCommandEndUs > completionMarkerEndUs)
+    ))
+  ) return undefined;
+
+  let fenceValues: Pick<NativeOverlaySharedTextureCopyDiagnostics, "fenceTarget" | "fenceObserved"> = {};
+  if (completionMode === "fence") {
+    if (
+      typeof fenceTarget !== "string" || !/^0x[0-9a-f]{16}$/u.test(fenceTarget)
+      || typeof fenceObserved !== "string" || !/^0x[0-9a-f]{16}$/u.test(fenceObserved)
+      || (lastWaitResult !== "signaled" && lastWaitResult !== "timeout"
+        && lastWaitResult !== "failed" && lastWaitResult !== "unexpected"
+        && lastWaitResult !== "registration-failed" && lastWaitResult !== "polling")
+    ) return undefined;
+    fenceValues = { fenceTarget, fenceObserved };
+  } else if (fenceTarget !== undefined || fenceObserved !== undefined || lastWaitResult !== "query-pending") {
+    return undefined;
+  }
+
+  let deviceCheck: Pick<NativeOverlaySharedTextureCopyDiagnostics,
+    "deviceCheckUs" | "copyDeviceRemovedCode" | "hostDeviceRemovedCode"> = {};
+  if (deviceCheckUs !== undefined || copyDeviceRemovedCode !== undefined || hostDeviceRemovedCode !== undefined) {
+    if (
+      !nonnegativeCopyMicroseconds(deviceCheckUs) || deviceCheckUs < dispatchUs || deviceCheckUs > elapsedUs
+      || !isCopyHresult(copyDeviceRemovedCode)
+      || (dedicatedCopyDevice ? !isCopyHresult(hostDeviceRemovedCode) : hostDeviceRemovedCode !== undefined)
+    ) return undefined;
+    deviceCheck = {
+      deviceCheckUs, copyDeviceRemovedCode,
+      ...(isCopyHresult(hostDeviceRemovedCode) ? { hostDeviceRemovedCode } : {}),
+    };
+  }
+
+  return {
+    schemaVersion, completionMode, dedicatedCopyDevice, elapsedUs, submissionUs, dispatchUs,
+    ...(copyCommandEndUs === undefined ? {} : { copyCommandEndUs }),
+    ...(completionMarkerEndUs === undefined ? {} : { completionMarkerEndUs }),
+    ...fenceValues, lastWaitResult, ...deviceCheck,
+  };
+}
+
 function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
   result = unwrapNativeCallbackArgument(result);
   if (result && typeof result === "object" && !Array.isArray(result)) {
@@ -32478,7 +32641,10 @@ function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
     if (typeof completion.error === "string" && completion.error.length > 0) {
       throw new NativeOverlaySharedTextureCopyError(
         completion.error,
-        completion.producerReleaseSafe === true
+        completion.producerReleaseSafe === true,
+        completion.producerReleaseSafe === false
+          ? normalizeNativeCopyDiagnostics(completion.copyDiagnostics)
+          : undefined
       );
     }
   }
@@ -34407,6 +34573,7 @@ const defaultExport = {
   isNativeOverlayProbeWindowOpen,
   isNativeOverlayHostViewOpen,
   getNativeOverlayHostDiagnostics,
+  getWindowsProcessPressure,
   getMacWindowSnapshot,
   getMacOverlayEnvironment,
   isAchievementActivated,

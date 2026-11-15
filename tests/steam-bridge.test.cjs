@@ -365,6 +365,61 @@ function setProcessArchForTest(t, arch) {
   setProcessPropertyForTest(t, "arch", arch);
 }
 
+test("Windows process pressure returns only bounded metrics for requested PIDs", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const system = {
+    commitTotalKiB: 32768,
+    commitLimitKiB: 65536,
+    commitPeakKiB: 49152,
+    commitHeadroomKiB: 32768,
+    systemHandleCount: 440,
+    systemThreadCount: 38,
+    systemProcessCount: 12,
+    kernelPagedKiB: 1024,
+    kernelNonpagedKiB: 2048
+  };
+  const processMetrics = { pid: 42, creationTimeMs: 1794800000000.1, handleCount: 12 };
+  let result = { version: 1, system, processes: [processMetrics] };
+  const calls = [];
+  const steamworks = loadSteamWithFakeNative({
+    getWindowsProcessPressure(pids) {
+      calls.push(pids);
+      return result;
+    }
+  });
+
+  assert.equal(steamworks.default.getWindowsProcessPressure, steamworks.getWindowsProcessPressure);
+  assert.deepEqual(steamworks.getWindowsProcessPressure([42, 42, 17]), result);
+  assert.deepEqual(calls, [[42, 17]]);
+  for (const invalid of [[0], [1.5], [-1], [0x1_0000_0000], new Array(17).fill(42)]) {
+    assert.equal(steamworks.getWindowsProcessPressure(invalid), null);
+  }
+  assert.equal(calls.length, 1);
+
+  result = { version: 1, system: null, processes: [processMetrics] };
+  assert.deepEqual(steamworks.getWindowsProcessPressure([42]), result);
+  assert.equal(steamworks.getWindowsProcessPressure([17]), null);
+  result = { ...result, processes: [{ ...processMetrics, privatePath: "fixture" }] };
+  assert.equal(steamworks.getWindowsProcessPressure([42]), null);
+  result = { version: 2, system, processes: [] };
+  assert.equal(steamworks.getWindowsProcessPressure([]), null);
+  assert.equal(loadSteamWithFakeNative({}).getWindowsProcessPressure([42]), null);
+});
+
+test("Windows process pressure is unavailable in Electron renderers", (t) => {
+  setProcessPlatformForTest(t, "win32");
+  setProcessPropertyForTest(t, "versions", { ...process.versions, electron: "45.0.0" });
+  setProcessPropertyForTest(t, "type", "renderer");
+  let nativeCalled = false;
+  const steamworks = loadSteamWithFakeNative({
+    getWindowsProcessPressure() {
+      nativeCalled = true;
+    }
+  });
+  assert.equal(steamworks.getWindowsProcessPressure([42]), null);
+  assert.equal(nativeCalled, false);
+});
+
 function mockElectronModule(t, electron) {
   const previousLoad = Module._load;
   Module._load = function mockElectronLoad(request, parent, isMain) {
@@ -1520,7 +1575,10 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   assert.match(d3dSource, /frame_statistics_counter_delta/);
   assert.doesNotMatch(d3dSource, /PresentCount\.wrapping_sub|PresentRefreshCount\s*\.wrapping_sub/);
   assert.match(d3dSource, /SetEventOnCompletion/);
-  assert.match(d3dSource, /poll_shared_texture_copy_fence\([\s\S]*?\|\| unsafe \{ fence\.GetCompletedValue\(\) \}/);
+  assert.match(d3dSource, /poll_shared_texture_copy_fence\([\s\S]*?let value = unsafe \{ fence\.GetCompletedValue\(\) \};\s*fence_observed = Some\(value\);\s*value/);
+  const timeoutBranch = d3dSource.match(/if elapsed_ms >= SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS \{([\s\S]*?)\n {12}\}/)?.[1];
+  assert.match(timeoutBranch, /copy_diagnostics: Some/);
+  assert.doesNotMatch(timeoutBranch, /GetCompletedValue|GetData|GetDeviceRemovedReason|Flush|WaitForSingleObject|\.lock\(/);
   assert.match(d3dSource, /if value == u64::MAX[\s\S]*?fence reports device removal/);
   assert.match(source, /"fenceWait": renderer\.shared_texture_fence_wait_diagnostics\(\)/);
   assert.match(d3dSource, /"d3d11-query-async"/);
@@ -27201,8 +27259,63 @@ test("Windows asynchronous shared-texture completion rejects native errors and m
     assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
     assert.equal(error.producerReleaseSafe, false);
     assert.match(error.message, /copy failed/);
+    assert.equal(Object.hasOwn(error, "copyDiagnostics"), false);
     return true;
   });
+
+  const fenceDiagnostics = {
+    schemaVersion: 1,
+    completionMode: "fence",
+    dedicatedCopyDevice: true,
+    elapsedUs: 2_005_000,
+    submissionUs: 320,
+    dispatchUs: 460,
+    copyCommandEndUs: 60,
+    completionMarkerEndUs: 220,
+    fenceTarget: "0x0020000000000001",
+    fenceObserved: "0x0020000000000000",
+    lastWaitResult: "timeout",
+    copyDeviceRemovedCode: 0,
+    hostDeviceRemovedCode: 0,
+    deviceCheckUs: 1_994_000,
+  };
+  const queryDiagnostics = {
+    schemaVersion: 1,
+    completionMode: "query",
+    dedicatedCopyDevice: false,
+    elapsedUs: 2_005_000,
+    submissionUs: 320,
+    dispatchUs: 2_000_000,
+    lastWaitResult: "query-pending",
+  };
+  const timeoutMessage = "D3D11 shared-texture copy did not complete within 2000 ms; the native graphics device must be restarted";
+  const timeoutCases = [
+    [{ ...fenceDiagnostics, untrustedField: "ignored" }, fenceDiagnostics],
+    [queryDiagnostics, queryDiagnostics],
+    [{ ...fenceDiagnostics, schemaVersion: 2 }, undefined],
+    [{ ...fenceDiagnostics, fenceObserved: 9_007_199_254_740_992 }, undefined],
+    [{ ...fenceDiagnostics, deviceCheckUs: 2_010_000 }, undefined],
+    [{ ...fenceDiagnostics, completionMarkerEndUs: 40 }, undefined],
+    [{ ...queryDiagnostics, dispatchUs: 300 }, undefined],
+  ];
+  for (const [payload, expected] of timeoutCases) {
+    const timeout = session.updateSharedTextureAsync({
+      handle: Buffer.alloc(8, 10),
+      width: 1,
+      height: 1,
+    });
+    completions.shift()({ 0: {
+      error: timeoutMessage,
+      producerReleaseSafe: false,
+      copyDiagnostics: payload,
+    } });
+    await assert.rejects(timeout, (error) => {
+      assert.equal(error.message, timeoutMessage);
+      assert.equal(error.producerReleaseSafe, false);
+      assert.deepEqual(error.copyDiagnostics, expected);
+      return true;
+    });
+  }
 
   const malformed = session.updateSharedTextureAsync({
     handle: Buffer.alloc(8, 11),

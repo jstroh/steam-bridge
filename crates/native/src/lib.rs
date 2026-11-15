@@ -28,6 +28,8 @@ mod state;
 mod windows_d3d11;
 #[cfg(target_os = "windows")]
 mod windows_dpi;
+#[cfg(target_os = "windows")]
+mod windows_process_pressure;
 
 extern "C" {
     fn SteamAPI_InitAnonymousUser() -> bool;
@@ -157,10 +159,16 @@ fn complete_native_overlay_shared_texture_copy(job: NativeOverlaySharedTextureCo
             "accepted": false,
             "producerReleaseSafe": true,
         }),
-        Err(error) => serde_json::json!({
-            "error": error,
-            "producerReleaseSafe": false,
-        }),
+        Err(error) => {
+            let mut result = serde_json::json!({
+                "error": error.message,
+                "producerReleaseSafe": false,
+            });
+            if let Some(diagnostics) = error.copy_diagnostics {
+                result["copyDiagnostics"] = serde_json::json!(diagnostics);
+            }
+            result
+        }
     };
     job.completion
         .call(result, ThreadsafeFunctionCallMode::NonBlocking);
@@ -969,6 +977,19 @@ pub fn get_overlay_diagnostics() -> Result<OverlayDiagnostics, Error> {
 #[napi(js_name = "getNativeOverlayHostDiagnosticsJson")]
 pub fn get_native_overlay_host_diagnostics_json() -> Option<String> {
     native_surface::host_diagnostics_json()
+}
+
+#[napi(js_name = "getWindowsProcessPressure")]
+pub fn get_windows_process_pressure(pids: Vec<u32>) -> Option<serde_json::Value> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_process_pressure::sample(&pids)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = pids;
+        None
+    }
 }
 
 #[napi(js_name = "getKWinWaylandOverlayPresentationProtocolVersion")]

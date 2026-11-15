@@ -1562,8 +1562,8 @@ pub use macos::*;
 mod windows {
     use super::{checked_native_overlay_frame_byte_len, Buffer, Error};
     use crate::windows_d3d11::{
-        self, FrameLatencyWaitHandle, SharedTextureCopyWaitHandle, SharedTextureImportSubmission,
-        WindowsD3d11Renderer,
+        self, FrameLatencyWaitHandle, SharedTextureCopyWaitError, SharedTextureCopyWaitHandle,
+        SharedTextureImportSubmission, WindowsD3d11Renderer,
     };
     use crate::windows_dpi::{
         adjust_window_rect_ex_for_dpi, dpi_for_system, dpi_for_window,
@@ -1768,7 +1768,7 @@ mod windows {
             self.accepted
         }
 
-        pub fn wait(self) -> Result<bool, String> {
+        pub fn wait(self) -> Result<bool, SharedTextureCopyWaitError> {
             if let Some(copy_wait) = self.copy_wait {
                 copy_wait.wait()?;
             }
@@ -2983,7 +2983,7 @@ mod windows {
         )?
         .wait()
         .map(|_| ())
-        .map_err(Error::from_reason)
+        .map_err(|error| Error::from_reason(error.message))
     }
 
     pub fn begin_shared_texture_update(

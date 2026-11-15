@@ -1750,6 +1750,7 @@ export interface NativeBinding {
   isOverlayNeedsPresentPollingEnabled(): boolean;
   getOverlayDiagnostics(): NativeOverlayDiagnostics;
   getNativeOverlayHostDiagnosticsJson(): string | null | undefined;
+  getWindowsProcessPressure(pids: number[]): unknown;
   getKWinWaylandOverlayPresentationProtocolVersion(): number;
   startKWinWaylandOverlayHostSyncEvents(
     token: string,
