@@ -1,3 +1,10 @@
+## Terminal-copy diagnostic candidate
+
+Based on published source 0ef690ec. Adds firstFatalTimeout for the first claimed timeout per renderer and propagates it through the existing completion callback. No changes to completion decisions, timeout, producer lifetime, or recovery. Existing duration fields remain success-only. Device status is a previous check, possibly absent or stale, with its elapsed timestamp; there are no additional GPU/device calls. Four portable helper tests, eight compiled public-API callback/producer-safety tests, TypeScript typecheck/build, API audit, and formatting pass. Local package smoke stopped at an existing dependency mismatch (installed Electron44.4.5 versus baseline45.2.1); CI installs the exact lockfile. Hardware waiter regression added but unrun; full Windows compilation awaits CI because the local Windows host blocked a dependency build executable through Application Control. Consumer shells must explicitly retain the optional error evidence in their existing recovery events. No release or deployment is part of this candidate.
+
+
+
+
 # Current Work Checkpoint
 
 Last reviewed: 2026-11-02 UTC

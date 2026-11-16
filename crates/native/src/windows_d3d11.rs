@@ -1,3 +1,5 @@
+mod copy_timeout_evidence;
+use copy_timeout_evidence::{CopyTimeoutEvidence, FirstCopyTimeout};
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::slice;
@@ -149,6 +151,7 @@ struct SharedTextureCopyTelemetry {
     last_duration_micros: AtomicU64,
     max_duration_micros: AtomicU64,
     fence_wait: SharedTextureFenceWaitTelemetry,
+    first_fatal_timeout: FirstCopyTimeout,
 }
 
 #[derive(Default)]
@@ -251,7 +254,32 @@ enum SharedTextureCopyCompletion {
     },
 }
 
+fn copy_timeout_evidence_json(snapshot: CopyTimeoutEvidence) -> serde_json::Value {
+    serde_json::json!({
+        "elapsedMs": snapshot.elapsed_ms,
+        "dispatchDelayMs": snapshot.dispatch_delay_ms,
+        "completionMode": if snapshot.target_fence_value.is_some() { "fence" } else { "query" },
+        "targetFenceValue": snapshot.target_fence_value.map(|value| value.to_string()),
+        "observedFenceValue": snapshot.observed_fence_value.map(|value| value.to_string()),
+        "deviceStatus": snapshot.device_status.map(|(checked_at, copy, host)| serde_json::json!({
+            "checkedAtElapsedMs": checked_at,
+            "copyHresult": copy,
+            "hostHresult": host,
+        })),
+    })
+}
+
 impl SharedTextureCopyWaitHandle {
+    pub fn wait_with_evidence(self) -> (Result<(), String>, Option<serde_json::Value>) {
+        let telemetry = Arc::clone(&self.telemetry);
+        let result = self.wait();
+        let evidence = telemetry
+            .first_fatal_timeout
+            .get()
+            .map(copy_timeout_evidence_json);
+        (result, evidence)
+    }
+
     pub fn wait(self) -> Result<(), String> {
         let dispatch_delay_micros = self
             .submitted_at
@@ -271,6 +299,8 @@ impl SharedTextureCopyWaitHandle {
             return Err(error.clone());
         }
         let started = self.submitted_at;
+        let mut observed_fence_value = None;
+        let mut device_status = None;
         let mut recorded_slow_copy = false;
         let mut recorded_timeout = false;
         let mut event_registration_attempted = false;
@@ -283,7 +313,11 @@ impl SharedTextureCopyWaitHandle {
                         *fence_value,
                         &mut use_event_wait,
                         &self.telemetry.fence_wait,
-                        || unsafe { fence.GetCompletedValue() },
+                        || {
+                            let value = unsafe { fence.GetCompletedValue() };
+                            observed_fence_value = Some(value);
+                            value
+                        },
                         || unsafe {
                             if !event_registration_attempted {
                                 event_registration_attempted = true;
@@ -374,6 +408,19 @@ impl SharedTextureCopyWaitHandle {
                 recorded_timeout = true;
             }
             if elapsed_ms >= SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS {
+                let target_fence_value = match &self.completion {
+                    SharedTextureCopyCompletion::Fence { fence_value, .. } => Some(*fence_value),
+                    SharedTextureCopyCompletion::Query { .. } => None,
+                };
+                self.telemetry
+                    .first_fatal_timeout
+                    .record(CopyTimeoutEvidence {
+                        elapsed_ms: started.elapsed().as_secs_f64() * 1_000.0,
+                        dispatch_delay_ms: dispatch_delay_micros as f64 / 1_000.0,
+                        target_fence_value,
+                        observed_fence_value,
+                        device_status,
+                    });
                 self.telemetry
                     .fatal_timeout_count
                     .fetch_add(1, Ordering::Relaxed);
@@ -386,6 +433,19 @@ impl SharedTextureCopyWaitHandle {
                 .host_device
                 .as_ref()
                 .and_then(|device| unsafe { device.GetDeviceRemovedReason() }.err());
+            device_status = Some((
+                started.elapsed().as_secs_f64() * 1_000.0,
+                copy_removed
+                    .as_ref()
+                    .map(|error| error.code().0)
+                    .unwrap_or(0),
+                self.host_device.as_ref().map(|_| {
+                    host_removed
+                        .as_ref()
+                        .map(|error| error.code().0)
+                        .unwrap_or(0)
+                }),
+            ));
             if let Some(error) =
                 copy_wait_device_removed_error(copy_removed.as_ref(), host_removed.as_ref())
             {
@@ -3414,6 +3474,13 @@ impl WindowsD3d11Renderer {
         )
     }
 
+    pub fn shared_texture_copy_first_fatal_timeout(&self) -> Option<serde_json::Value> {
+        self.shared_texture_copy_telemetry
+            .first_fatal_timeout
+            .get()
+            .map(copy_timeout_evidence_json)
+    }
+
     pub fn shared_texture_fence_wait_diagnostics(&self) -> serde_json::Value {
         let telemetry = &self.shared_texture_copy_telemetry.fence_wait;
         serde_json::json!({
@@ -3510,6 +3577,54 @@ mod shared_texture_copy_slot_tests {
     };
     use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
     use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForSingleObjectEx};
+
+    #[test]
+    #[ignore = "requires an interactive Windows D3D11 hardware device"]
+    fn fatal_timeout_retains_first_evidence_without_overwriting_success_duration() {
+        unsafe {
+            let renderer =
+                WindowsD3d11Renderer::new_with_adapter(std::ptr::null_mut(), 64, 64, None, false)
+                    .expect("headless renderer");
+            let telemetry = Arc::clone(&renderer.shared_texture_copy_telemetry);
+            telemetry
+                .last_duration_micros
+                .store(1234, Ordering::Relaxed);
+            telemetry.max_duration_micros.store(2345, Ordering::Relaxed);
+            let slot = Arc::new(SharedTextureCopySlot {
+                event: CreateEventW(None, false, false, None).unwrap(),
+                query: None,
+                in_flight: AtomicBool::new(true),
+            });
+            let waiter = SharedTextureCopyWaitHandle {
+                device: renderer.device.clone(),
+                host_device: None,
+                completion: SharedTextureCopyCompletion::Fence {
+                    fence: renderer
+                        .shared_texture_copy_fence
+                        .as_ref()
+                        .expect("fence support")
+                        .clone(),
+                    fence_value: (1u64 << 53) + 17,
+                },
+                slot,
+                submitted_at: Instant::now() - Duration::from_secs(3),
+                telemetry: Arc::clone(&telemetry),
+                submission_error: None,
+            };
+            let (result, callback_evidence) = waiter.wait_with_evidence();
+            assert!(result.unwrap_err().contains("did not complete"));
+            let evidence = renderer.shared_texture_copy_first_fatal_timeout().unwrap();
+            assert_eq!(callback_evidence, Some(evidence.clone()));
+            assert!(evidence["elapsedMs"].as_f64().unwrap() >= 3000.0);
+            assert!(evidence["dispatchDelayMs"].as_f64().unwrap() >= 3000.0);
+            assert_eq!(evidence["targetFenceValue"], "9007199254741009");
+            assert_eq!(evidence["observedFenceValue"], "0");
+            assert!(evidence["deviceStatus"].is_null());
+            assert_eq!(telemetry.completed_count.load(Ordering::Relaxed), 0);
+            assert_eq!(telemetry.last_duration_micros.load(Ordering::Relaxed), 1234);
+            assert_eq!(telemetry.max_duration_micros.load(Ordering::Relaxed), 2345);
+        }
+    }
 
     #[test]
     fn reused_fence_event_clears_old_notifications_without_losing_new_ones() {

@@ -230,3 +230,14 @@ cached older clients; it is not a public npm API or a migration target.
 ## License
 
 [MIT](https://github.com/jstroh/steam-bridge/blob/main/LICENSE). Steamworks use remains subject to Valve's terms.
+
+### Shared-texture timeout evidence
+
+`NativeOverlaySharedTextureCopyError.firstFatalTimeout` optionally carries diagnostic
+evidence for the first claimed fatal copy timeout in a renderer. It is not proof
+of a particular GPU or driver defect. Older bindings omit it. Consumers should
+validate and retain only expected fields in their existing recovery diagnostics.
+Device status, when present, is from a previous poll identified by
+`checkedAtElapsedMs`, not a new terminal device query. Fence values are decimal
+strings to preserve 64-bit precision. `producerReleaseSafe` remains authoritative
+for producer ownership; this optional evidence never permits an unsafe release.

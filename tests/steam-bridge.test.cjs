@@ -27195,12 +27195,18 @@ test("Windows asynchronous shared-texture completion rejects native errors and m
     width: 1,
     height: 1,
   });
-  completions.shift()({ error: "copy failed", producerReleaseSafe: false });
+  const firstFatalTimeout = {
+    elapsedMs: 5032.75, dispatchDelayMs: 4920.125,
+    completionMode: "fence", targetFenceValue: "9007199254741009",
+    observedFenceValue: "0", deviceStatus: null,
+  };
+  completions.shift()({ 0: { error: "copy failed", producerReleaseSafe: false, firstFatalTimeout } });
   await assert.rejects(nativeFailure, (error) => {
     assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
     assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
     assert.equal(error.producerReleaseSafe, false);
     assert.match(error.message, /copy failed/);
+    assert.deepEqual(error.firstFatalTimeout, firstFatalTimeout);
     return true;
   });
 

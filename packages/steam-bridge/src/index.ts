@@ -1771,7 +1771,8 @@ export class NativeOverlaySharedTextureCopyError extends Error {
 
   constructor(
     message: string,
-    readonly producerReleaseSafe: boolean
+    readonly producerReleaseSafe: boolean,
+    readonly firstFatalTimeout?: unknown
   ) {
     super(message);
     this.name = "NativeOverlaySharedTextureCopyError";
@@ -32478,7 +32479,8 @@ function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
     if (typeof completion.error === "string" && completion.error.length > 0) {
       throw new NativeOverlaySharedTextureCopyError(
         completion.error,
-        completion.producerReleaseSafe === true
+        completion.producerReleaseSafe === true,
+        completion.firstFatalTimeout
       );
     }
   }

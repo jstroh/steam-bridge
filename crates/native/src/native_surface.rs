@@ -1768,6 +1768,14 @@ mod windows {
             self.accepted
         }
 
+        pub fn wait_with_evidence(self) -> (Result<bool, String>, Option<serde_json::Value>) {
+            if let Some(copy_wait) = self.copy_wait {
+                let (result, evidence) = copy_wait.wait_with_evidence();
+                return (result.map(|_| self.accepted), evidence);
+            }
+            (Ok(self.accepted), None)
+        }
+
         pub fn wait(self) -> Result<bool, String> {
             if let Some(copy_wait) = self.copy_wait {
                 copy_wait.wait()?;
@@ -3900,6 +3908,7 @@ mod windows {
                     "terminalFailureCount": renderer.shared_texture_copy_terminal_failure_count(),
                     "timeoutCount": renderer.shared_texture_copy_timeout_count(),
                     "fatalTimeoutCount": renderer.shared_texture_copy_fatal_timeout_count(),
+                    "firstFatalTimeout": renderer.shared_texture_copy_first_fatal_timeout(),
                     "lastDispatchDelayMs": renderer.last_shared_texture_copy_dispatch_delay_ms(),
                     "maxDispatchDelayMs": renderer.max_shared_texture_copy_dispatch_delay_ms(),
                     "lastDurationMs": renderer.last_shared_texture_copy_duration_ms(),

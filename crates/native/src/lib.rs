@@ -148,7 +148,8 @@ fn complete_native_overlay_shared_texture_copy(job: NativeOverlaySharedTextureCo
     // submission and Flush are asynchronous, so acknowledge only after the
     // fence or legacy event query proves that the bridge-owned copy no longer
     // reads that producer.
-    let result = match job.request.wait() {
+    let (completion, first_fatal_timeout) = job.request.wait_with_evidence();
+    let result = match completion {
         Ok(true) => serde_json::json!({
             "accepted": true,
             "producerReleaseSafe": true,
@@ -160,6 +161,7 @@ fn complete_native_overlay_shared_texture_copy(job: NativeOverlaySharedTextureCo
         Err(error) => serde_json::json!({
             "error": error,
             "producerReleaseSafe": false,
+            "firstFatalTimeout": first_fatal_timeout,
         }),
     };
     job.completion
