@@ -979,6 +979,19 @@ pub fn get_native_overlay_host_diagnostics_json() -> Option<String> {
     native_surface::host_diagnostics_json()
 }
 
+#[napi(js_name = "getNativeOverlayHostSharedTextureCopyFirstFailure")]
+pub fn get_native_overlay_host_shared_texture_copy_first_failure() -> Option<serde_json::Value> {
+    #[cfg(target_os = "windows")]
+    {
+        native_surface::shared_texture_copy_first_failure()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
 #[napi(js_name = "getWindowsProcessPressure")]
 pub fn get_windows_process_pressure(pids: Vec<u32>) -> Option<serde_json::Value> {
     #[cfg(target_os = "windows")]

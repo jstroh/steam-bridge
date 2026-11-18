@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-11-15 UTC
+Last reviewed: 2026-11-18 UTC
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -16,6 +16,21 @@ The explicitly requested npm/GitHub patch candidate 0.4.16 is prepared with the 
 example on exact stable Electron 45.3.2, confirmed as npm latest at preparation.
 The Windows ASAR fixture derives its version from the example. Preserve the
 strict latest-version check and all release-proof gates.
+
+Shared-texture copy diagnostics (2026-11-18, after the `v0.4.16` tag and not in
+that candidate): when a terminal copy failure arms the stalled-copy guard, the
+renderer now first records that failure in bounded, write-once state: a 512-byte
+message, the timeout diagnostics, its age, and the number of later guard
+rejections. The internal native binding
+`getNativeOverlayHostSharedTextureCopyFirstFailure` reads it, and later
+synchronous submission failures carry it as
+`NativeOverlaySharedTextureCopyError.firstFailure`. Error messages, release
+safety, and recovery timing are unchanged. Verified: JS 481/481, other unit files
+94/94, API coverage, macOS native 56/56, Windows-target check, clippy (no new
+warnings) and fmt. The four Windows-only Rust tests were only compile-checked:
+Smart App Control blocks local builds on the Windows host
+(`WIN-DEV-BUILDSCRIPT-CONTROL-001`), so CI runs them. Not released. The
+production stall it diagnoses is `WIN-COPY-FENCE-DWM-FREEZE-001`.
 
 The unchanged 0.4.15 source is 4062ac078b7e156311f9771336d5f2973884593e.
 Its main [CI43709795591](https://github.com/jstroh/steam-bridge/actions/runs/43709795591)

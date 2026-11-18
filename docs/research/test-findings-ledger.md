@@ -1080,6 +1080,56 @@ condition clears. Do not retry unchanged inputs, delete locks blindly, disable
 host protections, move `v0.4.7` or publish partial artifacts. See
 [the checkpoint](checkpoint-history.md#2026-09-21-release-048-build-tool-correction).
 
+### WIN-COPY-FENCE-DWM-FREEZE-001 — OPEN
+
+Production consumers on 0.4.15 report fatal 2,000-ms shared-texture copy
+timeouts. The fence is always one behind the target, dispatch is fast, neither
+device is removed, and stalls cluster around focus changes: in the consumer's
+telemetry, 30 of 45 had the game unfocused. A Windows 10 / GTX 1070 Ti / 144 Hz
+case stalled twice in 50 s, both just after focus returned, with one 3.6-s
+Present. On a Windows 11 AMD RX 7700S hybrid laptop (60 Hz iGPU panel,
+cross-adapter present, Smart App Control on) the published 0.4.15 consumer
+reproduced the same signature twice in about 764 scripted focus returns,
+alternating with Edge. One run used a real mouse click to return plus a heavy
+WebGL page in Edge; the other used fast 2–6-s cycles. Both times the stalled copy
+was queued inside the refocusing click. A WPR GPU trace of the second stall
+shows the mechanism:
+
+- The copy's GPU wait before the copy is a residency wait (a paging-queue
+  fence, because every copy calls `OpenSharedResource1`). It cleared in 0.45 ms.
+- The fence signal after the copy is a five-context SignalFromGpu across the
+  host device's contexts. One of them waits every frame on a DWM fence that DWM
+  signals at vsync.
+- DWM's last signal was at the click. It sent none for at least the next 2.1 s.
+  The host Present context and that context completed nothing, while other
+  contexts kept completing work.
+- So the copy executed, but its fence could not advance.
+
+The opt-in `windowsDedicatedCopyDevice` cut the scripted rate from 2 in 764
+returns (1 per 382; 1 in 561 counting only the fast protocol) to 1 in 3,196
+(one-sided p ≈ 0.10, or 0.28 against the fast protocol alone; not significant). It did not
+remove the stall: one stall on the dedicated device had the same signature and
+a 3.3-s main-thread block. The likely remaining coupling is the copy device's
+GPU wait on the host's per-slot sampled fence (`import_shared_texture_dedicated`),
+because the host's Signal is spread across the same host contexts. That reading
+fits the mechanism but is not trace-confirmed for the dedicated stall.
+
+A candidate repair, not implemented: choose only ring slots whose sampled fence
+has already completed (a non-blocking CPU `GetCompletedValue`) and drop the frame
+otherwise, instead of queuing a GPU wait on the host. Separately, reconsider
+whether a copy timeout should force an application restart while neither device
+is removed.
+
+**Repeat only when** the copy-completion or ring-reuse path changes, a signed
+candidate can run the same focus-cycle protocol on affected hybrid hardware,
+or a trace is needed for a dedicated-device stall.
+Local unsigned builds cannot load under Smart App Control, so testing a repair
+needs a signed build (`WIN-DEV-BUILDSCRIPT-CONTROL-001`).
+References: [renderer](../../crates/native/src/windows_d3d11.rs)
+(`import_shared_texture_dedicated` holds the sampled-fence `Wait`),
+[first-failure diagnostics](../electron.md). The WPR trace, focus logs and
+consumer reports are kept with the QA evidence outside the repository.
+
 ### WIN-COPY-COMPLETION-FOCUS-001 — OPEN
 
 A complete 38-record Windows 11 / RTX 3050 laptop / 60 Hz report records healthy

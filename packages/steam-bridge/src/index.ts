@@ -1784,18 +1784,41 @@ export interface NativeOverlaySharedTextureCopyDiagnostics {
   readonly deviceCheckUs?: number;
 }
 
+/**
+ * The first terminal Windows shared-texture copy failure recorded by the
+ * current native D3D11 renderer. Any later synchronous submission failure on
+ * that renderer carries it as `firstFailure`; the stalled-copy guard's own
+ * message cannot describe the original failure. A recreated renderer starts
+ * without a record.
+ */
+export interface NativeOverlaySharedTextureCopyFirstFailure {
+  readonly schemaVersion: 1;
+  readonly kind: "fatal-timeout" | "terminal-failure";
+  /** The original native message, bounded to 512 UTF-8 bytes. */
+  readonly message: string;
+  readonly messageTruncated?: true;
+  /** Microseconds from the original failure until this record was read for the rejection. */
+  readonly ageUs: number;
+  /** Submissions the stalled-copy guard rejected after the original failure, including this rejection when the guard produced it. */
+  readonly laterRejectionCount: number;
+  readonly copyDiagnostics?: NativeOverlaySharedTextureCopyDiagnostics;
+}
+
 export class NativeOverlaySharedTextureCopyError extends Error {
   readonly code = "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED";
   declare readonly copyDiagnostics?: NativeOverlaySharedTextureCopyDiagnostics;
+  declare readonly firstFailure?: NativeOverlaySharedTextureCopyFirstFailure;
 
   constructor(
     message: string,
     readonly producerReleaseSafe: boolean,
-    copyDiagnostics?: NativeOverlaySharedTextureCopyDiagnostics
+    copyDiagnostics?: NativeOverlaySharedTextureCopyDiagnostics,
+    firstFailure?: NativeOverlaySharedTextureCopyFirstFailure
   ) {
     super(message);
     this.name = "NativeOverlaySharedTextureCopyError";
     if (copyDiagnostics !== undefined) this.copyDiagnostics = copyDiagnostics;
+    if (firstFailure !== undefined) this.firstFailure = firstFailure;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
@@ -10058,7 +10081,7 @@ export function updateNativeOverlayHostSharedTextureAsync(
     "presentationRect"
   );
   return new Promise<boolean>((resolve, reject) => {
-    const accepted = beginCopy.call(
+    const accepted = beginNativeSharedTextureCopy(() => beginCopy.call(
       binding,
       handle,
       normalizedWidth,
@@ -10078,7 +10101,7 @@ export function updateNativeOverlayHostSharedTextureAsync(
           reject(error);
         }
       }
-    );
+    ), binding);
     if (!accepted) {
       resolve(false);
     }
@@ -11108,7 +11131,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
       let acceptedSubmission = false;
       try {
         completion = new Promise<boolean>((resolve, reject) => {
-          const accepted = beginCopy.call(
+          const accepted = beginNativeSharedTextureCopy(() => beginCopy.call(
             binding,
             handle,
             width,
@@ -11128,7 +11151,7 @@ export function startNativeOverlaySession(options: NativeOverlaySessionOptions =
                 reject(error);
               }
             }
-          );
+          ), binding);
           if (!accepted) {
             resolve(false);
           } else {
@@ -32557,6 +32580,8 @@ function unwrapNativeCallbackArgument(event: unknown): unknown {
   return event;
 }
 
+const NATIVE_COPY_FIRST_FAILURE_MESSAGE_LIMIT = 512;
+
 function nonnegativeCopyMicroseconds(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
@@ -32652,6 +32677,55 @@ function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
     "The D3D11 shared-texture completion result was malformed.",
     false
   );
+}
+
+function normalizeNativeCopyFirstFailure(value: unknown): NativeOverlaySharedTextureCopyFirstFailure | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const {
+    schemaVersion, kind, message, messageTruncated, ageUs, laterRejectionCount, copyDiagnostics
+  } = value as Record<string, unknown>;
+  if (
+    schemaVersion !== 1
+    || (kind !== "fatal-timeout" && kind !== "terminal-failure")
+    || typeof message !== "string" || message.length === 0
+    || Buffer.byteLength(message, "utf8") > NATIVE_COPY_FIRST_FAILURE_MESSAGE_LIMIT
+    || (messageTruncated !== undefined && messageTruncated !== true)
+    || !nonnegativeCopyMicroseconds(ageUs)
+    || !nonnegativeCopyMicroseconds(laterRejectionCount)
+  ) return undefined;
+  const diagnostics = copyDiagnostics === undefined ? undefined : normalizeNativeCopyDiagnostics(copyDiagnostics);
+  return {
+    schemaVersion, kind, message,
+    ...(messageTruncated === true ? { messageTruncated } : {}),
+    ageUs, laterRejectionCount,
+    ...(diagnostics === undefined ? {} : { copyDiagnostics: diagnostics }),
+  };
+}
+
+function readNativeCopyFirstFailure(binding: NativeBinding): NativeOverlaySharedTextureCopyFirstFailure | undefined {
+  const read = (binding as Partial<NativeBinding>).getNativeOverlayHostSharedTextureCopyFirstFailure;
+  if (typeof read !== "function") return undefined;
+  try {
+    return normalizeNativeCopyFirstFailure(read.call(binding));
+  } catch {
+    return undefined;
+  }
+}
+
+function beginNativeSharedTextureCopy(begin: () => boolean, binding: NativeBinding): boolean {
+  try {
+    return begin();
+  } catch (error) {
+    if (error instanceof NativeOverlaySharedTextureCopyError) throw error;
+    const firstFailure = readNativeCopyFirstFailure(binding);
+    if (firstFailure === undefined) throw error;
+    throw new NativeOverlaySharedTextureCopyError(
+      error instanceof Error ? error.message : String(error),
+      false,
+      undefined,
+      firstFailure
+    );
+  }
 }
 
 function asNativeOverlaySharedTextureCopyError(

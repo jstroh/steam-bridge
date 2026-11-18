@@ -3247,6 +3247,16 @@ mod windows {
         false
     }
 
+    pub fn shared_texture_copy_first_failure() -> Option<serde_json::Value> {
+        let guard = SURFACE.lock().ok()?;
+        match &guard.as_ref()?.renderer {
+            WindowsSurfaceRenderer::D3d11 { renderer, .. } => renderer
+                .shared_texture_copy_first_failure()
+                .and_then(|failure| serde_json::to_value(failure).ok()),
+            WindowsSurfaceRenderer::OpenGl { .. } => None,
+        }
+    }
+
     pub fn host_diagnostics_json() -> Option<String> {
         let guard = SURFACE
             .lock()

@@ -1579,6 +1579,23 @@ test("Windows standalone D3D host uses native chrome, app menus, and high-refres
   const timeoutBranch = d3dSource.match(/if elapsed_ms >= SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS \{([\s\S]*?)\n {12}\}/)?.[1];
   assert.match(timeoutBranch, /copy_diagnostics: Some/);
   assert.doesNotMatch(timeoutBranch, /GetCompletedValue|GetData|GetDeviceRemovedReason|Flush|WaitForSingleObject|\.lock\(/);
+  assert.match(timeoutBranch, /record_first_failure\([\s\S]*?"fatal-timeout"[\s\S]*?fatal_timeout_count\s*\.fetch_add\(1, Ordering::Release\)/);
+  assert.equal(d3dSource.match(/terminal_failure_count\s*\.fetch_add/g)?.length, 1);
+  assert.match(d3dSource, /fn record_terminal_failure[\s\S]*?record_first_failure\([\s\S]*?terminal_failure_count\.fetch_add\(1, Ordering::Release\)/);
+  assert.match(d3dSource, /first_failure: OnceLock<SharedTextureCopyFirstFailureRecord>/);
+  assert.match(
+    d3dSource,
+    /terminal_failure_count\s*\.load\(Ordering::Acquire\)\s*> 0\)\s*\{\s*self\.shared_texture_copy_telemetry\s*\.later_rejection_count\s*\.fetch_add\(1, Ordering::Release\);[\s\S]*?return Err\(stalled_shared_texture_copy_error\(/
+  );
+  assert.equal(d3dSource.match(/self\.telemetry\.record_terminal_failure\(/g)?.length, 5);
+  assert.match(
+    source,
+    /pub fn shared_texture_copy_first_failure\(\)[\s\S]*?SURFACE\.lock\(\)\.ok\(\)\?[\s\S]*?WindowsSurfaceRenderer::OpenGl \{ \.\. \} => None/
+  );
+  assert.match(
+    nativeSource,
+    /js_name = "getNativeOverlayHostSharedTextureCopyFirstFailure"[\s\S]*?#\[cfg\(not\(target_os = "windows"\)\)\]\s*\{\s*None\s*\}/
+  );
   assert.match(d3dSource, /if value == u64::MAX[\s\S]*?fence reports device removal/);
   assert.match(source, /"fenceWait": renderer\.shared_texture_fence_wait_diagnostics\(\)/);
   assert.match(d3dSource, /"d3d11-query-async"/);
@@ -27404,6 +27421,222 @@ test("Windows asynchronous shared-texture begin failures conservatively retain t
       return true;
     }
   );
+});
+
+test("Windows stalled-copy rejections carry the renderer's bounded first failure", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const stalledMessage =
+    "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted";
+  const timeoutMessage =
+    "D3D11 shared-texture copy did not complete within 2000 ms; the native graphics device must be restarted";
+  const copyDiagnostics = {
+    schemaVersion: 1,
+    completionMode: "fence",
+    dedicatedCopyDevice: false,
+    elapsedUs: 2_005_000,
+    submissionUs: 320,
+    dispatchUs: 3_100,
+    fenceTarget: "0x0000000000000a01",
+    fenceObserved: "0x0000000000000a00",
+    lastWaitResult: "timeout",
+    copyDeviceRemovedCode: 0,
+    deviceCheckUs: 1_994_000,
+  };
+  const firstFailure = {
+    schemaVersion: 1,
+    kind: "fatal-timeout",
+    message: timeoutMessage,
+    ageUs: 1_250,
+    laterRejectionCount: 1,
+    copyDiagnostics,
+  };
+  let recorded = firstFailure;
+  let reads = 0;
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = function () {
+    assert.equal(this, fake);
+    reads += 1;
+    return recorded;
+  };
+  fake.beginNativeOverlayHostSharedTextureCopy = function () {
+    throw new Error(stalledMessage);
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+  const submit = () => session.updateSharedTextureAsync({ handle: Buffer.alloc(8, 21), width: 1, height: 1 });
+
+  await assert.rejects(submit(), (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
+    assert.equal(error.message, stalledMessage);
+    assert.equal(error.producerReleaseSafe, false);
+    assert.equal(Object.hasOwn(error, "copyDiagnostics"), false);
+    assert.deepEqual(error.firstFailure, firstFailure);
+    return true;
+  });
+  assert.equal(reads, 1);
+
+  const truncated = { ...firstFailure, kind: "terminal-failure", message: "é".repeat(256), messageTruncated: true };
+  delete truncated.copyDiagnostics;
+  const cases = [
+    [{ ...firstFailure, untrustedField: "ignored" }, firstFailure],
+    [truncated, truncated],
+    [{ ...firstFailure, copyDiagnostics: { ...copyDiagnostics, schemaVersion: 2 } },
+      (({ copyDiagnostics: _ignored, ...rest }) => rest)(firstFailure)],
+    [{ ...firstFailure, schemaVersion: 2 }, undefined],
+    [{ ...firstFailure, kind: "slow" }, undefined],
+    [{ ...firstFailure, message: "" }, undefined],
+    [{ ...firstFailure, message: "x".repeat(513) }, undefined],
+    [{ ...firstFailure, message: "é".repeat(257) }, undefined],
+    [{ ...firstFailure, messageTruncated: false }, undefined],
+    [{ ...firstFailure, ageUs: -1 }, undefined],
+    [{ ...firstFailure, laterRejectionCount: 1.5 }, undefined],
+    [null, undefined],
+    [[firstFailure], undefined],
+  ];
+  for (const [payload, expected] of cases) {
+    recorded = payload;
+    await assert.rejects(submit(), (error) => {
+      assert.equal(error.message, stalledMessage);
+      assert.equal(error.producerReleaseSafe, false);
+      assert.deepEqual(error.firstFailure, expected);
+      assert.equal(Object.hasOwn(error, "firstFailure"), expected !== undefined);
+      return true;
+    });
+  }
+
+  recorded = firstFailure;
+  fake.beginNativeOverlayHostSharedTextureCopy = function () {
+    throw new Error("Electron shared texture handle is null");
+  };
+  await assert.rejects(submit(), (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.message, "Electron shared texture handle is null");
+    assert.equal(error.producerReleaseSafe, false);
+    assert.deepEqual(error.firstFailure, firstFailure);
+    return true;
+  });
+  fake.beginNativeOverlayHostSharedTextureCopy = function () {
+    throw new Error(stalledMessage);
+  };
+
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = () => {
+    throw new Error("diagnostics unavailable");
+  };
+  await assert.rejects(submit(), (error) => {
+    assert.equal(error.message, stalledMessage);
+    assert.equal(error.producerReleaseSafe, false);
+    assert.equal(Object.hasOwn(error, "firstFailure"), false);
+    return true;
+  });
+
+  delete fake.getNativeOverlayHostSharedTextureCopyFirstFailure;
+  await assert.rejects(submit(), (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.message, stalledMessage);
+    assert.equal(error.producerReleaseSafe, false);
+    assert.equal(Object.hasOwn(error, "firstFailure"), false);
+    return true;
+  });
+});
+
+test("first-failure diagnostics never alter accepted copies or worker completion errors", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const completions = [];
+  let reads = 0;
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = () => {
+    reads += 1;
+    return { schemaVersion: 1, kind: "terminal-failure", message: "earlier", ageUs: 1, laterRejectionCount: 0 };
+  };
+  fake.beginNativeOverlayHostSharedTextureCopy = function (_handle, ...args) {
+    completions.push(args.pop());
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+
+  const accepted = session.updateSharedTextureAsync({ handle: Buffer.alloc(8, 22), width: 1, height: 1 });
+  completions.shift()({ accepted: true, producerReleaseSafe: true });
+  assert.equal(await accepted, true);
+
+  const failed = session.updateSharedTextureAsync({ handle: Buffer.alloc(8, 23), width: 1, height: 1 });
+  completions.shift()({ error: "copy failed", producerReleaseSafe: false });
+  await assert.rejects(failed, (error) => {
+    assert.equal(error.message, "copy failed");
+    assert.equal(Object.hasOwn(error, "firstFailure"), false);
+    return true;
+  });
+  assert.equal(reads, 0);
+});
+
+test("raw asynchronous worker completion errors never read or carry the first failure", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const completions = [];
+  let reads = 0;
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = () => {
+    reads += 1;
+    return { schemaVersion: 1, kind: "terminal-failure", message: "earlier", ageUs: 1, laterRejectionCount: 0 };
+  };
+  fake.beginNativeOverlayHostSharedTextureCopy = (_handle, ...args) => {
+    completions.push(args.pop());
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  steam.overlay.openNativeOverlayProbeWindow("First failure completion test");
+  t.after(() => { steam.overlay.closeNativeOverlayProbeWindow(); clearSteamBridgeCache(); });
+
+  const failed = steam.overlay.updateNativeOverlayHostSharedTextureAsync(Buffer.alloc(8, 25), 1, 1);
+  completions.shift()({ error: "copy failed", producerReleaseSafe: false });
+  await assert.rejects(failed, (error) => {
+    assert.equal(error.message, "copy failed");
+    assert.equal(error.producerReleaseSafe, false);
+    assert.equal(Object.hasOwn(error, "firstFailure"), false);
+    return true;
+  });
+  assert.equal(reads, 0);
+});
+
+test("raw asynchronous stalled-copy rejections carry the renderer's first failure", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const stalledMessage =
+    "D3D11 shared-texture copy completion previously stalled; the native graphics device must be restarted";
+  const firstFailure = {
+    schemaVersion: 1,
+    kind: "terminal-failure",
+    message: "D3D11 device was removed while waiting for the Electron shared-texture copy: 0x887A0005",
+    ageUs: 40_000,
+    laterRejectionCount: 3,
+  };
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = () => firstFailure;
+  fake.beginNativeOverlayHostSharedTextureCopy = () => {
+    throw new Error(stalledMessage);
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  steam.overlay.openNativeOverlayProbeWindow("First failure test");
+  t.after(() => { steam.overlay.closeNativeOverlayProbeWindow(); clearSteamBridgeCache(); });
+
+  let completion;
+  assert.doesNotThrow(() => {
+    completion = steam.overlay.updateNativeOverlayHostSharedTextureAsync(Buffer.alloc(8, 24), 1, 1);
+  });
+  await assert.rejects(completion, (error) => {
+    assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+    assert.equal(error.message, stalledMessage);
+    assert.equal(error.producerReleaseSafe, false);
+    assert.deepEqual(error.firstFailure, firstFailure);
+    return true;
+  });
 });
 
 test("asynchronous shared-texture API remains compatible with an older synchronous native payload", async (t) => {

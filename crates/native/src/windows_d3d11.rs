@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::slice;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 use windows::core::{Interface, PCSTR};
 use windows::Win32::Foundation::{
@@ -149,6 +149,83 @@ struct SharedTextureCopyTelemetry {
     last_duration_micros: AtomicU64,
     max_duration_micros: AtomicU64,
     fence_wait: SharedTextureFenceWaitTelemetry,
+    first_failure: OnceLock<SharedTextureCopyFirstFailureRecord>,
+    later_rejection_count: AtomicU64,
+}
+
+const SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT: usize = 512;
+
+struct SharedTextureCopyFirstFailureRecord {
+    kind: &'static str,
+    message: String,
+    message_truncated: bool,
+    copy_diagnostics: Option<SharedTextureCopyTimeoutDiagnostics>,
+    recorded_at: Instant,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedTextureCopyFirstFailure {
+    schema_version: u8,
+    kind: &'static str,
+    message: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    message_truncated: bool,
+    age_us: u64,
+    later_rejection_count: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    copy_diagnostics: Option<SharedTextureCopyTimeoutDiagnostics>,
+}
+
+fn bounded_shared_texture_copy_failure_message(message: &str) -> (String, bool) {
+    if message.len() <= SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT {
+        return (message.to_owned(), false);
+    }
+    let mut end = SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT;
+    while !message.is_char_boundary(end) {
+        end -= 1;
+    }
+    (message[..end].to_owned(), true)
+}
+
+impl SharedTextureCopyTelemetry {
+    fn record_first_failure(
+        &self,
+        kind: &'static str,
+        message: &str,
+        copy_diagnostics: Option<&SharedTextureCopyTimeoutDiagnostics>,
+    ) {
+        if self.first_failure.get().is_some() {
+            return;
+        }
+        let (message, message_truncated) = bounded_shared_texture_copy_failure_message(message);
+        let _ = self.first_failure.set(SharedTextureCopyFirstFailureRecord {
+            kind,
+            message,
+            message_truncated,
+            copy_diagnostics: copy_diagnostics.cloned(),
+            recorded_at: Instant::now(),
+        });
+    }
+
+    fn record_terminal_failure(&self, message: &str) {
+        self.record_first_failure("terminal-failure", message, None);
+        self.terminal_failure_count.fetch_add(1, Ordering::Release);
+    }
+
+    fn first_failure(&self) -> Option<SharedTextureCopyFirstFailure> {
+        self.first_failure
+            .get()
+            .map(|record| SharedTextureCopyFirstFailure {
+                schema_version: 1,
+                kind: record.kind,
+                message: record.message.clone(),
+                message_truncated: record.message_truncated,
+                age_us: shared_texture_copy_micros(record.recorded_at.elapsed()),
+                later_rejection_count: self.later_rejection_count.load(Ordering::Acquire),
+                copy_diagnostics: record.copy_diagnostics.clone(),
+            })
+    }
 }
 
 #[derive(Default)]
@@ -254,7 +331,7 @@ enum SharedTextureCopyCompletion {
     },
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedTextureCopyTimeoutDiagnostics {
     schema_version: u8,
@@ -309,9 +386,7 @@ impl SharedTextureCopyWaitHandle {
             .max_dispatch_delay_micros
             .fetch_max(dispatch_delay_micros, Ordering::Relaxed);
         if let Some(error) = self.submission_error.as_ref() {
-            self.telemetry
-                .terminal_failure_count
-                .fetch_add(1, Ordering::Release);
+            self.telemetry.record_terminal_failure(error);
             return Err(error.clone().into());
         }
         let started = self.submitted_at;
@@ -361,9 +436,7 @@ impl SharedTextureCopyWaitHandle {
                         },
                     )
                     .map_err(|error| {
-                        self.telemetry
-                            .terminal_failure_count
-                            .fetch_add(1, Ordering::Release);
+                        self.telemetry.record_terminal_failure(&error);
                         error
                     })?
                 }
@@ -380,14 +453,10 @@ impl SharedTextureCopyWaitHandle {
                     let _context_guard = match context_lock.lock() {
                         Ok(guard) => guard,
                         Err(_) => {
-                            self.telemetry
-                                .terminal_failure_count
-                                .fetch_add(1, Ordering::Release);
-                            return Err(
-                                "D3D11 shared-texture context lock was poisoned; the native graphics device must be restarted"
-                                    .to_owned()
-                                    .into(),
-                            );
+                            let error = "D3D11 shared-texture context lock was poisoned; the native graphics device must be restarted"
+                                .to_owned();
+                            self.telemetry.record_terminal_failure(&error);
+                            return Err(error.into());
                         }
                     };
                     let mut completed = 0i32;
@@ -400,12 +469,11 @@ impl SharedTextureCopyWaitHandle {
                         )
                     };
                     if let Err(error) = get_data {
-                        self.telemetry
-                            .terminal_failure_count
-                            .fetch_add(1, Ordering::Release);
-                        return Err(format!(
+                        let error = format!(
                             "ID3D11DeviceContext::GetData for asynchronous shared texture copy failed: {error}; the native graphics device must be restarted"
-                        ).into());
+                        );
+                        self.telemetry.record_terminal_failure(&error);
+                        return Err(error.into());
                     }
                     last_wait_result = "query-pending";
                     completed != 0
@@ -436,9 +504,6 @@ impl SharedTextureCopyWaitHandle {
                 recorded_timeout = true;
             }
             if elapsed_ms >= SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS {
-                self.telemetry
-                    .fatal_timeout_count
-                    .fetch_add(1, Ordering::Relaxed);
                 let (completion_mode, fence_target) = match &self.completion {
                     SharedTextureCopyCompletion::Fence { fence_value, .. } => {
                         ("fence", Some(format!("0x{fence_value:016x}")))
@@ -446,28 +511,38 @@ impl SharedTextureCopyWaitHandle {
                     SharedTextureCopyCompletion::Query { .. } => ("query", None),
                 };
                 let dedicated_copy_device = self.host_device.is_some();
+                let message = format!(
+                    "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
+                );
+                let copy_diagnostics = SharedTextureCopyTimeoutDiagnostics {
+                    schema_version: 1,
+                    completion_mode,
+                    dedicated_copy_device,
+                    elapsed_us: shared_texture_copy_micros(elapsed),
+                    submission_us: self.submission_us,
+                    dispatch_us: dispatch_delay_micros,
+                    copy_command_end_us: self.copy_command_end_us,
+                    completion_marker_end_us: self.completion_marker_end_us,
+                    fence_target,
+                    fence_observed: fence_observed.map(|value| format!("0x{value:016x}")),
+                    last_wait_result,
+                    copy_device_removed_code: last_device_check_us.map(|_| 0),
+                    host_device_removed_code: last_device_check_us
+                        .filter(|_| dedicated_copy_device)
+                        .map(|_| 0),
+                    device_check_us: last_device_check_us,
+                };
+                self.telemetry.record_first_failure(
+                    "fatal-timeout",
+                    &message,
+                    Some(&copy_diagnostics),
+                );
+                self.telemetry
+                    .fatal_timeout_count
+                    .fetch_add(1, Ordering::Release);
                 return Err(SharedTextureCopyWaitError {
-                    message: format!(
-                        "D3D11 shared-texture copy did not complete within {SHARED_TEXTURE_COPY_FATAL_TIMEOUT_MS} ms; the native graphics device must be restarted"
-                    ),
-                    copy_diagnostics: Some(Box::new(SharedTextureCopyTimeoutDiagnostics {
-                        schema_version: 1,
-                        completion_mode,
-                        dedicated_copy_device,
-                        elapsed_us: shared_texture_copy_micros(elapsed),
-                        submission_us: self.submission_us,
-                        dispatch_us: dispatch_delay_micros,
-                        copy_command_end_us: self.copy_command_end_us,
-                        completion_marker_end_us: self.completion_marker_end_us,
-                        fence_target,
-                        fence_observed: fence_observed.map(|value| format!("0x{value:016x}")),
-                        last_wait_result,
-                        copy_device_removed_code: last_device_check_us.map(|_| 0),
-                        host_device_removed_code: last_device_check_us
-                            .filter(|_| dedicated_copy_device)
-                            .map(|_| 0),
-                        device_check_us: last_device_check_us,
-                    })),
+                    message,
+                    copy_diagnostics: Some(Box::new(copy_diagnostics)),
                 });
             }
             let copy_removed = unsafe { self.device.GetDeviceRemovedReason() }.err();
@@ -478,9 +553,7 @@ impl SharedTextureCopyWaitHandle {
             if let Some(error) =
                 copy_wait_device_removed_error(copy_removed.as_ref(), host_removed.as_ref())
             {
-                self.telemetry
-                    .terminal_failure_count
-                    .fetch_add(1, Ordering::Release);
+                self.telemetry.record_terminal_failure(&error);
                 return Err(error.into());
             }
             last_device_check_us = Some(shared_texture_copy_micros(started.elapsed()));
@@ -1994,6 +2067,9 @@ impl WindowsD3d11Renderer {
                     .load(Ordering::Acquire)
                     > 0)
         {
+            self.shared_texture_copy_telemetry
+                .later_rejection_count
+                .fetch_add(1, Ordering::Release);
             let host_removed = self.device.GetDeviceRemovedReason().err();
             let copy_removed = self
                 .dedicated_copy
@@ -3490,6 +3566,10 @@ impl WindowsD3d11Renderer {
             .load(Ordering::Relaxed)
     }
 
+    pub fn shared_texture_copy_first_failure(&self) -> Option<SharedTextureCopyFirstFailure> {
+        self.shared_texture_copy_telemetry.first_failure()
+    }
+
     pub fn shared_texture_copy_terminal_failure_count(&self) -> u64 {
         self.shared_texture_copy_telemetry
             .terminal_failure_count
@@ -4427,6 +4507,130 @@ fn intersect_rect(
     let right = (first.0 + first.2).min(second.0 + second.2);
     let bottom = (first.1 + first.3).min(second.1 + second.3);
     (right > left && bottom > top).then_some((left, top, right - left, bottom - top))
+}
+
+#[cfg(test)]
+mod shared_texture_copy_first_failure_tests {
+    use super::{
+        bounded_shared_texture_copy_failure_message, SharedTextureCopyTelemetry,
+        SharedTextureCopyTimeoutDiagnostics, SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT,
+    };
+    use std::sync::atomic::Ordering;
+
+    fn timeout_diagnostics() -> SharedTextureCopyTimeoutDiagnostics {
+        SharedTextureCopyTimeoutDiagnostics {
+            schema_version: 1,
+            completion_mode: "fence",
+            dedicated_copy_device: false,
+            elapsed_us: 2_005_000,
+            submission_us: 320,
+            dispatch_us: 3_100,
+            copy_command_end_us: Some(60),
+            completion_marker_end_us: Some(220),
+            fence_target: Some("0x0000000000000a01".to_owned()),
+            fence_observed: Some("0x0000000000000a00".to_owned()),
+            last_wait_result: "timeout",
+            copy_device_removed_code: Some(0),
+            host_device_removed_code: None,
+            device_check_us: Some(1_994_000),
+        }
+    }
+
+    #[test]
+    fn the_first_failure_is_recorded_once_before_the_guard_is_armed() {
+        let telemetry = SharedTextureCopyTelemetry::default();
+        assert!(telemetry.first_failure().is_none());
+
+        telemetry.record_first_failure("fatal-timeout", "timed out", Some(&timeout_diagnostics()));
+        assert_eq!(telemetry.fatal_timeout_count.load(Ordering::Acquire), 0);
+        telemetry.record_terminal_failure("device removed later");
+        telemetry.record_terminal_failure("another later failure");
+        assert_eq!(telemetry.terminal_failure_count.load(Ordering::Acquire), 2);
+        telemetry
+            .later_rejection_count
+            .fetch_add(3, Ordering::Release);
+
+        let first = telemetry.first_failure().expect("first failure");
+        assert_eq!(first.kind, "fatal-timeout");
+        assert_eq!(first.message, "timed out");
+        assert!(!first.message_truncated);
+        assert_eq!(first.later_rejection_count, 3);
+        let diagnostics = first
+            .copy_diagnostics
+            .as_ref()
+            .expect("timeout diagnostics");
+        assert_eq!(diagnostics.dispatch_us, 3_100);
+        assert_eq!(
+            diagnostics.fence_observed.as_deref(),
+            Some("0x0000000000000a00")
+        );
+
+        let json = serde_json::to_value(&first).expect("serialize");
+        assert_eq!(json["schemaVersion"], 1);
+        assert_eq!(json["kind"], "fatal-timeout");
+        assert_eq!(json["laterRejectionCount"], 3);
+        assert_eq!(json["copyDiagnostics"]["completionMode"], "fence");
+        assert!(json.get("messageTruncated").is_none());
+        assert!(json["ageUs"].is_u64());
+    }
+
+    #[test]
+    fn a_terminal_failure_records_itself_without_copy_diagnostics() {
+        let telemetry = SharedTextureCopyTelemetry::default();
+        telemetry.record_terminal_failure("fence reports device removal");
+        assert_eq!(telemetry.terminal_failure_count.load(Ordering::Acquire), 1);
+        let first = telemetry.first_failure().expect("first failure");
+        assert_eq!(first.kind, "terminal-failure");
+        assert_eq!(first.message, "fence reports device removal");
+        assert_eq!(first.later_rejection_count, 0);
+        let json = serde_json::to_value(&first).expect("serialize");
+        assert!(json.get("copyDiagnostics").is_none());
+    }
+
+    #[test]
+    fn concurrent_failures_keep_exactly_one_first_failure() {
+        let telemetry = std::sync::Arc::new(SharedTextureCopyTelemetry::default());
+        let workers = (0..8)
+            .map(|index| {
+                let telemetry = std::sync::Arc::clone(&telemetry);
+                std::thread::spawn(move || {
+                    telemetry.record_terminal_failure(&format!("failure {index}"));
+                })
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            worker.join().expect("worker");
+        }
+        assert_eq!(telemetry.terminal_failure_count.load(Ordering::Acquire), 8);
+        let first = telemetry.first_failure().expect("first failure");
+        assert!(first.message.starts_with("failure "), "{}", first.message);
+    }
+
+    #[test]
+    fn first_failure_messages_are_bounded_at_a_character_boundary() {
+        let limit = SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT;
+        let exact = "x".repeat(limit);
+        assert_eq!(
+            bounded_shared_texture_copy_failure_message(&exact),
+            (exact.clone(), false)
+        );
+        let (ascii, truncated) =
+            bounded_shared_texture_copy_failure_message(&"x".repeat(limit + 1));
+        assert!(truncated);
+        assert_eq!(ascii.len(), limit);
+        let multibyte = format!("x{}", "é".repeat(limit));
+        let (bounded, truncated) = bounded_shared_texture_copy_failure_message(&multibyte);
+        assert!(truncated);
+        assert!(bounded.len() <= limit);
+        assert_eq!(bounded.len(), limit - 1);
+        assert!(bounded.ends_with('é'));
+
+        let telemetry = SharedTextureCopyTelemetry::default();
+        telemetry.record_terminal_failure(&multibyte);
+        let json = serde_json::to_value(telemetry.first_failure().expect("first failure"))
+            .expect("serialize");
+        assert_eq!(json["messageTruncated"], true);
+    }
 }
 
 #[cfg(test)]
