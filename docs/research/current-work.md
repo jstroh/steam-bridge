@@ -32,6 +32,25 @@ Smart App Control blocks local builds on the Windows host
 (`WIN-DEV-BUILDSCRIPT-CONTROL-001`), so CI runs them. Not released. The
 production stall it diagnoses is `WIN-COPY-FENCE-DWM-FREEZE-001`.
 
+Electron freshness (2026-11-18, after 2412223 and not in the `v0.4.16` candidate,
+which stays on 45.3.2): [Main CI 44413870933](https://github.com/jstroh/steam-bridge/actions/runs/44413870933)
+for 2412223 passes both security audits and all three native-platform checks;
+the x86_64-pc-windows-msvc job's `npm test` runs and passes the four
+Windows-only `shared_texture_copy_first_failure_tests`. Package smoke fails only
+at `check:electron:latest` because npm latest moved to 45.3.4 (published
+2026-11-17), so its package smoke did not run and the dependent Node runtime
+jobs were skipped. 3ae831e pins the example and its lock to 45.3.4; the Windows
+ASAR fixture derives its version from the example. Its
+[Main CI 44420127644](https://github.com/jstroh/steam-bridge/actions/runs/44420127644)
+passes every job, including Package smoke and the Node 18/20/22/24 runtime jobs.
+The same tree passes on Apple Silicon macOS with pinned npm 11.17.0 and Node 26:
+latest-Electron, supported platforms, full tests (575 unit passes, 104 release/
+package passes with 3 platform skips, 56 native passes), native formatting/check,
+API coverage, complete package smoke and a zero-finding lock audit. The packaged
+45.3.4 runtime loads all 1159 required native methods, the earlier 1158 plus the
+first-failure binding. This is native-loading compatibility, not live
+Steam/gameplay proof.
+
 The unchanged 0.4.15 source is 4062ac078b7e156311f9771336d5f2973884593e.
 Its main [CI43709795591](https://github.com/jstroh/steam-bridge/actions/runs/43709795591)
 failed only the stale Electron 45.2.1 latest check; its tag
