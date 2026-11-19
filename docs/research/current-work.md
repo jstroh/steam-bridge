@@ -12,10 +12,14 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-The explicitly requested npm/GitHub patch candidate 0.4.16 is prepared with the QA
-example on exact stable Electron 45.3.2, confirmed as npm latest at preparation.
-The Windows ASAR fixture derives its version from the example. Preserve the
-strict latest-version check and all release-proof gates.
+The explicitly requested npm/GitHub patch release 0.4.17 is prepared from main:
+the shared-texture first-failure diagnostics below and the QA example on exact
+stable Electron 45.3.4, confirmed as npm latest at preparation. It supersedes the
+unpublished `v0.4.16` tag, which stays as tagged and is never reused. The Windows
+ASAR fixture derives its version from the example. Preserve the strict
+latest-version check and all release-proof gates: npm publication needs a fresh
+schema 8 Windows live-proof receipt for the exact `v0.4.17` candidate.
+The 0.4.16 record below is kept as history.
 
 Shared-texture copy diagnostics (2026-11-18, after the `v0.4.16` tag and not in
 that candidate): when a terminal copy failure arms the stalled-copy guard, the

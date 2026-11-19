@@ -1,6 +1,6 @@
 # Test Findings Ledger
 
-Last reviewed: 2026-11-15
+Last reviewed: 2026-11-18
 
 This is the fast index for deciding whether a live, manual, expensive, negative,
 or environment-sensitive experiment should be run again. Detailed artifact
