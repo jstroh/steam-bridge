@@ -12,14 +12,37 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-The explicitly requested npm/GitHub patch release 0.4.17 is prepared from main:
-the shared-texture first-failure diagnostics below and the QA example on exact
-stable Electron 45.3.4, confirmed as npm latest at preparation. It supersedes the
-unpublished `v0.4.16` tag, which stays as tagged and is never reused. The Windows
-ASAR fixture derives its version from the example. Preserve the strict
-latest-version check and all release-proof gates: npm publication needs a fresh
-schema 8 Windows live-proof receipt for the exact `v0.4.17` candidate.
+The explicitly requested patch release 0.4.17 is public on npm (`latest`) and as
+the Latest GitHub Release. It carries the shared-texture first-failure
+diagnostics below and the QA example on exact stable Electron 45.3.4, and it
+supersedes the unpublished `v0.4.16` tag, which stays as tagged and is never
+reused. Preserve the strict latest-version check and all release-proof gates.
 The 0.4.16 record below is kept as history.
+
+Completed 0.4.17 release (2026-11-19 UTC):
+- Source 871c6434bdffcb9ba4e7e0d02c8597685e9f166a, annotated tag `v0.4.17`
+  (object 106704454fc3b50391e2b08b8c7ab2ab4e3a7797). Main CI 44426681418, tag CI
+  44427332203 and Release 44427332148 attempt 1 all succeed, including Windows
+  signing and the final tarball/ASAR gate. Canonical TGZ SHA-256
+  ae23c07eb1f15d8d6b2a1adbebe8d485a77a5e4f3116f8506a6b39be468b5c94; the
+  downloaded candidate passes verification-only `--require-publishable`.
+  Windows addon/PDB debug ID 31a9a441-4bee-4bd5-bd48-fda051939d30-1.
+- Fresh schema 8 live proof, receipt SHA-256
+  052f0f467137d9f6318ea7488a38a3343905131a2a4d52f4ded9c771e2888876. The actual
+  game consumer is a byte-for-byte copy of the isolated consumer that qualified
+  0.4.15, with only `node_modules/steam-bridge` replaced by the exact 0.4.17 TGZ
+  (normal directory, four-rule ACL, Limited launch, fresh profile, real signed-in
+  Steam client, DevTools closed). At 60 Hz: game median paint, fresh-texture and
+  native-present FPS 59.9 over 246 samples, Steam-overlay median present 59.7
+  over 18 samples, 14,114 asynchronous copies with no timeout, slow copy,
+  saturation drop or device loss, and stderr limited to the Valve banner pair.
+  The ordinary Friends overlay opened from the QA menu and closed with Escape.
+- Publish 44430289834 from tooling `v0.4.13` (0ef690e, CI 41414411467) after the
+  `npm-production` approval. npm integrity
+  `sha512-ZmxofmEY12nnZby00rf2wKPctn7ApgGLX+OF4nIMzGrKJ85a+Zu9m3RmsrFGhz+SxUlTuGuNK0y/rVhGxs4fSg==`
+  equals the canonical TGZ, with a signed provenance statement. The GitHub Release
+  holds the TGZ, Windows bundle, audit, native-load result, receipt, both
+  publish-epoch proofs and the PDB. The proof secret is deleted.
 
 Shared-texture copy diagnostics (2026-11-18, after the `v0.4.16` tag and not in
 that candidate): when a terminal copy failure arms the stalled-copy guard, the
