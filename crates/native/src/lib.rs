@@ -167,6 +167,9 @@ fn complete_native_overlay_shared_texture_copy(job: NativeOverlaySharedTextureCo
             if let Some(diagnostics) = error.copy_diagnostics {
                 result["copyDiagnostics"] = serde_json::json!(diagnostics);
             }
+            if let Some(first_failure) = error.first_failure {
+                result["firstFailure"] = serde_json::json!(first_failure);
+            }
             result
         }
     };

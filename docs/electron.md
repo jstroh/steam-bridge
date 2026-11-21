@@ -274,13 +274,14 @@ same unsafe-error rule.
 
 After one Windows copy fails terminally, later submissions are rejected, usually
 with a generic "previously stalled" message, and one of those rejections can
-reach JavaScript before the original failure does. A later synchronous
-rejection carries `firstFailure`: the D3D11 renderer's first recorded failure,
-with its bounded message, `copyDiagnostics` when it was a fatal timeout, its
-age, and how many submissions the stalled-copy guard has rejected since. The
-record belongs to that renderer and starts empty when the renderer is
-recreated. Report it with whichever error your recovery handles first. It is
-diagnostic only and never changes release safety.
+reach JavaScript before the original failure does. Synchronous submission
+rejections and asynchronous completion errors can carry `firstFailure`: the
+originating D3D11 renderer's first recorded failure, with its bounded message,
+`copyDiagnostics` when it was a fatal timeout, its age, and how many submissions
+the stalled-copy guard has rejected since. The record starts empty when the
+renderer is recreated; pending completions retain their originating renderer's
+record. Older native addons can omit it. Report it with whichever error your
+recovery handles first. It is diagnostic only and never changes release safety.
 
 This is exceptional error recovery, not the normal shutdown procedure.
 Ordinary shutdown stops new submissions, awaits outstanding work, and closes

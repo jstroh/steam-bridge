@@ -1786,10 +1786,10 @@ export interface NativeOverlaySharedTextureCopyDiagnostics {
 
 /**
  * The first terminal Windows shared-texture copy failure recorded by the
- * current native D3D11 renderer. Any later synchronous submission failure on
- * that renderer carries it as `firstFailure`; the stalled-copy guard's own
- * message cannot describe the original failure. A recreated renderer starts
- * without a record.
+ * originating native D3D11 renderer. Asynchronous completion errors and later
+ * synchronous submission failures carry it as `firstFailure`; the stalled-copy
+ * guard's own message cannot describe the original failure. A recreated renderer
+ * starts without a record; pending completions retain their originating record.
  */
 export interface NativeOverlaySharedTextureCopyFirstFailure {
   readonly schemaVersion: 1;
@@ -32669,6 +32669,9 @@ function normalizeNativeSharedTextureCopyCompletion(result: unknown): true {
         completion.producerReleaseSafe === true,
         completion.producerReleaseSafe === false
           ? normalizeNativeCopyDiagnostics(completion.copyDiagnostics)
+          : undefined,
+        completion.producerReleaseSafe === false
+          ? normalizeNativeCopyFirstFailure(completion.firstFailure)
           : undefined
       );
     }

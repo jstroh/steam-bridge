@@ -361,6 +361,7 @@ pub struct SharedTextureCopyTimeoutDiagnostics {
 pub struct SharedTextureCopyWaitError {
     pub message: String,
     pub copy_diagnostics: Option<Box<SharedTextureCopyTimeoutDiagnostics>>,
+    pub first_failure: Option<Box<SharedTextureCopyFirstFailure>>,
 }
 
 impl From<String> for SharedTextureCopyWaitError {
@@ -368,7 +369,17 @@ impl From<String> for SharedTextureCopyWaitError {
         Self {
             message,
             copy_diagnostics: None,
+            first_failure: None,
         }
+    }
+}
+
+impl SharedTextureCopyWaitError {
+    fn with_first_failure(mut self, telemetry: &SharedTextureCopyTelemetry) -> Self {
+        if self.first_failure.is_none() {
+            self.first_failure = telemetry.first_failure().map(Box::new);
+        }
+        self
     }
 }
 
@@ -378,6 +389,11 @@ fn shared_texture_copy_micros(duration: Duration) -> u64 {
 
 impl SharedTextureCopyWaitHandle {
     pub fn wait(self) -> Result<(), SharedTextureCopyWaitError> {
+        self.wait_inner()
+            .map_err(|error| error.with_first_failure(&self.telemetry))
+    }
+
+    fn wait_inner(&self) -> Result<(), SharedTextureCopyWaitError> {
         let dispatch_delay_micros = shared_texture_copy_micros(self.submitted_at.elapsed());
         self.telemetry
             .last_dispatch_delay_micros
@@ -543,6 +559,7 @@ impl SharedTextureCopyWaitHandle {
                 return Err(SharedTextureCopyWaitError {
                     message,
                     copy_diagnostics: Some(Box::new(copy_diagnostics)),
+                    first_failure: None,
                 });
             }
             let copy_removed = unsafe { self.device.GetDeviceRemovedReason() }.err();
@@ -4538,7 +4555,8 @@ fn intersect_rect(
 mod shared_texture_copy_first_failure_tests {
     use super::{
         bounded_shared_texture_copy_failure_message, SharedTextureCopyTelemetry,
-        SharedTextureCopyTimeoutDiagnostics, SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT,
+        SharedTextureCopyTimeoutDiagnostics, SharedTextureCopyWaitError,
+        SHARED_TEXTURE_COPY_FIRST_FAILURE_MESSAGE_LIMIT,
     };
     use std::sync::atomic::Ordering;
 
@@ -4629,6 +4647,64 @@ mod shared_texture_copy_first_failure_tests {
         assert_eq!(telemetry.terminal_failure_count.load(Ordering::Acquire), 8);
         let first = telemetry.first_failure().expect("first failure");
         assert!(first.message.starts_with("failure "), "{}", first.message);
+    }
+
+    #[test]
+    fn wait_errors_keep_the_originating_renderer_failure_and_their_own_diagnostics() {
+        let original = SharedTextureCopyTelemetry::default();
+        original.record_first_failure(
+            "fatal-timeout",
+            "original timeout",
+            Some(&timeout_diagnostics()),
+        );
+        original
+            .later_rejection_count
+            .fetch_add(2, Ordering::Release);
+        let replacement = SharedTextureCopyTelemetry::default();
+        replacement.record_terminal_failure("replacement failure");
+        let mut current_diagnostics = timeout_diagnostics();
+        current_diagnostics.dispatch_us = 2_001_000;
+        let error = SharedTextureCopyWaitError {
+            message: "later queued timeout".to_owned(),
+            copy_diagnostics: Some(Box::new(current_diagnostics)),
+            first_failure: None,
+        }
+        .with_first_failure(&original);
+
+        assert_eq!(error.message, "later queued timeout");
+        assert_eq!(
+            error.copy_diagnostics.as_ref().unwrap().dispatch_us,
+            2_001_000
+        );
+        let first = error.first_failure.as_ref().expect("original failure");
+        assert_eq!(first.message, "original timeout");
+        assert_eq!(first.later_rejection_count, 2);
+        assert_eq!(first.copy_diagnostics.as_ref().unwrap().dispatch_us, 3_100);
+        let preserved = error.with_first_failure(&replacement);
+        assert_eq!(preserved.first_failure.unwrap().message, "original timeout");
+    }
+
+    #[test]
+    fn wait_errors_capture_terminal_failures_without_replacing_the_current_message() {
+        let telemetry = SharedTextureCopyTelemetry::default();
+        telemetry.record_terminal_failure("first terminal failure");
+        let error = SharedTextureCopyWaitError::from("current wait failed".to_owned())
+            .with_first_failure(&telemetry);
+        assert_eq!(error.message, "current wait failed");
+        assert!(error.copy_diagnostics.is_none());
+        let first = error.first_failure.expect("terminal failure");
+        assert_eq!(first.kind, "terminal-failure");
+        assert_eq!(first.message, "first terminal failure");
+        assert!(first.copy_diagnostics.is_none());
+    }
+
+    #[test]
+    fn wait_errors_without_a_record_remain_compatible() {
+        let error = SharedTextureCopyWaitError::from("unrecorded wait failure".to_owned())
+            .with_first_failure(&SharedTextureCopyTelemetry::default());
+        assert_eq!(error.message, "unrecorded wait failure");
+        assert!(error.copy_diagnostics.is_none());
+        assert!(error.first_failure.is_none());
     }
 
     #[test]

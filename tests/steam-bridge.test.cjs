@@ -27423,6 +27423,141 @@ test("Windows asynchronous shared-texture begin failures conservatively retain t
   );
 });
 
+test("Windows asynchronous copy errors carry the originating renderer's first failure", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const completions = [];
+  let reads = 0;
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = () => {
+    reads += 1;
+    throw new Error("the current renderer must not be consulted");
+  };
+  fake.beginNativeOverlayHostSharedTextureCopy = function (_handle, ...args) {
+    completions.push(args.pop());
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  let rawOpened = false;
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    if (rawOpened) steam.overlay.closeNativeOverlayProbeWindow();
+    clearSteamBridgeCache();
+  });
+  const diagnostics = {
+    schemaVersion: 1,
+    completionMode: "fence",
+    dedicatedCopyDevice: true,
+    elapsedUs: 2_005_000,
+    submissionUs: 320,
+    dispatchUs: 460,
+    fenceTarget: "0x0000000000000a01",
+    fenceObserved: "0x0000000000000a00",
+    lastWaitResult: "timeout",
+  };
+  const firstFailure = {
+    schemaVersion: 1,
+    kind: "fatal-timeout",
+    message: "original copy timed out",
+    ageUs: 1_250,
+    laterRejectionCount: 0,
+    copyDiagnostics: diagnostics,
+  };
+  const texture = { handle: Buffer.alloc(8, 21), width: 1, height: 1 };
+  const submits = [
+    () => session.updateSharedTextureAsync(texture),
+    () => steam.overlay.updateNativeOverlayHostSharedTextureAsync(texture.handle, texture.width, texture.height),
+  ];
+  for (const [index, submit] of submits.entries()) {
+    if (index === 1) {
+      session.close();
+      steam.overlay.openNativeOverlayProbeWindow("Asynchronous first failure test");
+      rawOpened = true;
+    }
+    for (const wrapped of [false, true]) {
+      const laterDiagnostics = { ...diagnostics, dispatchUs: 2_001_000 };
+      for (const [message, copyDiagnostics] of [
+        [firstFailure.message, diagnostics],
+        ["another queued copy failed", laterDiagnostics],
+      ]) {
+        const pending = submit();
+        const payload = { error: message, producerReleaseSafe: false, copyDiagnostics, firstFailure };
+        completions.shift()(wrapped ? { 0: payload } : payload);
+        await assert.rejects(pending, (error) => {
+          assert.equal(error.name, "NativeOverlaySharedTextureCopyError");
+          assert.equal(error.code, "STEAM_OVERLAY_SHARED_TEXTURE_COPY_FAILED");
+          assert.equal(error.message, message);
+          assert.equal(error.producerReleaseSafe, false);
+          assert.deepEqual(error.copyDiagnostics, copyDiagnostics);
+          assert.deepEqual(error.firstFailure, firstFailure);
+          return true;
+        });
+      }
+    }
+  }
+  assert.equal(reads, 0);
+});
+
+test("Windows asynchronous first-failure metadata is optional and conservatively validated", async (t) => {
+  setProcessPlatformForTest(t, "win32");
+  const { fake } = createFrameDrivenPumpTestNative();
+  const completions = [];
+  fake.getNativeOverlayHostSharedTextureCopyFirstFailure = () => {
+    throw new Error("asynchronous completion must use its own payload");
+  };
+  fake.beginNativeOverlayHostSharedTextureCopy = function (_handle, ...args) {
+    completions.push(args.pop());
+    return true;
+  };
+  const steam = loadSteamWithFakeNative(fake);
+  const session = steam.overlay.startNativeOverlaySession({ pumpIntervalMs: 10000 });
+  t.after(() => {
+    session.close();
+    clearSteamBridgeCache();
+  });
+  const submit = () => session.updateSharedTextureAsync({ handle: Buffer.alloc(8, 22), width: 1, height: 1 });
+  const firstFailure = {
+    schemaVersion: 1, kind: "terminal-failure", message: "original failure", ageUs: 50, laterRejectionCount: 1,
+  };
+  const cases = [
+    [firstFailure, firstFailure],
+    [{ ...firstFailure, untrustedField: "ignored" }, firstFailure],
+    [{ ...firstFailure, schemaVersion: 2 }, undefined],
+    [{ ...firstFailure, kind: "slow" }, undefined],
+    [{ ...firstFailure, message: "é".repeat(257) }, undefined],
+    [{ ...firstFailure, ageUs: -1 }, undefined],
+    [{ ...firstFailure, laterRejectionCount: 1.5 }, undefined],
+    [[firstFailure], undefined],
+    [null, undefined],
+    [undefined, undefined],
+  ];
+  for (const [payload, expected] of cases) {
+    const pending = submit();
+    completions.shift()({ error: "current error", producerReleaseSafe: false, firstFailure: payload });
+    await assert.rejects(pending, (error) => {
+      assert.equal(error.message, "current error");
+      assert.equal(error.producerReleaseSafe, false);
+      assert.equal(Object.hasOwn(error, "copyDiagnostics"), false);
+      assert.deepEqual(error.firstFailure, expected);
+      assert.equal(Object.hasOwn(error, "firstFailure"), expected !== undefined);
+      return true;
+    });
+  }
+  for (const producerReleaseSafe of [true, undefined, null, "false"]) {
+    const pending = submit();
+    completions.shift()({ error: "current error", producerReleaseSafe, firstFailure });
+    await assert.rejects(pending, (error) => {
+      assert.equal(error.message, "current error");
+      assert.equal(error.producerReleaseSafe, producerReleaseSafe === true);
+      assert.equal(Object.hasOwn(error, "firstFailure"), false);
+      return true;
+    });
+  }
+  const accepted = submit();
+  completions.shift()({ accepted: true, producerReleaseSafe: true, firstFailure });
+  assert.equal(await accepted, true);
+});
+
 test("Windows stalled-copy rejections carry the renderer's bounded first failure", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
@@ -27578,7 +27713,7 @@ test("first-failure diagnostics never alter accepted copies or worker completion
   assert.equal(reads, 0);
 });
 
-test("raw asynchronous worker completion errors never read or carry the first failure", async (t) => {
+test("raw asynchronous worker completion errors omit unavailable first-failure metadata", async (t) => {
   setProcessPlatformForTest(t, "win32");
   const { fake } = createFrameDrivenPumpTestNative();
   const completions = [];

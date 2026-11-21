@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-11-18 UTC
+Last reviewed: 2026-11-21 UTC
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,6 +12,28 @@ Standing architecture decisions live in the
 
 ## Active goal
 
+Prepare a new immutable 0.4.18 candidate for the dedicated-copy ready-slot
+preference. The native correction is committed on public main as
+`3bf14c88dc291090d605dd60b1462e0f352a1573`; its runtime code stays unchanged in
+this release preparation. The isolated metadata candidate advances the package
+version and the smoke example to exact Electron 45.4.1. It also carries the
+originating renderer's optional first-failure record through asynchronous copy
+completion errors, preserving the current error and producer-release safety.
+This diagnostic correction does not identify a stall's cause or change recovery
+timing. The consuming game's production Electron version stays unchanged.
+
+[Source CI 44932535204](https://github.com/jstroh/steam-bridge/actions/runs/44932535204)
+passes the full macOS, Windows and Linux Check jobs. Package Smoke stopped at
+the unchanged latest-Electron gate because the example still pinned 45.3.4
+while npm latest was 45.4.1. The security job reported no vulnerabilities and
+three informational unmaintained warnings, then failed to update its optional
+GitHub check. The isolated candidate replaces that reporter with direct pinned
+cargo-audit 0.23.0, preserving audit failures, visible warnings and the original
+JSON artifact without Checks API writes. The npm audit and latest-Electron gates
+remain unchanged. Fresh exact-candidate CI, cross-platform
+artifacts, signing, protected actual-game schema 8 proof and npm publication
+remain pending. No 0.4.18 tag or release artifact has been created.
+
 The explicitly requested patch release 0.4.17 is public on npm (`latest`) and as
 the Latest GitHub Release. It carries the shared-texture first-failure
 diagnostics below and the QA example on exact stable Electron 45.3.4, and it
@@ -20,15 +42,19 @@ reused. Preserve the strict latest-version check and all release-proof gates.
 The 0.4.16 record below is kept as history.
 
 
-Pending source-only dedicated-copy correction (2026-11-21): ring selection
+Committed source-only dedicated-copy correction (2026-11-21): ring selection
 prefers an unreserved slot whose last host-sampling fence value is already
 complete. When no such slot exists, selection falls back to the original slot
 and preserves its GPU wait and fatal deadline. It does not drop indefinitely.
 Three exact-production-helper tests cover the four-slot reservation/readiness
 space (8,000 states), and Windows-target tests compile with an isolated
-build-script stub. These checks are not native GPU execution or a causal fix
-for a reported stall. Complete the controlled two-device queue/fence fixture,
+build-script stub; the exact committed source also passed the full Windows CI
+Check job with the real SDK. These checks are not native GPU execution or a
+causal fix for a reported stall. Complete the controlled two-device queue/fence fixture,
 new immutable package qualification and consumer QA before delivery.
+Reports also include original-host stalls outside the dedicated ready-slot path;
+keep the mixed stall investigation open. The asynchronous diagnostic correction
+preserves the originating record without treating missing metadata as health.
 
 Completed 0.4.17 release (2026-11-19 UTC):
 - Source 871c6434bdffcb9ba4e7e0d02c8597685e9f166a, annotated tag `v0.4.17`
@@ -67,7 +93,8 @@ safety, and recovery timing are unchanged. Verified: JS 481/481, other unit file
 94/94, API coverage, macOS native 56/56, Windows-target check, clippy (no new
 warnings) and fmt. The four Windows-only Rust tests were only compile-checked:
 Smart App Control blocks local builds on the Windows host
-(`WIN-DEV-BUILDSCRIPT-CONTROL-001`), so CI runs them. Not released. The
+(`WIN-DEV-BUILDSCRIPT-CONTROL-001`), so CI runs them. These synchronous diagnostics
+shipped in 0.4.17. The
 production stall it diagnoses is `WIN-COPY-FENCE-DWM-FREEZE-001`.
 
 Electron freshness (2026-11-18, after 2412223 and not in the `v0.4.16` candidate,
