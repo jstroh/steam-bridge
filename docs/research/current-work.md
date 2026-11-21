@@ -19,6 +19,17 @@ supersedes the unpublished `v0.4.16` tag, which stays as tagged and is never
 reused. Preserve the strict latest-version check and all release-proof gates.
 The 0.4.16 record below is kept as history.
 
+
+Pending source-only dedicated-copy correction (2026-11-21): ring selection
+prefers an unreserved slot whose last host-sampling fence value is already
+complete. When no such slot exists, selection falls back to the original slot
+and preserves its GPU wait and fatal deadline. It does not drop indefinitely.
+Three exact-production-helper tests cover the four-slot reservation/readiness
+space (8,000 states), and Windows-target tests compile with an isolated
+build-script stub. These checks are not native GPU execution or a causal fix
+for a reported stall. Complete the controlled two-device queue/fence fixture,
+new immutable package qualification and consumer QA before delivery.
+
 Completed 0.4.17 release (2026-11-19 UTC):
 - Source 871c6434bdffcb9ba4e7e0d02c8597685e9f166a, annotated tag `v0.4.17`
   (object 106704454fc3b50391e2b08b8c7ab2ab4e3a7797). Main CI 44426681418, tag CI

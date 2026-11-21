@@ -1138,21 +1138,42 @@ impl DedicatedCopyDevice {
         Ok(true)
     }
 
-    fn select_ring_slot(&mut self) -> usize {
-        let len = self.ring.len();
-        let mut index = self.next_ring_index;
-        for _ in 0..len {
-            let reserved = self.displayed == Some(index)
-                || self.pending.is_some_and(|(slot, _)| slot == index)
-                || self.newest == Some(index);
-            if !reserved {
-                break;
-            }
-            index = (index + 1) % len;
-        }
-        self.next_ring_index = (index + 1) % len;
+    fn select_ring_slot(&mut self, completed_sampled_value: u64) -> usize {
+        let index = select_dedicated_copy_ring_slot(
+            self.ring.len(),
+            self.next_ring_index,
+            completed_sampled_value,
+            |index| {
+                self.displayed == Some(index)
+                    || self.pending.is_some_and(|(slot, _)| slot == index)
+                    || self.newest == Some(index)
+            },
+            |index| self.ring[index].last_sampled_value,
+        );
+        self.next_ring_index = (index + 1) % self.ring.len();
         index
     }
+}
+
+fn select_dedicated_copy_ring_slot(
+    len: usize,
+    next_ring_index: usize,
+    completed_sampled_value: u64,
+    reserved: impl Fn(usize) -> bool,
+    last_sampled_value: impl Fn(usize) -> u64,
+) -> usize {
+    let mut index = next_ring_index;
+    let mut first_available = None;
+    for _ in 0..len {
+        if !reserved(index) {
+            first_available.get_or_insert(index);
+            if last_sampled_value(index) <= completed_sampled_value {
+                return index;
+            }
+        }
+        index = (index + 1) % len;
+    }
+    first_available.unwrap_or(next_ring_index)
 }
 
 static OUTPUT_ADAPTER_TOPOLOGY_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -2727,7 +2748,11 @@ impl WindowsD3d11Renderer {
             self.max_shared_texture_copies_in_flight.max(in_flight);
         let copy_submitted_at = Instant::now();
         let base_slot = if full_copy { None } else { dedicated.newest };
-        let slot_index = dedicated.select_ring_slot();
+        let completed_sampled_value = dedicated.copy_sampled_fence.GetCompletedValue();
+        if completed_sampled_value == u64::MAX {
+            return Err("D3D11 host sampled fence reports device removal; the native graphics device must be restarted".to_owned());
+        }
+        let slot_index = dedicated.select_ring_slot(completed_sampled_value);
         let mut submission_error = None;
         let last_sampled_value = dedicated.ring[slot_index].last_sampled_value;
         if last_sampled_value > 0 {
@@ -5176,5 +5201,83 @@ mod tests {
     #[test]
     fn frame_statistics_deltas_allow_a_small_unsigned_wrap() {
         assert_eq!(frame_statistics_counter_delta(3, u32::MAX - 2), Some(6));
+    }
+}
+
+#[cfg(test)]
+mod dedicated_copy_ring_selection_tests {
+    use super::select_dedicated_copy_ring_slot;
+
+    fn select(
+        next: usize,
+        reservations: [Option<usize>; 3],
+        sampled: [u64; 4],
+        completed: u64,
+    ) -> usize {
+        select_dedicated_copy_ring_slot(
+            4,
+            next,
+            completed,
+            |index| reservations.contains(&Some(index)),
+            |index| sampled[index],
+        )
+    }
+
+    #[test]
+    fn an_already_sampled_slot_precedes_an_unnecessary_host_wait() {
+        assert_eq!(select(2, [Some(0), Some(1), Some(1)], [0, 0, 5, 3], 4), 3);
+        assert_eq!(select(2, [Some(0), Some(1), Some(1)], [0, 0, 5, 3], 5), 2);
+    }
+
+    #[test]
+    fn all_busy_slots_keep_the_original_waiting_admission() {
+        assert_eq!(select(2, [Some(0), Some(1), Some(1)], [5; 4], 4), 2);
+        assert_eq!(select(3, [Some(3), Some(0), Some(2)], [5; 4], 4), 1);
+    }
+
+    #[test]
+    fn every_four_slot_reservation_and_readiness_state_preserves_fallback() {
+        let options = [None, Some(0), Some(1), Some(2), Some(3)];
+        let mut states = 0;
+        let mut avoided_waits = 0;
+        let mut busy_fallbacks = 0;
+        for next in 0..4 {
+            for displayed in options {
+                for pending in options {
+                    for newest in options {
+                        let reservations = [displayed, pending, newest];
+                        for mask in 0..16 {
+                            let sampled =
+                                std::array::from_fn(
+                                    |index| if mask & (1 << index) == 0 { 3 } else { 5 },
+                                );
+                            let original = (0..4)
+                                .map(|offset| (next + offset) % 4)
+                                .find(|index| !reservations.contains(&Some(*index)))
+                                .unwrap();
+                            let actual = select(next, reservations, sampled, 4);
+                            assert!(!reservations.contains(&Some(actual)));
+                            if let Some(expected) =
+                                (0..4).map(|offset| (next + offset) % 4).find(|index| {
+                                    !reservations.contains(&Some(*index)) && sampled[*index] <= 4
+                                })
+                            {
+                                assert_eq!(actual, expected);
+                                if sampled[original] > 4 {
+                                    avoided_waits += 1;
+                                }
+                            } else {
+                                assert_eq!(actual, original);
+                                busy_fallbacks += 1;
+                            }
+                            states += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(states, 8_000);
+        assert_eq!(avoided_waits, 1_852);
+        assert_eq!(busy_fallbacks, 2_148);
     }
 }
