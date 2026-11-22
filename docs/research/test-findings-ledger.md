@@ -98,6 +98,17 @@ empty-or-Valve-pair classifier does not accept them. No filtering, stub,
 exception, schema8 receipt or publication is created. A bounded older-game
 search yields only an unsigned/unqualified assembly, which is not launched.
 
+Publisher-tools follow-up: those consumed runs remain failed or incomplete;
+their raw logs are preserved. A separate verifier correction recognizes only
+the three exact Electron safeStorage warnings, at most once each, with original
+raw hash/size, truthful classification and warning count. Unknown output,
+malformed/reordered/duplicate Valve banners and duplicate or altered warnings
+still fail; CDP is excluded.
+This changes tooling classification, not the frozen native candidate or a prior
+run's outcome. **Repeat only when:** fresh missing manual-window coverage has
+its own reviewed invocation and actual observations; do not repeat the old
+assembly/signing search or combat proof for this warning.
+
 The human-approved isolated-consumer compatibility migration now uses the real
 asynchronous encryption API, with fresh serialized reads and generation-checked
 commits.173 adapted mocked notification cases,13 storage cases and11 ownership/

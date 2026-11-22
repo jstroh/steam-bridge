@@ -151,11 +151,18 @@ The receipt also requires fresh shared-texture delivery at 95% of the
 display target during gameplay and enforces the two-copy limit in both raw logs
 and the sanitized receipt. Paint or repeated native Presents alone cannot prove
 fresh content. Earlier receipt schemas cannot qualify this candidate.
-The stderr policy accepts an empty log or exactly one ordered pair of Valve's
-minidump App ID and cached Steam ID startup banners (`[API loaded no]`). Every
-other line, duplicate or malformed banner fails. Retain the raw log privately;
-the public receipt records its original hash, byte size and closed classification,
-never the IDs. Do not filter the log before generating the receipt.
+The current stderr policy accepts an empty log, one ordered adjacent pair of
+Valve's minidump App ID and cached Steam ID startup banners (`[API loaded no]`),
+and at most one exact Electron deprecation warning for each of
+`safeStorage.isEncryptionAvailable`, `safeStorage.decryptString` and
+`safeStorage.encryptString`. Only the complete static messages in
+`inspectStderr` are accepted; altered prefixes, unknown output, duplicate
+warnings and malformed or reordered Valve banners fail. Known warnings may
+appear in any order before or after the optional adjacent banner pair. CDP
+startup output is not allowed. Retain the raw log privately without filtering. The public receipt
+records its original hash, byte size, closed classification and warning count,
+never the IDs. New receipts use the versioned known-deprecation stderr policy;
+old policy receipts retain their original strict shape and Valve-only rules.
 
 Do not substitute a development checkout, linked package, attached matrix, or a
 receipt from different bytes.

@@ -1,6 +1,6 @@
 # Current Work Checkpoint
 
-Last reviewed: 2026-11-21 UTC
+Last reviewed: 2026-11-22 UTC
 
 This is the replace-in-place recovery checkpoint described in
 [`AGENTS.md`](../../AGENTS.md). Earlier checkpoints, from the 2026-07 release
@@ -12,27 +12,30 @@ Standing architecture decisions live in the
 
 ## Active goal
 
-Prepare a new immutable 0.4.18 candidate for the dedicated-copy ready-slot
-preference. The native correction is committed on public main as
-`3bf14c88dc291090d605dd60b1462e0f352a1573`; its runtime code stays unchanged in
-this release preparation. The isolated metadata candidate advances the package
-version and the smoke example to exact Electron 45.4.1. It also carries the
-originating renderer's optional first-failure record through asynchronous copy
-completion errors, preserving the current error and producer-release safety.
-This diagnostic correction does not identify a stall's cause or change recovery
-timing. The consuming game's production Electron version stays unchanged.
+Prepare a separate publishing-tools correction for the immutable `v0.4.18`
+candidate at `0c14556c3a18c0aaa1125aa2c2a273bfe0f5e9e0`. Its source, tag,
+original successful Release attempt, tarball and native payload stay unchanged.
+The correction recognizes only the three exact existing Electron safeStorage
+deprecation messages, records their count without filtering the original log,
+and rejects unknown, malformed or duplicate output. It does not admit CDP.
+The new stderr policy retains strict validation of older policy receipts.
 
-[Source CI 44932535204](https://github.com/jstroh/steam-bridge/actions/runs/44932535204)
-passes the full macOS, Windows and Linux Check jobs. Package Smoke stopped at
-the unchanged latest-Electron gate because the example still pinned 45.3.4
-while npm latest was 45.4.1. The security job reported no vulnerabilities and
-three informational unmaintained warnings, then failed to update its optional
-GitHub check. The isolated candidate replaces that reporter with direct pinned
-cargo-audit 0.23.0, preserving audit failures, visible warnings and the original
-JSON artifact without Checks API writes. The npm audit and latest-Electron gates
-remain unchanged. Fresh exact-candidate CI, cross-platform
-artifacts, signing, protected actual-game schema 8 proof and npm publication
-remain pending. No 0.4.18 tag or release artifact has been created.
+The controlling release and standalone-proof documentation changes with the
+verifier. The receipt, configurator, publisher and isolated ASAR-tool self-tests
+pass, including synthetic startup logs, strict negatives and legacy receipts.
+A preserved-log regression rejects the original startup bytes before the
+correction and accepts their exact hash/size afterward. Five independent final
+source reviews remain pending. Full package smoke is deferred to the approved
+CI epoch because it builds the workspace and probes a native binding; neither
+operation belongs to this source-only correction. A separately approved
+immutable tooling ref and its exact CI remain required before publication.
+
+Protected production-consumer runs exercised both GPU copy-device paths with
+natural exit and cleanup. Exact publisher pacing and wait-counter checks pass
+on the retained evidence; this is not a blanket performance or original-stall
+resolution claim. Missing normal-window manual checks and minimize/resume
+markers require a fresh focused observation using the unchanged controller.
+Do not replay combat, rebuild the frozen payload or revive old signing fixtures.
 
 The explicitly requested patch release 0.4.17 is public on npm (`latest`) and as
 the Latest GitHub Release. It carries the shared-texture first-failure

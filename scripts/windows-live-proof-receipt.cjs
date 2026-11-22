@@ -38,7 +38,13 @@ const MIN_ASYNC_SHARED_TEXTURE_SATURATION_DROP_ALLOWANCE = 16;
 const MAX_ASYNC_SHARED_TEXTURE_SATURATION_DROP_RATIO = 0.005;
 const MIN_ASYNC_SHARED_TEXTURE_SLOW_ALLOWANCE = 8;
 const MAX_ASYNC_SHARED_TEXTURE_SLOW_RATIO = 0.001;
-const STDERR_POLICY = "empty-or-valve-minidump-startup-v1";
+const LEGACY_STDERR_POLICY = "empty-or-valve-minidump-startup-v1";
+const STDERR_POLICY = "empty-or-valve-startup-with-known-safe-storage-deprecations-v2";
+const SAFE_STORAGE_DEPRECATION_LINES = Object.freeze([
+  "(electron) 'safeStorage.isEncryptionAvailable' is deprecated and will be removed. Please use 'safeStorage.isAsyncEncryptionAvailable' instead.",
+  "(electron) 'safeStorage.decryptString' is deprecated and will be removed. Please use 'safeStorage.decryptStringAsync' instead.",
+  "(electron) 'safeStorage.encryptString' is deprecated and will be removed. Please use 'safeStorage.encryptStringAsync' instead."
+]);
 const VALVE_STDERR_BASE_BYTES = Buffer.byteLength(
   "Setting breakpad minidump AppID = \nSteamInternal_SetMinidumpSteamID:  Caching Steam ID:   [API loaded no]"
 );
@@ -319,11 +325,55 @@ function validateStandaloneEvidence(evidence, candidateBinding, evidenceRoot) {
 function inspectStderr(bytes) {
   const summary = { bytes: bytes.length, sha256: sha256(bytes) };
   if (bytes.length === 0) {
-    return { ...summary, classification: "empty", startupMessageCount: 0 };
+    return { ...summary, classification: "empty", startupMessageCount: 0, safeStorageWarningCount: 0 };
   }
-  const match = /^Setting breakpad minidump AppID = ([1-9][0-9]{0,9})\r?\nSteamInternal_SetMinidumpSteamID:  Caching Steam ID:  [1-9][0-9]{16} \[API loaded no\](?:\r?\n)?(?![\s\S])/u.exec(bytes.toString("utf8"));
-  assert.ok(match && Number(match[1]) <= 0xffffffff, "Standalone stderr contains unexpected output.");
-  return { ...summary, classification: "valve-minidump-startup", startupMessageCount: 2 };
+  const text = bytes.toString("utf8");
+  assert.ok(Buffer.from(text).equals(bytes), "Standalone stderr contains invalid UTF-8.");
+  const lines = text.split(/\r?\n/u);
+  if (lines[lines.length - 1] === "") lines.pop();
+  const warnings = new Set();
+  let startupMessageCount = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (SAFE_STORAGE_DEPRECATION_LINES.includes(line)) {
+      assert.ok(!warnings.has(line), "Standalone stderr contains a duplicate deprecation warning.");
+      warnings.add(line);
+      continue;
+    }
+    const match = /^Setting breakpad minidump AppID = ([1-9][0-9]{0,9})$/u.exec(line);
+    assert.ok(
+      match && Number(match[1]) <= 0xffffffff && startupMessageCount === 0 &&
+        /^SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  [1-9][0-9]{16} \[API loaded no\]$/u.test(lines[index + 1] || ""),
+      "Standalone stderr contains unexpected output."
+    );
+    startupMessageCount = 2;
+    index += 1;
+  }
+  return {
+    ...summary,
+    classification: warnings.size > 0 ? "windows-startup-with-known-deprecations" : "valve-minidump-startup",
+    startupMessageCount,
+    safeStorageWarningCount: warnings.size
+  };
+}
+
+function knownDeprecationStderrByteSizes(startupMessageCount, warningCount) {
+  const sizes = new Set();
+  for (let mask = 1; mask < 2 ** SAFE_STORAGE_DEPRECATION_LINES.length; mask += 1) {
+    const selected = SAFE_STORAGE_DEPRECATION_LINES.filter((line, index) => (mask & (1 << index)) !== 0);
+    if (selected.length !== warningCount) continue;
+    const warningBytes = selected.reduce((total, line) => total + Buffer.byteLength(line), 0);
+    const lineCount = startupMessageCount + warningCount;
+    const minimumAppDigits = startupMessageCount === 2 ? 1 : 0;
+    const maximumAppDigits = startupMessageCount === 2 ? 10 : 0;
+    for (let appDigits = minimumAppDigits; appDigits <= maximumAppDigits; appDigits += 1) {
+      const contentBytes = warningBytes + (startupMessageCount === 2 ? VALVE_STDERR_BASE_BYTES - 1 + appDigits + 17 : 0);
+      for (let newlineBytes = lineCount - 1; newlineBytes <= lineCount * 2; newlineBytes += 1) {
+        sizes.add(contentBytes + newlineBytes);
+      }
+    }
+  }
+  return sizes;
 }
 
 function inspectRuntimeLog(stdout) {
@@ -648,6 +698,8 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     validateCandidateBinding(expectedCandidateBinding);
     assert.deepEqual(receipt.candidate, expectedCandidateBinding);
   }
+  const stderrPolicy = receipt.proofContract && receipt.proofContract.stderrPolicy;
+  assert.ok([LEGACY_STDERR_POLICY, STDERR_POLICY].includes(stderrPolicy), "Unsupported live-proof stderr policy.");
   assert.deepEqual(receipt.proofContract, {
     target: "x86_64-pc-windows-msvc",
     architecture: "standalone-native-host-offscreen-electron",
@@ -662,7 +714,7 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
     manualVisualQaRequired: true,
     ordinaryOverlayQaMenuRequired: true,
     purchaseAuthorizationAllowed: false,
-    stderrPolicy: STDERR_POLICY,
+    stderrPolicy,
     fpsPhases: ["game", "overlay"],
     minimumFpsSamplesPerPhase: 3,
     maximumPacingSampleIntervalMs: MAX_PACING_SAMPLE_INTERVAL_MS,
@@ -679,7 +731,7 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
   });
   assert.ok(Array.isArray(receipt.profiles));
   assert.equal(receipt.profiles.length, PROFILE_CONTRACTS.length);
-  validateProfileReceipt(receipt.profiles[0], PROFILE_CONTRACTS[0], receipt.candidate);
+  validateProfileReceipt(receipt.profiles[0], PROFILE_CONTRACTS[0], receipt.candidate, stderrPolicy);
   assert.deepEqual(receipt.totals, {
     profileCount: PROFILE_CONTRACTS.length,
     caseCount: TOTAL_CASE_COUNT,
@@ -695,7 +747,7 @@ function validateLiveProofReceipt(receipt, expectedCandidateBinding) {
   return receipt;
 }
 
-function validateProfileReceipt(profile, contract, candidateBinding) {
+function validateProfileReceipt(profile, contract, candidateBinding, stderrPolicy) {
   assertExactKeys(
     profile,
     [
@@ -887,22 +939,34 @@ function validateProfileReceipt(profile, contract, candidateBinding) {
     Math.abs(profile.runtime.targetFps - profile.runtime.displayHz) <= TARGET_DISPLAY_TOLERANCE_HZ
   );
   assertExactKeys(profile.artifacts, ["stderr", "stdout"], "live-proof artifacts");
+  const legacyStderr = stderrPolicy === LEGACY_STDERR_POLICY;
   for (const name of ["stdout", "stderr"]) {
     assertExactKeys(profile.artifacts[name], name === "stderr"
-      ? ["bytes", "sha256", "classification", "startupMessageCount"] : ["bytes", "sha256"], "live-proof " + name);
+      ? ["bytes", "sha256", "classification", "startupMessageCount", ...(legacyStderr ? [] : ["safeStorageWarningCount"])]
+      : ["bytes", "sha256"], "live-proof " + name);
     assert.match(profile.artifacts[name].sha256, /^[a-f0-9]{64}$/);
     assert.ok(Number.isSafeInteger(profile.artifacts[name].bytes));
   }
   assert.ok(profile.artifacts.stdout.bytes > 0);
   const stderr = profile.artifacts.stderr;
+  const warningCount = legacyStderr ? 0 : stderr.safeStorageWarningCount;
+  assert.ok(Number.isSafeInteger(warningCount) && warningCount >= 0 && warningCount <= SAFE_STORAGE_DEPRECATION_LINES.length);
   if (stderr.classification === "empty") {
     assert.equal(stderr.bytes, 0);
     assert.equal(stderr.sha256, sha256(Buffer.alloc(0)));
     assert.equal(stderr.startupMessageCount, 0);
-  } else {
-    assert.equal(stderr.classification, "valve-minidump-startup");
+    assert.equal(warningCount, 0);
+  } else if (stderr.classification === "valve-minidump-startup") {
     assert.equal(stderr.startupMessageCount, 2);
+    assert.equal(warningCount, 0);
     assert.ok(stderr.bytes >= VALVE_STDERR_BASE_BYTES + 18 && stderr.bytes <= VALVE_STDERR_BASE_BYTES + 30);
+    assert.notEqual(stderr.sha256, sha256(Buffer.alloc(0)));
+  } else {
+    assert.equal(legacyStderr, false);
+    assert.equal(stderr.classification, "windows-startup-with-known-deprecations");
+    assert.ok(warningCount > 0);
+    assert.ok(stderr.startupMessageCount === 0 || stderr.startupMessageCount === 2);
+    assert.ok(knownDeprecationStderrByteSizes(stderr.startupMessageCount, warningCount).has(stderr.bytes));
     assert.notEqual(stderr.sha256, sha256(Buffer.alloc(0)));
   }
 }
@@ -1305,6 +1369,14 @@ function runGeneratorSelfTest() {
       "Setting breakpad minidump AppID = 480",
       "SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  " + syntheticAccount + " [API loaded no]"
     ];
+    const legacyReceipt = receipt => {
+      const legacy = structuredClone(receipt);
+      legacy.proofContract.stderrPolicy = LEGACY_STDERR_POLICY;
+      for (const profile of legacy.profiles) delete profile.artifacts.stderr.safeStorageWarningCount;
+      const { receiptSha256, ...base } = legacy;
+      legacy.receiptSha256 = hashCanonicalJson(RECEIPT_HASH_DOMAIN, base);
+      return legacy;
+    };
     for (const newline of ["\n", "\r\n"]) {
       for (const suffix of ["", newline]) {
         const stderr = startupLines.join(newline) + suffix;
@@ -1312,8 +1384,9 @@ function runGeneratorSelfTest() {
         const accepted = validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding);
         assert.deepEqual(accepted.profiles[0].artifacts.stderr, {
           bytes: Buffer.byteLength(stderr), sha256: sha256(Buffer.from(stderr)),
-          classification: "valve-minidump-startup", startupMessageCount: 2
+          classification: "valve-minidump-startup", startupMessageCount: 2, safeStorageWarningCount: 0
         });
+        validateLiveProofReceipt(legacyReceipt(accepted), candidateBinding);
         assert.ok(!JSON.stringify(accepted).includes(syntheticAccount), "Receipt must not contain the raw account ID.");
         for (const mutate of [
           value => { value.classification = "other"; },
@@ -1332,18 +1405,90 @@ function runGeneratorSelfTest() {
       }
     }
     const startup = startupLines.join("\n");
+    for (let mask = 1; mask < 2 ** SAFE_STORAGE_DEPRECATION_LINES.length; mask += 1) {
+      const warnings = SAFE_STORAGE_DEPRECATION_LINES.filter((line, index) => (mask & (1 << index)) !== 0);
+      for (const warningLines of [warnings, [...warnings].reverse()]) {
+        for (const withStartup of [false, true]) {
+          for (const newline of ["\n", "\r\n"]) {
+            for (const suffix of ["", newline]) {
+              const stderr = [...(withStartup ? startupLines : []), ...warningLines].join(newline) + suffix;
+              fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), stderr);
+              const accepted = validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding);
+              assert.deepEqual(accepted.profiles[0].artifacts.stderr, {
+                bytes: Buffer.byteLength(stderr),
+                sha256: sha256(Buffer.from(stderr)),
+                classification: "windows-startup-with-known-deprecations",
+                startupMessageCount: withStartup ? 2 : 0,
+                safeStorageWarningCount: warnings.length
+              });
+              assert.ok(!JSON.stringify(accepted).includes(syntheticAccount));
+              assert.throws(() => validateLiveProofReceipt(legacyReceipt(accepted), candidateBinding));
+              for (const mutate of [
+                value => { value.safeStorageWarningCount = 0; },
+                value => { value.safeStorageWarningCount = 4; },
+                value => { value.safeStorageWarningCount = "1"; },
+                value => { value.startupMessageCount = 1; },
+                value => { value.classification = "empty"; },
+                value => { value.classification = "valve-minidump-startup"; },
+                value => { value.bytes = 0; },
+                value => { value.bytes = 100000; },
+                value => { value.sha256 = sha256(Buffer.alloc(0)); },
+                value => { value.cdpStartupMessageCount = 1; }
+              ]) {
+                const invalidProfile = structuredClone(accepted.profiles[0]);
+                mutate(invalidProfile.artifacts.stderr);
+                assert.throws(() => validateLiveProofReceipt(assembleLiveProofReceipt(
+                  candidateBinding, [invalidProfile], "2026-07-21T00:00:00.000Z", true
+                ), candidateBinding));
+              }
+            }
+          }
+        }
+      }
+    }
+    const syntheticFullStartup = startupLines[0].replace("480", "1234567") + "\r\n" +
+      startupLines[1] + "\r\n" + SAFE_STORAGE_DEPRECATION_LINES.join("\n") + "\n";
+    assert.equal(Buffer.byteLength(syntheticFullStartup), 529);
+    fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), syntheticFullStartup);
+    const acceptedFullStartup = validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding);
+    assert.deepEqual(acceptedFullStartup.profiles[0].artifacts.stderr, {
+      bytes: 529,
+      sha256: sha256(Buffer.from(syntheticFullStartup)),
+      classification: "windows-startup-with-known-deprecations",
+      startupMessageCount: 2,
+      safeStorageWarningCount: 3
+    });
+    assert.ok(!JSON.stringify(acceptedFullStartup).includes(syntheticAccount));
+    for (const warning of SAFE_STORAGE_DEPRECATION_LINES) {
+      for (const stderr of [
+        startup + "\n" + warning + "\n" + warning,
+        warning + "\n" + startup + "\n" + warning,
+        startupLines[0] + "\n" + warning + "\n" + startupLines[1],
+        startup + "\n" + warning.replace("(electron)", "(node:123)"),
+        startup + "\n" + warning + "\nunknown warning",
+        startup + "\n" + warning + "\nDevTools listening on ws://127.0.0.1:9233/devtools/browser/12345678-1234-1234-1234-123456789012"
+      ]) {
+        fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), stderr);
+        assert.throws(() => generateLiveProofReceipt(options), /stderr/);
+      }
+    }
     for (const stderr of [
       "\n", startupLines[0], startupLines[1], [...startupLines].reverse().join("\n"),
       startup + "\n" + startup, startup + "\nwarning", "warning\n" + startup,
       startup + "\n\n", startup + "\0", startup.replace("480", "4294967296"),
       startup.replace("480", "0"), startup.replace("[API loaded no]", "[API loaded yes]"),
       startup.replace(syntheticAccount, syntheticAccount + "0"), startup.replace(syntheticAccount, "0".repeat(17)),
-      startup.replace("  Caching", " Caching")
+      startup.replace("  Caching", " Caching"),
+      SAFE_STORAGE_DEPRECATION_LINES[0].replace("isEncryptionAvailable", "isEncryptionAvailableSoon"),
+      startup + "\n" + [...SAFE_STORAGE_DEPRECATION_LINES, SAFE_STORAGE_DEPRECATION_LINES[0]].join("\n"),
+      [...startupLines].reverse().join("\n") + "\n" + SAFE_STORAGE_DEPRECATION_LINES.join("\n"),
+      Buffer.from([0xff])
     ]) {
       fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), stderr);
       assert.throws(() => generateLiveProofReceipt(options), /stderr/);
     }
     fs.writeFileSync(path.join(evidenceDirectory, "stderr.log"), "");
+    validateLiveProofReceipt(legacyReceipt(validateLiveProofReceipt(generateLiveProofReceipt(options), candidateBinding)), candidateBinding);
     for (const freshFps of [0, 4.6, null, "59.9"]) {
       fs.writeFileSync(path.join(evidenceDirectory, "stdout.log"), stdout.replaceAll(
         '"sharedTextureFps":59.9', '"sharedTextureFps":' + JSON.stringify(freshFps)

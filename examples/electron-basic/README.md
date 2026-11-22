@@ -231,9 +231,12 @@ mismatched consumer package. Qualified pacing samples have intervals of at most
 two seconds and a target within 1 Hz of the current display. At most three
 otherwise-valid target/display transition samples may be excluded, covering
 the bounded 1 FPS minimized target before restore reapplies the display rate.
-Stderr may be empty or contain only the exact ordered pair of Valve minidump
-startup banners described in [Releasing](../../RELEASING.md). Keep the complete
-raw log; its original hash and classification are retained without publishing IDs.
+Stderr may be empty or contain the ordered adjacent Valve minidump startup
+banner pair and the three exact safeStorage deprecation messages described in
+[Releasing](../../RELEASING.md), each at most once. No CDP, unknown, altered or
+duplicate warning is allowed. Keep the complete raw log without filtering; its
+original hash, size, classification and known-warning count are retained without
+publishing IDs. The new policy preserves strict validation of older receipts.
 
 Generate the candidate-bound receipt only after every manual field is true:
 
